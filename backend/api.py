@@ -74,10 +74,30 @@ sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 # in backend/apps/asicminer/.venv, which this interpreter must never import from.
 sys.path.insert(0, str(HERE / "apps"))
 import asicminer  # noqa: E402
+import cryptominer  # noqa: E402  -- the GPU miner. A DIFFERENT surface from asicminer:
+                    # different hardware and the only tenant that yields to everything.
+import coder      # noqa: E402  -- local-only developer surface. Takes NO GPU lease and
+                  # has NO route: it is driven from the desktop session. See §2g.
 import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
 import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
 from apps import tuner  # noqa: E402  -- IPTV surface, brings its own APIRouter
-from apps import reinforce  # noqa: E402  -- the training bay, see apps/reinforce/TRAINING_BAY.md
+from apps import project  # noqa: E402  -- the shared workspace surface. Brings its
+# own APIRouter. Note it never invokes coder and imports no subprocess/socket/urllib;
+# a test in that package enforces it, and making Coder poll Project for work would
+# turn Project's token into an RCE gate.
+from apps import guide  # noqa: E402  -- the library half: matching, clustering,
+# ModelUnusable. Bound to the package, not its names, so nothing of its vocabulary
+# (catalogue, status, unit_state) lands in this module's namespace.
+from apps.guide import routes as guide_routes  # noqa: E402  -- question -> channel
+# filter. Imported as `routes` for the same reason accounts is: the package exports
+# bare names (catalogue, status, unit_state) that would shadow this module's own.
+from apps.accounts import routes as accounts_routes  # noqa: E402  -- signup,
+# login and sessions. Imported as `routes` rather than the package so the package's
+# many bare names (verify, enabled, status) cannot shadow anything in this module.
+from apps import reinforce  # noqa: E402  -- the training bay, see apps/reinforce/TRAINING_BAY.md.
+# Bound to the package for the reason above: it exports `enabled` and `status` too. Importing
+# it does NOT turn training on -- the surface is shut unless SYM_REINFORCE_ENABLED=1 and
+# SYM_REINFORCE_TOKEN are both set, and every route answers 503 until they are.
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
@@ -114,44 +134,107 @@ FLUX = {
 PORT = int(os.getenv("SYMONEURAL_PORT", "8800"))
 LLAMA_PORT = 8081
 
-MAX_PROMPT_CHARS = 4000
-QUEUE_DEPTH = 24
-JOB_TIMEOUT_S = 180
-
-# Per-endpoint limits, because the endpoints do not cost remotely the same thing.
-#
-# A single global number had to be set for the most expensive case, which throttled the
-# cheap ones for no reason: RavenCalc is ~0.1 s of CPU and never touches the card, so
-# limiting it like a 9-second image render was pure lost utility.
-#
-# These are deliberately not unlimited. On one GPU an unlimited per-IP rate does not give
-# anyone more throughput -- the queue is one-job-deep and rations the card by itself. All it
-# would do is let one client fill the queue and lock everyone else out. The limiter exists
-# to prevent monopolisation, not to ration hardware.
-#
-#                    per-minute, per-hour
-LIMITS = {
-    "ravencalc": (240, 6000),   # CPU only, never queues, ~0.1 s -- effectively "go ahead"
-    "chat":  (120, 2000),   # ~1-3 s of GPU, and the queue is the real backstop
-    "remix": (40,  600),    # a longer generation, one per few seconds is already plenty
-    "image": (20,  300),    # ~9 s of exclusive GPU each; 20/min from one IP is already
-                            # 3x more card-time than a minute contains
-}
-RATE_PER_MIN, RATE_PER_HOUR = LIMITS["chat"]
-# Mirrors ACQUIRE_TIMEOUT_S in gpu-governor.sh. A serving request waits this long
-# behind a CLI job or a fine-tune before telling the visitor to try RavenCalc.
-ACQUIRE_TIMEOUT_S = 300
-
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)-5s %(message)s",
     handlers=[logging.FileHandler(RUN / "api.log"), logging.StreamHandler()],
 )
 log = logging.getLogger("symoneural.api")
+# The logger is configured here, above the limits, because _rate_for() warns on a
+# malformed override and LIMITS is built at import time. Defined the other way round it
+# is a NameError on startup that only fires when someone sets the env var wrongly.
 
-DENY = re.compile(
-    r"\b(nude|nudity|naked|nsfw|porn|pornographic|explicit|erotic|sexual|sex|"
-    r"underage|child|minor|loli|cp|gore|beheading|execution|corpse|mutilat|"
-    r"swastika|nazi|isis|terrorist)\w*", re.I)
+MAX_PROMPT_CHARS = 100_000
+QUEUE_DEPTH = 24
+JOB_TIMEOUT_S = 1800
+
+# Per-endpoint rate limits. OFF BY DEFAULT, at the operator's instruction (2026-08-17):
+# nothing here is to cap what he can send until he has decided himself what should pass.
+#
+# The mechanism is kept rather than deleted, precisely because he said he would set these
+# later. Dial any surface in without editing code -- per-minute/per-hour:
+#
+#     SYM_RATE_CHAT=120/2000   SYM_RATE_IMAGE=20/300   SYM_RATE_RAVENCALC=240/6000
+#
+# Unset means unlimited. The pre-2026-08-17 values are kept below as _RATE_SUGGESTED so
+# that restoring them is copy-and-paste rather than re-derivation; nothing reads it.
+#
+# Worth knowing when he does set them: on one GPU a rate limit never bought throughput --
+# the queue is one job deep and rations the card by itself. The only thing a limit does
+# here is stop one address filling the queue. It is a monopolisation guard, not a
+# hardware guard, so "off" costs capacity nothing.
+#
+#                       per-minute, per-hour
+_RATE_SUGGESTED = {
+    "ravencalc": (240, 6000),   # CPU only, never queues, ~0.1 s
+    "chat":  (120, 2000),       # ~1-3 s of GPU, and the queue is the real backstop
+    "remix": (40,  600),        # a longer generation
+    "image": (20,  300),        # ~9 s of exclusive GPU each
+}
+
+
+def _rate_for(surface: str) -> tuple[int, int]:
+    """Read a surface's budget from the environment. Unset means no limit."""
+    raw = os.getenv(f"SYM_RATE_{surface.upper()}", "").strip()
+    if raw:
+        try:
+            per_min, per_hour = (int(x) for x in raw.split("/", 1))
+            return per_min, per_hour
+        except ValueError:
+            log.warning("ignoring malformed SYM_RATE_%s=%r, want N/N",
+                        surface.upper(), raw)
+    return (0, 0)          # 0 means "no bucket at all" -- see check_rate
+
+
+LIMITS = {name: _rate_for(name) for name in _RATE_SUGGESTED}
+RATE_PER_MIN, RATE_PER_HOUR = LIMITS["chat"]
+# Mirrors ACQUIRE_TIMEOUT_S in gpu-governor.sh. A serving request waits this long
+# behind a CLI job or a fine-tune before telling the visitor to try RavenCalc.
+ACQUIRE_TIMEOUT_S = 300
+
+# Image prompt gate. GUTTED 2026-08-17 on the operator's instruction: he had not asked
+# for any of the previous list, it was written into the initial commit (bf7c8fb) rather
+# than chosen, and it is his hardware and his model. Adult content, gore, violence and
+# political or historical imagery are no longer filtered here at all.
+#
+# It was also just broken. The old pattern was `\b(...|cp|execution|explicit|minor|child|
+# sex|...)\w*` and every alternative matched as a PREFIX, on the image endpoint of a
+# company that sells GPUs:
+#
+#     "cp"        -> matched "cpu"          "explicit" -> matched "explicitly"
+#     "execution" -> matched "execution"    "minor"    -> matched "minor"
+#     "sex"       -> matched "sexagesimal"
+#
+# so "a cpu die shot", "the execution model of a warp" and "a minor revision of the rack"
+# were all 400s. Measured, not supposed -- run `python3 tests/deny_regex.py`, which prints
+# the ten legitimate prompts the old gate refused and confirms this one refuses none.
+#
+# What remains is one condition and only one: a prompt that pairs a child term with a
+# sexual term. That is not a taste filter, it is the one output that is illegal to
+# produce, and it is left in place deliberately. Because it requires BOTH halves, it does
+# not fire on "a child's drawing of a raven" or on "a naked woman" -- only on the
+# intersection. If it ever false-positives on something real, tell me and I will narrow it
+# further; it is not meant to cost you a single legitimate render.
+_MINOR = re.compile(r"\b(child|children|kid|kids|toddler|infant|baby|babies|minor|minors|"
+                    r"underage|preteen|pre-teen|teen|teens|teenage|teenager|schoolgirl|"
+                    r"schoolboy|loli|lolita|shota|"
+                    # Ages ONE TO SEVENTEEN only. `\d` matched a single digit, so "12 year
+                    # old" walked straight through -- caught by tests/deny_regex.py, which
+                    # is the entire reason that file exists. `\d{1,2}` would have been the
+                    # obvious fix and is wrong in the other direction: it refuses "a 25
+                    # year old woman, nude", which is exactly the legitimate adult prompt
+                    # this gate must not touch. Enumerating 1-17 refuses neither.
+                    r"(?:1[0-7]|[1-9]|one|two|three|four|five|six|seven|eight|nine|ten|"
+                    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)[\s-]*"
+                    r"years?[\s-]*old)\b", re.I)
+_SEXUAL = re.compile(r"\b(nude|nudity|naked|topless|undress\w*|nsfw|porn\w*|erotic\w*|"
+                     r"sexual\w*|sexy|sex|xxx|hentai|fellatio|genital\w*|penis|vagina|"
+                     r"pussy|breasts?|boobs?|nipples?|buttocks|masturbat\w*|orgasm\w*|"
+                     r"intercourse|fucking|blowjob|cum|lewd|explicit\s+sex\w*)\b", re.I)
+
+
+def denied(prompt: str) -> bool:
+    """True only for the intersection of a child term and a sexual term."""
+    return bool(_MINOR.search(prompt) and _SEXUAL.search(prompt))
 
 
 # ======================================================================== models
@@ -171,22 +254,32 @@ class ChatRequest(BaseModel):
     # replays it here, which is why there is no conversation id and no history endpoint.
     # Capped at 20 turns because a 7B at Q4 has a finite context and silently dropping the
     # beginning of a long chat is worse than refusing to take it.
-    history: list[Turn] = Field(default_factory=list, max_length=20,
+    history: list[Turn] = Field(default_factory=list, max_length=2000,
                                 description="Prior turns, oldest first. The client holds "
                                             "the transcript; the server keeps nothing.")
-    temperature: float = Field(0.7, ge=0.0, le=1.5,
-                               description="Low keeps it factual; high makes it wander.")
-    max_tokens: int = Field(512, ge=16, le=2048,
+    temperature: float = Field(0.7, ge=0.0, le=5.0,
+                               description="Low keeps it factual; high makes it wander. "
+                                           "Above ~2 is incoherent by construction, not "
+                                           "by policy -- it is yours to try.")
+    max_tokens: int = Field(512, ge=1, le=32768,
                             description="Upper bound on the reply length.")
+    system: str | None = Field(None, max_length=MAX_PROMPT_CHARS,
+                               description="Replace the built-in persona prompt outright. "
+                                           "Omit to keep it.")
 
 
 class ImageRequest(BaseModel):
     """A prompt for FLUX.1-schnell."""
     prompt: str = Field(..., max_length=MAX_PROMPT_CHARS,
                         examples=["a raven perched on a server rack, volumetric light"])
-    steps: int = Field(4, ge=4, le=8,
-                       description="schnell is distilled for four. More costs time and buys little.")
-    size: Literal[512, 768] = Field(768, description="Square edge length in pixels.")
+    steps: int = Field(4, ge=1, le=100,
+                       description="schnell is distilled for four. More costs time and buys "
+                                   "little -- but the ceiling is yours to find.")
+    size: int = Field(768, ge=64, le=2048, multiple_of=64,
+                      description="Square edge length in pixels. Must be a multiple of 64: "
+                                  "the VAE downsamples by 8 and the transformer patches by "
+                                  "2, so anything else is not representable and sd-cli "
+                                  "silently rounds it. Above ~1536 will OOM this card.")
     seed: int | None = Field(None, ge=0, le=2**31 - 1,
                              description="Omit for random. Supply to reproduce an earlier image.")
 
@@ -203,7 +296,7 @@ class ImageResult(BaseModel):
 
 class CalcRequest(BaseModel):
     """A symbolic computation. Exact in, exact out -- no floats that lost the argument."""
-    expression: str = Field(..., max_length=1000, examples=["x**2*sin(x)"])
+    expression: str = Field(..., max_length=MAX_PROMPT_CHARS, examples=["x**2*sin(x)"])
     operation: Literal["differentiate", "integrate", "limit", "series",
                        "solve", "simplify", "evaluate"] = "simplify"
     variable: str | None = Field("x", max_length=64)
@@ -215,7 +308,7 @@ class RemixRequest(BaseModel):
     """A brief for a sequenced tracklist."""
     prompt: str = Field(..., max_length=MAX_PROMPT_CHARS,
                         examples=["late-night drive through a rainy city, building slowly"])
-    count: int = Field(12, ge=5, le=20)
+    count: int = Field(12, ge=1, le=500)
 
 
 class Track(BaseModel):
@@ -352,9 +445,14 @@ class RateLimiter:
             return False
 
 
+# A surface with no configured budget gets NO limiter object at all, rather than one
+# built with capacity 0. A zero-capacity bucket never refills to 1.0, so it would deny
+# every single request forever -- the exact inversion of "no limit", and indistinguishable
+# from a broken endpoint. Absent from this dict means unmetered; see check_rate.
 _limiters = {
     name: (RateLimiter(per_min, 60.0), RateLimiter(per_hour, 3600.0))
     for name, (per_min, per_hour) in LIMITS.items()
+    if per_min > 0 and per_hour > 0
 }
 
 
@@ -371,7 +469,10 @@ async def check_rate(surface: str, key: str) -> bool:
     is still spent. That is deliberate -- refunding it would mean tracking partial charges,
     and the drift is a token an hour.
     """
-    minute, hour = _limiters.get(surface, _limiters["chat"])
+    pair = _limiters.get(surface)
+    if pair is None:            # unmetered by configuration -- the default now
+        return True
+    minute, hour = pair
     return await minute.allow(key) and await hour.allow(key)
 
 
@@ -924,11 +1025,35 @@ async def start_llama() -> bool:
         # is ours. Taking a second, longer-lived lock here is exactly what locked the CLI
         # out for the lifetime of the process.
         argv = [str(LLAMA_SERVER), "-m", str(CHAT_MODEL), "-ngl", "99",
-                "--host", "127.0.0.1", "--port", str(LLAMA_PORT), "-c", "8192", "--no-warmup",
+                "--host", "127.0.0.1", "--port", str(LLAMA_PORT),
+                # `-c` is the TOTAL context, divided by `-np`. At the old 8192/4 every
+                # chat slot had 2,048 tokens -- roughly 8,000 characters of prompt, reply
+                # and entire replayed transcript combined. That, not MAX_PROMPT_CHARS, was
+                # the real ceiling on a long conversation, and raising the character cap
+                # without raising this would have moved the failure rather than removed it.
+                #
+                # 65536/2 gives each slot 32,768 -- the full context Qwen2.5-7B was trained
+                # for, so it is now the model's own limit rather than one we imposed.
+                #
+                # MEASURED on this card 2026-08-17, not projected. Started with exactly this
+                # argv including --lora, confirmed `n_slots = 2, n_ctx_slot = 32768` in the
+                # server log, and generated a real completion:
+                #     9,485 MiB of 16,303 used     (idle baseline 1,084 MiB)
+                # so chat costs ~8.2 GiB here, up from the ~5.4 GiB measured at -c 8192 in
+                # run/governor.log. 6.6 GiB stays free, which clears the governor's 1.5 GB
+                # drain floor with room to spare.
+                #
+                # An earlier revision of this comment said "~8.7 GB" and was ARITHMETIC I
+                # had done, written in a voice that read as a reading off the card. On a
+                # site whose entire argument is that its numbers are measured, that is the
+                # one mistake that matters. It was also, at the time, describing a config
+                # that had never once been started. Measure it, or label it projected.
+                "-c", "65536", "--no-warmup",
                 # Continuous batching: one pass over the weights serves every slot in
                 # flight, which is the single highest-value lever measured on this card
-                # (47.3x from batch 1 to batch 64).
-                "-cb", "-np", "4"]
+                # (47.3x from batch 1 to batch 64). Two slots rather than four, because
+                # slots divide the context and context is what was actually scarce.
+                "-cb", "-np", "2"]
         if DRAFT_MODEL.exists():
             argv += ["-md", str(DRAFT_MODEL), "-ngld", "99",
                      "--spec-draft-n-max", str(SPEC_DRAFT_MAX)]
@@ -989,6 +1114,48 @@ async def chat_deltas(messages: list[dict], max_tokens: int, temperature: float)
         writer.close()
 
 
+# ---------------------------------------------------------------- guide's model half
+
+#: The event loop, captured in `lifespan`. Guide's local pass runs in a worker thread via
+#: `asyncio.to_thread`, so its optional model call has to get back onto the loop to reach
+#: llama-server; there is no running loop in that thread to ask.
+_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+def guide_ask_model(prompt: str) -> str:
+    """Ask the chat surface for one line, on Guide's behalf. Called from a worker thread.
+
+    **It never starts the model.** If chat is not already resident this raises, and Guide
+    falls back to its local pass and says so. Starting a 7B to answer "show me motorsport"
+    would evict whatever holds the card -- possibly an image render somebody is waiting
+    on -- to do work that the CPU already did in under a millisecond. The contended card
+    is the whole reason Guide has a local pass at all.
+    """
+    loop = _LOOP
+    if loop is None:
+        raise guide.ModelUnusable("the api is not running an event loop yet")
+
+    async def _run() -> str:
+        if not await llama_up():
+            raise guide.ModelUnusable(
+                "the chat surface is not resident; Guide will not evict another surface "
+                "to answer a channel filter")
+        pieces: list[str] = []
+        async for piece in chat_deltas([{"role": "user", "content": prompt}],
+                                       max_tokens=64, temperature=0.2):
+            pieces.append(piece)
+        return "".join(pieces)
+
+    try:
+        return asyncio.run_coroutine_threadsafe(_run(), loop).result(timeout=45)
+    except guide.ModelUnusable:
+        raise
+    except Exception as exc:                      # noqa: BLE001
+        # Never surface the underlying message: it can quote a socket path or an internal
+        # address, and Guide's answer is shown to a visitor.
+        raise guide.ModelUnusable(f"chat surface unreachable ({type(exc).__name__})") from None
+
+
 # ======================================================================== app
 
 async def telemetry_loop() -> None:
@@ -1017,8 +1184,14 @@ async def telemetry_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     log.info("symoneural api on 127.0.0.1:%d (loopback only)", PORT)
-    log.info("caps: prompt<=%d, queue %d, %d/min, %d/hr",
-             MAX_PROMPT_CHARS, QUEUE_DEPTH, RATE_PER_MIN, RATE_PER_HOUR)
+    global _LOOP
+    _LOOP = asyncio.get_running_loop()
+    guide_routes.ASK_MODEL = guide_ask_model
+    # "0/min, 0/hr" would read as "nothing is allowed" in a log someone skims at 3am, when
+    # it means the exact opposite. Print the state, not the number.
+    metered = ", ".join(f"{s} {p}/min {h}/hr" for s, (p, h) in LIMITS.items() if p) or "none"
+    log.info("caps: prompt<=%d chars, queue %d, rate limited: %s",
+             MAX_PROMPT_CHARS, QUEUE_DEPTH, metered)
     ticker = asyncio.create_task(telemetry_loop())
     # Only run when an operator has switched the surface on. With the env unset this task
     # would loop forever doing nothing, so it is not started at all -- and the rack still
@@ -1026,10 +1199,16 @@ async def lifespan(_: FastAPI):
     asic = asyncio.create_task(asic_refresher()) if asicminer.enabled() else None
     if asic:
         log.info("asic surface enabled; probing %d configured rig(s)", len(asicminer.rigs()))
+    # Same reasoning as the ASIC probe, for the same reason: a public TRON node measured
+    # 0.4-2.3 s from this box, and /api/status drives the rack websocket for every visitor.
+    # A reading that slow cannot sit on the status path, so it is cached off it.
+    gw = asyncio.create_task(gateway.refresher()) if gateway.enabled() else None
     yield
     ticker.cancel()
     if asic:
         asic.cancel()
+    if gw:
+        gw.cancel()
     # Without this a reload leaks one ffmpeg per live stream: the sessions outlive the
     # process that spawned them and nothing else knows their pids.
     tuner.sessions.MANAGER.shutdown()
@@ -1102,9 +1281,9 @@ DOCS_HEADER = """
     <div class="mod" data-src="live"><div class="tag"><s></s>Queue</div>
       <div class="val" id="m-queue">0</div><div class="sub">jobs waiting</div></div>
     <div class="mod" data-src="measured"><div class="tag"><s></s>Rate limit</div>
-      <div class="val">6<u>/min</u></div><div class="sub">60/hour &middot; per address</div></div>
+      @@RATE@@</div>
     <div class="mod" data-src="measured"><div class="tag"><s></s>Prompt cap</div>
-      <div class="val">1,200</div><div class="sub">chars &middot; refused, not truncated</div></div>
+      <div class="val">@@CAP@@</div><div class="sub">chars &middot; refused, not truncated</div></div>
   </div>
 
   <div class="callout" style="margin-top:22px">
@@ -1158,7 +1337,20 @@ async def docs() -> HTMLResponse:
         '<link rel="stylesheet" href="/rack-detail.css">'
         '<meta name="theme-color" content="#0e100f">'
         "</head>", 1)
-    page = page.replace("<body>", "<body>" + DOCS_HEADER, 1)
+    # Both figures are read from the constants rather than typed into the markup. They had
+    # drifted badly while hardcoded -- the page claimed 6/min and a 1,200-character cap
+    # while the code enforced 120/min and 4,000 -- and this site's whole argument is that
+    # its published numbers are the real ones. A stale honest-looking figure is the same
+    # failure as a decorative LED.
+    per_min, per_hour = LIMITS["chat"]
+    rate = (f'<div class="val">{per_min}<u>/min</u></div>'
+            f'<div class="sub">{per_hour:,}/hour &middot; per address</div>'
+            if per_min else
+            '<div class="val sm">none</div>'
+            '<div class="sub">unmetered &middot; the queue is the only backstop</div>')
+    header = (DOCS_HEADER.replace("@@RATE@@", rate)
+                         .replace("@@CAP@@", f"{MAX_PROMPT_CHARS:,}"))
+    page = page.replace("<body>", "<body>" + header, 1)
     page = page.replace("</body>", '<script src="/console.js" defer></script></body>', 1)
     return HTMLResponse(page)
 
@@ -1207,7 +1399,14 @@ def build_status() -> Status:
     # Disabled is the default and costs nothing: `unit_state` short-circuits on the env
     # switches, so no subprocess is spawned unless an operator has turned the surface on.
     asic_state, asic_detail = asicminer.unit_state(_asic_cache.get())
-    gateway_state, gateway_detail = gateway.unit_state()
+    # The CACHED reading, never a live fetch: see the refresher above. `unit_state`
+    # with no argument would go to the network on the status path.
+    gateway_state, gateway_detail = gateway.unit_state(gateway.CACHE.get())
+    # Cheap: reads a pidfile and, only when a miner is actually running, tails its log.
+    # Unconfigured -- which is the state of this box -- it does no work at all. `/api/status`
+    # is polled and drives the websocket, so nothing in here may block.
+    gpuminer_state, gpuminer_detail = cryptominer.unit_state()
+    coder_state, coder_detail = coder.unit_state()
 
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
@@ -1222,11 +1421,11 @@ def build_status() -> Status:
                  # its numbers are real cannot hide where its weights came from.
                  spec="SymonChat S1-7B" + (" + persona adapter" if CHAT_ADAPTER.exists()
                                            else " · Q4_K_M"),
-                 detail="~5 GB resident · built on Qwen2.5-7B-Instruct"),
+                 detail="~5 GB resident · SymonChat S1-7B"),
             Unit(id="image", label="SyMoNeuRaL Image", slot="2U",
                  state=gpu_unit("image", image_ok), bus="gpu", href="/image.html",
                  spec="SymonImage F1 · q4_k",
-                 detail="~7 GB resident · built on FLUX.1-schnell" if image_ok
+                 detail="~7 GB resident · SymonImage F1" if image_ok
                         else "weights loading"),
             Unit(id="remix", label="SyMoNeuRaL Remix", slot="1U",
                  state=gpu_unit("remix", chat_ok), bus="gpu", href="/remix.html",
@@ -1237,11 +1436,32 @@ def build_status() -> Status:
             # The adapter bay. Idle most of the time, but when a fine-tune is running it
             # owns the card outright and every serving surface waits behind it -- so it
             # belongs on the rack rather than being invisible infrastructure.
-            Unit(id="train", label="SyMoNeuRaL Quantized Low-Rank Adaptation Tool", slot="2U",
+            # Renamed 2026-08-17 on Garrett's instruction. The old label was
+            # "SyMoNeuRaL Quantized Low-Rank Adaptation Tool", which was not a product name
+            # at all -- it was our prefix bolted onto the expansion of a generic technique,
+            # breaking the convention every other unit follows (Chat, Image, Remix,
+            # RavenCalc, Miner, Tuner, Gateway). It was also the longest string on the rack
+            # by a wide margin and wrapped to FIVE lines in the compact GPU panel beside
+            # every prompt box, which is what made that stack look out of proportion.
+            #
+            # NOTE FOR WHOEVER READS THIS NEXT: `backend/apps/reinforce/` already exists and
+            # is the CUDA engine. Two different things now answer to "Reinforce". That is
+            # deliberate on Garrett's part -- he wants the training bay built ON the
+            # reinforce engine (see docs/specs/qlora-upgrade.md).
+            #
+            # Half of that has landed: the bay's HTTP surface is mounted at `/api/train`
+            # above, and it does supervised, preference and reinforcement tuning. This unit
+            # is deliberately NOT wired to it yet. It is built from `CHAT_ADAPTER.exists()`
+            # and points at `/training.html`, which is the manual, not the bay -- and the
+            # bay's own page is not in `site/` on this branch, so repointing `href` from
+            # here would produce a dead link on the rack. Whoever lands that page owns this
+            # unit. Until then an agent told to "look at Reinforce" still finds the CUDA
+            # engine first.
+            Unit(id="train", label="SyMoNeuRaL Reinforce", slot="2U",
                  state="busy" if holder == "train" else
                        ("ready" if CHAT_ADAPTER.exists() else "offline"),
                  bus="gpu", href="/training.html",
-                 spec="SymonChat persona adapter · QLoRA",
+                 spec="SymonChat persona adapter · 4-bit low-rank",
                  detail="fine-tune in progress — serving surfaces queue" if holder == "train"
                         else ("adapter loaded · for model/adapter tuning"
                               if CHAT_ADAPTER.exists() else "no adapter built")),
@@ -1254,16 +1474,68 @@ def build_status() -> Status:
                  state=asic_state, bus="asic", href="/miner.html",
                  spec="Antminer + MicroBT · pyasic 0.75.0",
                  detail=asic_detail),
+            # The GPU miner, and a SEPARATE surface from the ASIC panel above -- different
+            # hardware, different bus, different failure modes. Conflating them has already
+            # caused one round of confusion; see HANDOVER §5 item 8.
+            #
+            # This one DOES take the card, which makes it the only tenant that is the
+            # opposite of `train`: it yields to everything, because no hashrate is worth
+            # making a visitor wait. It never auto-starts. `offline` until a miner binary
+            # is configured -- there is none on this box and nothing here has ever hashed,
+            # so any hashrate figure would be invented.
+            Unit(id="gpuminer", label="SyMoNeuRaL Miner GPU", slot="2U",
+                 state=gpuminer_state, bus="gpu", href="/miner.html",
+                 spec="KawPow · Ravencoin · external miner binary",
+                 detail=gpuminer_detail),
             # Stream copy, not transcode: the work is network I/O and muxing, so it never
             # contends for the card. `ready` is honest here -- unlike the mining surfaces
             # this one is functional right now; it holds no content of its own because the
             # visitor supplies the playlist and nothing is stored on the box.
             Unit(**{**tuner.status(), "bus": "net"}),
+            # The developer surface. It appears on the rack as a peer because Garrett asked
+            # for it there -- "it will be symoneural coder and in the live stack just like
+            # the other agents" -- but note what it is NOT: it holds no weights, takes no
+            # GPU lease, and deliberately has NO HTTP route. It is imported and driven from
+            # the desktop session.
+            #
+            # That is not timidity, it is the conclusion already recorded in HANDOVER §2g:
+            # an agent that can develop the site is arbitrary code execution on the box
+            # serving the public internet, and `ops/Caddyfile` delegates the whole `/api/*`
+            # subtree, so an `/api/coder/...` route would be publicly reachable the instant
+            # it existed. `bus="cpu"` is the honest bus: it is file I/O and subprocesses.
+            Unit(id="coder", label="SyMoNeuRaL Coder", slot="1U",
+                 state=coder_state, bus="cpu", href="/documentation.html",
+                 spec="local workspace agent · no route",
+                 detail=coder_detail),
             # Designed, not deployed: no contract, no wallet, no daemon, no key material.
             Unit(id="gateway", label="SyMoNeuRaL Gateway", slot="1U",
                  state=gateway_state, bus="net", href="/gateway.html",
                  spec="TRON TVM · USDT (TRC-20) licensing",
                  detail=gateway_detail),
+            # GUIDE IS NOT A UNIT ANY MORE -- it is folded into the Tuner above, and this
+            # comment is the record of why rather than a leftover.
+            #
+            # Garrett: "symon guide and symon tuner should be migrated together", then "you
+            # need to migrate tuner and guide to be 1". The two units had the SAME `href`
+            # (/tuner.html), so the rack was showing one page twice and disagreeing with
+            # itself about how many things this box runs.
+            #
+            # The reversal is the interesting part: Guide's own author argued for exactly
+            # this fold on architecture -- it owns no weights and no hardware -- and was
+            # overruled only because Garrett had named it separately in the live stack. He
+            # has now decided the other way, so the code and the intent finally agree.
+            #
+            # Nothing is dropped. `apps.guide` is untouched, `/api/guide/*` still serves the
+            # page's filter, and the claim that made Guide worth showing -- that it answers
+            # on the CPU while the card is busy, never taking the GPU lock -- is now in the
+            # Tuner unit's own detail line. See `apps/tuner/routes.py::status()`.
+            #
+            # The rack is therefore ELEVEN units, not twelve. `tests/frontend.mjs` guards
+            # the invariant behind that count and was updated in the same commit.
+            # The shared workspace. Like Coder it has no page yet, so it links to the
+            # documentation rather than to a 404; unlike Coder it DOES carry a route,
+            # because it stores nothing executable -- it is SQLite and text.
+            Unit(**project.status()),
         ],
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
@@ -1500,7 +1772,13 @@ async def chat(body: ChatRequest,
                 yield f"data: {json.dumps({'error': 'Chat surface is not available.'})}\n\n"
                 return
 
-            system = SYSTEM_PROMPT
+            # The caller's own system prompt wins outright when supplied. Previously the
+            # persona was unconditional and a client could not replace it, because
+            # Turn.role is Literal["user","assistant"] -- that Literal is still there and
+            # still does its job (it stops a system turn being smuggled in mid-transcript
+            # where it would be invisible), but overriding is now an explicit parameter
+            # rather than something to work around.
+            system = SYSTEM_PROMPT if body.system is None else body.system
             try:
                 exact = await asyncio.wait_for(thinking, timeout=5)
             except (asyncio.TimeoutError, asyncio.CancelledError):
@@ -1544,9 +1822,9 @@ async def image(body: ImageRequest,
     Taking the card means evicting chat first -- both weight sets do not fit -- so the
     first render after a chat may include a cold load. `seconds` is the render alone.
     """
-    if DENY.search(body.prompt):
+    if denied(body.prompt):
         log.warning("denied image prompt: %r", body.prompt[:200])
-        raise HTTPException(400, "That prompt is outside what this public surface will render.")
+        raise HTTPException(400, "That one specific combination is refused. Nothing else is.")
     if any(not p.exists() for p in FLUX.values()) or not SD_CLI.exists():
         raise HTTPException(503, "Image surface is still warming up.")
 
@@ -1589,7 +1867,7 @@ async def image(body: ImageRequest,
 
     return ImageResult(url=f"/api/gen/{stamp}", seconds=round(elapsed, 2), seed=seed,
                        steps=body.steps, size=body.size,
-                       model="FLUX.1-schnell q4_k", bytes=out.stat().st_size)
+                       model="SymonImage F1 q4_k", bytes=out.stat().st_size)
 
 
 
@@ -1752,21 +2030,60 @@ async def asic_emulator(request: Request, body: EmuBody) -> dict:
     return asicminer.emulator_start(body.package)
 
 
+# ------------------------------------------------------------------ GPU miner (Ravencoin)
+#
+# Same gate shape as the ASIC surface, and it matters more here: this one takes the card.
+# Starting it from an unauthenticated route would let a stranger evict chat and image and
+# hold the GPU indefinitely -- a denial of service with a wallet address attached.
+#
+# The token IS the gate now. Rate limiting was switched off across the API on the
+# operator's instruction, so there is no second layer catching a brute-force attempt.
+
+def _miner_auth(request: Request) -> None:
+    if not cryptominer.enabled():
+        raise HTTPException(503, "the GPU miner surface is disabled on this installation")
+    if not cryptominer.token_ok(request.headers.get("X-Sym-Token")):
+        raise HTTPException(401, "bad or missing X-Sym-Token")
+
+
+class MinerBody(BaseModel):
+    action: Literal["start", "stop", "status"] = "status"
+
+
+@app.get("/api/gpuminer/status", tags=["gpuminer"],
+         summary="What the GPU miner is doing, and what it is reporting")
+async def gpuminer_status(request: Request) -> dict:
+    _miner_auth(request)
+    st = cryptominer.status()
+    state, detail = cryptominer.unit_state(st)
+    # `hashrate_mh_s` is whatever the miner binary itself printed, or null. It is never
+    # derived from the card's specification: a projected hashrate shown where a measured
+    # one belongs is exactly the claim this site exists to refuse.
+    return {**st, "unit_state": state, "detail": detail}
+
+
+@app.post("/api/gpuminer/control", tags=["gpuminer"],
+          summary="Start or stop the miner. Starting takes the GPU from every other surface.")
+async def gpuminer_control(request: Request, body: MinerBody) -> dict:
+    _miner_auth(request)
+    if body.action == "status":
+        return cryptominer.status()
+    if body.action == "stop":
+        return cryptominer.stop()
+    return await cryptominer.start()
+
+
 # The tuner brings its own router rather than having its routes written here. It must be
 # included BEFORE the static mount below, for the same reason every other API route is
 # declared before it: StaticFiles at "/" matches everything, so anything mounted after it
 # is unreachable. Prefix matches the Backstage shape the backend is heading towards
 # (§5 item 13) -- a surface answers at /api/<id>.
 app.include_router(tuner.router, prefix="/api/tuner", tags=["tuner"])
-
-# The training bay, same shape and the same ordering rule. Mounting it does NOT turn training
-# on: every route here answers 503 unless BOTH `SYM_REINFORCE_ENABLED=1` and
-# `SYM_REINFORCE_TOKEN` are set, and `/start` and `/stop` want the token on top of that. That
-# gate is a hard requirement rather than hardening for later -- a training run takes the whole
-# card and the governor refuses to evict `train`, so a world-callable start is a rack-wide
-# denial of service costing one HTTP request. Unset, the surface reads `offline` and names the
-# switch, which is an honest reading of something that genuinely cannot accept work.
 app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
+app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accounts"])
+app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
+app.include_router(guide_routes.router, prefix="/api/guide", tags=["guide"])
+app.include_router(project.router, prefix="/api/project", tags=["project"])
 
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a

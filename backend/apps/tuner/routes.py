@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import safefetch, xtream
+from . import epg, safefetch, xtream
 from .m3u import MAX_CHANNELS, parse_m3u
 from .safefetch import BlockedURL, FetchError, Policy, Scrubber
 from .sessions import (MANAGER, MAX_SESSIONS, PLAYLIST_NAME, SEGMENT_RE, FFMPEG,
@@ -31,9 +31,30 @@ log = logging.getLogger("symoneural.tuner")
 
 router = APIRouter(tags=["tuner"])
 
-#: A pasted playlist. Generous, because provider exports genuinely are megabytes, and bounded,
-#: because an unbounded POST body is a memory bug with a friendly name.
-MAX_PASTE = 24 * 1024 * 1024
+#: A pasted playlist. `0` means no limit, and `0` is the default at the owner's instruction
+#: (2026-08-17) — provider exports genuinely are tens of megabytes and every ceiling picked here
+#: has so far been someone's missing Movies section.
+MAX_PASTE = 0
+
+#: How long `POST /tune` waits for ffmpeg to write a playable playlist before handing the
+#: session back for the client to poll.
+#:
+#: **Measured on this machine**, feeding a 1.9 Mb/s H.264/AAC transport stream into the exact
+#: argv `sessions._spawn` builds, at four throttled rates, timing the appearance of
+#: `live.m3u8`:
+#:
+#:     unthrottled   0.1 s      8 Mb/s   2.5 s      2 Mb/s   9.7 s      0.8 Mb/s   24.1 s
+#:
+#: The old value was 10 s, which a stream delivered at 2 Mb/s -- an entirely ordinary IPTV
+#: rate, and what a provider that paces at real time gives you -- misses by a fraction of a
+#: second. Every such stream returned "no playable output yet" on a request that was about to
+#: succeed. 25 s covers the measured range down to 0.8 Mb/s.
+#:
+#: The same measurement is why `-probesize`/`-analyzeduration` were **left alone**: repeating it
+#: at 2M, 5M and 10M produced times identical to within 0.1 s at every rate. Time to first
+#: playlist is bounded by how much data the HLS muxer needs to close its first segment, not by
+#: the probe. Raising the probe would have been a guess dressed as a fix.
+TUNE_WAIT_SECONDS = 25.0
 
 
 # ---------------------------------------------------------------- models
@@ -59,6 +80,29 @@ class XtreamBody(BaseModel):
     kinds: list[str] = Field(default_factory=lambda: ["live"])
 
 
+class EpgBody(XtreamBody):
+    """One channel's guide, or a grid's worth.
+
+    Subclasses `XtreamBody` so the credential defaults and the `extra="ignore"` contract are
+    inherited rather than restated -- `kinds` comes along unused, which is harmless, and losing
+    the "every credential field has a default" leak fix would not be.
+    """
+    #: One stream id, or many. Both are accepted on the same route because the grid and the
+    #: focused row are the same question asked at different widths, and two routes that build
+    #: the same URL is how they drift apart.
+    stream_id: str = ""
+    stream_ids: list[str] = Field(default_factory=list)
+    limit: int = 0
+
+
+class XmltvBody(XtreamBody):
+    #: `tvg_id` values to keep. Empty means keep everything, which on a real account is 10,124
+    #: channels and 31 MB -- allowed, but the caller has to ask for it explicitly by omitting
+    #: this, rather than getting it because a filter was forgotten.
+    ids: list[str] = Field(default_factory=list)
+    max_per_channel: int = 0
+
+
 class TuneBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     url: str = ""
@@ -67,6 +111,15 @@ class TuneBody(BaseModel):
     # be recognised inside ffmpeg's stderr. Not stored, not echoed.
     username: str = ""
     password: str = ""
+    #: The session this client is finished with, released before the new one is allocated.
+    #:
+    #: Changing channel is the common case and it used to leak a slot every time: the page threw
+    #: its `sid` away and the old session lived on until the idle reaper noticed. On a two-slot
+    #: surface that meant the third channel a visitor clicked was refused. Doing it here rather
+    #: than as a separate `DELETE` is deliberate -- a client that stops and then starts can lose
+    #: the slot it just freed to another visitor in between, and a channel change should not be
+    #: able to fail because of that race.
+    release: str = ""
 
 
 def _creds(body: XtreamBody) -> XtreamCreds:
@@ -105,7 +158,7 @@ async def load_playlist(body: PlaylistBody) -> dict:
         text = raw.decode("utf-8", "replace")
     if not text.strip():
         raise HTTPException(400, "supply either a playlist URL or the playlist text")
-    if len(text) > MAX_PASTE:
+    if MAX_PASTE and len(text) > MAX_PASTE:
         raise HTTPException(413, "playlist is too large")
 
     channels, truncated = await asyncio.to_thread(parse_m3u, text)
@@ -153,6 +206,113 @@ async def xtream_channels(body: XtreamBody) -> dict:
     return {"count": len(entries), "groups": groups, "notes": notes, "channels": entries}
 
 
+# ---------------------------------------------------------------- guide (EPG)
+#
+# How many of the panel's own guide requests may be in flight at once. Six, and the number is a
+# politeness bound rather than a performance one: the grid asks for one channel per request, so a
+# 40-row grid is 40 requests against somebody else's server, and a provider that reads that as
+# abuse throttles or bans the account -- the visitor's account, not ours. Six with a 20 s read
+# timeout also keeps the worst case for a whole grid inside one page load.
+EPG_CONCURRENCY = 6
+
+#: Rows per grid request. 60 is three screens of channels at a normal row height; past that the
+#: honest answer is that the visitor should scroll and the page should ask again.
+EPG_MAX_IDS = 60
+
+
+@router.post("/epg", summary="Programme guide for one channel or a grid of them")
+async def epg_route(body: EpgBody) -> dict:
+    """`get_short_epg` per channel, a few at a time. Returns what the panel actually said.
+
+    Empty is a real answer and is reported as one: `channels` carries a list for every id asked
+    about, and an id whose list is empty genuinely has no guide upstream. `failed` is separate
+    from that, so "the panel has no data for this channel" and "the request for this channel
+    broke" never render the same way.
+    """
+    creds = _creds(body)
+    ids = [str(s).strip() for s in (body.stream_ids or []) if str(s).strip()]
+    if body.stream_id.strip():
+        ids.insert(0, body.stream_id.strip())
+    # dict.fromkeys, not set(): the caller's order is the order the grid draws in, and a set
+    # would hand the rows back shuffled for no reason.
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        raise HTTPException(400, "give a stream_id, or stream_ids for a grid")
+    if len(ids) > EPG_MAX_IDS:
+        raise HTTPException(413, f"ask for at most {EPG_MAX_IDS} channels of guide at once")
+
+    limit = body.limit or epg.DEFAULT_LIMIT
+    gate = asyncio.Semaphore(EPG_CONCURRENCY)
+    started = time.monotonic()
+
+    async def one(sid: str) -> tuple[str, list[dict] | None, int, str]:
+        async with gate:
+            try:
+                progs, dropped = await asyncio.to_thread(
+                    epg.short_epg, creds, sid, limit, Policy())
+            except epg.EpgError as exc:
+                return sid, None, 0, str(exc)
+            return sid, [p.public() for p in progs], dropped, ""
+
+    results = await asyncio.gather(*(one(s) for s in ids))
+    channels: dict[str, list[dict]] = {}
+    failed: dict[str, str] = {}
+    dropped_total = 0
+    for sid, progs, dropped, err in results:
+        if progs is None:
+            failed[sid] = err
+            continue
+        channels[sid] = progs
+        dropped_total += dropped
+    # `now`/`next` are computed here rather than in the browser because the clock that matters
+    # is the one the timestamps are on, and a visitor with a wrong system clock would otherwise
+    # see a guide that is wrong in a way nothing on the page could explain.
+    now = {sid: epg.now_next([epg.Programme(**{k: p[k] for k in ("start", "stop", "title", "desc")})
+                              for p in progs])
+           for sid, progs in channels.items()}
+    return {
+        "source": "get_short_epg",
+        "asked": len(ids),
+        "answered": len(channels),
+        "limit": limit,
+        "channels": channels,
+        "now": now,
+        "failed": failed,
+        "dropped_no_clock": dropped_total,
+        "server_time": int(time.time()),
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "note": "no guide, playlist or credential is stored on this box",
+    }
+
+
+@router.post("/epg/xmltv", summary="The whole account's guide as XMLTV")
+async def epg_xmltv_route(body: XmltvBody) -> dict:
+    """One request for everything, keyed by `tvg_id`.
+
+    This is the heavy door and it is labelled: measured against one real account the document is
+    31 MB for 10,124 channels, so a page that wants now-and-next for what is on screen should
+    use `POST /epg` instead. Send `ids` to have the filtering happen during the parse, which is
+    where it is nearly free.
+    """
+    creds = _creds(body)
+    wanted = {str(i).strip() for i in body.ids if str(i).strip()} or None
+    started = time.monotonic()
+    try:
+        guide, meta = await asyncio.to_thread(
+            epg.xmltv_epg, creds, Policy(), wanted, max(0, int(body.max_per_channel or 0)))
+    except epg.EpgError as exc:
+        raise HTTPException(502, str(exc)) from None
+    return {
+        **meta,
+        "asked": len(wanted) if wanted else 0,
+        "guide": {k: [p.public() for p in v] for k, v in guide.items()},
+        "now": {k: epg.now_next(v) for k, v in guide.items()},
+        "server_time": int(time.time()),
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "note": "no guide, playlist or credential is stored on this box",
+    }
+
+
 # ---------------------------------------------------------------- tuning
 
 @router.post("/tune", summary="Start a tuning session for one stream URL")
@@ -161,14 +321,19 @@ async def tune(body: TuneBody) -> dict:
 
     The wait is the honest part. `POST /tune` could return the moment the process is spawned,
     but ffmpeg on a source it cannot stream-copy exits a few seconds later -- so an immediate
-    "ok" would be a status the box has not yet earned. This waits up to ten seconds for a real
-    `.m3u8` to appear on disk and reports what actually happened.
+    "ok" would be a status the box has not yet earned. This waits for a real `.m3u8` to appear
+    on disk and reports what actually happened.
     """
     url = body.url.strip()
     if not url:
         raise HTTPException(400, "no stream URL given")
     if not FFMPEG:
         raise HTTPException(503, "ffmpeg is not installed on this machine")
+    # Free the caller's previous slot first. Unconditional and unvalidated on purpose: an id
+    # that is unknown, already reaped, or somebody else's simply stops nothing, and there is no
+    # information to leak either way -- `stop_session` answers the same for all three.
+    if body.release.strip():
+        MANAGER.stop_session(body.release.strip())
     scrub = Scrubber([body.username, body.password])
     try:
         session = await asyncio.to_thread(
@@ -178,7 +343,7 @@ async def tune(body: TuneBody) -> dict:
     except TunerError as exc:
         raise HTTPException(400, str(exc)) from None
 
-    deadline = time.monotonic() + 10.0
+    deadline = time.monotonic() + TUNE_WAIT_SECONDS
     while time.monotonic() < deadline:
         if session.ready:
             session.state = "live" if session.state == "starting" else session.state
@@ -186,10 +351,22 @@ async def tune(body: TuneBody) -> dict:
         if session.state == "failed":
             MANAGER.stop_session(session.id)
             raise HTTPException(502, session.error or "the stream could not be opened")
+        # A client waiting on this request *is* activity on the session, and the reaper measures
+        # idleness from the last player request. Without this the wait spends its whole length
+        # ageing towards `IDLE_TIMEOUT` without ever being seen as alive.
+        MANAGER.touch(session.id)
         await asyncio.sleep(0.25)
     else:
         # Still nothing. Do not claim it is playing; hand back the session so the client can
         # keep polling, and say which state it is actually in.
+        #
+        # Unless it is already gone: the reaper drops a session the moment its ffmpeg exits, so
+        # a long wait can outlive the thing it is waiting for. Handing back an id whose
+        # `GET /session/{sid}` answers 404 makes a dead stream look like a broken tuner, which
+        # is the exact confusion this whole module is trying to remove.
+        if MANAGER.get(session.id) is None:
+            raise HTTPException(502, session.error
+                                or "the transcoder stopped before producing playable output")
         return {**session.public(), "note": "no playable output yet; poll the session"}
     session.last_seen = time.monotonic()
     return session.public()
@@ -208,6 +385,25 @@ async def session_stop(sid: str) -> dict:
     if not MANAGER.stop_session(sid):
         raise HTTPException(404, "no such session")
     return {"stopped": sid}
+
+
+@router.post("/session/{sid}/stop", summary="Release a session on page unload")
+async def session_release(sid: str) -> dict:
+    """The same stop, reachable by `navigator.sendBeacon`, which can only issue a POST.
+
+    This exists because of what a closed tab used to cost. `DELETE` cannot be sent from an
+    unload handler with any reliability -- `fetch` is cancelled as the document goes away -- so
+    the only signal a leaving visitor could give was silence, and silence took `IDLE_TIMEOUT`
+    plus a reaper tick to interpret. On a two-slot surface that is the whole tuner unavailable
+    for the best part of a minute after everybody has already left.
+
+    A missing session is **not** an error here. A beacon can arrive after the reaper has already
+    collected the session, can be sent twice by a browser that fires both `pagehide` and
+    `visibilitychange`, and cannot be retried by a page that no longer exists. Answering 404
+    would turn all three into console noise on a page nobody is looking at, for an operation
+    whose only purpose is that the slot ends up free -- which it is in every one of those cases.
+    """
+    return {"stopped": sid, "was_running": MANAGER.stop_session(sid)}
 
 
 @router.get("/stream/{sid}/{name}", summary="HLS playlist and segments for a session")
@@ -267,32 +463,54 @@ def status() -> dict:
     inside `api.py`'s import graph and outside the scope this module was built in. The keys
     match `Unit`'s fields so the wiring engineer can splat it into `Unit(**tuner.status())`.
 
+    **This unit is the Tuner and the Guide together.** Garrett: "symon guide and symon tuner
+    should be migrated together", then "you need to migrate tuner and guide to be 1". The rack
+    carried two units whose `href` was the same page, which is a rack disagreeing with itself.
+    Guide's own author had argued for exactly this fold on architecture -- it owns no weights
+    and no hardware -- and was overruled only because Garrett had named it separately; he has
+    now decided the other way, so the two facts finally agree.
+
+    Nothing about the guide half is dropped in the fold, because both halves make a real and
+    different claim about the hardware, and the detail line has to carry both:
+
+      * the tuner half is I/O -- ffmpeg copying bytes, a bounded number of slots;
+      * the guide half is **stdlib matching on the CPU that never takes the GPU lock**, which
+        is why it answers while chat holds the card. That is the same claim RavenCalc makes and
+        it is worth as much here.
+
     The state is a reading, not a decoration:
-      * `offline` when ffmpeg is absent -- the surface genuinely cannot work;
+      * `offline` when ffmpeg is absent -- the streaming half genuinely cannot work;
       * `busy` when a session holds a slot;
       * `ready` otherwise, meaning the box can accept a source.
     It is never `ready` on the strength of the module merely being importable, and the detail
     line says outright that the box holds no channels of its own, because it does not.
+
+    Note what `offline` now means and does not mean: without ffmpeg the guide half still works
+    perfectly -- it needs nothing but the standard library -- so the offline detail names the
+    part that is missing rather than implying the whole surface is dead.
     """
     active = len(MANAGER.list())
+    # Said in every state, because it is the claim a visitor cannot check by looking: the
+    # filtering and the guide grid do not queue behind whatever holds the card.
+    guide_note = "guide filtering on the CPU, never takes the GPU lock"
     if not FFMPEG:
         state_ = "offline"
-        detail = "ffmpeg not installed"
+        detail = f"ffmpeg not installed — no streaming · {guide_note}"
     elif active:
         state_ = "busy"
         detail = (f"{active}/{MAX_SESSIONS} slots streaming · "
-                  f"stream copy, no GPU · no channels stored on this box")
+                  f"stream copy, no GPU · {guide_note} · no channels stored on this box")
     else:
         state_ = "ready"
-        detail = (f"0/{MAX_SESSIONS} slots in use · "
+        detail = (f"0/{MAX_SESSIONS} slots in use · {guide_note} · "
                   f"visitor supplies the playlist; none is stored here")
     return {
         "id": "tuner",
-        "label": "SyMoNeuRaL Tuner",
+        "label": "SyMoNeuRaL Tuner & Guide",
         "slot": "1U",
         "state": state_,
         "bus": "cpu",
         "href": "/tuner.html",
-        "spec": "ffmpeg stream copy → HLS",
+        "spec": "ffmpeg stream copy → HLS · question → channel filter",
         "detail": detail,
     }

@@ -38,10 +38,13 @@ conversation, so every number, path and decision you need is stated here.
   reintroduce a second thing that routes.
 - **One RTX 5070 Ti, 15.92 GiB, one tenant at a time**, arbitrated by a `mkdir` lock at
   `<root>/run/gpu.lock.d`. That constraint is the architecture. See §4.
-- **Eight rack units now**, not five. Three were added on 2026-08-17: `asicminer` (ASIC
-  mining control, operator-gated, offline), `tuner` (IPTV, ready) and `gateway` (TRON
-  licensing, designed-not-deployed). §2c has the shape; §2d the dev fee; §2e firmware and
-  the QEMU emulator.
+- **Twelve rack units now**, not eight and not five. `GET /api/status` is the authority and it
+  answers, in order: `chat`, `image`, `remix`, `ravencalc`, `train`, `asicminer`, `gpuminer`,
+  `tuner`, `coder`, `gateway`, `guide`, `project` (verified 2026-08-17 against the running
+  API). Count it there, not here — this line has already been stale twice. The four beyond the
+  eight below arrived on 2026-08-17 from work that is **in the working tree and uncommitted**:
+  `gpuminer` (§5 item 4), `coder`, `guide` and `project`. §2c has the shape of the first three
+  additions; §2d the dev fee; §2e firmware and the QEMU emulator.
 - **`/` redirects (302) to `/overview`.** The front page is four sections, each at its own
   URL — `/overview`, `/livestack`, `/controlboard`, `/receipts`. The tabbed one-screen
   `index.html` still exists and still answers at `/index.html`; it is the page
@@ -83,6 +86,336 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
+## 0c. THE OVERNIGHT QUEUE — written 2026-08-17 ~12:45, Garrett asleep
+
+Garrett handed over a long list and went to bed, asking explicitly that the plan live here in
+case the session dies. This section is that plan. **Work top to bottom; each item says what
+"done" means so a fresh agent can tell finished from started.** Tick items off *in this file* as
+they land, and keep the measurements — they are the deliverable as much as the code is.
+
+### WHO IS WRITING WHAT — read this before you edit, 2026-08-17 ~17:00
+
+Garrett has put **one agent per app** on the five surfaces, so several writers are live in
+this repo at once. `tools/build_*.py` all rewrite files under `site/`, and two writers in that
+directory clobber each other silently — the file just loses one of the two edits.
+
+| Claimed by | Files |
+|---|---|
+| the tuner/site agent (this one) | `backend/apps/tuner/**`, `tools/build_pages.py`, `site/tuner*.html`, `site/symoneural.css`, `tests/tuner_*`, `tests/frontend.mjs` |
+| per-app agents | `backend/apps/<their app>/**`, `site/<their surface>.html` and the generator that writes it |
+| nobody — coordinate first | `ops/Caddyfile`, `scripts/deploy.sh`, this file's §0c |
+
+**`backend/api.py` was edited by the tuner session at ~14:45**, for one thing only: deleting the
+`guide` rack unit for the Tuner+Guide merge Garrett asked for. Nothing else in that file was
+touched. It is otherwise still coordinate-first. See §2h.
+
+If you need a file another agent holds, say so in your report rather than editing it. Append to
+this file; never rewrite a section you did not write.
+
+### BLOCKER, and it blocks everything backend
+
+```bash
+sudo systemctl restart symoneural-api     # backend changes -- Movies, slots, EPG, everything
+sudo scripts/deploy.sh --prune            # site/ -> /var/www/symoneural
+```
+
+Neither can be run without a password, so **no agent can verify any backend change against the
+live site.** Verify against a throwaway app instead — the recipe that works is in §2c-bis. Say
+plainly in every report that the live site does not have the change yet. Garrett spent an hour
+believing Movies was still broken when the fix had been on disk the whole time; the running
+process was started at 11:43:56 and every fix postdates it.
+
+### 1. Tuner — DONE, on disk, unverified live
+
+- **Movies load.** 31,888 titles. Cause and fix: §2c-bis.
+- **All size caps removed at Garrett's explicit instruction** (`Policy.max_bytes`,
+  `CATALOGUE_MAX_BYTES`, `m3u.MAX_CHANNELS`, `routes.MAX_PASTE` — all `0`, meaning uncapped).
+  Wall-clock deadlines are what bound a fetch now, and that was always the bound doing the work.
+- **Time to first frame: 31 s -> 2,384 ms**, measured in real Chrome on ESPN FHD off the real
+  panel. Cause: `-c copy` cuts only on keyframes, so a 10 s GOP yields 10.4 s segments whatever
+  `-hls_time` says (measured `#EXT-X-TARGETDURATION:10`, `#EXTINF:10.427`), and hls.js's default
+  `liveSyncDurationCount: 3` therefore waited ~31 s. Now 1. **This is not a language problem and
+  rewriting anything in C++ will not touch it** — ffmpeg stream-copies, nothing decodes, the box
+  is idle while the player waits on its own buffer policy. Garrett asked about C/C++ twice; the
+  answer is the buffer arithmetic above, and it is worth restating rather than re-litigating.
+- **Slots.** `tune` now takes `release`, so a channel change hands its slot back in the same
+  request; `POST /session/{sid}/stop` exists for `navigator.sendBeacon` on `pagehide`; a tab
+  hidden 20 s releases; `IDLE_TIMEOUT` 45 -> 12 s and the reaper ticks 2 s instead of 5.
+  Measured: one session across three channel changes, **zero within 2.5 s of closing the tab**
+  (it was up to ~50 s). The account's own `max_connections` is 2 and `MAX_SESSIONS` is 2, so a
+  leaked slot was half the tuner.
+- **The lie that made this look like censorship:** a full tuner answered "your provider refused
+  it — not a limit here", which is exactly backwards. Now named as this box's limit. There is
+  nothing adult-specific anywhere in the code and never was; ADULT channels stream h264 fine.
+
+### 1b. THE FLEET — eleven sessions are in this working copy RIGHT NOW (2026-08-17 14:55)
+
+This is no longer a two-session split. `ListAgents` reports a background session per surface,
+and the file times agree with the names:
+
+| Session | Owns — do not write these files | Evidence on disk |
+|---|---|---|
+| `symoneural reinforce lora tuning` | `backend/apps/reinforce/**` on branch `worktree-reinforce-rl` | `23f96b3` |
+| **unidentified** | `tools/build_reinforce.py`, `site/reinforce.html`, `site/reinforce.js`, and the uncommitted `/api/train` mount in `main`'s working copy | written 14:49, still untracked |
+| `symoneural miner completion` | `backend/apps/asicminer/**` (code), `site/miner.html` | — |
+| `symoneural coder online integration` | `backend/apps/coder/**` | — |
+| `symoneural gateway online status` | `backend/apps/gateway/**`, `site/gateway.html` | — |
+| `symoneural project completion verification` | `backend/apps/project/**`, `site/project.html` | — |
+| the tuner session | `backend/apps/tuner/**`, `tests/tuner_*`, `site/tuner*.html` | 13:44–14:40 |
+| `symoneural typography spacing` | type/spacing in `site/symoneural.css` | — |
+| `online applications testing` | `tests/frontend.mjs` | 29-line rack-unit block added |
+| this session (handover/review) | `.claude/HANDOVER.md`, `tools/build_masthead.py`, `backend/apps/accounts/routes.py`, `scripts/qemu-antminer.sh` | committed below |
+
+**`tools/build_pages.py` and `backend/api.py` are the two contended files.** Every surface needs
+a page (`build_pages.py`) and a mount (`api.py`), so both will be edited by several sessions in
+the same hour. Rules that follow from that, and they are not optional:
+
+- **Never rewrite either file whole.** Targeted edits only, re-read immediately before writing.
+- **`python3 -c "import ast; ast.parse(open('backend/api.py').read())"` after every api.py edit.**
+  A half-applied concurrent edit there takes the entire site down on the next restart, and
+  nobody can restart it — `sudo systemctl restart symoneural-api` needs a password no agent has.
+- Commit your own paths as you finish. Never `git add -A`: it will stage nine other sessions'
+  half-finished work, and one of those files is a generator mid-rewrite.
+
+Merges have worked so far: the tuner session's `ac3`/`aac` fixture cases and this session's
+`emptylive` case coexist and `node tests/tuner_failpaths.mjs` is **27/27** with both in.
+
+### 1c. THE MERGE — nine branches, four bases, and one file everybody edited (14:59)
+
+`git branch` shows **nine `worktree-*` branches**, one per fleet session, forked from **four
+different base commits** (`595835d`, `2f285a5`, `8e835cb`, `e38f463`). Nobody merging one of them
+can see this list, so it is recorded here. Measured with `git merge-tree --write-tree --name-only
+main <branch>`, which trial-merges without touching the working tree — re-run it, do not trust
+the table's age:
+
+| Branch | Base | Merges into `main` |
+|---|---|---|
+| `worktree-project-page` | `e38f463` | **clean** |
+| `worktree-site-typography-tlc` | `2f285a5` | **clean** (and it rewrites 12 `site/*.html`) |
+| `worktree-docs-accuracy` | `2f285a5` | **clean** |
+| `worktree-online-apps-audit` | `8e835cb` | **clean** |
+| `worktree-stickers` | `8e835cb` | empty — 0 commits |
+| `worktree-miner-online` | `e38f463` | conflicts in `.claude/HANDOVER.md` only |
+| `worktree-gateway-online` | `595835d` | 5: `apps/gateway/__init__.py`, `site/gateway.html`, `tests/frontend.mjs`, `tools/build_pages.py`, a spec |
+| `worktree-coder-online` | `595835d` | 8, including `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py`, `tests/frontend.mjs` |
+| `worktree-reinforce-rl` | `595835d` | 10 — `backend/api.py` and **every file in `backend/apps/reinforce/`** |
+
+**Merge in that order — clean first.** Each merge changes `main` and can turn a clean branch
+dirty, so the four that cost nothing should land before the four that cost something.
+
+Three things will save the person doing it real time:
+
+- **A conflict in `site/*.html` is not a conflict.** Eleven of those pages are generator output.
+  Resolve by taking either side, then re-running the generator and committing what it emits —
+  `site/gateway.html` conflicting while `tools/build_pages.py` also conflicts means there is
+  exactly one real conflict, in the generator. Hand-merging the HTML produces a page that no
+  generator will reproduce, and the next build silently reverts it.
+- **`.claude/HANDOVER.md` conflicts are append-vs-append.** Keep both sides. That is the whole
+  resolution, and it is why `worktree-miner-online` is listed as conflicting at all.
+- **`backend/api.py` is the one file with a real merge.** Four branches edit it: coder, miner and
+  reinforce add units or mounts, and the miner session has already merged the two miner rows into
+  one `Unit(id="miner")` carrying `sub: list[SubUnit]` with `gpuminer`/`asicminer` one level down.
+  **Anything that looks up a unit by id must search the top level and then `sub`** — the site
+  deploys before the API restarts, so both shapes are live at once for a while. `ast.parse`
+  after every resolution.
+
+**Merging `worktree-reinforce-rl`'s `backend/api.py` wholesale reverts four surfaces.** That
+branch forked at `595835d`, so its copy of the file carries **two** `include_router` calls —
+`tuner` and the new `reinforce` — where `main` has five. Verified here, not taken on trust:
+`git show worktree-reinforce-rl:backend/api.py | grep -c include_router` prints 2. Take the
+import line and the `include_router` line by hand; accepting that side of the conflict silently
+un-mounts accounts, gateway, guide and project. The mount itself is right and is `23f96b3`.
+
+**Who wrote the training bay page is unknown, and that matters for who to ask.** An earlier
+revision of §1b credited `tools/build_reinforce.py` and `site/reinforce.html` to the reinforce
+session. It has checked and denies them: they are absent from its branch, and it never created
+them. They appeared in `main`'s working copy at 14:49 alongside an uncommitted `/api/train`
+mount and an uncommitted `tools/build_pages.py`, and all of it is **still untracked or
+uncommitted**. So the bay page has no owner on record — do not assume the reinforce session
+will commit it, and do not delete it assuming it is a stray.
+
+**The sharpest hazard is Reinforce, which exists in two places at once.** `main`'s working copy
+carries an uncommitted `/api/train` mount in `backend/api.py`, an uncommitted
+`tools/build_pages.py`, and untracked `site/reinforce.html`, `site/reinforce.js`,
+`tools/build_reinforce.py` — a training-bay surface. Separately, `worktree-reinforce-rl` rewrites
+the whole of `backend/apps/reinforce/` (it adds `rewards.py` and `rollout.py`, so it is
+reinforcement learning, not the LoRA bay) and conflicts with all ten of those files. **Do not
+merge that branch before someone has committed or discarded the working-copy work**, or one of
+the two bodies of work will be silently overwritten. Whoever owns them should say which is which
+before either lands.
+
+### 2. Tuner guide + EPG — **DONE 2026-08-17 ~14:45**, on disk, live site pending a restart
+
+His words: *"update the damn tuner guide with epg and not that terrible tiny select and deselect
+shit"*, integrate the **SyMoNeuRaL Guide AI** so it is "smart based off location, asks a couple
+questions, and has a floating prompt available for the user to custom prompt update the tv
+guide", and move the stream to its **own page — `symoneural.com/tuner/watch`** — so it can go
+near-fullscreen with PiP and guide settings.
+
+- EPG sources, both reachable through the existing `safefetch` path: `xmltv.php?username=&
+  password=` for the whole account as XMLTV, and `player_api.php?action=get_short_epg&
+  stream_id=N&limit=N` for one channel as JSON with base64 titles. The join key is `tvg_id` /
+  `epg_channel_id`, which `load_channels` already carries. Full XMLTV for 10,124 channels is
+  large — the caps are gone, so that is no longer a blocker, but per-channel on focus is the
+  lighter default and gives now/next on the row.
+- The category chips are what he means by "tiny select and deselect". Replace with a real grid:
+  time across, channels down, now/next in the cell.
+- ~~`/tuner/watch` is a new route, so `ops/Caddyfile` must delegate it.~~ **Moot, and checked:
+  no Caddy change is needed and no `sudo ./scripts/install-caddy.sh` is owed.** The warning was
+  right about the mechanism and wrong about what got built: the watch surface shipped as
+  `site/tuner-watch.html`, a static file, and `grep` finds no `/tuner/watch` route in
+  `backend/api.py`. Caddy's `@sections` matcher is still exactly `/ /overview /livestack
+  /controlboard /receipts`, and `handle { file_server }` serves any new `.html` off the webroot
+  with no config at all. Same for `site/reinforce.html`. The rule that remains true, and it is
+  the one to carry forward: only a new top-level *section* path costs four files
+  (`ops/Caddyfile`, `tools/build_split.py`, `backend/api.py`, `tests/frontend.mjs`).
+- Guide AI: `backend/apps/guide/` exists with 50 tests. Location-aware means asking, not
+  geolocating — do not add IP geolocation to a box whose whole argument is that it measures
+  rather than infers.
+
+### 3. Player options / settings / statistics — **DONE**, on both tuner pages
+
+Garrett asked for this directly. Everything must be a real reading, house rule: level and
+bitrate, audio tracks, buffer length, dropped frames, measured throughput — all available from
+hls.js. `segment_s` and `segments` are already published on the session for this purpose.
+
+Built as `<details class="tn-stats">` on `/tuner.html` and as the `s` panel on
+`/tuner-watch.html`: twelve readings, a quality selector, an audio-track selector, PiP and full
+screen. See §2h. Every figure is read from the player or the session document, and a figure the
+player has not reported yet renders `-`, which is itself the reading.
+
+### 4. Five surfaces to bring online — ONE SESSION EACH, IN FLIGHT (see §1b)
+
+**Do not start these from a general session.** As of 14:55 there is a dedicated background
+session per surface and they are already writing: `site/reinforce.html` and
+`tools/build_reinforce.py` appeared at 14:49. A second agent doing the same surface will clobber
+a generator mid-write. What is below is the survey those sessions should be reading, not a
+queue to pick up.
+
+**Still true and owned by nobody, so somebody must do it:** `apps.reinforce` has *no*
+`include_router` in `backend/api.py` (verified 14:52 — only tuner, accounts, gateway, guide,
+project are mounted), and the `train` rack unit at `api.py:1449` is hand-rolled with
+`href="/training.html"` — the manual — while `apps.reinforce.status()` already returns the
+correct unit dict with `href="/reinforce.html"`. Its own docstring names the contract:
+`app.include_router(router, prefix="/api/train", tags=["reinforce"])` and `Unit(**status())`.
+Verified safe to mount: `python3 -c "import sys; sys.path.insert(0,'backend'); from apps.reinforce
+import router, status"` imports clean on the **system** interpreter (7 routes) — it does not drag
+torch into the serving path.
+
+
+In his order: **Reinforce** as a real tuning/training studio, **Miner** online, **Coder** online,
+**Gateway** online, **Project** online ("this is like cowork"). All five already have rack units
+and backend apps; "online" means a working page and route, not a new surface. (An earlier
+revision said Reinforce carried a red test and an alpha/rank question for Garrett. It carries
+neither — that was stale bytecode, settled in `f9f3546`. See §1.)
+
+What each one actually needs, established by reading the code rather than assuming:
+
+- **Reinforce** — `backend/apps/reinforce/routes.py` is complete, and its docstring says it is
+  "Mounted at `/api/train` by `backend/api.py`". **It is not mounted**; there is no
+  `include_router` for it. The gate is already right: `enabled()` needs both
+  `SYM_REINFORCE_ENABLED=1` and `SYM_REINFORCE_TOKEN`, reads are open once enabled, writes always
+  need the token in an `x-reinforce-token` header via `hmac.compare_digest`. There is no studio
+  page — `site/training.html` is the 8253-line *manual*, which is why the `train` unit's href
+  points at it.
+- **Coder** — offline **by deliberate design**, and it has no HTTP route at all. An agent that can
+  develop the site is arbitrary code execution on the box serving the public internet, and
+  `/api/*` is wholly delegated to FastAPI, so a route is a public route. "Online" here cannot mean
+  a public endpoint; decide what it *does* mean before writing anything.
+- **Project** — offline solely for want of `SYM_PROJECT_ENABLED`/`SYM_PROJECT_TOKEN`. Its 14
+  routes exist and work. `site/project.html` belongs in `tools/build_pages.py`, which the tuner
+  session is holding, so the page is blocked on that session landing — not on any design question.
+
+**A new `.html` file and a new `/api/*` subtree need no `ops/Caddyfile` change and no `is_route()`
+change** — verified by reading both. `handle /api/*` delegates the whole subtree, and
+`is_route()` in `scripts/deploy.sh` checks a new page as a *file*. Only a new top-level *section*
+path (the `/overview /livestack /controlboard /receipts` class) costs four files.
+
+### 5. Site-wide, and he repeated it twice
+
+- **"We went a little too small on the website; fill the detected window better on the fly"** —
+  for `/overview`, `/livestack`, `/controlboard`, `/receipts` specifically. **DONE for all four,
+  measured; see §5c for the numbers and the two negative results.** In short: the causes were not
+  the ones anyone assumed. Content already spanned the width; what was small was the 1120px
+  header/footer islands and 12.5px type at *every* width, plus a control board sitting 383px tall
+  in a 1277px panel. All three fixed in `site/symoneural.css` (which is **not** generator-written,
+  so it is safe to edit by hand). Both browser suites re-run green afterwards: `frontend.mjs`
+  26/26, `tuner_failpaths.mjs` 23/23.
+- **Verify every link works. DONE, and it is now a command rather than an audit:**
+  `python3 tools/check_links.py` — 20 pages, 912 links, 282 unique targets, **clean**, exit 1 if
+  not (re-run 14:58, after `site/reinforce.html` and `site/tuner-watch.html` appeared). One real
+  break existed and is fixed in `b5f4e4f`: the masthead's `See it running` pointed at `#rack`,
+  which does not exist on `/overview` since the page split — and `/` 302s there, so it was dead
+  on the page nearly every visitor reads. Two false positives are guarded in the script and
+  documented in its docstring, because both cost time: `data-src="live"` is not a link (a bare
+  `(href|src)=` regex matches the tail of `data-src`), and `documentation.html#hardware` is a
+  file *plus* an anchor, so both halves need checking — that second one is what found the break.
+- **Fix grammar, capitalisation, and sentences that do not make sense.** Sweep, do not
+  blind-replace — most `MIT` matches in this corpus are ordinary words. **Partly done, and the
+  rest is deliberately deferred — read this before re-running it.**
+  - Fixed: both `/api/accounts/status` notes, which were lower-case fragments rendered verbatim
+    as a sentence on `/account.html` and read like a log line that had escaped onto the page
+    (`b5f4e4f`).
+  - A mechanical pass over all 20 pages (prose inside `<p>/<li>/<h*>/<dd>/<summary>`, looking for
+    lower-case sentence starts, doubled words, its/it's, and the product name misspelled) threw
+    **321 hits and not one real defect**. They are artefacts of the extractor, and both causes
+    are worth knowing before someone runs the same idea again: the bulk are `build.html`'s image
+    *prompts*, which are lower-case on purpose and are quoted input rather than prose, and the
+    rest are HTML entities — stripping `&mdash;` to a space turns "net of its own electricity —
+    12 to 41 days" into a sentence that looks broken and is not. **Regex will not find this
+    class of bug here. It needs reading.**
+  - Deferred on purpose: `site/miner.html`, `gateway.html`, `project.html`, `reinforce.html` and
+    the tuner pages are being rewritten by their own sessions *right now* (§1b). Proof-reading a
+    page that is mid-rewrite means proof-reading text that will not exist in an hour. Do this
+    sweep when the fleet has landed, and do it by reading the rendered pages.
+- **`SYM_ASIC_ENABLED=1` is confusing on the QEMU Antminer emulators.** His words. **DONE in
+  three of four places**, and the confusion was worth naming precisely: the two variables gate
+  the **HTTP API only**. `scripts/qemu-antminer.sh` needs neither, and no emulator can ever
+  produce telemetry — QEMU emulates the Zynq CPU, not the hashboards, so nothing answers on
+  port 4028 whatever the variables say. That is now written at each point of use:
+  `backend/apps/asicminer/__init__.py` (docstring + both refusal strings, which keep the literal
+  `SYM_ASIC_ENABLED=1` because it is copy-pasteable and `test_asic.py::test_disabled` asserts
+  it — 42/42 green), `scripts/qemu-antminer.sh` (a header block: YOU DO NOT NEED
+  SYM_ASIC_ENABLED TO RUN THIS), and `backend/apps/asicminer/README.md`.
+  **OWED: the same sentence on `site/miner.html`**, which is written by `tools/build_pages.py`.
+  That file was held by the tuner session and is now in the miner session's lane (§1b), so this
+  half is handed to whoever owns `build_pages.py` — it is a page-text change, not a code change.
+  Landing three quarters of a clarification reads as done and is why this line exists.
+- **"Account needs to be configured as discussed."** *What was discussed is not in this file and
+  not in any transcript here.* §2g holds two undecided design questions that may be it. **Ask
+  before building; do not guess at an account model.** But separate the two halves, because one
+  of them costs Garrett a single sentence to answer:
+  - **The switch.** `/account.html` reads CLOSED for a mechanical reason, not a design one:
+    `enabled()` in `backend/apps/accounts/__init__.py:233` needs `SYM_ACCOUNTS_ENABLED=1` **and**
+    `SYM_SESSION_SECRET`, and `ops/symoneural-api.service` sets neither (it carries only
+    `PYTHONUNBUFFERED` and `SYMONEURAL_PORT`). Turning accounts on is two `Environment=` lines
+    plus `sudo systemctl daemon-reload && sudo systemctl restart symoneural-api` — **a password
+    no agent has.** Generate the secret on the box, never in a transcript:
+    `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
+    The status note both states now read as sentences rather than log lines (`tests/account.mjs`
+    still 17/17, it matches `/session secret/i`).
+  - **The model** — who may sign up, what an account entitles, whether it gates the tuner or
+    only the paid surfaces. That is the part that needs him, and no amount of reading settles it.
+
+### 6. Later, explicitly not now
+
+Once the server is finished: either train the model or build **individual Apple apps per
+surface** (`symonioschat`, `symoniosimage`, ... — his names, approximate) talking to this API.
+That is a client project against a stable API, so it is gated on the API being stable.
+
+### The standing risk — the backlog is gone, the remote still is too
+
+The ~100-path pile is **committed**: `8e835cb`, `e38f463`, `f9f3546`. Garrett's instruction is
+**"you own the commits, I'll tell the others to stop staging"** — so commit your own work as you
+finish it, stage only the paths you actually own, and never `git add -A` while another session is
+writing. What remains uncommitted is one session's live work, which is theirs to land.
+
+**There is still no git remote.** History never leaves this box, and that is doing a lot of the
+protecting for `training/corpus.jsonl`. Two sessions have died mid-work and a reboot destroyed a
+finished write-up, so commit early — but if a remote is ever added, audit what is tracked first.
+
+---
+
 ## 1. State of the machine, verified 2026-08-17 08:30
 
 | Thing | State |
@@ -95,11 +428,50 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 | `tests/frontend.mjs` | **26/26 local, 26/26 production** |
 | `https://symoneural.com/` | **302 -> /overview** |
 | `https://www.symoneural.com/` | 200, its own Let's Encrypt cert (Caddy issues per name, so the apex cert's SAN list is apex-only — that is correct, not a fault) |
-| Rack units | **8** — chat, image, remix, ravencalc, train, asicminer, tuner, gateway |
+| Rack units | **12** — chat, image, remix, ravencalc, train, asicminer, gpuminer, tuner, coder, gateway, guide, project (read from `/api/status`, 2026-08-17) |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **11**, all idempotent, hash-verified across two runs |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
-| Pending deploy | **none** |
+| Pending deploy | **two, both for the tuner Movies fix** — `sudo systemctl restart symoneural-api` (backend) and `sudo scripts/deploy.sh --prune` (page). See §2c-bis. |
+| Backend suites | **679 passed, 1 failed** at `f9f3546` (14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. The one red is the tuner codec test, and it belongs to a live writer — see below. |
+| Uncommitted | **16 paths at 14:43, and every one of them is the tuner session's live work** (`epg.py`, `sessions.py`, `tuner.html`, `tuner-watch.html`, `build_pages.py`, `build_masthead.py`, `api.py`, `frontend.mjs`, …). The ~100-path backlog is gone: `8e835cb`, `e38f463` and `f9f3546` landed it. **Still no git remote** — history never leaves this box. |
+
+### Three red tests — two settled in `f9f3546`, one belongs to a live writer
+
+All three were recorded here as possible *code* bugs needing an owner decision. Two were not:
+in both cases the code was right and the test's premise was wrong, and in one of those the
+"failure" was not even in the source. **Neither needs anything from Garrett. Both are green.**
+
+1. **`test_alpha_is_twice_rank_everywhere`** — was `48 != 64` against a `presets.py` that plainly
+   reads `lora_alpha=64`. **Not a hyper-parameter decision: stale bytecode.** The edit `48`→`64`
+   changed no bytes and landed in the same clock second as the `.pyc` write, so Python's
+   mtime-and-size validation passed and every interpreter on this box kept loading the old value.
+   Deleting `backend/apps/reinforce/__pycache__/presets.cpython-313.pyc` fixed it; source and test
+   were both correct throughout. **The 2× ratio holds across all four presets and always did.**
+   Confirmed the wrong `48` never reached a surface: no match in `site/*.html` or
+   `docs/symoneural-manual.md`, no generator reads `presets`, and the router is not mounted.
+   `scripts/check-stale-pyc.py` now detects this class of failure — see §6.
+2. **`test_despill_pulls_the_field_colour_out_of_the_edge`** — was `230 not less than 230`. Not an
+   off-by-one in the threshold: `matte.CHOKE = 1` throws away the outermost ring of the subject
+   before despill runs, so the test's pixels at x=4 and x=13 had become *background* and there was
+   nothing there to despill. The despill works. The coordinates are now derived from `matte.CHOKE`
+   rather than hard-coded, so the next change to the choke moves the test with the code, and the
+   choked ring is asserted transparent rather than merely dim. `matte.py` was **not** modified.
+3. **`TestCodecReporting::test_public_document_carries_the_codec`** (tuner) — went red mid-session
+   when another session wrote `backend/apps/tuner/sessions.py` at 14:23. **That is their file and
+   their in-flight work. Leave it alone.** It is the one failure in the 679-passed backend run.
+
+Both fixes were verified the way §3.0 requires — by reintroducing the bug and watching the test go
+red — and both temporarily-patched source files were restored (`git diff --stat` empty before the
+commit). What made these expensive was believing a red test that contradicted the source in front
+of me. **Run `python3 scripts/check-stale-pyc.py` before diagnosing the next one.**
+
+### Five tasks still queued from the killed `fwcheck` work
+
+`backend/apps/asicminer/fwcheck.py`, all read as real and none started: give honest
+format-detection verdicts; the `fileinfo`/`md5_info` signed family currently fails as
+"cert.pem missing" when that is not the problem; replace the invented 4-byte fixtures with a
+64-byte slice of a real vendor header; report the 0x08 build timestamp.
 | Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
 
 ## 2. Shipped 2026-08-17 (all of it is live)
@@ -192,8 +564,8 @@ anything unrecognised.
   **and** `SYM_ASIC_TOKEN` are both set, so a misconfiguration fails closed on a public box.
 - **`backend/apps/tuner/`** — IPTV over ffmpeg stream-copy to HLS. 57 tests.
 - **`backend/apps/gateway/`** — TRON licensing surface.
-- **`backend/apps/licensing/`** — the dev fee. 21 tests. See §11.
-- **`scripts/qemu-antminer.sh`** — boots real Antminer firmware under QEMU. See §12.
+- **`backend/apps/licensing/`** — the dev fee. 21 tests. See §2d.
+- **`scripts/qemu-antminer.sh`** — boots real Antminer firmware under QEMU. See §2e.
 
 ### Three API routes, all operator-gated
 
@@ -259,10 +631,69 @@ that is honestly absent — it looks fine until someone measures it.
 Chat, image, ravencalc and remix were 46px and one line. Now **80px and 16px**, with the chat
 textarea's auto-grow cap raised 150 → 260 to match its new floor.
 
+### The Movies section was empty on a real panel — fixed 2026-08-17, NOT YET DEPLOYED
+
+Garrett reported it from the live site: Live TV and Series filled in, Movies never did.
+Reproduced first try against his panel and it was not the classifier, not the frontend filter
+and not the kind names — it was a **byte ceiling wearing the wrong hat**.
+
+`Policy.max_bytes` is 24 MiB and its own comment says what it was sized for: "playlists; a big
+provider M3U is a few MB". `load_channels` then handed that same policy to the Xtream catalogue
+fetches, and a movie catalogue is not a playlist. Every film row a panel returns carries `plot`,
+`cast`, `director` and `youtube_trailer` — metadata this module discards — so a title costs
+~900 bytes on the wire where a channel costs a few hundred. **Measured on his panel: live 10,124
+channels / 3.77 MB, series 7,883 shows / 6.43 MB, movies 31,888 titles / 27.57 MB.** Only the
+third crossed 24 MiB. Two of three kinds fitting is precisely why this looked like a movies
+bug rather than a size bug.
+
+- Fix: `xtream.CATALOGUE_MAX_BYTES` (64 MiB), applied via `dataclasses.replace` to the catalogue
+  fetches **only**, so every other field of the caller's policy — `allow_private` above all —
+  is carried through unchanged. Raising `Policy.max_bytes` itself would have widened the same
+  guard for playlist fetches and live stream sessions, which is how a guard stops guarding.
+  Peak RSS to fetch and decode that 27.57 MB was 189 MB on a 96 GiB box; the ceiling stays a
+  ceiling.
+- The note was also **dishonest**, which is why nobody could act on it. Any failed non-live
+  fetch appended "vod: unavailable on this panel", and the panel was not the problem — this box
+  refused it. `safefetch.ResponseTooLarge` (a `FetchError` subclass, so nothing that caught the
+  old class changes) and `xtream.XtreamTooLarge` now separate "your provider does not carry
+  this" from "we declined to load it", and the note says which.
+- **The M3U path had the same class of defect and still would have:** `parse_m3u` caps at
+  `MAX_CHANNELS = 20000` and returns `truncated`; `routes.load_playlist`'s docstring says
+  "`truncated` says plainly when it bit"; and `tools/build_pages.py` read that flag **nowhere**.
+  An over-cap playlist lost its tail — usually the Movies block, the largest and last in most
+  provider files — under the words "Loaded from your playlist." That is a silent cap, which is
+  the `text-overflow:ellipsis` rule in another costume. The page now names the limit. The cap
+  itself was **not** raised: the whole array is serialized to the browser, so 20k → 100k is a
+  measurement, not a constant bump.
+- `panel_info` deliberately keeps the narrow ceiling: the account document is **515 bytes**
+  measured, so 24 MiB is four orders of magnitude of headroom. Two ceilings in one module is a
+  trap unless each says which document it measures; both now do.
+- The `except XtreamTooLarge` arm **must stay above** `except XtreamError` — it is a subclass, so
+  the general arm would swallow it and quietly restore the note that blames the panel, with the
+  note test still passing. There is a structural test asserting the order for exactly that
+  reason.
+- Verified in real Chrome against the real panel, served by a throwaway app carrying the tuner
+  router and a static `site/` mount (not `api.py`, so the scope is the page JS and the route,
+  not the production mount order): **49,895 channels, Movies 31,888 across 29 categories,
+  4.5 s, no page errors, no h-overflow.** The response is 11.85 MB of JSON, **1.87 MB after
+  gzip**, and `ops/Caddyfile:75` is `encode zstd gzip` with `content-encoding: gzip` confirmed
+  live — worth knowing, because an 11.85 MB uncompressed body on a slow connection would come
+  back as another "movies don't load" report indistinguishable from this one.
+- Tests: tuner **121/121** (six new, against a fake panel — no credential is in any committed
+  file), `tests/tuner_failpaths.mjs` 21/21 (six new; verified they go red with the fix removed),
+  `tests/frontend.mjs` 26/26.
+- **Needs `sudo systemctl restart symoneural-api` (backend) and `sudo scripts/deploy.sh --prune`
+  (page).** Neither has been run; the live site still has the bug.
+
+One thing that looks like a leak and is not: the response body contains the visitor's own
+username and password, because Xtream puts them in the stream URL path and the browser needs
+that URL to play anything. `xtream.py`'s docstring already calls this the one unavoidable
+persistence, and it is why `Scrubber` exists for everything that is *not* the visitor.
+
 ### Still open on this surface
 
-- The Xtream client has **never been exercised against a live panel beyond channel listing**.
-  Tuning a real stream end to end is untested.
+- Tuning a real stream end to end is still untested. Channel **listing** is now exercised
+  against a live panel (see above); playback is not.
 - **The full form path cannot be tested locally**: the SSRF guard correctly rejects loopback,
   so you cannot self-serve a playlist from this box to drive it. Test against a real playlist.
 - hls.js is the **light** build: no subtitles, no alternate audio.
@@ -342,6 +773,157 @@ runs.
 **If you add or edit inline JS in `tools/build_pages.py`, write `\\n`, not `\n`.** The
 `no page throws a script error` assertion now loads all twelve pages and fails on any
 `pageerror`; it caught the same bug in `CHAT_JS` before that one shipped.
+
+## 2h. The guide, the watch page, and four bugs behind a black rectangle (2026-08-17 ~14:45)
+
+Everything here is **on disk and unverified live** — see the BLOCKER in §0c. `backend/api.py`,
+`backend/apps/tuner/**`, `tools/build_pages.py`, `site/tuner*.html`, `tests/tuner_*` and
+`tests/frontend.mjs` were all edited; nothing else was touched.
+
+### The guide is a grid now
+
+`backend/apps/tuner/epg.py` (new, ~330 lines) reads the provider's own schedule two ways:
+`get_short_epg` per channel through `POST /api/tuner/epg`, and the whole account's XMLTV
+through `POST /api/tuner/epg/xmltv`. The module README section documents what it refuses to
+do and why — the short version is that **a timestamp with no UTC offset is dropped and
+counted, never guessed**, because a guide silently three hours wrong is worse than one that
+says it has nothing.
+
+The page has a Guide/List toggle. Guide draws time across and channels down, 30 rows and a
+3-hour window, `←90 min / now / 90 min → / next 30 channels`. It asks only for the rows on
+screen, caches an empty answer as empty so a channel with no schedule is not re-requested on
+every redraw, and prints per row which of the three real answers applies: no guide for a
+pasted playlist, nothing published for this part of the day, or no guide published for this
+channel. **It never draws a "No Information" box** — a grid of those is the
+decorative-indicator rule broken forty times a screen.
+
+Measured against the real panel: catalogue of 10,072 live channels in 0.9 s, of which
+**5,304 (52%) carry a `tvg_id`**; a grid of 24 named broadcasters answered **24/24 in
+1,275 ms** with 23 carrying a programme on now.
+
+### `/tuner-watch.html` — the stream on its own page
+
+Garrett: *"You can make the stream move to its own symoneural.com/tuner/watch or something so
+we can almost like full screen for improved guide pip settings etc etc."*
+
+Video fills the window; a bar that dims after 3 s of no input carries the channel, the status
+line, **now/next with the share elapsed**, and buttons for Guide, Statistics, PiP and full
+screen. Keys: `g` `s` `f` `p`, `Esc` closes a panel. The guide and the statistics panel slide
+over the picture; clicking a cell changes channel without leaving the page.
+
+**It is `site/tuner-watch.html`, not `/tuner/watch`, and that is deployability rather than
+preference.** `scripts/deploy.sh` publishes `find "$SRC" -maxdepth 1 -type f`, so a
+`site/tuner/watch/index.html` is never copied into the webroot at all; and `ops/Caddyfile`
+delegates an explicit list of top-level paths, so a new one 404s until
+`sudo ./scripts/install-caddy.sh` runs. **To get the pretty path later:** add `/tuner/watch`
+to the `@sections` matcher in `ops/Caddyfile` and a route in `backend/api.py` that serves this
+file. The page itself needs no change.
+
+**The handoff carries the live session id and the watch page ADOPTS it.** Nothing goes in the
+URL — a stream URL carries the visitor's own provider credentials and uvicorn logs a request
+line — so the channel travels in `localStorage` under `symoneural.tuner.watch`. Verified in
+real Chrome against the real panel: session `apXoyVZ65L9G4MdN` before the click, the same id
+after, `1/2` slots throughout. The alternative was releasing a working stream and asking the
+provider for it again, which costs a fresh upstream connect and several seconds of black
+screen for nothing.
+
+### FOUR BUGS, and three of them were invisible
+
+**1. `play()` tested `canPlayType` first, and Chrome answers `'maybe'` — a truthy string.**
+So every Chrome visitor took the native-HLS branch and **the entire hls.js block was dead
+code**: no `liveSyncDurationCount: 1` (so 31 s to first frame instead of 2.5 s, the very fix
+§1 celebrates), no fatal-error handler that asks the box what actually happened, no level or
+throughput readings. The statistics panel reading *"the browser's own HLS"* with bitrate at
+`-` is what exposed it. hls.js is now tried first and the native path is the fallback for
+Safari, where `Hls.isSupported()` is correctly false. Confirmed live: `hls.js 1.7.0`, 2
+levels, 286 Mb/s.
+
+**2. The audio codec was parsed and never published.** `Session.public()` now carries
+`acodec`. A channel of Garrett's reported `state: live`, `vcodec: h264`, 87 MB pulled over
+five minutes and every indicator green while Chrome decoded **zero frames** — MSE refuses the
+whole segment when it will not take the AUDIO track, and Chrome takes no AC-3. The picture
+stops for a soundtrack. This is very likely the bulk of *"most the issues are with the adult
+live tv"*.
+
+**3. The codec panel was being overwritten by the symptom it causes.** An undecodable stream
+raises a fatal hls.js error moments later, and *"Playback stopped — the player could not fetch
+the next part"* replaced *"This stream is H.265 / HEVC"*. Cause swapped for symptom, which is
+precisely what that panel exists to prevent. The codec diagnosis is now sticky until the next
+tune. **It was unreachable until bug 1 was fixed**, because the native path never raised the
+error.
+
+**4. `currentLevel` is `-1` while the level is chosen automatically**, which is the default,
+so the level bitrate printed `-` beside a live throughput reading of 286 Mb/s. Falls back to
+`loadLevel` and marks it `(auto)`.
+
+**Codec support is ASKED OF THE BROWSER, not tabulated.** Both pages call
+`MediaSource.isTypeSupported()` against `video/mp2t` (what the box serves) and fMP4 (what
+hls.js remuxes to) and warn only when neither is accepted. Measured on Chrome 151: h264, aac,
+mp2 and mp3 accepted; hevc, mpeg2video, vc1, av1, vp9, ac3, eac3, dts and truehd refused. A
+hard-coded list would have been **wrong about mp2 in the same week it was written** — mp2 was
+on the suspect list and is fine.
+
+### Tuner and Guide are one rack unit
+
+Garrett: *"symon guide and symon tuner should be migrated together"*, then *"you need to
+migrate tuner and guide to be 1"*. Two units carried the same `href`, so the rack was showing
+one page twice. `apps/tuner/routes.py::status()` now returns *SyMoNeuRaL Tuner & Guide* and
+`backend/api.py` no longer builds a `guide` unit — **the rack is 11 units, not 12.**
+
+Nothing was deleted: `backend/apps/guide/` is untouched and `/api/guide/*` still serves the
+page's filter. The prefix was deliberately **not** renamed to `/api/tuner/guide/*` — the page
+JS consumes it, and churning a working route serves no reading. The guide half's claim
+(*CPU/stdlib, never takes the GPU lock*) is carried in the tuner unit's detail line in every
+state, because that is the thing a visitor cannot check by looking.
+
+The reversal is the interesting part and is recorded at the deletion site: Guide's own author
+argued for exactly this fold on architecture and was overruled only because Garrett had named
+it separately. He has now decided the other way.
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `tests/frontend.mjs` | 26/26 | **28/28** (against a throwaway API with the merge loaded) |
+| `tests/tuner_failpaths.mjs` | 23/23 | **27/27** |
+| `apps.tuner.test_epg` + `test_tuner` | — | **159/159** |
+
+New assertions, each guarding a bug above: an undecodable **audio** codec is named on a video
+codec that is fine; the panel says the sound is why the picture is black; the technical line
+reports both codecs; **and a working h264+AAC stream is never called undecodable** — a warning
+that fires on a stream that plays teaches the visitor to ignore the one that does not.
+
+On the rack, the assertion is *"no two rack units are the same page on the same bus"* rather
+than a unit count. `units.length === 11` would go red every time a real surface is added,
+which is the kind of assertion people delete instead of reading. Page alone is not the
+invariant either: the two **Miner** units are ASIC and GPU — different hardware, one page —
+and Coder and Project both link `/documentation.html` because neither has a page yet.
+
+**`tests/frontend.mjs` scores 27/28 against the running service on :8800, and that is the
+pending restart, not a regression.** That process predates the merge and still reports 12
+units. Against a throwaway `uvicorn api:app` with the change loaded it is 28/28.
+
+### Still open on this surface
+
+- **The Guide AI's "ask a couple questions" element is not built.** The floating prompt exists
+  and is wired to `/api/guide/filter`; what is missing is the short location/preference
+  questionnaire Garrett described. Note his constraint carefully: *location-aware means
+  **asking**, not geolocating* — do not add IP geolocation to a box whose whole argument is
+  that it measures rather than infers.
+- **Transcode.** Garrett approved full GPU transcode, but a peer session then measured the
+  numbers and they change the answer: `-c:v copy -c:a aac` runs at **34x realtime with +0 MiB
+  VRAM on the CPU**, while `hevc_cuvid -> h264_nvenc` costs ~515 MiB and is only needed when
+  the *picture* is undecodable. The honest design is two-tier — repair the audio for free,
+  reserve the GPU path for the case that needs it. NVENC/NVDEC are dedicated blocks and do not
+  contend with inference compute (measured: GPU compute 2%, encoder 50%, decoder 28% during a
+  transcode), so the governor may be the wrong instrument entirely; a VRAM budget fits the
+  hardware better than the mutex. **That work is owned by the `online applications testing`
+  session, not this one.** Whoever builds it must rewrite `_spawn`'s comment *"it never quietly
+  re-encodes, because the GPU belongs to inference"* rather than quietly contradicting it, and
+  the page copy along with it — *"uses the video engine, not the compute the models share"* is
+  both true and the better line.
+- 165 empty `/tmp/tuner-run-*` directories: contents are cleaned on reap, the directory itself
+  is not. Harmless today, unbounded over time.
 
 ## 2g. Two open design questions Garrett raised (NOT decided, NOT built)
 
@@ -922,7 +1504,7 @@ cascade.** The tooling for that is in §6.
 ## 5. Still to do
 
 > **Updated 2026-08-17 05:35, end of the second session.** Items 3, 4 and 5 are now
-> substantially built — see §2c, §11 and §12. What follows is what is genuinely left.
+> substantially built — see §2c, §2d and §2e. What follows is what is genuinely left.
 
 ### Open findings nobody has acted on
 
@@ -982,9 +1564,20 @@ because they are the cheapest real work available.
 7. **Chat page restyle** — `docs/specs/chat-spec.md`, 501 lines. Reference measured at three
    widths. Two traps documented: a `<nav>` rail would hit `nav a:not(.cta){display:none}` and
    vanish on phones, and deleting `#stat` makes a *successful* generation render as an error.
-8. **SyMoNeuRaL Miner GPU (Ravencoin)** — `backend/apps/cryptominer/`, still untouched and
-   still a **separate surface from the ASIC panel**. Do not conflate them. The governor has no
-   concept of a tenant everything else evicts; design that tenant class explicitly.
+8. **SyMoNeuRaL Miner GPU (Ravencoin)** — `backend/apps/cryptominer/`, now built, tested and
+   documented: `backend/apps/cryptominer/README.md`, 72 tests, none of which touch the GPU or
+   start a miner. Still a **separate surface from the ASIC panel** — no shared code, route
+   prefix, rack unit or token. Do not conflate them.
+   The remaining governor work is narrower than this item used to imply, and the obvious
+   reading of it is wrong: `gpu-governor.sh` *has* a working `miner)` eviction arm, but
+   eviction is reached only after `cmd_acquire`'s `mkdir` succeeds, and a running miner holds
+   `run/gpu.lock.d` for its whole process lifetime. So a miner that is genuinely running is
+   **not** preemptible: an arriving surface spins in `until mkdir` and times out after
+   `ACQUIRE_TIMEOUT_S` (measured: `acquire chat 10` against a live miner logs
+   `'chat' TIMED OUT after 10s behind 'miner'`). The yield protocol that would fix this is
+   specified in `docs/specs/miner-preemption.md` and is deliberately **not** implemented — it
+   changes the hot path of the only arbitrator of the only contended resource here. That is
+   why this surface never auto-starts.
 9. **Generate Python stubs from `bos-plus-api`** into `backend/apps/asicminer/` so the panel
    drives Braiins OS+ natively rather than through pyasic's lowest-common-denominator model.
    This is the real "Braiins as an SDK" step and it is an API dependency, not a code fork.
@@ -1050,10 +1643,69 @@ because they are the cheapest real work available.
 
 - **Telemetry cannot be tested.** The emulator will never run `bmminer` — no hashboards. A
   real rig, or a BOS+ rig, is the only way. No download substitutes for it.
-- MicroBT emulation is **settled as impossible** (encrypted payload, §12). The control plane
+- MicroBT emulation is **settled as impossible** (encrypted payload, §2e). The control plane
   over btminer/4028 works today and is the viable route.
 
 ---
+
+## 5c. "Fill the window better" — DONE, and the causes were not the obvious ones
+
+Garrett said the site "went a little too small" and named `/overview`, `/livestack`,
+`/controlboard`, `/receipts`. The instinct is to widen the containers. **Measure first: the
+content already spanned the window.** At 2560x1440 the four sections were already edge-to-edge.
+Three other things were small, and they are what got fixed. All of it is in
+`site/symoneural.css`, appended at the end — that file is hand-written, no generator owns it.
+
+**1. The header and footer were 1120px islands on a 2560px page.** `header > .wrap` and
+`footer > .wrap` inherited a max-width that the sections had already been released from, so the
+nav bar floated in the middle of a full-bleed page. Now
+`max-width:min(1800px, calc(100vw - 64px))`, sitewide. Measured 1120 -> 1800 at 2560.
+
+**2. Type was 12.5px at every width above 1300px.** The three-tier machinery (§3.0) stops at
+1700px and pins fixed pixel sizes, so a 2560px monitor rendered the same 12.5px body text as a
+1440px laptop — which is precisely what "too small" looks like from a desk. A fourth tier at
+`min-width:1601px` turns `--t1`..`--t7` into `clamp()`s that scale with the viewport, scoped by
+`body:has(#hero), body:has(#rack), body:has(#console), body:has(#more)` so it can only reach the
+four section pages and cannot touch the front page or the prompt surfaces.
+
+**3. The control board was 383px tall inside a 1277px panel** — half the glass empty under a
+dashboard. `html.ns #console > .wrap` and `html.ns #more > .wrap` become column flexboxes and
+the grids get `flex:1 1 auto; grid-auto-rows:minmax(0,1fr)`, so the rows divide the spare height
+instead of leaving it. Gated `@media (min-width:2000px) and (min-height:1000px)`. Measured 383 ->
+943px at 2560x1440; the panel does not scroll at 2560x1440, 2560x1200, 2400x1000, 2200x1000 or
+2000x1000.
+
+Also widened above 2000px: `.mh` and `#rack .rackrow` to `min(2400px, calc(100vw - 96px))` with
+percentage gutter tracks floored at the old fixed 420/400px, so no width can render narrower than
+the tier it replaces.
+
+Vertical fill after, content height as a share of its panel (`overview / livestack / controlboard
+/ receipts`): 2560x1440 → 51/46/74/89%, 2560x1200 → 63/57/68/87%, 2000x1000 → 66/64/60/84%.
+Overview and livestack sit lower because their content is text plus fixed-size art, and the art
+is deliberately capped (below).
+
+### Two negative results. Both were the obvious next move; do not re-try them.
+
+- **Do not widen `.console` columns to `minmax(300px,1fr)`.** With the fluid type above, 300px
+  tiles fit only 6 across at 2000-2200px instead of 8-9, so the board gains rows faster than the
+  tiles lose wrapped lines: measured 55px of panel overflow at 2000x1000, 81px at 2200x1000, 41px
+  even at 2200x1040. Eleven narrow columns that fit beat eight wide ones that scroll. The 1700px
+  tier had already rejected this same number for the same reason at 1990x970.
+- **Do not "release" `.gart`'s max-width without measuring it first.** A `clamp(268px, ...)` meant
+  as generous actually *cut* the art from 434px to 350px at 2560 and 302px at 1920, because a
+  later rule was already sizing it to 434px. It is now capped at 768px, which is the art's own
+  native canvas width (`tools/_art.py`); past that the browser upscales and the watermark strip
+  goes unreadable, which is the bug the 1700px tier was written to fix, reached from the other
+  side.
+
+### Whoever verifies layout next
+
+`node tests/frontend.mjs` asserts the one-screen fit at four viewports — 1990x970, 1855x745,
+1440x900, 1301x740 — **all of them under 2000px wide**, so neither block above can be caught by
+that suite. The ad-hoc probe used here lives in the session scratchpad and is not worth keeping;
+re-measure with a fresh Playwright script that reports, per page, `content/panel` height ratio,
+page scroll, panel scroll and horizontal overflow. Read computed styles; do not reason about the
+cascade.
 
 ## 5b. The original queue, for reference
 
@@ -1101,15 +1753,34 @@ broken** — this is a queue of new work, not a repair list.
    was the good one; it is not. Requirement: load `playlist.m3u` **or** Xtream Codes
    url/username/password. **Credentials: visitor supplies their own, localStorage only, never
    stored on the box** (the user chose this explicitly).
-4. **SyMoNeuRaL Miner** — GPU, Ravencoin. Base: `backend/apps/cryptominer/` (first-party, the
-   user's own prior work; PowerShell-oriented, needs porting to Linux). It already refuses to
-   start without `SYM_MINING_ENABLED=1` and reads real `nvidia-smi` telemetry. **Two
-   constraints:** the governor has no concept of a tenant that *everything else* evicts (a
-   miner is the opposite of `train`, which is never evicted) — design that tenant class
-   explicitly; and **any Ravencoin/KawPow hashrate is vendor-or-projected, never measured**,
-   until a miner binary actually runs, so the rack unit's honest default state is `offline`.
-   There are two copies of `SymoneuralGPUWorker/SyMon_MinerGPUWorker_PROD_20260102-1818`
-   (one with a ` 2` suffix) — diff and drop the duplicate.
+4. **SyMoNeuRaL Miner** — GPU, Ravencoin. `backend/apps/cryptominer/` — **ported, running and
+   measured.** Mining is off by default and there is no default that turns it on: it refuses to
+   start without `SYM_MINING_ENABLED=1` (the check is `== "1"`, so `true`/`yes`/`on` leave it
+   off silently), reads real `nvidia-smi` telemetry, and gates control on `SYM_MINER_TOKEN`,
+   which must **not** be the same string as `SYM_ASIC_TOKEN` — this one gates a process that
+   takes the card from every other surface.
+   **KawPow hashrate is now measured on this machine, not vendor and not projected:
+   52.75 – 53.01 MH/s across two runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
+   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. The ~0.5%
+   run-to-run spread is quoted rather than the best run and **no cause has been established**
+   for it.
+   **That run is a benchmark against no pool: measured, and earning nothing.** A miner with
+   nowhere to submit a share earns nothing whatever its hashrate says, so `pool()` and
+   `benchmarking()` now detect the absence of a pool URL (kawpowminer's own rule — "when
+   playing with benchmark or simulation no connection specification is needed") and the
+   distinction is surfaced in `/api/gpuminer/status`, in `selftest` and in the rack unit's
+   detail line. It had to be: the rack previously displayed
+   `holding the card · 53.01 MH/s reported by the miner` for a benchmark run. Every digit was
+   real, and a reader would still have concluded the box was mining Ravencoin. **"Measured" and
+   "earning" are different claims** and the surface now makes both.
+   No earnings figure is published anywhere and none should be — earnings depend on network
+   difficulty, pool fees and the RVN price, none of which this box measures. Pricing questions
+   go to symonsayadmin@symoneural.com.
+   Remaining: the governor still has no tenant class that *everything else* evicts (a miner is
+   the opposite of `train`, which is never evicted). See item 8 above for why the existing
+   `miner)` arm does not achieve this. There are two copies of
+   `SymoneuralGPUWorker/SyMon_MinerGPUWorker_PROD_20260102-1818` (one with a ` 2` suffix) —
+   diff and drop the duplicate.
 5. **ASIC firmware control panel** for MicroBT + Antminer rigs. References: `references/Projects_Crypto/`
    (~2.5 GB of firmware), `references/CGMiner-master/`, `references/braiins-os-feeds-master/`, and `references/Pete/` (contains
    `pyasic` and `whatsminer-api`). **This is a much larger piece than the GPU miner — keep it
@@ -1343,18 +2014,70 @@ or the pages that link them. If a stylesheet changes and the stamps are not refr
 visitor with a warm cache gets new markup against the old CSS — which is exactly the failure
 that put nineteen full-size renders down the left of the live page.
 
+### Before you believe a test failure that contradicts the source in front of you
+```bash
+python3 scripts/check-stale-pyc.py         # report; exit 1 if anything is stale
+python3 scripts/check-stale-pyc.py --fix   # delete the stale ones, exit 0
+```
+Python trusts a timestamp-based `.pyc` on the source's **mtime truncated to whole seconds** and
+its **size in bytes**. A two-character numeric edit (`48`→`64`) changes neither, and an edit that
+lands in the same clock second as the bytecode write makes the cache look valid **forever**. That
+cost hours and got written into this file as an open owner decision about a hyper-parameter; it
+was never a decision. This script recompiles the source in memory and compares the code objects'
+*logical* content — filenames deliberately excluded, because `co_filename` varies with how a
+module was imported and comparing raw marshalled bytes reported 240 false positives against one
+real one. Deleting a `.pyc` is always safe; it is a cache.
+
+**Verified in both directions on 2026-08-17**, which is the standard §3.0 holds a check to: 0
+stale against a healthy tree of 88 trusted files, and it reports the known-bad
+`presets.cpython-313.pyc` as stale when that file is put back. It skips `-pytest-*.pyc` — those
+hold pytest's assertion-rewritten bytecode, which is *supposed* to differ, and pytest validates
+them itself.
+
 ### Test in a real browser — this is the important one
 ```bash
-node tests/frontend.mjs                          # 18/18 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 18/18 against production
+node tests/frontend.mjs                          # local API on :8800
+node tests/frontend.mjs https://symoneural.com   # production
 ```
+**Measured 2026-08-17 — the suite is 26 assertions now, not 18. Local 26/26 and production
+26/26, verified at 14:04 after the 14:01:05 deploy.**
+
+Worth keeping, because it is the clearest example in this file of §7's "they judge the
+deployed site" and of how fast that judgement goes stale. Before that deploy, production was
+**25/26**: `each section has its own URL, carrying only itself, fitting one screen` failed
+because `/livestack` content overflowed its panel by 3px at 1855×745 (595/592) and by **32px
+at 1301×740** (619/587), while local passed at 589/589. The diagnosis was the cachebust
+stamp — production on `symoneural.css?v=5d6297cfb8` against a working tree at
+`?v=3c8fa4fd4c` — so it was the §3.0 chassis-strip fix sitting undeployed, not a
+regression. Confirmed by the deploy closing it: production now measures 589/589 and 587/587,
+identical to local.
+
+**The check that resolves this class in one line, and the order to do it in.** The webroot is
+world-readable, so you never have to guess and you never need sudo to find out:
+
+```bash
+for f in site/*.html site/*.css site/*.js; do
+  cmp -s "$f" "/var/www/symoneural/$(basename "$f")" || echo "DIFFERS $(basename "$f")"
+done
+```
+
+Silence means the webroot is current and a failing assertion is a real defect. Do that
+**before** concluding anything from a production run — and re-check it after, because a
+concurrent session can deploy while your suite is still running, which is exactly what
+happened here.
+
+Also seen on **both** runs and **not** a failure: four `400`/`404` lines for
+`/api/tuner/{playlist,xtream/channels,tune,session/__probe__}` in the trailing
+"failed requests" block. That assertion tests whether the routes are *routed*, and a `400`
+on an empty body is a routed endpoint rejecting bad input. Do not chase them.
+
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries
 GPU/CPU/`--`, nothing overlaps or spills past the right edge at 390px, ravencalc returns
 `x**3/3`, and **a generated image actually decodes** (`naturalWidth > 0`). That last one is
 the assertion that would have caught the 404 that shipped — curl proved the endpoint
 answered, which was never in doubt.
 
-Five of the eighteen exist because of specific bugs and are worth not deleting:
+Four of the twenty-six exist because of specific bugs and are worth not deleting:
 
 | Test | The bug it exists for |
 |---|---|
@@ -1445,8 +2168,13 @@ exit 144. Put the pkill in a command that does not otherwise mention the process
 - Chat: ~5 GB resident, measured **80–92 tok/s** with the persona adapter loaded.
 - Image: FLUX.1-schnell q4_k, ~7 GB, **~11.2s** per 768×768 at 4 steps.
 - Chat and image weight sets **cannot co-reside**. `scripts/gpu-governor.sh` serialises them.
-- Base interpreter: exactly **7 packages** (`pip freeze | wc -l`). Training venv:
-  `training/.venv`, torch cu128.
+- The **CUDA sample venv** at `contrib/cuda-samples/python/.venv` is the thing pinned at
+  exactly **7 packages** — check it by its full path, never with a bare `pip freeze`.
+  Measured 2026-08-17: that venv has 7; the **system** interpreter has **190**, because it is
+  a Debian install and always was. Earlier revisions of this line said "Base interpreter:
+  exactly 7 packages (`pip freeze | wc -l`)", which contradicts `.claude/CLAUDE.md` and sends
+  you looking for a broken machine. Training venv: `training/.venv`, torch **2.11.0+cu128**,
+  `torch.cuda.is_available()` true (verified 2026-08-17).
 - Node 20.19.2 / npm 9.2.0, ffmpeg 7.1.5, patchelf, PIL 11.1.0, ImageMagick all present.
 - `google-chrome` at `/usr/bin/google-chrome`.
 

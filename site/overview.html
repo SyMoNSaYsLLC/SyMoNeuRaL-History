@@ -15,7 +15,7 @@
 <meta property="og:image" content="/mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0e100f">
-<link rel="stylesheet" href="/symoneural.css?v=49b346c269">
+<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 </head>
 <body>
@@ -69,7 +69,12 @@
       </p>
       <div class="actions">
         <a class="cta" href="/build.html">Have one built &rarr;</a>
-        <a class="cta ghost" href="#rack">See it running</a>
+        <!-- `/livestack`, NOT `#rack`. This block is copied verbatim into overview.html by
+             build_split.py, and that page has no #rack section -- the rack lives on its own
+             page since the split. The link therefore did nothing at all on the page it is
+             most often read from: `/` 302s to `/overview`, so the masthead a visitor sees is
+             almost always the copied one. A path works from both. -->
+        <a class="cta ghost" href="/livestack">See it running</a>
       </div>
     </div>
 
@@ -87,23 +92,23 @@
       </p>
     </div>
 
-    <a class="gart" href="/art-fast.png?v=153f708e54" title="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-prompt="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-seed="1195" data-secs="11.32" aria-label="Open the full render, watermark and all: long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" style="--rot:-1.5deg">
+    <a class="gart" href="/art-fast.png?v=deec0e1fe2" title="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-prompt="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-seed="1195" data-secs="11.32" aria-label="Open the full render, watermark and all: long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" style="--rot:-1.5deg">
       <span class="gwrap">
-        <img src="/art-fast.png?v=153f708e54" alt="Long-exposure light trails down a dark data centre aisle, rendered by SyMoNeuRaL Image"
+        <img src="/art-fast.png?v=deec0e1fe2" alt="Long-exposure light trails down a dark data centre aisle, rendered by SyMoNeuRaL Image"
              loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">What if your data never<br>left the building?</span>
-      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 1195 &middot; 11.32s on an RTX&nbsp;5070&nbsp;Ti</span>
+      <span class="gprov">SymonImage F1 q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 1195 &middot; 11.32s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
-    <a class="gart" href="/art-yours.png?v=7d50ce5d98" title="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-prompt="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-seed="6730" data-secs="11.17" aria-label="Open the full render, watermark and all: a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" style="--rot:1.5deg">
+    <a class="gart" href="/art-yours.png?v=9f411159df" title="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-prompt="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-seed="6730" data-secs="11.17" aria-label="Open the full render, watermark and all: a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" style="--rot:1.5deg">
       <span class="gwrap">
-        <img src="/art-yours.png?v=7d50ce5d98" alt="A hand holding a small labelled hard drive over a dark desk, rendered by SyMoNeuRaL Image"
+        <img src="/art-yours.png?v=9f411159df" alt="A hand holding a small labelled hard drive over a dark desk, rendered by SyMoNeuRaL Image"
              loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Who owns your model when<br>the invoice stops?</span>
-      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 6730 &middot; 11.17s on an RTX&nbsp;5070&nbsp;Ti</span>
+      <span class="gprov">SymonImage F1 q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 6730 &middot; 11.17s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
   </div>
 </div>

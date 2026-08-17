@@ -37,6 +37,22 @@ Here there is a hard concurrent-session cap, an idle timeout keyed on the player
 asking for segments, a hard maximum lifetime, and a reaper that runs whether or not the client
 was polite enough to disconnect.
 
+## Telling "the channel is dead" apart from "the tuner is broken"
+
+The owner's diagnosis, and the reason for three of the behaviours below: *"if it's not active
+you will come to a page from the server saying it's down, not just a blank screen."* A provider
+page means the channel is off. A blank screen means we are. Everything that used to produce a
+blank screen with a healthy-looking session is now named:
+
+* an HTML page arriving where a stream was expected is reported as **the provider's words**
+  rather than as "the transcoder could not stream-copy this source", which describes our
+  transcoder and tells the visitor nothing (`looks_like_error_page`);
+* **AES-128** HLS is decrypted rather than refused, while SAMPLE-AES and DRM stay refused *by
+  name* -- decrypting those as if they were AES-128 would produce corruption instead of an
+  error, which is worse than the refusal it replaced;
+* **HEVC** is the one failure where every indicator is honest and the screen is still black.
+  Nothing here can fix it, so `Session.vcodec` reports it and the page can say why.
+
 ## Why Python holds the socket and ffmpeg only sees a pipe
 
 `safefetch` validates a URL and pins the address. Handing that URL to ffmpeg would throw all of
@@ -60,13 +76,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import safefetch
-from .m3u import parse_hls
+from .m3u import HlsKey, HlsPlaylist, HlsSegment, parse_hls
 from .safefetch import BlockedURL, FetchError, Policy, Scrubber
 
 log = logging.getLogger("symoneural.tuner")
 
 __all__ = ["Session", "SessionManager", "MANAGER", "TunerBusy", "TunerError",
-           "PLAYLIST_NAME", "SEGMENT_RE"]
+           "PLAYLIST_NAME", "SEGMENT_RE", "VIDEO_CODECS", "ts_sync_offset"]
 
 
 def _env_int(name: str, default: int, lo: int, hi: int) -> int:
@@ -82,7 +98,16 @@ def _env_int(name: str, default: int, lo: int, hi: int) -> int:
 MAX_SESSIONS = _env_int("SYMONEURAL_TUNER_MAX_SESSIONS", 2, 1, 8)
 #: No segment or playlist request for this long and the session is dead, whatever the client
 #: thinks. This is the cap that survives a browser tab being closed without a goodbye.
-IDLE_TIMEOUT = _env_int("SYMONEURAL_TUNER_IDLE_TIMEOUT", 45, 10, 600)
+#:
+#: **12 s, not 45.** With `MAX_SESSIONS = 2` against an account whose own `max_connections` is
+#: also 2, a slot held by a visitor who has already walked away is the whole capacity of the
+#: surface. 45 s plus a 5 s reaper tick meant a closed tab kept a channel unavailable for the
+#: best part of a minute, which reads as "the tuner is broken", not "the tuner is busy". The
+#: page heartbeats every 5 s and every segment fetch also counts, so 12 s tolerates two missed
+#: beats before it gives up on a client. The real fix is the client saying goodbye -- see
+#: `POST /session/{sid}/stop` -- and this is what covers the cases where it cannot: a crash, a
+#: killed browser, a lost network.
+IDLE_TIMEOUT = _env_int("SYMONEURAL_TUNER_IDLE_TIMEOUT", 12, 5, 600)
 #: Nothing streams forever on a shared demo box, however attentive the client is.
 MAX_LIFETIME = _env_int("SYMONEURAL_TUNER_MAX_LIFETIME", 1800, 60, 21600)
 #: A pump that has read this much has had its turn. Bounds egress independently of time.
@@ -100,6 +125,201 @@ PLAYLIST_NAME = "live.m3u8"
 SEGMENT_RE = re.compile(r"^s[0-9]{1,6}\.(ts|m4s)$")
 
 FFMPEG = shutil.which("ffmpeg")
+
+#: One HLS segment is buffered whole when it has to be decrypted -- CBC cannot be streamed into
+#: ffmpeg block by block and still be unpadded correctly at the end. A 2 s segment at 8 Mb/s is
+#: about 2 MB; 32 MB is room for a long segment at an absurd bitrate and a firm refusal for
+#: anything that is not a segment at all.
+MAX_SEGMENT_BYTES = 32 * 1024 * 1024
+
+
+# ---------------------------------------------------------------- sniffing what arrived
+
+def ts_sync_offset(data: bytes, packets: int = 3) -> int:
+    """Offset of the first MPEG-TS packet in `data`, or -1 if there is no transport stream here.
+
+    Not "does 0x47 appear": 0x47 is the letter `G`, so a check that loose calls every English
+    web page a transport stream. A TS is a lockstep sequence of 188-byte packets each beginning
+    with the sync byte, so the real test is that 0x47 recurs at exactly 188-byte spacing. Three
+    packets is the conventional lock and is enough that a false positive needs a 377-byte
+    coincidence.
+    """
+    span = 188 * (packets - 1)
+    limit = min(188, len(data) - span)
+    for off in range(max(0, limit)):
+        if all(data[off + 188 * i] == 0x47 for i in range(packets)):
+            return off
+    return -1
+
+
+_MARKUP_LEADS = (b"<!doctype", b"<html", b"<head", b"<body", b"<?xml", b"<!--", b"<h1", b"<div")
+#: Content types a provider's error page arrives as. `application/json` is here because some
+#: panels answer `{"error":"maximum connections reached"}` with a 200 and no other clue.
+_TEXTY_TYPES = ("application/json", "application/xhtml+xml", "application/xml")
+
+
+def looks_like_error_page(ctype: str, head: bytes) -> bool:
+    """True when what arrived is a document about the stream rather than the stream.
+
+    The whole defect this exists for: a provider answers a dead or over-subscribed channel with
+    HTTP **200** and an HTML "stream offline" page. The old sniff only asked "is this HLS or
+    does it start with 0x47", and anything else went to ffmpeg -- which spent ten seconds
+    failing to demux a web page and reported "the transcoder could not stream-copy this source".
+    That sentence describes our transcoder. The visitor needed to be told their channel is off.
+
+    The test is deliberately **not** "the content type is texty". A very common misconfiguration
+    is nginx serving real MPEG-TS as `text/html`, and a rule that trusted the header alone would
+    turn every one of those working streams into a failure -- the exact inverse of the point.
+    So: markup in the body is conclusive on its own, and a texty content type only counts when
+    the body also fails to look like a transport stream.
+    """
+    lead = head.lstrip(b"\xef\xbb\xbf \r\n\t")[:64].lower()
+    if lead.startswith(_MARKUP_LEADS):
+        return True
+    if head[4:8] in (b"ftyp", b"styp", b"moof", b"moov", b"sidx"):
+        # An ISO-BMFF box header: a fragmented-MP4 HLS segment. It has no 0x47 sync pattern, so
+        # a mislabelled one would otherwise be judged an error page on the strength of its
+        # content type alone -- the same false positive the rule below exists to avoid.
+        return False
+    texty = ctype.startswith("text/") or ctype in _TEXTY_TYPES
+    return bool(texty) and ts_sync_offset(head) < 0
+
+
+# ---------------------------------------------------------------- codec reporting
+#
+# The HEVC failure is the nastiest one in this module because every indicator is green. ffmpeg
+# stream-copies H.265 into TS segments happily, the playlist is written, the session says
+# `live`, segments are served with 200s -- and no browser on earth decodes HEVC in MSE, so the
+# visitor gets a black rectangle. There is nothing to fix in the pipeline; the only honest
+# response is to say which codec arrived and let the page tell the visitor why it is blank.
+
+#: What may be reported. ffmpeg's stderr is written by a program we do not control and can quote
+#: its input, so the codec is not extracted as "whatever token followed `Video:`" -- it is
+#: matched against this list and anything else is reported as nothing at all. That is what makes
+#: a new field on `public()` unable to carry a credential.
+VIDEO_CODECS = frozenset({
+    "h264", "hevc", "mpeg2video", "mpeg4", "mpeg1video", "av1", "vp8", "vp9", "vc1", "wmv3",
+    "h263", "mjpeg", "theora", "dirac", "msmpeg4v3", "prores", "dvvideo", "rawvideo", "flv1",
+})
+#: `[level]` markers come from `-loglevel level+info`; see `_spawn`. They can follow a component
+#: tag (`[out#0/null @ 0x55…] [error] …`), so this is searched for, not anchored.
+_LEVEL_RE = re.compile(r"\[(fatal|error|panic|warning|info|verbose|debug|trace)\]")
+_VIDEO_RE = re.compile(r"Stream #\d+:\d+.*?:\s*Video:\s*([A-Za-z0-9_]+)")
+
+
+def match_video_codec(line: str) -> str:
+    """The video codec named in one ffmpeg log line, or "" -- allow-list only.
+
+    Pure and separately testable on purpose: the security property here is that a fabricated
+    stderr line cannot put arbitrary text into `Session.public()`, and that property is only
+    checkable if the matcher can be handed a hostile line directly.
+    """
+    m = _VIDEO_RE.search(line or "")
+    if not m:
+        return ""
+    token = m.group(1).lower()
+    return token if token in VIDEO_CODECS else ""
+
+
+#: Same rules as `VIDEO_CODECS`, for the audio side, and published by `public()` -- see the note
+#: there. AC-3 and E-AC-3 are not merely the "video plays, no sound" complaint: an MSE build that
+#: refuses the audio codec appends nothing at all, so the picture stops too, and the reading that
+#: separates that from a broken tuner is this one.
+AUDIO_CODECS = frozenset({
+    "aac", "ac3", "eac3", "mp2", "mp3", "opus", "vorbis", "flac", "pcm_s16le", "dts", "truehd",
+})
+_AUDIO_RE = re.compile(r"Stream #\d+:\d+.*?:\s*Audio:\s*([A-Za-z0-9_]+)")
+
+
+def _match_audio_codec(line: str) -> str:
+    m = _AUDIO_RE.search(line or "")
+    if not m:
+        return ""
+    token = m.group(1).lower()
+    return token if token in AUDIO_CODECS else ""
+
+
+# ---------------------------------------------------------------- AES-128 HLS
+#
+# Encrypted HLS used to be refused outright, and the refusal was honest but it was also wrong
+# about the facts: `cryptography` is present on this box as a Debian package, AES-128-CBC
+# segment decryption is thirty lines, and a large share of ordinary IPTV -- not DRM, just a
+# panel using the standard `#EXT-X-KEY:METHOD=AES-128` -- was being turned away by it. What is
+# genuinely out of reach is SAMPLE-AES and anything with a KEYFORMAT, and those are still
+# refused by name (see `SessionManager._reject_unsupported_encryption`).
+#
+# Imported lazily and tolerantly: if the package ever goes missing this module must still
+# import and every unencrypted stream must still play. An encrypted one then gets the old
+# honest refusal back, rather than an ImportError at request time.
+
+def _aes_cbc_decrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
+    try:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    except Exception:                                     # pragma: no cover - packaging
+        raise TunerError("this stream is AES-128 encrypted and the AES library is not "
+                         "installed on this machine") from None
+    dec = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+    return dec.update(data) + dec.finalize()
+
+
+def _strip_pkcs7(plain: bytes) -> bytes:
+    """Remove PKCS#7 padding if it is there, and leave the data alone if it is not.
+
+    Lenient on purpose. The padding is only meaningful on the final block of a *complete*
+    segment, and a live segment that was truncated in transit has no valid padding -- refusing
+    it would drop a segment ffmpeg could otherwise have used most of. This is safe here only
+    because the caller separately proves the decrypted bytes are a transport stream; on its own,
+    lenient unpadding of a wrong-key decryption strips a random number of random bytes and
+    reports success.
+    """
+    if not plain:
+        return plain
+    pad = plain[-1]
+    if 1 <= pad <= 16 and len(plain) >= pad and plain[-pad:] == bytes([pad]) * pad:
+        return plain[:-pad]
+    return plain
+
+
+def _decrypt_segment(blob: bytes, key: bytes, iv: bytes) -> bytes:
+    if len(blob) % 16:
+        # Not a judgement call: AES-CBC ciphertext is a whole number of blocks. A segment that
+        # is not says the transfer was truncated or the segment was never encrypted.
+        raise TunerError("an encrypted HLS segment was not a whole number of AES blocks")
+    return _strip_pkcs7(_aes_cbc_decrypt(key, iv, blob))
+
+
+def _segment_iv(seg: HlsSegment) -> bytes:
+    """The initialisation vector for one segment.
+
+    RFC 8216 §5.2: if `#EXT-X-KEY` carries an `IV` attribute, use it; otherwise the media
+    sequence number of the segment, as a 128-bit big-endian integer. Getting the fallback wrong
+    is invisible -- it decrypts to noise exactly like a wrong key would.
+    """
+    raw = (seg.key.iv or "").strip().strip('"')
+    if not raw:
+        return seg.sequence.to_bytes(16, "big")
+    if raw[:2].lower() == "0x":
+        raw = raw[2:]
+    try:
+        iv = bytes.fromhex(raw)
+    except ValueError:
+        raise TunerError("the HLS key IV is not hexadecimal") from None
+    if len(iv) != 16:
+        raise TunerError(f"the HLS key IV is {len(iv)} bytes; AES-128-CBC needs 16")
+    return iv
+
+
+_TOKEN_OK = re.compile(r"[^A-Za-z0-9 ._:+/-]")
+
+
+def _safe_token(text: str) -> str:
+    """A third-party token made safe to put in a message shown to a visitor.
+
+    METHOD and KEYFORMAT come out of a playlist written by somebody else. They are named in
+    refusals because "encrypted with SAMPLE-AES" is a far more useful sentence than
+    "encrypted", but they are not passed through as text.
+    """
+    return _TOKEN_OK.sub("", (text or ""))[:40] or "(unnamed)"
 
 
 class TunerError(Exception):
@@ -136,12 +356,30 @@ class Session:
     transcoder_error: str | None = None
     bytes_in: int = 0
     mode: str = "direct"             # direct | hls  -- what the upstream turned out to be
+    #: The video codec ffmpeg found on the input, or "". **Only ever a token from
+    #: `VIDEO_CODECS`** -- see `match_video_codec`. That constraint is what lets it be published
+    #: at all: it comes out of ffmpeg's stderr, which is the one string in this object written
+    #: by a program we do not control, and an allow-listed token cannot be a credential.
+    vcodec: str = ""
+    #: The audio codec, same rules. Not currently published; see `public()`.
+    acodec: str = ""
 
     def public(self) -> dict:
         """What a visitor may see. Deliberately has no field that could hold a credential.
 
         `error` is either one of our own origin-only messages or a fixed sentence. It is never
         ffmpeg's stderr and never an upstream library's exception text.
+
+        `vcodec` and `acodec` are the two fields here whose values originate in ffmpeg's output,
+        and they are safe for exactly one reason: they are not ffmpeg's text, they are tokens
+        from `VIDEO_CODECS` / `AUDIO_CODECS` that ffmpeg's text was matched against. Anything
+        unrecognised becomes "".
+
+        The reason `vcodec` is published at all: a session can be `live`, with a playlist, with
+        segments being served, and still show the visitor a black rectangle, because the stream
+        is HEVC and no browser decodes HEVC in MSE. **A client must read `vcodec` even when
+        `state == "live"`.** It is the only signal that separates "working" from "working, and
+        unwatchable here".
         """
         error = self.error
         if error is None and self.state == "failed":
@@ -152,12 +390,73 @@ class Session:
             "state": self.state,
             "error": error,
             "mode": self.mode,
+            "vcodec": self.vcodec,
+            # `acodec` IS published now, and the docstring above no longer says otherwise.
+            #
+            # It was parsed and withheld on the grounds that an unused field is a field nobody
+            # is checking. That was the wrong call and a measured failure says so: a channel
+            # reported `state: live`, `vcodec: h264`, 87 MB pulled from the provider over five
+            # minutes and every indicator on the box green, while the browser decoded ZERO
+            # frames and the page had nothing to say. An MSE build that will not take AC-3 --
+            # `MediaSource.isTypeSupported('video/mp2t; codecs="avc1.42E01E,ac-3"')` is false
+            # on the Chrome in this repo's test path -- fails to append the buffer, and a page
+            # that can only see `vcodec` reports a perfectly healthy h264 stream over a black
+            # rectangle. The audio codec was the missing half of that diagnosis.
+            #
+            # Same safety property as `vcodec`, for the same reason: this is not ffmpeg's text,
+            # it is a token from `AUDIO_CODECS` that ffmpeg's text was matched against, and
+            # anything unrecognised becomes "". A fabricated stderr line cannot get through it.
+            "acodec": self.acodec,
             "playlist": f"stream/{self.id}/{PLAYLIST_NAME}",
             "age_s": round(time.monotonic() - self.created, 1),
             "bytes_in": self.bytes_in,
             "idle_timeout_s": IDLE_TIMEOUT,
             "max_lifetime_s": MAX_LIFETIME,
+            # How many segments the playlist actually lists, and how long each one runs.
+            #
+            # Published because `state == "live"` is not sufficient for a client that has to
+            # decide when to start playing. A playlist file exists before it names a segment, so
+            # a client handing it to a player at first sight gets a manifest with nothing in it.
+            # And `segment_s` is the number nobody expects: `-hls_time 2` asks for 2 s segments,
+            # but `-c copy` can only cut on a keyframe, so a source with a 10 s GOP yields 10 s
+            # segments. A player that waits for three of those waits half a minute. It cannot
+            # make that trade sensibly without being told the real duration.
+            "segments": self.segment_count,
+            "segment_s": self.segment_seconds,
         }
+
+    @property
+    def segment_count(self) -> int:
+        """Segments named by the playlist -- not files on disk.
+
+        The distinction matters: `hls_flags temp_file` means a segment exists as `.tmp` before it
+        is renamed, and `delete_segments` removes it from disk while the playlist may still be
+        being rewritten. The playlist is what a player reads, so the playlist is what is counted.
+        """
+        try:
+            return sum(1 for ln in (self.dir / PLAYLIST_NAME).read_text().splitlines()
+                       if ln.strip().endswith(".ts"))
+        except OSError:
+            return 0
+
+    @property
+    def segment_seconds(self) -> float:
+        """Duration of the last segment the playlist names, from its own `#EXTINF`. 0 if none.
+
+        Read rather than assumed. `HLS_SEGMENT_SECONDS` is what ffmpeg was asked for and is not
+        what a stream-copied long-GOP source produces.
+        """
+        try:
+            lines = (self.dir / PLAYLIST_NAME).read_text().splitlines()
+        except OSError:
+            return 0.0
+        for ln in reversed(lines):
+            if ln.startswith("#EXTINF:"):
+                try:
+                    return round(float(ln.split(":", 1)[1].split(",")[0]), 3)
+                except (ValueError, IndexError):
+                    return 0.0
+        return 0.0
 
     @property
     def ready(self) -> bool:
@@ -254,7 +553,14 @@ class SessionManager:
 
     def _spawn(self, s: Session) -> subprocess.Popen:
         cmd = [
-            FFMPEG, "-hide_banner", "-nostdin", "-loglevel", "error",
+            FFMPEG, "-hide_banner", "-nostdin",
+            # `level+info`, not `error`. `info` is what prints the input dump -- the
+            # `Stream #0:0: Video: hevc` line that is the only way to find out that a stream
+            # copying perfectly is one no browser can decode. `level+` prefixes every line with
+            # its severity in brackets, which is what keeps `transcoder_error` meaning "the last
+            # error" rather than "the last line ffmpeg printed"; without it, raising the
+            # verbosity would have buried every real failure under progress output.
+            "-loglevel", "level+info",
             # Input-side protocol allow-list. Binds to the input that follows, and means a
             # malformed or hostile stream cannot talk ffmpeg into opening a file or a URL.
             # There is no `file` and no `http` here on purpose.
@@ -288,15 +594,38 @@ class SessionManager:
         return proc
 
     def _drain_stderr(self, s: Session, proc: subprocess.Popen) -> None:
-        """Keep ffmpeg's last complaint, scrubbed, and never write it to a log unscrubbed.
+        """Read ffmpeg's stderr for two things: the codecs, and the last real error.
 
         ffmpeg quotes its input in some messages. Our input is `pipe:0`, so there should be no
         URL in there at all -- this runs the scrubber anyway, because "should be" is not a
         security control.
+
+        Two separate extractions, and they are kept separate on purpose:
+
+        * the **codec** is matched against `VIDEO_CODECS` and never taken as text, so a stream
+          whose metadata is hostile cannot write into a published field;
+        * `transcoder_error` keeps only lines marked `[error]`, `[fatal]` or `[panic]`. At
+          `-loglevel error` every line was an error, so "last line" and "last error" were the
+          same string. They no longer are, and a field that quietly became "frame= 40 fps=..."
+          would have made every failure unexplainable.
         """
         try:
             for raw in iter(proc.stderr.readline, b""):
-                line = s.scrub(raw.decode("utf-8", "replace").strip())
+                text = raw.decode("utf-8", "replace").strip()
+                if not text:
+                    continue
+                # Codec first: the input dump is `[info]`, so it must be read before the
+                # severity filter throws info lines away.
+                vcodec = match_video_codec(text)
+                if vcodec and not s.vcodec:
+                    s.vcodec = vcodec
+                acodec = _match_audio_codec(text)
+                if acodec and not s.acodec:
+                    s.acodec = acodec
+                m = _LEVEL_RE.search(text)
+                if m and m.group(1) not in ("error", "fatal", "panic"):
+                    continue
+                line = s.scrub(_LEVEL_RE.sub("", text).strip())
                 if line:
                     s.transcoder_error = line[:200]
         except Exception:
@@ -337,11 +666,38 @@ class SessionManager:
             except Exception:
                 pass
 
-    def _write(self, s: Session, chunk: bytes) -> None:
-        s.proc.stdin.write(chunk)
-        s.bytes_in += len(chunk)
+    def _account(self, s: Session, n: int) -> None:
+        """Charge `n` bytes of ingress to the session and enforce the cap.
+
+        Separate from `_write` because on the encrypted path bytes are *read* long before they
+        are written: a segment is buffered whole, decrypted, then written. Charging on write
+        there would let an unbounded amount of ciphertext through before the cap noticed.
+        """
+        s.bytes_in += n
         if s.bytes_in > MAX_SESSION_BYTES:
             raise TunerError("session reached its data cap")
+
+    def _write(self, s: Session, chunk: bytes) -> None:
+        """Write upstream bytes straight through. Read and written are the same bytes here."""
+        s.proc.stdin.write(chunk)
+        self._account(s, len(chunk))
+
+    def _feed(self, s: Session, chunk: bytes) -> None:
+        """Write bytes that were already charged as ingress (a decrypted segment)."""
+        s.proc.stdin.write(chunk)
+
+    @staticmethod
+    def _read_a_little(resp) -> bytes:
+        """A bit more of a response body, for an error excerpt. Never raises, never blocks long.
+
+        `read1`, not `read`: `read(n)` waits for n bytes or EOF, so a provider dribbling its
+        error page would hold this thread indefinitely. One underlying read is plenty for a
+        sentence.
+        """
+        try:
+            return resp.read1(safefetch.ERROR_BODY_BYTES)
+        except Exception:
+            return b""
 
     def _pump_inner(self, s: Session) -> None:
         resp, conn, target = safefetch.open_stream(s.url, s.policy)
@@ -360,6 +716,17 @@ class SessionManager:
                 s.mode = "hls"
                 return self._pump_hls(s, target, body)
 
+            # Not a playlist. Before assuming it is video, check whether the provider answered
+            # with a page *about* the stream -- "channel offline", "maximum connections
+            # reached", "subscription expired" -- which arrives with HTTP 200 more often than
+            # with an error status. Feeding that to ffmpeg produces a ten-second wait and a
+            # message about our transcoder, which is the wrong bug reported to the wrong person.
+            if looks_like_error_page(ctype, head):
+                said = safefetch.text_excerpt(head + self._read_a_little(resp), s.scrub)
+                raise TunerError(
+                    f"the provider answered with a page, not a stream: {said}" if said
+                    else "the provider answered with a web page, not a stream")
+
             s.mode = "direct"
             s.state = "live"
             self._write(s, head)
@@ -377,9 +744,9 @@ class SessionManager:
     def _pump_hls(self, s: Session, target: safefetch.Target, body: bytes) -> None:
         """Follow an upstream HLS playlist, concatenating its segments into ffmpeg's stdin.
 
-        Every playlist and every segment URL goes back through `safefetch.open_stream`, so the
-        SSRF rules are re-applied to each one. A playlist is a list of URLs supplied by a
-        third party and is exactly as untrusted as the URL the visitor typed.
+        Every playlist URL, every segment URL **and every AES key URI** goes back through
+        `safefetch`, so the SSRF rules are re-applied to each one. A playlist is a list of URLs
+        supplied by a third party and is exactly as untrusted as the URL the visitor typed.
         """
         pl = parse_hls(body.decode("utf-8", "replace"))
         if pl.is_master:
@@ -389,12 +756,30 @@ class SessionManager:
             under = [v for v in pl.variants if 0 < v.bandwidth <= ceiling]
             pick = (max(under, key=lambda v: v.bandwidth) if under
                     else min(pl.variants, key=lambda v: v.bandwidth or 1 << 62))
-            body, _ct, target = safefetch.fetch(target.join(pick.uri), s.policy)
+            body, ct, target = safefetch.fetch(target.join(pick.uri), s.policy)
+            # The same check the direct path makes, for the same reason: a provider answering a
+            # dead variant with an HTML page at 200 would otherwise surface as the far weaker
+            # "upstream playlist contained no segments", which describes our parser rather than
+            # their outage.
+            if looks_like_error_page(ct, body[:4096]):
+                said = safefetch.text_excerpt(body[:safefetch.ERROR_BODY_BYTES], s.scrub)
+                raise TunerError(
+                    f"the provider answered with a page, not a playlist: {said}" if said
+                    else "the provider answered with a web page, not a playlist")
             pl = parse_hls(body.decode("utf-8", "replace"))
-        if pl.encrypted:
-            raise TunerError("this stream is AES-encrypted; the tuner cannot decrypt it")
         if not pl.segments:
             raise TunerError("upstream playlist contained no segments")
+        # Refuse unsupported encryption **before** committing to playback, not on reaching the
+        # first segment we cannot handle -- a session that plays for two seconds and then dies
+        # is harder to diagnose than one that never starts and says why.
+        self._reject_unsupported_encryption(pl)
+        keys: dict[str, bytes] = {}      # key URI -> the 16 bytes at the other end of it
+        #: Key URIs whose output has been confirmed to be a transport stream. Per *key*, not
+        #: once per session: HLS rotates keys mid-stream -- which is why `HlsKey` hangs off the
+        #: segment -- so a single flag would check the first key and wave the second one
+        #: through, and a wrong second key is exactly the silent corruption the check exists
+        #: to prevent.
+        checked: set[str] = set()
 
         # The absolute URL of the media playlist, kept as a string. Segment URIs and every
         # refresh resolve against *this*, not against whatever the last redirect left in
@@ -418,16 +803,62 @@ class SessionManager:
             for seg in [g for g in pl.segments if g.sequence >= next_seq]:
                 if s.stop.is_set():
                     return
+                # The key first, before a byte of the segment is fetched: a key server that is
+                # down, or a key that is not 16 bytes, should fail before the bandwidth is
+                # spent, and the failure should name the key rather than the segment.
+                key = (self._segment_key(s, playlist_url, seg.key, keys)
+                       if seg.key.encrypted else None)
                 # Re-validated per segment: a playlist is a list of URLs written by a third
                 # party and is exactly as untrusted as the one the visitor typed.
                 resp, conn, _t = safefetch.open_stream(
                     safefetch.validate_url(playlist_url, s.policy).join(seg.uri), s.policy)
                 try:
-                    while True:
-                        chunk = resp.read(65536)
-                        if not chunk:
-                            break
-                        self._write(s, chunk)
+                    seg_ctype = (resp.getheader("Content-Type") or "").split(";")[0] \
+                        .strip().lower()
+                    first = resp.read(4096)
+                    # A segment can be an error page too. A provider whose channel died between
+                    # writing the playlist and serving the segment answers 200 with HTML, and
+                    # that used to go straight into ffmpeg.
+                    if looks_like_error_page(seg_ctype, first):
+                        said = safefetch.text_excerpt(
+                            first + self._read_a_little(resp), s.scrub)
+                        raise TunerError(
+                            f"the provider answered a segment with a page: {said}" if said
+                            else "the provider answered a segment with a web page")
+                    if key is None:
+                        self._write(s, first)
+                        while True:
+                            chunk = resp.read(65536)
+                            if not chunk:
+                                break
+                            self._write(s, chunk)
+                    else:
+                        blob = bytearray()
+                        self._account(s, len(first))
+                        blob += first
+                        while True:
+                            chunk = resp.read(65536)
+                            if not chunk:
+                                break
+                            # Charged on read: on this path the bytes are buffered before they
+                            # are written, so charging on write would not bound ingress.
+                            self._account(s, len(chunk))
+                            blob += chunk
+                            if len(blob) > MAX_SEGMENT_BYTES:
+                                raise TunerError("an HLS segment was implausibly large")
+                        plain = _decrypt_segment(bytes(blob), key, _segment_iv(seg))
+                        if seg.key.uri not in checked:
+                            # A wrong key does not fail -- AES-CBC turns it into 16-byte blocks
+                            # of noise, PKCS7 unpadding cheerfully strips a random tail, and
+                            # ffmpeg receives garbage and reports that *it* could not read the
+                            # source. Check the first segment of each key, so a key mismatch is
+                            # reported as a key mismatch.
+                            if ts_sync_offset(plain[:4096]) < 0:
+                                raise TunerError(
+                                    "the segment did not decrypt to a transport stream; the "
+                                    "HLS key does not fit this stream")
+                            checked.add(seg.key.uri)
+                        self._feed(s, plain)
                 finally:
                     conn.close()
                 next_seq = seg.sequence + 1
@@ -439,6 +870,63 @@ class SessionManager:
                 return
             body, _ct, _t = safefetch.fetch(playlist_url, s.policy)
             pl = parse_hls(body.decode("utf-8", "replace"))
+            # Re-checked on every refresh, not only at the start: HLS rotates keys, and a
+            # playlist that begins in the clear or in AES-128 can introduce SAMPLE-AES or a
+            # KEYFORMAT halfway through. Checking once would leave that case decrypting
+            # something it must not.
+            self._reject_unsupported_encryption(pl)
+
+    # ------------------------------------------------------------------ HLS encryption
+
+    def _reject_unsupported_encryption(self, pl: HlsPlaylist) -> None:
+        """Refuse, with the reason, anything we must not attempt to decrypt.
+
+        This is an **allow-list on METHOD**, and that shape is the point. The obvious spelling
+        -- "refuse SAMPLE-AES, decrypt everything else" -- routes `AES-256`, `SAMPLE-AES-CTR`
+        and whatever a panel invents next into a CBC decryptor that will not fail, will produce
+        noise, and will hand that noise to ffmpeg. Silent corruption replacing an honest refusal
+        is a worse outcome than the refusal, and it is much harder to diagnose.
+
+        The two cases worth naming:
+
+        * **SAMPLE-AES** encrypts only the *payload* of certain NAL units and leaves the
+          container in the clear. Decrypting the whole segment as one CBC stream destroys the
+          parts that were never encrypted. It would look like it worked.
+        * **KEYFORMAT other than `identity`** is DRM -- `urn:uuid:edef8ba9-...` is Widevine,
+          `com.apple.streamingkeydelivery` is FairPlay -- and the METHOD still reads `AES-128`.
+          The URI leads to a licence server, not to sixteen bytes of key.
+        """
+        for key in pl.keys:
+            fmt = (key.keyformat or "identity").strip('"')
+            if fmt.lower() != "identity":
+                raise TunerError(
+                    "this stream is DRM-protected (" + _safe_token(fmt) + "); the tuner "
+                    "decrypts plain AES-128 HLS only and will not pretend otherwise")
+            if key.method != "AES-128":
+                raise TunerError(
+                    f"this stream is encrypted with {_safe_token(key.method)}, which the tuner "
+                    f"does not implement; it decrypts AES-128 only, because decrypting the "
+                    f"others as if they were AES-128 produces corruption rather than an error")
+            if not key.uri:
+                raise TunerError("this stream is AES-128 encrypted but names no key URI")
+
+    def _segment_key(self, s: Session, playlist_url: str, key: HlsKey,
+                     cache: dict[str, bytes]) -> bytes:
+        """The 16 key bytes for one segment, fetched once per URI and then cached.
+
+        The key URI is a URL supplied by a third party in a playlist and goes through
+        `safefetch` like everything else -- a key URI pointing at `http://127.0.0.1:8800/` is
+        the same SSRF as a segment URI pointing there. It is resolved against the *playlist*
+        URL, not against whatever the last segment's redirects left behind.
+        """
+        if key.uri in cache:
+            return cache[key.uri]
+        key_url = safefetch.validate_url(playlist_url, s.policy).join(key.uri)
+        body, _ct, _t = safefetch.fetch(key_url, s.policy)
+        if len(body) != 16:
+            raise TunerError(f"the HLS key is {len(body)} bytes; AES-128 needs exactly 16")
+        cache[key.uri] = body
+        return body
 
     # ------------------------------------------------------------------ reaping
 
@@ -528,8 +1016,11 @@ class SessionManager:
             self._reaper.start()
 
     def _reap_loop(self) -> None:
+        # 2 s, not 5. The tick is added to `IDLE_TIMEOUT` in the worst case, and on a
+        # two-slot surface that latency is the difference between "busy" and "broken".
+        # The loop costs a dict scan; there is nothing to save by sleeping longer.
         while True:
-            time.sleep(5)
+            time.sleep(2)
             try:
                 if not self._sessions:
                     return          # nothing to watch; `_ensure_reaper` restarts us on demand

@@ -15,7 +15,7 @@
 <meta property="og:image" content="/mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0e100f">
-<link rel="stylesheet" href="/symoneural.css?v=49b346c269">
+<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 </head>
 <body>
@@ -72,7 +72,12 @@
       </p>
       <div class="actions">
         <a class="cta" href="/build.html">Have one built &rarr;</a>
-        <a class="cta ghost" href="#rack">See it running</a>
+        <!-- `/livestack`, NOT `#rack`. This block is copied verbatim into overview.html by
+             build_split.py, and that page has no #rack section -- the rack lives on its own
+             page since the split. The link therefore did nothing at all on the page it is
+             most often read from: `/` 302s to `/overview`, so the masthead a visitor sees is
+             almost always the copied one. A path works from both. -->
+        <a class="cta ghost" href="/livestack">See it running</a>
       </div>
     </div>
 
@@ -90,23 +95,23 @@
       </p>
     </div>
 
-    <a class="gart" href="/art-fast.png?v=153f708e54" title="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-prompt="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-seed="1195" data-secs="11.32" aria-label="Open the full render, watermark and all: long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" style="--rot:-1.5deg">
+    <a class="gart" href="/art-fast.png?v=deec0e1fe2" title="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-prompt="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-seed="1195" data-secs="11.32" aria-label="Open the full render, watermark and all: long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" style="--rot:-1.5deg">
       <span class="gwrap">
-        <img src="/art-fast.png?v=153f708e54" alt="Long-exposure light trails down a dark data centre aisle, rendered by SyMoNeuRaL Image"
+        <img src="/art-fast.png?v=deec0e1fe2" alt="Long-exposure light trails down a dark data centre aisle, rendered by SyMoNeuRaL Image"
              loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">What if your data never<br>left the building?</span>
-      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 1195 &middot; 11.32s on an RTX&nbsp;5070&nbsp;Ti</span>
+      <span class="gprov">SymonImage F1 q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 1195 &middot; 11.32s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
-    <a class="gart" href="/art-yours.png?v=7d50ce5d98" title="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-prompt="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-seed="6730" data-secs="11.17" aria-label="Open the full render, watermark and all: a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" style="--rot:1.5deg">
+    <a class="gart" href="/art-yours.png?v=9f411159df" title="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-prompt="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-seed="6730" data-secs="11.17" aria-label="Open the full render, watermark and all: a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" style="--rot:1.5deg">
       <span class="gwrap">
-        <img src="/art-yours.png?v=7d50ce5d98" alt="A hand holding a small labelled hard drive over a dark desk, rendered by SyMoNeuRaL Image"
+        <img src="/art-yours.png?v=9f411159df" alt="A hand holding a small labelled hard drive over a dark desk, rendered by SyMoNeuRaL Image"
              loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Who owns your model when<br>the invoice stops?</span>
-      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 6730 &middot; 11.17s on an RTX&nbsp;5070&nbsp;Ti</span>
+      <span class="gprov">SymonImage F1 q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 6730 &middot; 11.17s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
   </div>
 </div>
@@ -137,14 +142,14 @@
   </div>
 
   <div class="rackrow">
-    <a class="gart" href="/art-cost.png?v=190696ab66" title="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-prompt="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-seed="8841" data-secs="11.2" aria-label="Open the full render, watermark and all: a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" style="--rot:-1.5deg">
+    <a class="gart" href="/art-cost.png?v=058912fd53" title="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-prompt="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-seed="8841" data-secs="11.2" aria-label="Open the full render, watermark and all: a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" style="--rot:-1.5deg">
       <span class="gwrap">
-        <img src="/art-cost.png?v=190696ab66" alt="A single graphics card resting on a workbench, rendered by SyMoNeuRaL Image"
+        <img src="/art-cost.png?v=058912fd53" alt="A single graphics card resting on a workbench, rendered by SyMoNeuRaL Image"
              loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Do you actually need<br>a data centre?</span>
-      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 8841 &middot; 11.2s on an RTX&nbsp;5070&nbsp;Ti</span>
+      <span class="gprov">SymonImage F1 q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 8841 &middot; 11.2s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
 
     <div class="rack">
@@ -183,14 +188,14 @@
       </div>
     </div>
 
-    <a class="gart" href="/art-build.png?v=4bbc63f525" title="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-prompt="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-seed="3364" data-secs="11.23" aria-label="Open the full render, watermark and all: an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" style="--rot:1.5deg">
+    <a class="gart" href="/art-build.png?v=275b178ee2" title="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-prompt="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-seed="3364" data-secs="11.23" aria-label="Open the full render, watermark and all: an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" style="--rot:1.5deg">
       <span class="gwrap">
-        <img src="/art-build.png?v=4bbc63f525" alt="An engineer's desk with an open server chassis and a multimeter, rendered by SyMoNeuRaL Image"
+        <img src="/art-build.png?v=275b178ee2" alt="An engineer's desk with an open server chassis and a multimeter, rendered by SyMoNeuRaL Image"
              loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Does it actually know how<br>your business works?</span>
-      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 3364 &middot; 11.23s on an RTX&nbsp;5070&nbsp;Ti</span>
+      <span class="gprov">SymonImage F1 q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 3364 &middot; 11.23s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
   </div>
 
@@ -199,6 +204,8 @@
       One card, and the chat and image weight sets do not both fit in 15.92&nbsp;GiB &mdash; so a
       lock hands the GPU to exactly one surface at a time. RavenCalc is the exception: it is
       SymPy on the CPU, so it is always green.
+      Every unit above is a SyMoNeuRaL surface built on permissively licensed components;
+      <a href="/credits.html">the full attribution is on one page</a>.
     </p>
   </div>
 </section>

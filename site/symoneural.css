@@ -10,13 +10,52 @@
     --amber: #ffab3d;
     --panel2: #1c221e;
     --max: 1120px;
+
+    /* ---------- THE TYPE SCALE: SEVEN SIZES, AND ONLY SEVEN ----------
+       Garrett: "fonts sizes should follow a strict 4 or 5 size configuration
+       setting", settled at six steps plus a floor. Before this block the site
+       rendered 28 distinct sizes across fifteen pages, two of them below the
+       10.5px legibility floor (.mod .tag at 9.5px, .cu-railhead at 10px) and
+       two of them nobody had chosen at all -- twelve declarations were written
+       `font:600 12.5px/1 inherit`, which is INVALID (`inherit` is a CSS-wide
+       keyword, not a font-family, so the whole declaration is dropped) and left
+       .ns-tab at the inherited 14.1px and every button at Chrome's 13.333px
+       control default. Those are repaired; do not write `inherit` as the family
+       inside a `font:` shorthand.
+
+       EVERY font-size in this file references one of these seven. Adding an
+       eighth here, or writing a raw px size anywhere below, defeats the point:
+       the scale is meant to be enforceable, and it is checked by re-running the
+       type audit and counting the distinct sizes the DOM reports.
+
+         --t1  display / hero headline
+         --t2  page headings
+         --t3  section headings and large readings
+         --t4  lead paragraphs, emphasis, and the body default
+         --t5  body -- the workhorse
+         --t6  secondary text, captions, unit detail lines
+         --t7  the floor: tags, badges, small labels. NOTHING RENDERS BELOW IT.
+
+       --t4 is 14.5px rather than 15px on purpose. The header and footer wordmark
+       carries `<b style="font-size:14.5px">` as an INLINE style in seventeen HTML
+       files, and an inline style cannot be overridden from here without
+       `!important`. Landing the token on the value already in the markup makes
+       those seventeen conformant by construction instead of by a specificity
+       fight. It is still larger than the 14.1px body it replaces. */
+    --t1: 40px;
+    --t2: 28px;
+    --t3: 20px;
+    --t4: 14.5px;
+    --t5: 12.5px;
+    --t6: 11.5px;
+    --t7: 10.5px;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth; scroll-padding-top:92px}
   @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
   body{
     margin:0; background:var(--bg); color:var(--fg);
-    font:14.1px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
+    font:var(--t4)/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
   a{color:inherit}
@@ -53,12 +92,12 @@
     border-radius:0; animation:none; font-style:normal; color:var(--accent);
   }
   nav{margin-left:auto; display:flex; align-items:center; gap:24px}
-  nav a{color:var(--dim); text-decoration:none; font-size:12.8px}
+  nav a{color:var(--dim); text-decoration:none; font-size:var(--t5)}
   nav a:hover{color:var(--fg)}
   a:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:4px}
   .cta{
     display:inline-flex; align-items:center; gap:8px; text-decoration:none;
-    background:var(--accent); color:var(--accent-ink); font-weight:650; font-size:12.8px;
+    background:var(--accent); color:var(--accent-ink); font-weight:650; font-size:var(--t5);
     padding:9px 18px; border-radius:999px; border:1px solid transparent;
     transition:transform .12s ease, background .12s ease;
   }
@@ -85,15 +124,15 @@
   }
   .hero .wrap{position:relative}
   .eyebrow{
-    font-size:12px; letter-spacing:.17em; text-transform:uppercase;
+    font-size:var(--t6); letter-spacing:.17em; text-transform:uppercase;
     color:var(--accent); margin:0 0 18px; font-weight:600;
   }
   .hero h1{
-    margin:0; font-size:clamp(28.2px,4.6vw,44px); line-height:1.08;
+    margin:0; font-size:clamp(var(--t2),4.6vw,var(--t1)); line-height:1.08;
     letter-spacing:-.022em; font-weight:680; max-width:20ch;
   }
   .hero h1 i{font-style:normal; color:var(--accent)}
-  .lede{margin:19.4px 0 0; color:var(--dim); font-size:15.4px; max-width:66ch}
+  .lede{margin:19.4px 0 0; color:var(--dim); font-size:var(--t4); max-width:66ch}
   .actions{display:flex; gap:12px; flex-wrap:wrap; margin-top:32px}
 
   /* ---------- sections ---------- */
@@ -101,11 +140,11 @@
   /* the rack is the first thing under the hero -- pull it up to meet it */
   #rack{padding-top:24px; border-top:none}
   .shead{
-    margin:0 0 10px; font-size:12px; letter-spacing:.17em; text-transform:uppercase;
+    margin:0 0 10px; font-size:var(--t6); letter-spacing:.17em; text-transform:uppercase;
     color:var(--accent); font-weight:600; display:flex; align-items:center; gap:10px;
   }
   .shead img{width:22px; height:22px}
-  section h2{margin:0; font-size:clamp(20.2px,2.9vw,27.3px); letter-spacing:-.016em; font-weight:660}
+  section h2{margin:0; font-size:clamp(var(--t3),2.9vw,var(--t2)); letter-spacing:-.016em; font-weight:660}
   .sub{margin:14px 0 0; color:var(--dim); max-width:72ch}
 
   /* ---------- grids & cards ---------- */
@@ -121,41 +160,41 @@
   }
   .card:hover{border-color:#3a453e}
   .card img.ico{width:38px; height:38px; margin-bottom:15px}
-  .card h3{margin:0 0 8px; font-size:14.1px; font-weight:645; letter-spacing:-.005em}
-  .card p{margin:0; color:var(--dim); font-size:12.8px; line-height:1.62}
+  .card h3{margin:0 0 8px; font-size:var(--t4); font-weight:645; letter-spacing:-.005em}
+  .card p{margin:0; color:var(--dim); font-size:var(--t5); line-height:1.62}
   .card p+p{margin-top:9px}
   .card code{
     background:var(--panel2); border:1px solid var(--line); border-radius:5px;
-    padding:1px 6px; font:12.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--accent);
+    padding:1px 6px; font:var(--t5) ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:var(--accent);
   }
 
   /* metric tiles */
   .metric{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px 22px}
-  .metric dt{margin:0; font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--faint); font-weight:650}
-  .metric dd{margin:9px 0 0; font-size:23.8px; font-weight:660; letter-spacing:-.022em; font-variant-numeric:tabular-nums; line-height:1.1}
-  .metric dd u{text-decoration:none; font-size:12.3px; font-weight:500; color:var(--dim); margin-left:5px}
-  .metric small{display:block; margin-top:9px; color:var(--faint); font-size:12.5px; line-height:1.5}
+  .metric dt{margin:0; font-size:var(--t7); letter-spacing:.13em; text-transform:uppercase; color:var(--faint); font-weight:650}
+  .metric dd{margin:9px 0 0; font-size:var(--t3); font-weight:660; letter-spacing:-.022em; font-variant-numeric:tabular-nums; line-height:1.1}
+  .metric dd u{text-decoration:none; font-size:var(--t5); font-weight:500; color:var(--dim); margin-left:5px}
+  .metric small{display:block; margin-top:9px; color:var(--faint); font-size:var(--t5); line-height:1.5}
   .metric.hi dd{color:var(--accent)}
   .metric.warn dd{color:var(--amber)}
 
   /* ---------- data tables ---------- */
   .tw{overflow-x:auto; margin-top:26px; border:1px solid var(--line); border-radius:14px; background:var(--panel)}
   .tw + .tw{margin-top:16px}
-  table{border-collapse:collapse; width:100%; font-size:12.3px; font-variant-numeric:tabular-nums}
+  table{border-collapse:collapse; width:100%; font-size:var(--t5); font-variant-numeric:tabular-nums}
   caption{
     text-align:left; padding:15px 18px 0; color:var(--faint);
-    font-size:11px; letter-spacing:.13em; text-transform:uppercase; font-weight:650;
+    font-size:var(--t7); letter-spacing:.13em; text-transform:uppercase; font-weight:650;
   }
   th,td{text-align:left; padding:12px 18px; border-bottom:1px solid var(--line)}
-  th{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); font-weight:650; background:var(--panel2); white-space:nowrap}
+  th{font-size:var(--t7); letter-spacing:.12em; text-transform:uppercase; color:var(--faint); font-weight:650; background:var(--panel2); white-space:nowrap}
   tbody tr:last-child td{border-bottom:0}
   tbody tr:hover{background:rgba(46,224,138,.04)}
   td.num{white-space:nowrap}
   td b{color:var(--accent); font-weight:645}
   td em{font-style:normal; color:var(--amber)}
   td.k{color:var(--fg); font-weight:560}
-  .tnote{margin:11.4px 0 0; color:var(--faint); font-size:11.4px; max-width:80ch; line-height:1.62}
-  .tnote code{color:var(--dim); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:12.5px}
+  .tnote{margin:11.4px 0 0; color:var(--faint); font-size:var(--t6); max-width:80ch; line-height:1.62}
+  .tnote code{color:var(--dim); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:var(--t5)}
 
   /* ---------- terminal code blocks ---------- */
   pre.code{
@@ -165,7 +204,7 @@
   pre.code .t{
     display:flex; align-items:center; gap:9px; padding:11px 16px;
     border-bottom:1px solid var(--line); background:var(--panel2);
-    font:650 11px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+    font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
     text-transform:uppercase; color:var(--faint);
   }
   pre.code .t s{width:9px; height:9px; border-radius:50%; background:var(--line); text-decoration:none; display:block}
@@ -173,7 +212,7 @@
   pre.code .t s.am{background:var(--amber)}
   pre.code code{
     display:block; padding:18px 20px; overflow-x:auto; white-space:pre;
-    font:11.4px/1.66 ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    font:var(--t6)/1.66 ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
     color:#cfe0d6;
   }
   pre.code .c{color:var(--faint)}
@@ -187,17 +226,17 @@
     border:1px solid rgba(255,171,61,.28); border-left:3px solid var(--amber);
     border-radius:0 12px 12px 0; padding:19px 22px;
   }
-  .callout h3{margin:0 0 8px; font-size:12.3px; color:var(--amber); font-weight:650; letter-spacing:.01em}
-  .callout p{margin:0; color:var(--dim); font-size:12.8px; line-height:1.62}
+  .callout h3{margin:0 0 8px; font-size:var(--t5); color:var(--amber); font-weight:650; letter-spacing:.01em}
+  .callout p{margin:0; color:var(--dim); font-size:var(--t5); line-height:1.62}
   .callout p+p{margin-top:10px}
   .callout strong{color:var(--fg); font-weight:640}
 
   /* ---------- footer ---------- */
   footer{border-top:1px solid var(--line); padding:34px 0 46px; background:var(--panel)}
-  .foot{display:flex; align-items:center; gap:17.6px; flex-wrap:wrap; color:var(--faint); font-size:12.3px}
+  .foot{display:flex; align-items:center; gap:17.6px; flex-wrap:wrap; color:var(--faint); font-size:var(--t5)}
   .foot .logo img{width:22px; height:22px}
   .foot nav{margin-left:auto; display:flex; gap:22px; flex-wrap:wrap}
-  .foot nav a{color:var(--dim); text-decoration:none; font-size:12.3px}
+  .foot nav a{color:var(--dim); text-decoration:none; font-size:var(--t5)}
   .foot nav a:hover{color:var(--accent)}
   @media (max-width:760px){ .foot nav{margin-left:0; width:100%} }
 
@@ -212,7 +251,7 @@
   .stage .head{
     display:flex; align-items:center; gap:10px; padding:12px 18px;
     border-bottom:1px solid var(--line); background:var(--panel2);
-    font:650 11px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+    font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
     text-transform:uppercase; color:var(--faint);
   }
   .stage .head s{width:8px;height:8px;border-radius:50%;background:var(--line);text-decoration:none;display:block}
@@ -225,14 +264,14 @@
   .turn{margin-bottom:18px}
   .turn:last-child{margin-bottom:0}
   .turn .who{
-    font-size:11px; letter-spacing:.13em; text-transform:uppercase;
+    font-size:var(--t7); letter-spacing:.13em; text-transform:uppercase;
     font-weight:650; margin-bottom:6px; color:var(--faint);
   }
   .turn.you .who{color:var(--dim)}
   .turn.bot .who{color:var(--accent)}
-  .turn .msg{font-size:13px; line-height:1.66; color:var(--fg); white-space:pre-wrap; word-wrap:break-word}
+  .turn .msg{font-size:var(--t4); line-height:1.66; color:var(--fg); white-space:pre-wrap; word-wrap:break-word}
   .turn.you .msg{color:var(--dim)}
-  .turn .meta{margin-top:8px; font-size:12px; color:var(--faint); font-variant-numeric:tabular-nums}
+  .turn .meta{margin-top:8px; font-size:var(--t6); color:var(--faint); font-variant-numeric:tabular-nums}
   .caret{display:inline-block; width:8px; height:1.05em; background:var(--accent);
     vertical-align:-2px; animation:pulse 1s steps(2) infinite}
 
@@ -245,7 +284,7 @@
   .composer textarea, .composer input[type=text]{
     flex:1; resize:none; background:var(--bg); color:var(--fg);
     border:1px solid var(--line); border-radius:11px; padding:14px 16px;
-    font:14.1px/1.55 ui-sans-serif,system-ui,sans-serif; min-height:70.4px; max-height:228.8px;
+    font:var(--t4)/1.55 ui-sans-serif,system-ui,sans-serif; min-height:70.4px; max-height:228.8px;
   }
   /* The button should not stretch to the full height of a tall box. */
   .composer .cta{align-self:flex-end; flex:0 0 auto; white-space:nowrap}
@@ -264,26 +303,26 @@
   /* controls panel */
   .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px}
   .panel h3{
-    margin:0 0 14.1px; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    margin:0 0 14.1px; font-size:var(--t7); letter-spacing:.14em; text-transform:uppercase;
     color:var(--faint); font-weight:650;
   }
   .ctl{margin-bottom:17px}
   .ctl:last-child{margin-bottom:0}
   .ctl label{display:flex; justify-content:space-between; align-items:baseline;
-    font-size:11.4px; color:var(--dim); margin-bottom:7px}
-  .ctl label b{color:var(--accent); font-weight:640; font-variant-numeric:tabular-nums; font-size:11.4px}
+    font-size:var(--t6); color:var(--dim); margin-bottom:7px}
+  .ctl label b{color:var(--accent); font-weight:640; font-variant-numeric:tabular-nums; font-size:var(--t6)}
   .ctl input[type=range]{width:100%; accent-color:var(--accent); height:18px}
   .ctl input[type=number], .ctl input[type=text], .ctl select{
     width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line);
-    border-radius:8px; padding:8px 11px; font:11.9px ui-monospace,Menlo,Consolas,monospace;
+    border-radius:8px; padding:8px 11px; font:var(--t6) ui-monospace,Menlo,Consolas,monospace;
   }
   .seg{display:flex; gap:6px}
   .seg button{
     flex:1; background:var(--bg); color:var(--dim); border:1px solid var(--line);
-    border-radius:8px; padding:8px 0; font:600 11.4px ui-sans-serif,system-ui,sans-serif; cursor:pointer;
+    border-radius:8px; padding:8px 0; font:600 var(--t6) ui-sans-serif,system-ui,sans-serif; cursor:pointer;
   }
   .seg button[aria-pressed=true]{background:var(--accent); color:var(--accent-ink); border-color:transparent}
-  .hint{margin:12.3px 0 0; font-size:12px; line-height:1.55; color:var(--faint)}
+  .hint{margin:12.3px 0 0; font-size:var(--t6); line-height:1.55; color:var(--faint)}
 
   button.cta{cursor:pointer; font-family:inherit}
   button.cta[disabled]{opacity:.45; cursor:not-allowed; transform:none}
@@ -291,13 +330,13 @@
   /* image results */
   .shot{border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--bg)}
   .shot img{width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:var(--panel2)}
-  .shot .cap{padding:11px 12.3px; font-size:12px; color:var(--faint); line-height:1.6;
+  .shot .cap{padding:11px 12.3px; font-size:var(--t6); color:var(--faint); line-height:1.6;
     font-variant-numeric:tabular-nums; border-top:1px solid var(--line)}
   .shots{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px}
 
   /* result readouts */
   .readout{
-    font:12.3px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font:var(--t5)/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     color:var(--fg); word-wrap:break-word;
   }
   .readout .k{color:var(--faint); display:inline-block; min-width:46px}
@@ -307,16 +346,16 @@
   .tracks{list-style:none; margin:0; padding:0; counter-reset:t}
   .tracks li{
     counter-increment:t; display:flex; gap:13px; padding:11px 0;
-    border-bottom:1px solid var(--line); font-size:12.8px;
+    border-bottom:1px solid var(--line); font-size:var(--t5);
   }
   .tracks li:last-child{border-bottom:0}
   .tracks li::before{
     content:counter(t,decimal-leading-zero); color:var(--faint);
-    font:650 12px ui-monospace,Menlo,monospace; padding-top:3px; min-width:19.4px;
+    font:650 var(--t6) ui-monospace,Menlo,monospace; padding-top:3px; min-width:19.4px;
   }
   .tracks .t{color:var(--fg); font-weight:560}
   .tracks .a{color:var(--dim)}
-  .tracks .w{display:block; color:var(--faint); font-size:12.5px; margin-top:3px}
+  .tracks .w{display:block; color:var(--faint); font-size:var(--t5); margin-top:3px}
 
   /* Live badge in the nav. Scoped to the anchor: as a bare .live it also matched the
      control board legend's <span class="key live">, which is why one of three equal
@@ -325,7 +364,7 @@
   a.live{
     display:inline-flex; align-items:center; gap:7px; background:rgba(46,224,138,.13);
     border:1px solid rgba(46,224,138,.4); color:var(--accent);
-    border-radius:879.1px; padding:6px 11.4px; font-size:11.9px; font-weight:600; text-decoration:none;
+    border-radius:879.1px; padding:6px 11.4px; font-size:var(--t6); font-weight:600; text-decoration:none;
   }
   a.live s{width:7px;height:7px;border-radius:50%;background:var(--accent);
     text-decoration:none; display:block; animation:pulse 2.2s ease-in-out infinite}
@@ -407,10 +446,10 @@
   .uname{min-width:0}
   .rk-tools{display:none}
   .cn-fold{display:none}
-  .uname b{display:block; font-size:12.8px; font-weight:620; letter-spacing:-.005em; color:var(--fg)}
+  .uname b{display:block; font-size:var(--t5); font-weight:620; letter-spacing:-.005em; color:var(--fg)}
   .uname span{
     display:block; margin-top:3px; color:var(--faint);
-    font:11.5px/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font:var(--t6)/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     /* was nowrap + ellipsis, which cut "built on Qwen2.5-7B-Instruct" down to
        "built on Qwen2.5-7B-Ins..." on anything narrower than a wide desktop. That
        attribution is a licence condition, not a nicety, and the same rule applies to
@@ -425,7 +464,7 @@
   .ubus{
     align-self:center; justify-self:end; padding:4px 8px; border-radius:4px;
     border:1px solid #262e29; background:#0d100e;
-    font:650 10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+    font:650 var(--t7)/1 ui-monospace,Menlo,Consolas,monospace;
     letter-spacing:.12em; color:var(--faint);
     box-shadow:inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 2px rgba(0,0,0,.6);
   }
@@ -433,7 +472,7 @@
 
   .ustate{
     display:flex; align-items:center; gap:9px; justify-self:end;
-    font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif;
+    font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif;
     letter-spacing:.15em; text-transform:uppercase; white-space:nowrap;
   }
   .ustate .slot{
@@ -470,7 +509,7 @@
   }
   .gauge{flex:1; min-width:190px}
   .gauge label{
-    display:flex; justify-content:space-between; font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif;
+    display:flex; justify-content:space-between; font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif;
     letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin-bottom:8px;
   }
   .gauge label b{color:var(--accent); font-variant-numeric:tabular-nums; letter-spacing:.04em}
@@ -483,7 +522,7 @@
      lit treatment as the gauge values rather than sitting flat in --faint. */
   .chassis-id{flex:0 0 auto; min-width:0}
   .cspec{
-    margin:0; font:12px/1.6 ui-monospace,Menlo,Consolas,monospace; color:var(--faint);
+    margin:0; font:var(--t6)/1.6 ui-monospace,Menlo,Consolas,monospace; color:var(--faint);
   }
   .cspec b{
     font-weight:600; color:var(--accent); letter-spacing:.02em;
@@ -516,7 +555,7 @@
 
   .mod .tag{
     display:flex; align-items:center; gap:6px; margin-bottom:9px;
-    font:650 9.5px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.15em;
+    font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.15em;
     text-transform:uppercase; color:var(--faint);
   }
   .mod .tag s{width:5px; height:5px; border-radius:50%; background:#39443d;
@@ -534,15 +573,15 @@
   @media (prefers-reduced-motion:reduce){ .mod[data-src="live"] .tag s{animation:none} }
 
   .mod .val{
-    font:660 22.9px/1.05 ui-sans-serif,system-ui,sans-serif; letter-spacing:-.024em;
+    font:660 var(--t3)/1.05 ui-sans-serif,system-ui,sans-serif; letter-spacing:-.024em;
     font-variant-numeric:tabular-nums; color:var(--fg);
     overflow-wrap:anywhere;
   }
-  .mod .val u{text-decoration:none; font-size:12.5px; font-weight:500; color:var(--dim); margin-left:4px}
-  .mod .val.sm{font-size:15.8px}
+  .mod .val u{text-decoration:none; font-size:var(--t5); font-weight:500; color:var(--dim); margin-left:4px}
+  .mod .val.sm{font-size:var(--t4)}
   .mod .sub{
     margin-top:7px; color:var(--faint);
-    font:11.5px/1.45 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font:var(--t6)/1.45 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     /* These used to be nowrap + ellipsis, which quietly ate the end of half of them --
        "~84% of 896.1 p...", "pinned . 88% of...", "7B Q4_K_M . mea...". Truncating the
        provenance of a number is the same failure as not printing it. They wrap now, and
@@ -562,7 +601,7 @@
     display:flex; align-items:center; gap:12px; flex-wrap:wrap;
     padding:11px 15px; background:var(--panel2); border:1px solid var(--line);
     border-radius:10px; margin-top:26px;
-    font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.15em;
+    font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.15em;
     text-transform:uppercase; color:var(--faint);
   }
   .conhead .key{
@@ -592,18 +631,18 @@
   details.fold > summary{
     list-style:none; cursor:pointer; padding:15px 18px;
     display:flex; align-items:center; gap:12px;
-    font-size:13.2px; font-weight:620; color:var(--fg);
+    font-size:var(--t5); font-weight:620; color:var(--fg);
   }
   details.fold > summary::-webkit-details-marker{display:none}
   details.fold > summary::after{
     content:"+"; margin-left:auto; color:var(--faint);
-    font:400 15.8px/1 ui-monospace,Menlo,monospace;
+    font:400 var(--t4)/1 ui-monospace,Menlo,monospace;
   }
   details.fold[open] > summary::after{content:"\2212"}
   details.fold > summary:hover{background:var(--panel2)}
   details.fold > summary img{width:20px; height:20px}
   details.fold > summary span{
-    color:var(--faint); font-weight:450; font-size:12.5px;
+    color:var(--faint); font-weight:450; font-size:var(--t5);
     font-family:ui-monospace,Menlo,Consolas,monospace;
   }
   details.fold .foldbody{padding:2px 18px 20px; border-top:1px solid var(--line)}
@@ -619,12 +658,12 @@
     padding:13px 16px; margin:0 0 16px;
   }
   .assist .who{
-    font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.14em;
+    font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.14em;
     text-transform:uppercase; color:var(--accent); margin-bottom:10px;
   }
   .assist .rows{
     display:grid; gap:5px;
-    font:11.4px/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font:var(--t6)/1.6 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   .assist .k{display:inline-block; min-width:42px; color:var(--faint)}
   .assist .v{color:var(--fg)}
@@ -646,8 +685,8 @@
     padding-bottom:11px; border-bottom:1px solid var(--line);
   }
   .lhead img{align-self:center}
-  .lhead b{font-size:12.8px; font-weight:650; color:var(--fg); letter-spacing:-.005em}
-  .lhead span{color:var(--faint); font-size:12.5px}
+  .lhead b{font-size:var(--t5); font-weight:650; color:var(--fg); letter-spacing:-.005em}
+  .lhead span{color:var(--faint); font-size:var(--t5)}
   .lgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:9px}
 
   .scell{
@@ -661,19 +700,19 @@
   .scell[data-s="measured"]::before{background:var(--amber); box-shadow:0 0 8px rgba(255,171,61,.45)}
   .scell[data-s="absent"]::before{background:repeating-linear-gradient(180deg,#7fb8d8 0 4px,transparent 4px 8px)}
   .scell[data-s="na"]{opacity:.5}
-  .scell b{display:block; font-size:11.9px; font-weight:620; color:var(--fg)}
+  .scell b{display:block; font-size:var(--t6); font-weight:620; color:var(--fg)}
   .scell span{
     display:block; margin-top:3px; color:var(--accent);
-    font:11.5px/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font:var(--t6)/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   .scell[data-s="measured"] span{color:var(--amber)}
   .scell[data-s="na"] span{color:var(--faint)}
   .scell small{
-    display:block; margin-top:7px; color:var(--faint); font-size:12px; line-height:1.5;
+    display:block; margin-top:7px; color:var(--faint); font-size:var(--t6); line-height:1.5;
   }
 
   .badge{
-    display:inline-block; font:650 10px/1 ui-sans-serif,system-ui,sans-serif;
+    display:inline-block; font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif;
     letter-spacing:.11em; text-transform:uppercase; padding:4px 8px; border-radius:4px;
     white-space:nowrap; border:1px solid transparent;
   }
@@ -735,19 +774,19 @@
    lower sections keep the original generous rhythm, because they are reference
    material that benefits from air; only the opening is dense. */
 @media (min-width:900px){
-  .hero h1{font-size:clamp(26.4px,3.4vw,35.2px); line-height:1.07; max-width:26ch}
+  .hero h1{font-size:clamp(var(--t3),3.4vw,var(--t1)); line-height:1.07; max-width:26ch}
   .eyebrow{margin-bottom:11px}
   /* a wider measure means fewer lines, which is the cheapest vertical saving there is */
-  .lede{margin-top:13.2px; font-size:14.1px; line-height:1.55; max-width:92ch}
+  .lede{margin-top:13.2px; font-size:var(--t4); line-height:1.55; max-width:92ch}
   .actions{margin-top:18px}
 
   #rack, #console{padding-top:24px; padding-bottom:24px}
-  #rack h2, #console h2, #order h2, #more h2{font-size:clamp(18.5px,2.1vw,22.9px)}
+  #rack h2, #console h2, #order h2, #more h2{font-size:clamp(var(--t3),2.1vw,var(--t3))}
   #rack .shead, #console .shead{margin-bottom:6px}
   #rack > .wrap > .sub, #console > .wrap > .sub{
-    margin-top:9px; font-size:13.2px; line-height:1.5; max-width:96ch;
+    margin-top:9px; font-size:var(--t5); line-height:1.5; max-width:96ch;
   }
-  #rack > .wrap > .tnote{margin-top:9px; font-size:12.5px; line-height:1.5; max-width:96ch}
+  #rack > .wrap > .tnote{margin-top:9px; font-size:var(--t5); line-height:1.5; max-width:96ch}
 
   /* the rack: a 1U face does not need 13px of padding to read as 1U */
   #rack .unit{padding:9px 15px; gap:13px}
@@ -767,7 +806,7 @@
    at things that are not already on screen. */
 .navlink{
   display:inline-flex; align-items:center; gap:6px; padding:8px 11px; border-radius:8px;
-  color:var(--dim); font-size:12.3px; font-weight:520; text-decoration:none;
+  color:var(--dim); font-size:var(--t5); font-weight:520; text-decoration:none;
   background:none; border:0; cursor:pointer; font-family:inherit; letter-spacing:-.005em;
   transition:color .14s ease, background .14s ease;
 }
@@ -783,7 +822,7 @@
 }
 .tab{
   appearance:none; background:none; border:0; border-bottom:2px solid transparent;
-  color:var(--faint); font:600 11.9px/1 ui-sans-serif,system-ui,sans-serif;
+  color:var(--faint); font:600 var(--t6)/1 ui-sans-serif,system-ui,sans-serif;
   padding:11px 13px; cursor:pointer; white-space:nowrap; margin-bottom:-1px;
 }
 .tab:hover{color:var(--dim)}
@@ -799,10 +838,10 @@
 .hero.split{padding:30px 0 34px}
 .split-in{display:grid; grid-template-columns:1.15fr .85fr; gap:48px; align-items:start}
 .hero.split h1{
-  font-size:clamp(26.4px,4vw,44px); line-height:1.04; letter-spacing:-.025em; max-width:16ch;
+  font-size:clamp(var(--t3),4vw,var(--t1)); line-height:1.04; letter-spacing:-.025em; max-width:16ch;
 }
-.split-side p{margin:6px 0 0; color:var(--dim); font-size:13.6px; line-height:1.62}
-.split-side .tiny{margin-top:12px; color:var(--faint); font-size:11.9px; font-style:italic}
+.split-side p{margin:6px 0 0; color:var(--dim); font-size:var(--t4); line-height:1.62}
+.split-side .tiny{margin-top:12px; color:var(--faint); font-size:var(--t6); font-style:italic}
 .split-side .actions{margin-top:20px}
 @media (max-width:860px){
   .split-in{grid-template-columns:1fr; gap:22px}
@@ -842,23 +881,23 @@
 
 .mh-hero h1{
   margin:11px 0 0; font-weight:760; letter-spacing:-.032em; color:var(--fg);
-  font-size:clamp(27.3px,3.1vw,41.4px); line-height:1.06;
+  font-size:clamp(var(--t2),3.1vw,var(--t1)); line-height:1.06;
 }
 .mh-hero h1 i{font-style:normal; color:var(--accent)}
-.mh-body{margin:15px 0 0; color:var(--dim); font-size:13.6px; line-height:1.6; max-width:52ch}
-.mh-hero .tiny{margin:11px 0 0; color:var(--faint); font-size:11.9px; font-style:italic}
+.mh-body{margin:15px 0 0; color:var(--dim); font-size:var(--t4); line-height:1.6; max-width:52ch}
+.mh-hero .tiny{margin:11px 0 0; color:var(--faint); font-size:var(--t6); font-style:italic}
 .mh-hero .actions{margin-top:20px}
 
 /* The pitch is deliberately quieter than the hero -- serif, one shade down, a ghost
    button. Two solid call-to-action pills side by side read as two competing offers. */
 .mh-pitch h2{
-  margin:0; font:600 clamp(18.5px,2.05vw,25.5px)/1.2 ui-serif,Georgia,"Times New Roman",serif;
+  margin:0; font:600 clamp(var(--t3),2.05vw,var(--t2))/1.2 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.015em; color:var(--fg);
 }
-.mh-lede{margin:13.2px 0 0; color:var(--dim); font-size:12.8px; line-height:1.62; max-width:48ch}
+.mh-lede{margin:13.2px 0 0; color:var(--dim); font-size:var(--t5); line-height:1.62; max-width:48ch}
 .mh-lede b{color:var(--accent); font-weight:600}
 .mh-pitch .cta{margin-top:18px}
-.mh-foot{margin:15.8px 0 0; color:var(--faint); font-size:12px; line-height:1.55; max-width:46ch}
+.mh-foot{margin:15.8px 0 0; color:var(--faint); font-size:var(--t6); line-height:1.55; max-width:46ch}
 .mh-foot b{color:var(--dim); font-weight:600}
 
 /* ---- a render in a page gutter ----
@@ -887,7 +926,7 @@
   position:absolute; inset:auto 0 0 0; padding:9px 10px;
   background:linear-gradient(0deg, rgba(6,9,7,.94), rgba(6,9,7,0));
   color:var(--accent); text-align:center; letter-spacing:.02em;
-  font:600 10.5px/1.3 ui-monospace,Menlo,Consolas,monospace;
+  font:600 var(--t7)/1.3 ui-monospace,Menlo,Consolas,monospace;
   opacity:0; transition:opacity .18s ease;
 }
 .gart:hover .gzoom,.gart:focus-visible .gzoom{opacity:1}
@@ -899,12 +938,12 @@
    attribution that Apache-2.0 requires be kept. */
 .gprov{
   display:block; margin-top:9px; text-align:center; color:#7d8d84;
-  font:400 10.5px/1.45 ui-monospace,Menlo,Consolas,monospace;
+  font:400 var(--t7)/1.45 ui-monospace,Menlo,Consolas,monospace;
   letter-spacing:.005em; overflow-wrap:break-word;
 }
 .gq{
   display:block; margin-top:10px; text-align:center; color:#a3b8ab;
-  font:400 clamp(11.9px,1.02vw,13.6px)/1.34 ui-serif,Georgia,"Times New Roman",serif;
+  font:400 clamp(var(--t6),1.02vw,var(--t4))/1.34 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.01em;
 }
 
@@ -951,10 +990,10 @@
   content:counter(s); position:absolute; left:16px; top:15px;
   width:21px; height:21px; border-radius:50%; display:grid; place-items:center;
   background:rgba(46,224,138,.11); color:var(--accent);
-  font:650 11px/1 ui-monospace,Menlo,Consolas,monospace;
+  font:650 var(--t7)/1 ui-monospace,Menlo,Consolas,monospace;
 }
-.steps b{display:block; color:var(--fg); font-size:12.3px; font-weight:620}
-.steps span{display:block; margin-top:3px; color:var(--faint); font-size:12.5px; line-height:1.5}
+.steps b{display:block; color:var(--fg); font-size:var(--t5); font-weight:620}
+.steps span{display:block; margin-top:3px; color:var(--faint); font-size:var(--t5); line-height:1.5}
 @media (max-width:860px){ .order{grid-template-columns:1fr; gap:26px} }
 
 /* ---- the receipts: a card grid, not a link list ----
@@ -998,21 +1037,21 @@
 }
 .cards .card:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .ctag{
-  font:650 10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+  font:650 var(--t7)/1 ui-monospace,Menlo,Consolas,monospace;
   letter-spacing:.15em; text-transform:uppercase; color:var(--accent);
 }
 .cards .card b{
   display:block; margin-top:11px; color:var(--fg);
-  font-size:13.2px; font-weight:620; line-height:1.35; letter-spacing:-.012em;
+  font-size:var(--t4); font-weight:620; line-height:1.35; letter-spacing:-.012em;
 }
 .cdesc{
   display:block; margin-top:8px; color:var(--faint);
-  font-size:12.5px; line-height:1.5;
+  font-size:var(--t5); line-height:1.5;
 }
 /* pushed to the bottom so the arrow line sits flush across a row of uneven cards */
 .cards .card s{
   margin-top:auto; padding-top:14px; text-decoration:none;
-  font-size:12px; font-weight:600; color:var(--dim);
+  font-size:var(--t6); font-weight:600; color:var(--dim);
 }
 .cards .card:hover s{color:var(--accent)}
 
@@ -1044,11 +1083,11 @@
    the section intro now. */
 .mod{display:flex; flex-direction:column}
 .mod .plain{
-  margin-top:7px; color:var(--dim); font-size:11.4px; line-height:1.45;
+  margin-top:7px; color:var(--dim); font-size:var(--t6); line-height:1.45;
   letter-spacing:-.002em;
 }
 .mod .sub{
-  margin-top:auto; padding-top:7px; font-size:11.5px; color:var(--faint);
+  margin-top:auto; padding-top:7px; font-size:var(--t6); color:var(--faint);
 }
 /* modules stretch to a common row height so a wrapped detail line does not stagger
    the grid */
@@ -1065,12 +1104,12 @@
 }
 .cf-keys{display:grid; grid-template-columns:repeat(3,1fr); gap:0}
 .cf-keys p{
-  margin:0; padding:12px 13.2px; color:var(--faint); font-size:12.5px; line-height:1.5;
+  margin:0; padding:12px 13.2px; color:var(--faint); font-size:var(--t5); line-height:1.5;
   border-right:1px solid var(--line);
 }
 .cf-keys p:last-child{border-right:0}
 .cf-keys b{
-  display:block; margin-bottom:5px; font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif;
+  display:block; margin-bottom:5px; font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif;
   letter-spacing:.15em; text-transform:uppercase;
 }
 .k-live{color:var(--accent)}
@@ -1079,7 +1118,7 @@
 .cf-rule{
   margin:0; padding:11px 15px; border-top:1px solid var(--line);
   background:rgba(46,224,138,.045); color:var(--dim);
-  font-size:12.5px; line-height:1.5; text-align:center; letter-spacing:.01em;
+  font-size:var(--t5); line-height:1.5; text-align:center; letter-spacing:.01em;
 }
 @media (max-width:760px){
   .cf-keys{grid-template-columns:1fr}
@@ -1144,18 +1183,18 @@
      the width as well made every question wrap twice -- "What if your data / never /
      left the building?" -- which is three ragged lines where two were intended. */
   white-space:nowrap;
-  font:400 clamp(12.3px,1.15vw,15.8px)/1.34 ui-serif,Georgia,"Times New Roman",serif;
+  font:400 clamp(var(--t5),1.15vw,var(--t4))/1.34 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.01em; pointer-events:none;
 }
 
 .sky-mid{position:relative; max-width:560px; margin:0 auto; text-align:center; z-index:3}
 .sky-mid h2{
-  margin:0; font:600 clamp(21.1px,2.9vw,29.9px)/1.22 ui-serif,Georgia,"Times New Roman",serif;
+  margin:0; font:600 clamp(var(--t3),2.9vw,var(--t2))/1.22 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.015em; color:var(--fg);
 }
-.sky-lede{margin:15.8px 0 0; color:var(--dim); font-size:13.6px; line-height:1.66}
+.sky-lede{margin:15.8px 0 0; color:var(--dim); font-size:var(--t4); line-height:1.66}
 .sky-lede b{color:var(--accent); font-weight:600}
-.sky-foot{margin:22.9px auto 0; max-width:56ch; color:var(--faint); font-size:12.5px; line-height:1.6}
+.sky-foot{margin:22.9px auto 0; max-width:56ch; color:var(--faint); font-size:var(--t5); line-height:1.6}
 
 /* The prompt behind each render, on hover. Provenance is the whole reason these images
    are ours and not stock, but at 38-59px the prompt cannot be printed underneath without
@@ -1171,11 +1210,11 @@
 }
 .sky .art:hover figcaption{opacity:1; visibility:visible}
 .sky .art figcaption q{
-  display:block; quotes:'\201C' '\201D'; color:var(--dim); font-size:12px; line-height:1.45;
+  display:block; quotes:'\201C' '\201D'; color:var(--dim); font-size:var(--t6); line-height:1.45;
 }
 .sky .art figcaption span{
   display:block; margin-top:6px; color:var(--faint);
-  font:10.5px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t7)/1.4 ui-monospace,Menlo,Consolas,monospace;
 }
 
 /* Below this the gutters cannot hold a constellation beside a readable centre column, so
@@ -1209,17 +1248,17 @@
 .lb-fig figcaption{text-align:center; max-width:62ch}
 .lb-prompt{
   display:block; quotes:'\201C' '\201D'; color:var(--dim);
-  font-size:12.8px; line-height:1.5;
+  font-size:var(--t5); line-height:1.5;
 }
 .lb-meta{
   display:block; margin-top:9px; color:var(--faint);
-  font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t6)/1.5 ui-monospace,Menlo,Consolas,monospace;
 }
 .lb-close{
   position:absolute; top:18px; right:22px; width:38px; height:38px; border-radius:50%;
   display:grid; place-items:center; cursor:pointer;
   background:var(--panel2); border:1px solid var(--line); color:var(--dim);
-  font-size:19.4px; line-height:1;
+  font-size:var(--t3); line-height:1;
 }
 .lb-close:hover{color:var(--fg); border-color:var(--accent)}
 .lb-close:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
@@ -1231,21 +1270,21 @@
    time the second definition silently ate the first. */
 .mn-steps{
   display:flex; gap:8px; list-style:none; margin:0 0 20px; padding:0;
-  font:600 11.5px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.06em;
+  font:600 var(--t6)/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.06em;
   text-transform:uppercase; color:var(--faint);
 }
 .mn-steps li{display:flex; align-items:center; gap:7px; padding:7px 12px;
   border:1px solid var(--line); border-radius:999px; transition:color .16s, border-color .16s}
 .mn-steps li b{
   display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px;
-  border-radius:50%; background:var(--panel2); color:var(--faint); font-size:10.5px;
+  border-radius:50%; background:var(--panel2); color:var(--faint); font-size:var(--t7);
 }
 .mn-steps li.on{color:var(--accent); border-color:rgba(46,224,138,.42)}
 .mn-steps li.on b{background:var(--accent); color:#06120c}
 
 .mn-pane{display:none}
 .mn-pane.on{display:block}
-.mn-q{margin:0 0 12.3px; color:var(--fg); font-size:13.6px; font-weight:600}
+.mn-q{margin:0 0 12.3px; color:var(--fg); font-size:var(--t4); font-weight:600}
 
 .mn-choices{display:grid; grid-template-columns:repeat(2,1fr); gap:12px}
 @media (max-width:620px){ .mn-choices{grid-template-columns:1fr} }
@@ -1257,8 +1296,8 @@
 }
 .mn-choice:hover{border-color:rgba(46,224,138,.45); transform:translateY(-2px)}
 .mn-choice:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-.mn-choice b{color:var(--fg); font-size:13.2px; font-weight:640}
-.mn-choice span{color:var(--dim); font-size:11.4px; line-height:1.55}
+.mn-choice b{color:var(--fg); font-size:var(--t5); font-weight:640}
+.mn-choice span{color:var(--dim); font-size:var(--t6); line-height:1.55}
 
 .mn-models{display:grid; grid-template-columns:repeat(2,1fr); gap:10px}
 @media (max-width:620px){ .mn-models{grid-template-columns:1fr} }
@@ -1268,11 +1307,11 @@
   border:1px solid var(--line); border-radius:10px; background:var(--panel);
   transition:border-color .16s ease;
 }
-.mn-model b{color:var(--fg); font-size:12.8px; font-weight:640}
+.mn-model b{color:var(--fg); font-size:var(--t5); font-weight:640}
 /* The note wraps rather than truncating. It carries the reason a model is unavailable,
    which is the whole point of showing it -- an ellipsis here would be data loss. */
 .mn-model span{
-  grid-column:2; color:var(--faint); font-size:11.5px; line-height:1.5;
+  grid-column:2; color:var(--faint); font-size:var(--t6); line-height:1.5;
   overflow-wrap:break-word;
 }
 .mn-model:not(:disabled):hover{border-color:rgba(46,224,138,.45)}
@@ -1290,20 +1329,20 @@
 .mn-dot.part{background:var(--amber); box-shadow:0 0 0 3px rgba(255,171,61,.16)}
 .mn-legend{
   margin:16px 0 0; color:var(--faint);
-  font:11.5px/1.7 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t6)/1.7 ui-monospace,Menlo,Consolas,monospace;
 }
 .mn-legend .mn-dot{margin:0 5px 0 14px; vertical-align:middle}
 .mn-legend .mn-dot:first-child{margin-left:0}
 
 .mn-back{
   margin-top:18px; padding:0; border:0; background:none; cursor:pointer;
-  color:var(--dim); font:11.4px/1 inherit;
+  color:var(--dim); font:var(--t6)/1 ui-sans-serif,system-ui,sans-serif;
 }
 .mn-back:hover{color:var(--accent)}
 .mn-note{
   margin:18px 0 0; padding:12px 14px; border-radius:9px;
   border:1px solid var(--line); background:var(--panel2);
-  color:var(--dim); font:12.5px/1.65 ui-monospace,Menlo,Consolas,monospace;
+  color:var(--dim); font:var(--t5)/1.65 ui-monospace,Menlo,Consolas,monospace;
   overflow-wrap:break-word;
 }
 .mn-note:empty{display:none}
@@ -1314,7 +1353,7 @@
    unstyled HTML -- inputs and buttons on one run-together line. */
 .tn-tabs{display:flex; gap:8px; margin:0 0 16px}
 .tn-tab{
-  padding:8px 12.3px; cursor:pointer; font:600 12.5px/1 inherit; color:var(--dim);
+  padding:8px 12.3px; cursor:pointer; font:600 var(--t5)/1 ui-sans-serif,system-ui,sans-serif; color:var(--dim);
   background:var(--panel2); border:1px solid var(--line); border-radius:999px;
   transition:color .14s ease, border-color .14s ease;
 }
@@ -1326,19 +1365,19 @@
 .tn-fields{display:grid; gap:10px; margin-bottom:16px}
 .tn-fields label{
   display:block; margin-bottom:-4px; color:var(--faint);
-  font:600 11px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.07em;
+  font:600 var(--t7)/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.07em;
   text-transform:uppercase;
 }
 .tn-fields input{
   width:100%; padding:11px 13px; background:var(--bg); color:var(--fg);
   border:1px solid var(--line); border-radius:9px;
-  font:12.3px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t5)/1.4 ui-monospace,Menlo,Consolas,monospace;
 }
 .tn-fields input:focus{outline:none; border-color:rgba(46,224,138,.5)}
 .tn-fields[hidden]{display:none}
 
 .tn-note{
-  margin:14.1px 0 0; color:var(--dim); font-size:11.4px; line-height:1.6;
+  margin:14.1px 0 0; color:var(--dim); font-size:var(--t6); line-height:1.6;
   overflow-wrap:break-word;
 }
 .tn-list{
@@ -1350,12 +1389,12 @@
   display:flex; align-items:baseline; justify-content:space-between; gap:14px;
   padding:9px 2px; border-bottom:1px solid var(--line);
 }
-.tn-list b{color:var(--fg); font-size:11.9px; font-weight:600; overflow-wrap:anywhere}
+.tn-list b{color:var(--fg); font-size:var(--t6); font-weight:600; overflow-wrap:anywhere}
 /* The group wraps rather than truncating: it is the only thing distinguishing two
    channels with the same name, so an ellipsis here loses the distinction. */
 .tn-list span{
   flex:0 1 auto; text-align:right; color:var(--faint);
-  font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:anywhere;
+  font:var(--t6)/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:anywhere;
 }
 
 /* ---- Tuner: player, browsing, model-assisted filter -------------------------
@@ -1367,34 +1406,25 @@
 }
 .tn-now{
   margin:9px 0 0; color:var(--dim);
-  font:12.5px/1.6 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+  font:var(--t5)/1.6 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
 }
 
 .tn-browse{margin-top:18px}
-.tn-kinds,.tn-groups{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px}
-.tn-groups{max-height:132px; overflow-y:auto}
-.tn-chip{
-  display:inline-flex; align-items:center; gap:7px; cursor:pointer;
-  padding:6px 11px; border:1px solid var(--line); border-radius:999px;
-  background:var(--panel2); color:var(--dim); font:12.5px/1 inherit;
-  transition:color .14s ease, border-color .14s ease;
-}
-.tn-chip:hover{color:var(--fg)}
-.tn-chip.on{color:var(--accent); border-color:rgba(46,224,138,.45); background:var(--panel)}
-.tn-chip b{font-weight:600}
-.tn-chip i{
-  font-style:normal; color:var(--faint);
-  font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
-}
+/* `.tn-kinds`, `.tn-groups` and the `.tn-chip` they held are GONE. The tuner's
+   kind/group chip rows were removed from the page; the rules outlived them and
+   nothing in site/ or tools/ emitted those class names any more (grepped both
+   trees before deleting, which is the check that separates a reap from a
+   regression). `.tn-more` is likewise unreferenced but left in place -- it is a
+   different element and not part of the chip rows this note is about. */
 
 .tn-ask{display:flex; gap:8px; margin:14px 0 0}
 .tn-ask input{
   flex:1 1 auto; min-width:0; padding:10px 13px; background:var(--bg); color:var(--fg);
-  border:1px solid var(--line); border-radius:9px; font:11.9px/1.4 inherit;
+  border:1px solid var(--line); border-radius:9px; font:var(--t6)/1.4 ui-sans-serif,system-ui,sans-serif;
 }
 .tn-ask input:focus{outline:none; border-color:rgba(46,224,138,.5)}
 .tn-askgo,.tn-askclear{
-  padding:0 14.1px; cursor:pointer; border-radius:9px; font:600 11.4px/1 inherit;
+  padding:0 14.1px; cursor:pointer; border-radius:9px; font:600 var(--t6)/1 ui-sans-serif,system-ui,sans-serif;
   border:1px solid rgba(46,224,138,.45); background:var(--panel); color:var(--accent);
 }
 .tn-askclear{border-color:var(--line); color:var(--dim)}
@@ -1403,7 +1433,7 @@
    explanation, and truncating an explanation defeats it. */
 .tn-askwhy{
   margin:10px 0 0; color:var(--faint);
-  font:11.5px/1.6 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+  font:var(--t6)/1.6 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
 }
 .tn-askwhy:empty{display:none}
 
@@ -1411,11 +1441,11 @@
 .tn-list li.playable:hover b{color:var(--accent)}
 .tn-list li em{
   flex:0 0 auto; color:var(--faint); font-style:normal;
-  font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t7)/1 ui-monospace,Menlo,Consolas,monospace;
 }
 .tn-more{
   display:block; color:var(--faint); text-align:center;
-  font:11.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t6)/1.6 ui-monospace,Menlo,Consolas,monospace;
 }
 
 /* ---- live GPU panel beside a prompt ----------------------------------------
@@ -1430,7 +1460,7 @@
 }
 .gpu-head{
   display:flex; align-items:center; gap:8px; margin:0 0 12px;
-  font:650 12px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.08em;
+  font:650 var(--t6)/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.08em;
   text-transform:uppercase; color:var(--fg);
 }
 .gpu-head s{
@@ -1439,33 +1469,54 @@
 }
 .gpu-link{
   margin-left:auto; text-transform:none; letter-spacing:0; color:var(--faint);
-  font-weight:400; font-size:10.5px;
+  font-weight:400; font-size:var(--t7);
 }
 .gpu-row{margin-bottom:10px}
 .gpu-row label{
   display:flex; justify-content:space-between; align-items:baseline; gap:8px;
   margin-bottom:5px; color:var(--dim);
-  font:11.5px/1.3 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t6)/1.3 ui-monospace,Menlo,Consolas,monospace;
 }
 .gpu-row label b{color:var(--accent); font-weight:600}
-.gpu-row label b u{text-decoration:none; color:var(--faint); font-size:10px; margin-left:3px}
+.gpu-row label b u{text-decoration:none; color:var(--faint); font-size:var(--t7); margin-left:3px}
 .gbar{height:4px; border-radius:2px; background:var(--panel2); overflow:hidden}
 .gbar > i{display:block; height:100%; background:var(--accent); transition:width .3s ease}
 .gbar.warn > i{background:var(--amber)}
 
 .gpu-facts{
   display:grid; grid-template-columns:auto 1fr; gap:3px 10px; margin:12px 0 0;
-  font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace;
+  font:var(--t6)/1.5 ui-monospace,Menlo,Consolas,monospace;
 }
 .gpu-facts dt{color:var(--faint)}
 .gpu-facts dd{margin:0; color:var(--dim); text-align:right; overflow-wrap:anywhere}
 
 /* The stack, compact. Same markup console.js writes for the rack, scoped down. */
 .gpu-stack{margin-top:12px; border-top:1px solid var(--line); padding-top:10px}
+/* Garrett, on this panel: "the stack to the right the text and ready are too
+   big and not proportional." Measured on /image.html at 1440x900 before the
+   fix: the panel's content box is 226px wide, yet each unit name box came out
+   74px and every one of the nine names wrapped to two lines, making a 42px row
+   for one line of text -- 495px of panel for a nine-row list.
+
+   The cause is inherited geometry, not type. `.units` carries
+   `margin:0 26px; padding:0 12px`, which is the inset that clears the RACK's
+   two 26px rails. There are no rails in this panel, so 76px of a 226px panel
+   was reserved for hardware that is not drawn, leaving 74px for a name after
+   the LEDs, the state badge and the gaps. Reclaiming it puts every name on one
+   line and takes the row to ~26px without touching a font size or hiding a
+   character. Scoped under .gpu-stack, so the rack keeps its rails. */
+.gpu-stack .units{margin:0; padding:0; gap:0}
 .gpu-stack .unit{
   display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:8px;
   padding:5px 0; text-decoration:none; border:0; background:none;
 }
+/* The state badge is the smaller of the two by exactly one step of the scale
+   (--t7 against the name's --t6), so READY reads as an annotation on the name
+   rather than as a second heading competing with it. Its uppercase tracking is
+   halved from the rack's .15em: at 10.5px in a 226px column, .15em was adding
+   6px of air to a five-letter word and was most of what made it look oversized
+   next to a wrapped name. */
+.gpu-stack .unit .ustate{letter-spacing:.07em; gap:6px}
 .gpu-stack .unit .pwr,.gpu-stack .unit .scan,.gpu-stack .unit .ubus,
 .gpu-stack .unit .uname span,.gpu-stack .unit .slot{display:none}
 .gpu-stack .unit .leds{display:flex; gap:3px}
@@ -1474,18 +1525,18 @@
 .gpu-stack .unit .leds i.amber{background:var(--amber)}
 .gpu-stack .unit .leds i.blue{background:#5aa9ff}
 .gpu-stack .unit .uname b{
-  color:var(--dim); font:400 11.5px/1.4 ui-sans-serif,system-ui,sans-serif;
+  color:var(--dim); font:400 var(--t6)/1.4 ui-sans-serif,system-ui,sans-serif;
   overflow-wrap:anywhere;
 }
 .gpu-stack .unit .ustate .txt{
-  color:var(--faint); font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+  color:var(--faint); font:var(--t7)/1 ui-monospace,Menlo,Consolas,monospace;
 }
 .gpu-stack .unit[data-state="busy"] .uname b{color:var(--fg)}
 .gpu-stack .unit[data-state="busy"] .ustate .txt{color:var(--amber)}
 .gpu-stack .unit:hover .uname b{color:var(--accent)}
 
 .gpu-why{
-  margin:12px 0 0; color:var(--faint); font-size:11.5px; line-height:1.55;
+  margin:12px 0 0; color:var(--faint); font-size:var(--t6); line-height:1.55;
   overflow-wrap:break-word;
 }
 
@@ -1503,23 +1554,23 @@
 .cu-new{
   flex:1; text-align:left; cursor:pointer; padding:9px 12px; border-radius:9px;
   border:1px solid var(--line); background:var(--panel2); color:var(--fg);
-  font:600 12.5px/1 inherit;
+  font:600 var(--t5)/1 ui-sans-serif,system-ui,sans-serif;
 }
 .cu-new:hover{border-color:rgba(46,224,138,.45); color:var(--accent)}
 .cu-collapse{
   cursor:pointer; padding:9px 10px; border-radius:9px; border:1px solid var(--line);
-  background:none; color:var(--faint); font:12.5px/1 inherit;
+  background:none; color:var(--faint); font:var(--t5)/1 ui-sans-serif,system-ui,sans-serif;
 }
 .cu-railhead{
   margin:6px 0 0; color:var(--faint);
-  font:600 10px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.1em;
+  font:600 var(--t7)/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.1em;
   text-transform:uppercase;
 }
 .cu-hist{list-style:none; margin:0; padding:0; overflow-y:auto; max-height:46vh; flex:1}
 .cu-hist li{display:flex; align-items:center; gap:4px}
 .cu-histbtn{
   flex:1; min-width:0; text-align:left; cursor:pointer; padding:7px 8px; border:0;
-  border-radius:7px; background:none; color:var(--dim); font:12.5px/1.4 inherit;
+  border-radius:7px; background:none; color:var(--dim); font:var(--t5)/1.4 ui-sans-serif,system-ui,sans-serif;
   /* Titles wrap rather than truncate -- an ellipsis here hides which conversation
      this is, which is the only thing the entry is for. */
   overflow-wrap:anywhere;
@@ -1528,30 +1579,30 @@
 .cu-histbtn.on{background:var(--panel2); color:var(--accent)}
 .cu-del{
   cursor:pointer; border:0; background:none; color:var(--faint); padding:2px 6px;
-  border-radius:6px; font:14px/1 inherit;
+  border-radius:6px; font:var(--t4)/1 ui-sans-serif,system-ui,sans-serif;
 }
 .cu-del:hover{color:var(--amber); background:var(--panel2)}
-.cu-histnone{color:var(--faint); font-size:12px; padding:7px 8px}
-.cu-railfoot{margin:0; color:var(--faint); font-size:10.5px; line-height:1.5}
+.cu-histnone{color:var(--faint); font-size:var(--t6); padding:7px 8px}
+.cu-railfoot{margin:0; color:var(--faint); font-size:var(--t7); line-height:1.5}
 
 .cu-main{display:flex; flex-direction:column; padding-left:26px; min-width:0}
 .cu-empty{text-align:center; margin:auto 0; padding:36px 0 26px}
 .cu-greet{
-  margin:0 0 10px; font-size:clamp(22px,2.4vw,30px); font-weight:600;
+  margin:0 0 10px; font-size:clamp(var(--t3),2.4vw,var(--t2)); font-weight:600;
   letter-spacing:-.02em; color:var(--fg);
 }
-.cu-sub{margin:0 auto; max-width:46ch; color:var(--dim); font-size:13.5px; line-height:1.6}
+.cu-sub{margin:0 auto; max-width:46ch; color:var(--dim); font-size:var(--t4); line-height:1.6}
 
 .cu-log{flex:1; overflow-y:auto; max-height:52vh; padding:4px 0}
 .cu-log:empty{display:none}
 .cu-turn{margin-bottom:18px}
 .cu-who{
   margin-bottom:5px; color:var(--faint);
-  font:600 10px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.1em;
+  font:600 var(--t7)/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.1em;
   text-transform:uppercase;
 }
 .cu-msg{
-  color:var(--fg); font-size:14px; line-height:1.68; white-space:pre-wrap;
+  color:var(--fg); font-size:var(--t4); line-height:1.68; white-space:pre-wrap;
   overflow-wrap:anywhere;
 }
 .cu-turn.you .cu-msg{color:var(--dim)}
@@ -1564,7 +1615,7 @@
 .cu-composer:focus-within{border-color:rgba(46,224,138,.45)}
 .cu-composer textarea{
   width:100%; resize:none; border:0; background:none; color:var(--fg);
-  font:15px/1.6 ui-sans-serif,system-ui,sans-serif; min-height:26px; max-height:260px;
+  font:var(--t4)/1.6 ui-sans-serif,system-ui,sans-serif; min-height:26px; max-height:260px;
 }
 .cu-composer textarea:focus{outline:none}
 .cu-tools{display:flex; align-items:center; gap:9px; margin-top:8px}
@@ -1572,23 +1623,23 @@
 .cu-attach input{display:none}
 .cu-attach span{
   display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px;
-  border-radius:50%; border:1px solid var(--line); color:var(--dim); font-size:15px;
+  border-radius:50%; border:1px solid var(--line); color:var(--dim); font-size:var(--t4);
 }
 .cu-attach:hover span{border-color:rgba(46,224,138,.45); color:var(--accent)}
 .cu-file-name{
-  cursor:pointer; color:var(--accent); font:11.5px/1 ui-monospace,Menlo,Consolas,monospace;
+  cursor:pointer; color:var(--accent); font:var(--t6)/1 ui-monospace,Menlo,Consolas,monospace;
   overflow-wrap:anywhere;
 }
 .cu-spacer{flex:1}
-.cu-model{color:var(--faint); font:11.5px/1 ui-monospace,Menlo,Consolas,monospace}
+.cu-model{color:var(--faint); font:var(--t6)/1 ui-monospace,Menlo,Consolas,monospace}
 .cu-send{
   cursor:pointer; width:30px; height:30px; border-radius:50%; border:0;
-  background:var(--accent); color:#06120c; font:600 15px/1 inherit;
+  background:var(--accent); color:#06120c; font:600 var(--t4)/1 ui-sans-serif,system-ui,sans-serif;
 }
 .cu-send:disabled{opacity:.45; cursor:default}
 .cu-hint{
   margin:9px 2px 0; color:var(--faint); min-height:1em;
-  font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+  font:var(--t6)/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
 }
 
 @media (max-width:820px){
@@ -1608,7 +1659,7 @@
 .ns-tabwrap{display:flex; align-items:center; gap:4px; padding-top:0; padding-bottom:0}
 .ns-tab{
   cursor:pointer; padding:13px 16px; border:0; background:none; color:var(--dim);
-  font:600 12.5px/1 inherit; border-bottom:2px solid transparent; margin-bottom:-1px;
+  font:600 var(--t5)/1 ui-sans-serif,system-ui,sans-serif; border-bottom:2px solid transparent; margin-bottom:-1px;
   transition:color .14s ease, border-color .14s ease;
 }
 /* The split pages use <a> here instead of <button> -- same strip, real links. Anchors
@@ -1618,7 +1669,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
 .ns-tab.on{color:var(--accent); border-bottom-color:var(--accent)}
 .ns-tab:focus-visible{outline:2px solid var(--accent); outline-offset:-3px}
 .ns-tabnote{
-  margin-left:auto; color:var(--faint); font-size:11px; line-height:1.5;
+  margin-left:auto; color:var(--faint); font-size:var(--t7); line-height:1.5;
   max-width:44ch; text-align:right;
 }
 /* Four tabs plus the note are 396px wide on a 390px phone, which pushed the whole document
@@ -1692,7 +1743,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
   html.ns #hero:not([hidden]){display:flex; flex-direction:column;
     justify-content:safe center; padding-top:18px; padding-bottom:18px}
   html.ns footer{padding:10px 0}
-  html.ns .foot{font-size:11.5px}
+  html.ns .foot{font-size:var(--t6)}
 
   /* ---- making the other three panels fit, by spending width -----------------
      Every panel is a single-column stack inside a 1064px `.wrap`, which is correct for a
@@ -1731,9 +1782,16 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      -> 178px each at 1440 (611 -> 775 total) and -> 403px each at 1301 (611 -> 2,696).
      The unit row needs width; it is the one thing here that must not be narrowed. */
 
-  /* The control board: 19 modules at six columns is four rows. auto-fit takes it to three
-     rows on any in-gate width and to two on a wide monitor. */
-  html.ns .console{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+  /* The control board's columns are NOT set here, and a rule that used to sit at this
+     spot claiming to set them was dead from the day it was written. It read
+     `html.ns .console{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}` --
+     specificity (0,2,1) -- against `#console .console{...minmax(152px,1fr)}` in the
+     `min-width:900px` density block above, which carries an id and therefore wins
+     everywhere. Measured: 11 columns of 165.6px at 1990x970, i.e. the 152px rule, never
+     the 158px one. That is the SIXTH time a rule in this stylesheet has been silently
+     outranked (`.bar`, `.live`, `.card`, `#console .sub`, `.gart`), and the fifth time
+     an id selector was the thing doing the outranking. The live values are at the foot
+     of this file, written as `html.ns #console .console` so they can actually reach. */
 
   /* The rack, without hiding anything. A unit's name and its attribution are stacked --
      `b` is display:block -- which costs a second line on all eight. Put them on ONE row
@@ -1770,7 +1828,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
   html.ns .rk-tools{display:block; margin:10px 0 0}
   html.ns .rk-fold{
     cursor:pointer; border:1px solid var(--line); background:var(--panel2); color:var(--dim);
-    border-radius:999px; padding:6px 14px; font:600 11.5px/1 inherit; letter-spacing:.01em;
+    border-radius:999px; padding:6px 14px; font:600 var(--t6)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.01em;
   }
   html.ns .rk-fold:hover{color:var(--fg); border-color:var(--accent)}
   html.ns .rk-fold:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
@@ -1791,9 +1849,14 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
   html.ns #rack .units{gap:2px}
   /* A unit's height floor is not its text -- it is the 27px power glyph plus padding
      (27 + 2px border + 18px padding = 47px), which is why an earlier padding-only trim
-     moved nothing. Both come down together, and only in this layout. */
-  html.ns #rack .unit{padding:7px 14px}
-  html.ns #rack .pwr{width:21px; height:21px}
+     moved nothing. Both come down together, and only in this layout.
+     19px glyph in 5px of padding, not 21 in 7: the rack has to hold TWELVE units now
+     (chat, image, remix, ravencalc, reinforce, miner, gpuminer, tuner, gateway, coder,
+     guide, sigils) and at 1440x900 twelve rows at 37px measured exactly 747px of content
+     in a 747px panel -- zero spare. 4px off each row is 48px back across twelve. The
+     13px icon inside the glyph is unchanged, so the button still reads as a button. */
+  html.ns #rack .unit{padding:5px 14px}
+  html.ns #rack .pwr{width:19px; height:19px}
   html.ns #rack .pwr svg{width:13px; height:13px}
   html.ns #rack .rackrow{margin-top:3px}
   /* The rack frame's own chrome: 34px of margin above it, 18px of padding top and bottom,
@@ -1817,7 +1880,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
   /* The lede is the one long paragraph in each heading. It stays on the page and stays
      whole -- it just sits beside the title (see the inline rules above) at a size that
      does not cost three rows. */
-  html.ns :is(#rack,#console,#more) > .wrap > .sub{font-size:12px; line-height:1.45}
+  html.ns :is(#rack,#console,#more) > .wrap > .sub{font-size:var(--t6); line-height:1.45}
   html.ns :is(#rack,#console,#more) > .wrap > .sub::after{height:6px}
   html.ns #rack > .wrap:last-child{margin-top:4px}
   html.ns #rack .tnote{margin:0}
@@ -1840,4 +1903,465 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      screen. At minmax(228px,...) a 1855px window fitted seven, putting one card on a
      second row and overflowing the panel by 15px -- the whole 191px row for one card. */
   html.ns .cards{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+}
+
+/* ==================================================================================
+   TALL WINDOWS: spend the surplus, and stop folding things nobody needs folded
+   ==================================================================================
+   Added 2026-08-17. Garrett's window is 1990x970 and every gated section was leaving a
+   large empty band under its content. Measured there, before this block:
+
+     /overview      342.6px of content in an 815px panel   -> 236.2px dead above AND below
+     /livestack     540.0px                                 -> 263.0px dead
+     /controlboard  420.1px                                 -> 360.9px dead
+     /receipts      286.9px                                 -> 516.1px dead
+
+   The cause is not padding. Every density and fold default in this stylesheet was tuned
+   against the SMALLEST window the no-scroll gate allows -- 1301x740, a 584px panel -- and
+   those rules then applied unchanged at an 815px panel, where there is 231px more room.
+   So the fixes below are gated on `min-height:900px`, which leaves the tight 1301x740 case
+   exactly as it was. Do not widen that condition without re-measuring 1301x740; that
+   viewport is the one the whole gate was designed around and it has been broken before by
+   a rule that opened inside a reflow band.
+
+   Every number in the comments below is MEASURED at 1990x970, not estimated. */
+@media (min-width:1301px) and (min-height:900px){
+
+  /* --- The renders, which is what Garrett actually asked for -------------------
+     "you cant read the watermarks". Correct, and by arithmetic rather than bad luck:
+     the burned-in strip is 20px text on a 768px-wide canvas, so at the 212px the
+     masthead rendered it, that text hit the screen at 5.5px -- about 4px of actual ink
+     on a monospace face. At 188px on Live stack it was 4.9px. That is a texture, not
+     text. tools/_art.py:13-18 predicted exactly this and the measurement confirms it.
+
+     ~11px on screen needs an image about 422px wide (768 x 11/20). Three declarations
+     have to move together or the smallest one silently wins:
+       1. the grid TRACK, which is the real cap
+       2. .mh's own max-width, or the grid has nowhere to grow into
+       3. .gart's max-width, which becomes binding the moment the track passes it   */
+  /* WIDTH-GATED, and that gate is load-bearing. A 400px gutter track is ~20% of a 1990px
+     window and ~28% of a 1440px one; at 1440 the pair took 800px of 1440 and squeezed the
+     rack into a sliver, measured at 1396px of content in a 745px panel -- 651px over. The
+     enlargement only makes sense where there is width to spend, so it is scoped to
+     min-width:1700px. Between 1301 and 1699 the renders grow modestly instead.
+     Measured at 1301x740, 1440x900, 1855x745 and 1990x970 after this change, all four
+     with a simulated tenth unit. Re-measure all four if you touch these numbers. */
+  html.ns .mh{grid-template-columns:260px minmax(0,1fr) minmax(0,1fr) 260px; max-width:1620px}
+  html.ns .gart{max-width:300px}
+}
+@media (min-width:1700px) and (min-height:900px){
+  html.ns .mh{grid-template-columns:420px minmax(0,1fr) minmax(0,1fr) 420px; max-width:1820px}
+  html.ns .gart{max-width:470px}
+  html.ns #rack .rackrow{grid-template-columns:400px minmax(0,1fr) 400px; gap:28px}
+  html.ns #rack .rackrow .gart{max-width:430px}
+
+  /* --- Live stack: the attribution folds here too now, and here is why ----------
+     THIS BLOCK USED TO CARRY `html.ns .rack .uname > span{display:inline}`, undoing the
+     fold at line ~1780 on the grounds that it saved nothing: measured 2026-08-17, the
+     rack bottomed out at 662.1px both folded and open, because `.uname` is display:flex
+     here so the name and its attribution shared one row. Unfolding was free, so it was
+     right to unfold.
+
+     THAT MEASUREMENT HAS EXPIRED, twice over, and the rule is removed rather than left
+     to look load-bearing. Re-measured at 1990x970 with twelve units:
+
+       attribution shown   #units 715px   -> #rack 971px in an 817px panel, OVER 154
+       attribution folded  #units 478px   -> fits, with room
+
+     Two things changed under it. The rack went from eight units to twelve, and the
+     detail line the API returns grew from `~5 GB resident` to the full
+     `spec · detail` string -- 471 to 692px of text against a 705px name column, so
+     five units wrap to two lines and Gateway to three. What was one row per unit is
+     now 38/56/88px rows.
+
+     NOTHING IS DROPPED AND NOTHING IS TRUNCATED. The text stays in the DOM behind the
+     same `.rk-fold` button every other in-gate width uses, one click away and
+     remembered in localStorage -- the fold CLAUDE.md permits, not the ellipsis it
+     forbids. It also makes the rack behave identically at every width the gate allows,
+     which is what Garrett asked for when he asked for symmetry. The Apache-2.0 credit
+     is carried in the open by the rack note's link to /credits.html, which is why that
+     link must not be cut (see the max-height:899px block below). */
+
+  /* --- Control board: unfold the explanations, they fit ------------------------
+     All 19 module explanations cost 181.9px against 360.9px of dead space, leaving
+     179px spare. The provenance tag (measured / vendor / projected) never folded and
+     still does not -- that labelling is the argument, not decoration. */
+  html.ns .console .mod > .sub,html.ns .console .mod > .plain{display:block}
+
+  /* --- Receipts is deliberately NOT touched here -------------------------------
+     It has the most dead space (516.1px) and the obvious fix does not work. Widening
+     `.cards` minmax() was measured at 280px (6 cols, 341px grid, 366px still unused),
+     380px (4 cols, 323.2px, 384px unused) and 460px (identical to 380px). A card's
+     height comes from its text, not its column, so wider columns only add ragged rows
+     and never fill the panel. That page needs a content decision -- more per card, or
+     fewer larger cards -- not a tuning pass. Left alone on purpose. */
+}
+
+/* ==================================================================================
+   THE TUNER: let it use the window it is given
+   ==================================================================================
+   Added 2026-08-17. Garrett: "for symoneural tuner i love the picture and picture but we
+   are not padding to the window size well."
+
+   Measured on tuner.html at 1990x970 before this rule: `.wrap` is max-width:1120px, so the
+   whole surface sat in a 1120px column with 435px of empty page on EACH side. At 1440x900
+   it is 160px each side. That 1120px is the site's readable prose measure and it is
+   correct for prose -- a 1990px line of text is unreadable. It is wrong for a video
+   player and a channel browser, which are not prose and want the room.
+
+   So this is scoped to the tuner alone via `body:has(#tnvideo)` rather than touching
+   `.wrap`, which every page on the site uses. Changing `.wrap` globally to fix one page
+   is exactly the shared-rule collision that has cost this project five rounds already
+   (`.bar`, `.live`, `.card`, `#console .sub`, and `.gart` before it was capped).
+
+   `:has()` is supported in every browser this site targets (Chrome 105+, Safari 15.4+,
+   Firefox 121+). The fallback if it is unsupported is the current layout, which is
+   readable -- it degrades to "narrower than ideal", never to broken. */
+@media (min-width:1301px){
+  body:has(#tnvideo) .wrap{max-width:min(1800px, calc(100vw - 96px))}
+  /* The channel list is the half that benefits most: it is a long scrolling list of
+     short rows, so extra width turns vertical scrolling into readable columns rather
+     than into longer lines. */
+  body:has(#tnvideo) .pgwrap{grid-template-columns:1fr 320px; gap:26px}
+}
+
+/* ==================================================================================
+   SHORT WINDOWS INSIDE THE GATE: make room for a tenth unit
+   ==================================================================================
+   Added 2026-08-17. The rack grew from 8 units to 10 today (gpuminer, then coder) and the
+   one-screen promise is arithmetic, not taste: at 1301x740 the panel is 585px and the
+   rack measured 639px of content -- 54px over with NINE units, before coder's row was
+   added at all. Two things had pushed it over: the extra unit, and the attribution
+   sentence appended to the rack note, which took that note from 37px to 56px.
+
+   This block is `max-height:899px`, i.e. the complement of the tall block above. Tall
+   windows keep the roomier treatment; only short ones get squeezed. Nothing here HIDES a
+   unit or a word -- CLAUDE.md permits folding and forbids dropping, and at this size the
+   note still reads in full, it simply sets tighter.
+
+   The 27px power glyph is the real floor on a unit row (documented in HANDOVER §3.0 --
+   an earlier padding-only trim moved nothing because the glyph, not the text, sets the
+   height). So the pixels come from the gaps and the note, not from the rows. */
+@media (min-width:1301px) and (max-height:899px){
+  /* No gap between rows at all. It was 2px, then 1px; with THIRTEEN units the twelve
+     gaps are 12px of a 587px panel and the rows already carry a 1px border each, so
+     removing the gap does not merge them visually -- it reads as 1U faces stacked in a
+     rack, which is what they are. This is the tightest viewport the gate allows and the
+     only one that needs it; every other keeps its 2px. */
+  html.ns #rack #units{gap:0}
+  /* The note sets tighter and loses its top margin. It keeps every word, including the
+     attribution pointer -- that link is now the only carrier of the Apache-2.0 credit
+     since the vendor names moved off the rack to /credits.html, so it must not be cut. */
+  html.ns #rack #rack-note{line-height:1.35; margin-top:6px; font-size:var(--t6)}
+  /* The chassis strip's own breathing room. It was given 18px of gap to stop the plate
+     wrapping to two lines at 1366px (see the note above this block) -- 14px still clears
+     that, verified by measuring at 1301, 1366 and 1440 rather than by eye. */
+  html.ns #rack .chassis{gap:14px; padding-top:4px}
+  html.ns #rack .rackrow{gap:18px}
+  /* The row itself. Inside the gate a unit is a 21px glyph in 7px of padding = 37px, and
+     the glyph is the floor, so the two only ever move together -- an earlier
+     padding-only trim here moved nothing at all for exactly that reason.
+     TWELVE UNITS, not ten: chat, image, remix, ravencalc, reinforce, miner, gpuminer,
+     tuner, gateway, coder, guide, sigils. At 1301x740 twelve rows at the previous 29px
+     measured 619px of content in a 587px panel -- OVER 32. A 17px glyph in 2px of
+     padding is a 27px row, 2px back on each of twelve, and the 13px icon inside it is
+     unchanged so the button still reads as a button. */
+  html.ns #rack .unit{padding:2px 14px}
+  html.ns #rack .pwr{width:17px; height:17px}
+  /* The last of it, found by measuring rather than guessing. These come off the
+     surrounding chrome, not off the rows, because a unit row is already at its glyph
+     floor. Nothing is hidden and no word is cut. */
+  html.ns #rack .wrap > .shead{margin-bottom:2px}
+  html.ns #rack #rack-note{margin-top:4px; font-size:var(--t7)}
+  html.ns #rack .chassis{padding-bottom:0}
+  html.ns #rack .rackrow{gap:14px}
+  /* The rack FRAME's own top and bottom padding -- 6px each inside the gate, and pure
+     chrome: the rails run the full height of the frame regardless, and the etched traces
+     are a background. 2px is the last 8px this viewport needed to hold twelve rows, and
+     it is the only place left that is not a word, a gap between words, or a control. */
+  html.ns #rack .rack{padding:2px 0}
+  /* A little spare, deliberately. Twelve rows land at exactly 587px in a 587px panel
+     here, and "exactly zero" is how this layout has broken twice: someone adds a unit or
+     a word and it goes over silently between two measurements. These two are section
+     chrome outside the rack frame and cost nothing to read. With them, a THIRTEENTH unit
+     is OVER 21 here and fits outright at 1440x900, 1855x745 and 1990x970. */
+  html.ns #rack{padding-top:8px; padding-bottom:2px}
+  html.ns #rack .rackrow{margin-top:1px}
+  /* The chassis strip, which is the only box left here that is not a word. Its two
+     gauges put 8px between a label and its 7px bar; 4px still separates them and the
+     bar still reads as a bar. Every reading it carries -- VRAM free, power draw, the
+     card's own name -- is untouched.
+     WHAT DOES NOT WORK, so nobody re-tries it: making the four `offline` units
+     (asicminer, coder, gateway, project) structurally cheaper than the live ones. A row
+     here is floored by its 17px power glyph, not by its text -- the detail line is
+     already folded at this width -- so an offline row is exactly as tall as a live one
+     and there is nothing to reclaim. Shrinking only the offline glyph would buy ~8px
+     across four rows at the cost of thirteen rows no longer being the same height,
+     which is the opposite of the symmetry this pass is for. Measured, not assumed. */
+  html.ns #rack .chassis .gauge label{margin-bottom:4px}
+  html.ns #rack .chassis{padding-top:2px}
+}
+
+/* ==================================================================================
+   THE TWO PANELS THAT DID NOT FILL THE WINDOW
+   ==================================================================================
+   Garrett: "we can also enlargen text and fill the page better here." Measured ink
+   height against panel height, before this block:
+
+     /receipts      285/817 = 35% at 1990x970,  304/592 = 51% at 1855x745
+     /controlboard  594/817 = 73% at 1990x970,  481/747 = 64% at 1440x900
+
+   RECEIPTS. The note in the tall block above records that widening `.cards`'
+   `minmax()` was tried at 280/380/460px and did nothing, because a card's height comes
+   from its text and not from its column -- wider columns only make the text shorter.
+   That diagnosis is right and this is not a retry of it. The lever is the COLUMN COUNT,
+   which is a different quantity: nine cards in three columns is three rows, and three
+   rows of a taller card is 565px where nine cards in one row was 285px. Measured at each
+   candidate rather than reasoned about:
+
+     1990x970   as built 35%   4 cols 51%   3 cols 65%   3 cols + roomier 69%
+     1440x900   as built 66%   4 cols 61%   3 cols 76%   3 cols + roomier 81%
+     1855x745   as built 51%   4 cols 70%   3 cols 89%   3 cols + roomier 95%
+     1301x740   as built 84%   4 cols 78%   3 cols OVER 17
+
+   So three columns only where there is height for three rows (min-height:900px), and
+   four columns on the short windows, where three overflows and one row wastes half the
+   panel. Nothing is added, removed or reworded -- the same nine cards, laid out to the
+   shape of the window.
+
+   CONTROL BOARD. Same lever, opposite direction: nineteen modules at a 158px minimum is
+   eleven columns of nearly empty instrument, which is why the board read as a strip rather
+   than a board. A wider minimum means fewer, larger modules and more rows.
+
+     1990x970   as built 73%   min 210 84%   min 250 80%   min 300 97% (OVER 13)
+     1440x900   as built 64%   min 210 74%   min 250 74%   min 300 83%
+     1855x745   as built 71%   min 210 81%
+     1301x740   as built 82%   min 210 94% (OVER 3)
+
+   300px is right below 1700px wide and overflows above it; 210px is right above. The
+   1301-1699px short corner keeps the 158px it was tuned at -- it is the one viewport
+   with no spare height and it is already at 82%. */
+@media (min-width:1301px) and (min-height:900px){
+  html.ns .cards{grid-template-columns:repeat(3,1fr)}
+  html.ns .cards .card{padding:24px 24px 22px}
+}
+@media (min-width:1301px) and (max-height:899px){
+  html.ns .cards{grid-template-columns:repeat(4,1fr)}
+}
+@media (min-width:1301px) and (max-width:1699px) and (min-height:900px){
+  html.ns #console .console{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+}
+@media (min-width:1700px){
+  html.ns #console .console{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+}
+
+/* ==================================================================================
+   FILL THE WINDOW THAT IS ACTUALLY THERE
+   ==================================================================================
+   Added 2026-08-17. Garrett: "we went a little too small on the website; we should fill
+   the detected window better on the fly ... Just fill the windows better for Overview,
+   livestack, control board and receipts."
+
+   MEASURED FIRST, because the obvious diagnosis was wrong. At 2560x1440 the section
+   container is already 2560 wide and 89% of the height, `.cards` and `.console` are
+   already 2472 wide, and `.mh` is already 1820. The content is NOT in a narrow column.
+   Two other things are:
+
+     1. `header .wrap` and `footer .wrap` measure 1120px on a 2560px screen, so the nav
+        and the footer sit in an island with 720px of empty bar on each side while the
+        content beneath them spans the glass. That reads as a broken header, and it is
+        the thing the eye actually lands on.
+     2. The type. Body text is 12.5px at every width, so a 27" monitor renders the same
+        physical text size as a 13" laptop and the panels occupy a third of the height
+        they are given -- `.console` is 292px tall inside a 1287px section. The empty
+        space is not a layout bug, it is a text that never grew.
+
+   So: bars go full width everywhere, and the seven type tokens grow with the viewport --
+   but ONLY on the four pages Garrett named, and ONLY above 1600px.
+
+   WHY THE SCOPE IS THAT NARROW. The seven-size scale in `:root` above is enforceable
+   only because it is small and fixed, and `site/*.html` carries 96 font-size
+   declarations of its own of which exactly 3 reference a token. A sitewide fluid scale
+   would therefore grow the CSS's seven and leave ninety-odd raw px sizes behind at their
+   old value, which is not "bigger", it is "inconsistent". These four pages are the
+   dashboard: a rack, a control board, a receipts grid and a masthead. They are the
+   pages Garrett asked about and the ones whose content is panels rather than prose.
+   Prose keeps its own `ch` caps (`.lede` 66ch, `.sub` 72ch, `.tnote` 80ch), so a wider
+   container cannot produce a 2000px line of text -- that is why widening is safe here
+   and would not be on `documentation.html`.
+
+   The scoping mechanism is `body:has(#hero)` and friends, following the tuner rule
+   above rather than inventing a second convention. Verified those four ids appear on
+   exactly five pages -- overview, livestack, controlboard, receipts and index (which
+   carries all four) -- and on no prose page, so nothing else can be caught by them.
+
+   Below 1601px every value below is at its clamp minimum, which is today's number, so
+   every viewport that has already been tuned by hand renders byte-identically. */
+
+/* The bars are chrome, not prose, and they belong to the window on every page. */
+header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
+
+@media (min-width:1601px){
+  body:has(#hero), body:has(#rack), body:has(#console), body:has(#more){
+    /* Content follows the tuner's ceiling. 1800px is not arbitrary: it is the number
+       already chosen and measured for the tuner surface, and using a second one here
+       would mean two "wide" widths on one site. */
+    --max: min(1800px, calc(100vw - 96px));
+
+    /* Growth is linear from 1600px to 2560px and lands at exactly 1.25x. Each
+       coefficient is token * 0.25 / 960, so all seven reach full size together --
+       a shared `vw` coefficient would have each token start growing at a different
+       width and quietly change the ratios between them, which is the one property of
+       a type scale worth protecting. */
+    --t1: clamp(40px,   calc(40px   + (100vw - 1600px) * 0.01042), 50px);
+    --t2: clamp(28px,   calc(28px   + (100vw - 1600px) * 0.00729), 35px);
+    --t3: clamp(20px,   calc(20px   + (100vw - 1600px) * 0.00521), 25px);
+    --t4: clamp(14.5px, calc(14.5px + (100vw - 1600px) * 0.00378), 18.125px);
+    --t5: clamp(12.5px, calc(12.5px + (100vw - 1600px) * 0.00326), 15.625px);
+    --t6: clamp(11.5px, calc(11.5px + (100vw - 1600px) * 0.00299), 14.375px);
+    --t7: clamp(10.5px, calc(10.5px + (100vw - 1600px) * 0.00273), 13.125px);
+  }
+
+  /* The footer wordmark carries `font-size:14.5px` as an INLINE style in eighteen HTML
+     files, so on these pages it would be the one piece of text that did not grow --
+     next to a footer line that did. `!important` is the only thing that beats an inline
+     style, and this is the case the note beside the type scale predicted. */
+  body:has(#hero) footer .logo b, body:has(#rack) footer .logo b,
+  body:has(#console) footer .logo b, body:has(#more) footer .logo b{
+    font-size:var(--t4) !important;
+  }
+
+  /* NO RULE FOR `.gart` HERE, and that is a finding rather than an omission. The 268px
+     cap in the base rule is not what applies at these widths -- the renders measure 434px
+     at 2560 and at 1920, so a later rule is already sizing them. A clamp added here that
+     looked like a generous increase over 268px actually CUT them to 350px at 2560 and
+     302px at 1920. Measure the element before "raising" a cap you have only read. */
+}
+
+/* The two sections the type scale above does not fit on a WIDE BUT SHORT window: the
+   control board and the live rack. The board is the densest thing on the site -- eleven
+   unit tiles, each several readings deep -- and the rack row carries a full-height render
+   beside its text; both were already close to the bottom of the glass. Growing their type
+   pushed them over. Measured, control board: 43px of overflow at 2000x900, 52px at
+   1920x900, 63px at 1855x900, 104px at 2200x900. Live rack: 50px at 2560x900, 53px at
+   2560x745, 34px at 2400x745, 22px at 2300x745. The masthead and the receipts grid fit at
+   every one of those sizes and are deliberately not listed here.
+
+   So the board alone keeps the fixed sizes when the window is short. The tokens are reset
+   on `#console` rather than on `body`, which matters on `/index.html`: that page holds all
+   four sections at once, so a `body:has(#console)` reset there would quietly shrink the
+   masthead and the rack too. Inheritance stops this at the section boundary.
+
+   The height gate is 1000px, not 970px, and the 30px of slack is deliberate: 1990x970 is
+   one of the four viewports `tests/frontend.mjs` asserts the one-screen fit at, and it
+   measured clean with the fluid type, so the cutoff has to sit above it without landing on
+   it. Values below are copied from the base scale at ~line 45; if that changes, this
+   changes with it. */
+@media (min-width:1601px) and (max-height:999px){
+  html.ns #console, html.ns #rack{
+    --t1:40px; --t2:28px; --t3:20px; --t4:14.5px; --t5:12.5px; --t6:11.5px; --t7:10.5px;
+  }
+}
+
+/* ==================================================================================
+   A TIER ABOVE 1700px, because 1820px stopped being "wide" two monitors ago
+   ==================================================================================
+   The block at ~line 1949 scales the masthead and the rack row in three measured tiers
+   -- <=1300, 1301-1699, >=1700 -- and the top tier pins `.mh` at max-width:1820px with
+   420px gutter tracks. That was correct for the 1990x970 window it was measured at. On a
+   2560x1440 screen it leaves 370px of dead page on each side and squeezes the two text
+   columns hard enough that the masthead headline wraps onto a fourth line, which is what
+   "we went a little too small" looks like from a desk.
+
+   So the top tier gets a fluid continuation rather than a fourth fixed number. The
+   gutter tracks become a percentage with the old 420px as their floor, so nothing gets
+   narrower than the tier it replaces, and the containers follow the window.
+
+   `.gart` is capped at 768px here rather than released entirely, and that number is the
+   art's own native canvas width (see `tools/_art.py`). Past it the browser upscales, and
+   an upscaled watermark is exactly the unreadable-strip problem the 1700px tier was
+   written to fix, arrived at from the other direction.
+
+   Re-measure at 1990x970, 1855x745, 1440x900 and 1301x740 if you touch this -- the four
+   viewports the tier below was tuned against. This block cannot affect them: they are
+   all under 2000px wide.
+
+   The height gate is 1000px and was 900px for one round. At 900px and below, a rack row
+   that has been given more width gives the render more width too, and the render is the
+   tallest thing in the row: measured 494px of art and 50px of section overflow at 2560x900,
+   against 450px and 35px with the width left alone. Wide-and-short windows therefore keep
+   the 1820px tier, which fits. Same threshold as the height block further down, on purpose
+   -- two nearly-equal gates in one file is how a layout ends up with a 100px band that
+   neither rule covers. */
+@media (min-width:2000px) and (min-height:1000px){
+  html.ns .mh{
+    grid-template-columns:minmax(420px,21%) minmax(0,1fr) minmax(0,1fr) minmax(420px,21%);
+    max-width:min(2400px, calc(100vw - 96px));
+  }
+  html.ns #rack .rackrow{
+    grid-template-columns:minmax(400px,19%) minmax(0,1fr) minmax(400px,19%);
+    max-width:min(2400px, calc(100vw - 96px));
+  }
+  html.ns .gart, html.ns #rack .rackrow .gart{max-width:768px}
+}
+
+/* ==================================================================================
+   ON A BIG SCREEN, LET THE BOARD HAVE THE HEIGHT TOO
+   ==================================================================================
+   The control board and the receipts grid are top-aligned inside a panel that, at
+   2560x1440, is 1277px tall while the board itself is 383px. Widening it only made that
+   worse: wider tiles wrap less text, so the board got SHORTER as the window got bigger.
+   Nearly half the glass was empty below a dashboard.
+
+   The rows stretch instead. `grid-auto-rows:minmax(0,1fr)` divides the spare height
+   between the rows that exist rather than inventing content to fill it -- the tiles keep
+   their text top-aligned, which is what an instrument panel should look like anyway.
+
+   `display:flex; flex-direction:column` on the wrap, NOT `display:grid`. The note at
+   ~line 1758 records what happened when someone gridded this wrap: the board went from
+   1,043px to 3,553px tall because the grid put it in a narrow column. A column flexbox
+   leaves every child full width, which is the property that was actually wanted there.
+
+   Two details in here are load-bearing and were both found by measuring, not by reading:
+
+   `flex:1 1 auto; min-height:0` on the wrap, NOT `min-height:100%`. `100%` of the panel plus
+   the wrap's own padding is taller than the panel, so the first version overflowed by exactly
+   that much wherever the fluid type had already used up the slack -- 50px on the front page's
+   console tab at 2200x1000, 37px at 2100x1000, 10px at 2200x1040. Making the wrap a flex child
+   of the panel bounds it by the panel instead of by a percentage.
+
+   `grid-auto-rows:minmax(min-content,1fr)`, NOT `minmax(0,1fr)`. With a `0` floor the rows are
+   allowed to shrink below their own content when the panel is short, which clips readings --
+   the same class of loss as `text-overflow:ellipsis`, which this file bans. With a `min-content`
+   floor the rows grow into spare height when it exists and fall back to their natural size when
+   it does not, so the worst case is the behaviour before this block, never worse.
+
+   Gated on min-height:1000px as well as min-width, so it can only apply where the spare
+   height being divided up is real. Measured after: the board goes 383px -> 943px at
+   2560x1440 and the panel does not scroll at 2560x1440, 2560x1200, 2400x1000, 2200x1000 or
+   2000x1000. `tests/frontend.mjs` asserts the one-screen fit at four viewports, all of
+   which are under 2000px wide, so this block cannot reach them.
+
+   NEGATIVE RESULT, do not re-add: widening the columns here to `minmax(300px,1fr)` -- the
+   obvious companion change, and the same number the 1700px tier rejected -- costs height
+   instead of using it. At 2000-2200px wide the fluid type above makes 300px tiles fit only
+   6 across instead of 8-9, so the board gains rows faster than the tiles lose wrapped
+   lines: measured 55px of panel overflow at 2000x1000, 81px at 2200x1000, 41px even at
+   2200x1040. Eleven narrow columns that fit beat eight wide ones that scroll. */
+@media (min-width:2000px) and (min-height:1000px){
+  /* `:not([hidden])` IS REQUIRED, and leaving it off is a front-page-breaking bug. The
+     one-screen front page keeps all four sections in one document and hides three of them
+     with the `hidden` attribute; `[hidden]{display:none}` is a UA rule, so any author
+     `display:` on a class selector beats it. Without the guard, `#console` and `#more`
+     stayed laid out while hidden and the visible tab was squeezed into what was left:
+     measured `#hero` at 425px of a 1440px window with 260px of overflow, and 465px of
+     overflow on the rack tab. The standalone pages show nothing wrong because they only
+     ever contain their own section, so this only reproduces on `/index.html`. */
+  html.ns #console:not([hidden]), html.ns #more:not([hidden]){display:flex; flex-direction:column}
+  html.ns #console > .wrap, html.ns #more > .wrap{
+    display:flex; flex-direction:column; flex:1 1 auto; min-height:0;
+  }
+  html.ns #console .console, html.ns #more .cards{
+    flex:1 1 auto; min-height:0; grid-auto-rows:minmax(min-content,1fr);
+  }
 }

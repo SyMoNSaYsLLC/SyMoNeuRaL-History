@@ -61,3 +61,21 @@ docs/archive/site-snapshot-*/
 *.key
 !contrib/**/*.key
 backend/apps/licensing/contract-signing.key
+
+# ---- Agent scratch, not source ----
+# .claude/claudesessioninterrupted is a 271 KB dump of one interrupted session's transcript,
+# written by the harness. HANDOVER.md is the state document by house rule ("do not create a
+# second state document"); a raw transcript beside it is a second one that nobody maintains.
+.claude/claudesessioninterrupted
+
+# q.json is a scratch request body left at the repo root from hand-testing the tuner's guide
+# endpoint. Nothing reads it -- a grep across the tree finds no reference.
+/q.json
+
+# ---- Live agent worktrees ----
+# .claude/worktrees/ holds real `git worktree` checkouts (138 MB, four of them as this was
+# written), each on its own branch with its own agent working inside it. Committing them
+# into the main tree would nest a checkout inside its own repository -- and they are not
+# source in any case, they are other branches' working copies. `git worktree list` is how
+# you enumerate them; `git worktree remove` is how they go away.
+.claude/worktrees/

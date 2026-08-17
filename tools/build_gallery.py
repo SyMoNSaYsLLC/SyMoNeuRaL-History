@@ -32,6 +32,9 @@ import urllib.request
 
 from PIL import Image, ImageDraw, ImageFont
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import _art  # noqa: E402
+
 # The generators live in tools/, so the repo root is one level up. This exact
 # calculation has been wrong twice in this repo's history -- once when demo/ was
 # flattened and once here -- and it fails *silently*, because the wrong parent is
@@ -102,8 +105,14 @@ def render(seed: int, prompt: str) -> tuple[bytes, dict]:
 
 
 def rows(meta: dict) -> tuple[str, str]:
-    """The two lines the bar prints, as one place both the PNG and the page can read."""
-    return (f"{meta['model']} · {meta['size']}×{meta['size']} · {meta['steps']} steps",
+    """The two lines the bar prints, as one place both the PNG and the page can read.
+
+    The model string goes through `_art.model_name()` -- the same map `_art.provenance()`
+    uses for the HTML copy beneath the image -- so the burned-in caption and the readable
+    one can never disagree about what drew the picture.
+    """
+    return (f"{_art.model_name(meta.get('model', ''))} · "
+            f"{meta['size']}×{meta['size']} · {meta['steps']} steps",
             f"seed {meta['seed']} · {meta['seconds']}s on an RTX 5070 Ti")
 
 
@@ -123,8 +132,17 @@ def compose(art: Image.Image, meta: dict) -> Image.Image:
     top, tail = rows(meta)
     d.line([(0, h), (w, h)], fill="#1d241f", width=1)
     d.text((13, h + PAD), "SyMoNeuRaL Image", font=fb, fill="#2ee08a")
-    d.text((13 + int(d.textlength("SyMoNeuRaL Image", font=fb)) + FONT_PX, h + PAD),
-           top, font=f, fill="#8d9b93")
+    indent = 13 + int(d.textlength("SyMoNeuRaL Image", font=fb)) + FONT_PX
+
+    # PIL does not wrap and does not clip: a string wider than the canvas is simply drawn
+    # off the right edge and the tail of it is gone, with no error. That is the same data
+    # loss the repo-wide ellipsis ban exists to prevent, so fail loudly instead. Renaming
+    # the model shortened both rows, but the next rename might not.
+    for x, line in ((indent, top), (13, tail)):
+        over = x + d.textlength(line, font=f) - (w - 13)
+        assert over <= 0, f"watermark row overflows the {w}px canvas by {over:.0f}px: {line!r}"
+
+    d.text((indent, h + PAD), top, font=f, fill="#8d9b93")
     d.text((13, h + PAD + LEAD), tail, font=f, fill="#8d9b93")
     return canvas
 

@@ -19,14 +19,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-__all__ = ["Channel", "parse_m3u", "HlsVariant", "HlsSegment", "HlsPlaylist", "parse_hls",
-           "MAX_CHANNELS"]
+__all__ = ["Channel", "parse_m3u", "HlsVariant", "HlsSegment", "HlsPlaylist", "HlsKey",
+           "NO_KEY", "parse_hls", "MAX_CHANNELS"]
 
-#: A provider list of 60k channels is real, and rendering it is the browser's problem -- but
-#: holding an unbounded parse in RAM on the serving box is ours. Parsing stops here and the
-#: result says it was truncated, because silently returning a short list would be a lie about
-#: what the visitor loaded.
-MAX_CHANNELS = 20000
+#: **No channel cap. `0` means parse the whole file**, and `0` is the default at the owner's
+#: instruction (2026-08-17). A provider list of 60k channels is real, so a 20,000 cap silently
+#: deleted the tail of a real playlist -- and the tail of a provider file is where Movies
+#: usually is. `truncated` still exists and is still reported; with no cap it is simply always
+#: `False`. A caller that wants a bound sets this to a positive number.
+MAX_CHANNELS = 0
 
 
 @dataclass
@@ -67,18 +68,58 @@ def _split_extinf(rest: str) -> tuple[dict[str, str], str]:
     return dict(_ATTR.findall(rest)), ""
 
 
-def _classify(url: str) -> str:
-    """Guess live / vod / series from the URL shape.
+# Group-title vocabulary, consulted **only** when the URL says nothing. Matched on word
+# boundaries against the lowercased group so that "Movies" hits and "Moviestar TV" does not.
+# English plus the four languages that turn up most often in provider exports.
+_GROUP_VOD = re.compile(
+    r"(?i)\b(vod|movie|movies|film|films|filme|filmes|cine|cinema|peliculas|"
+    r"pel[ií]culas|kino|videoteca)\b")
+_GROUP_SERIES = re.compile(
+    r"(?i)\b(series|serie|s[ée]ries|serien|s[ée]rie|tv ?shows?|boxsets?|box ?sets?|"
+    r"seasons?|staffel)\b")
 
-    Xtream builds `/live/<u>/<p>/<id>.ts`, `/movie/<u>/<p>/<id>.mp4` and `/series/...`, so the
-    guess is reliable for the common case and honestly wrong-by-default (`live`) otherwise.
-    It is a display hint only; nothing branches on it.
+
+def _classify(url: str, group: str = "") -> str:
+    """Guess live / vod / series from the URL shape, falling back to the group title.
+
+    Xtream builds `/live/<u>/<p>/<id>.ts`, `/movie/<u>/<p>/<id>.mp4` and `/series/...`, and when
+    one of those segments is present it is **authoritative** -- the provider is telling us what
+    the item is, and a group title never overrides it.
+
+    The fallback is the fix for a real and quiet failure. A plain M3U export -- not one built
+    from the Xtream API -- routinely lists a film as `http://host/12345.mp4` under
+    `group-title="VOD | Movies"`. There is no `/movie/` segment anywhere in that URL, so the old
+    unconditional `return "live"` marked every such film as a live channel, and a UI that
+    filters `kind == "vod"` to fill a Movies section showed an empty section however the
+    frontend spelled the category name. The group title is the only signal those playlists carry
+    and it was being ignored.
+
+    **The cost, stated plainly:** a genuinely linear channel whose group is named for films --
+    "24/7 Movies", "Cinema Live" -- now classifies as `vod`. That is a real misclassification
+    and it is the better trade: it moves one always-on channel into the Movies list, where it
+    at least belongs thematically, instead of hiding every actual film from it. The default when
+    neither signal says anything is still `live`, which is what the great majority of a channel
+    list is.
     """
     low = url.lower()
     if "/movie/" in low or "/vod/" in low:
         return "vod"
     if "/series/" in low:
         return "series"
+    if "/live/" in low:
+        # `live` as an *explicit* answer, not as the default. Without this line the group title
+        # would outrank the provider on `/live/<u>/<p>/1.ts` under `group-title="VOD | Movies"`,
+        # which is a real playlist shape -- a genuinely linear channel filed in a film category
+        # -- and the whole rule above is that the URL wins when the URL says anything.
+        return "live"
+    g = group or ""
+    if g:
+        # Series first: "TV Series | Movies & Boxsets" is a series group, and a group naming
+        # both is far more often a series shelf than a film shelf.
+        if _GROUP_SERIES.search(g):
+            return "series"
+        if _GROUP_VOD.search(g):
+            return "vod"
     return "live"
 
 
@@ -140,10 +181,10 @@ def parse_m3u(text: str) -> tuple[list[Channel], bool]:
             tail = line.rsplit("/", 1)[-1].split("?", 1)[0]
             pending = Channel(name=tail or "(unnamed)", url="", group=pending_group)
         pending.url = line
-        pending.kind = _classify(line)
+        pending.kind = _classify(line, pending.group)
         channels.append(pending)
         pending = None
-        if len(channels) >= MAX_CHANNELS:
+        if MAX_CHANNELS and len(channels) >= MAX_CHANNELS:
             truncated = True
             break
 
@@ -159,11 +200,38 @@ class HlsVariant:
     resolution: str = ""
 
 
+@dataclass(frozen=True)
+class HlsKey:
+    """One `#EXT-X-KEY`. Attached to every segment it governs, not to the playlist.
+
+    Per-segment rather than per-playlist because HLS rotates keys mid-playlist -- a new
+    `#EXT-X-KEY` applies from the segment after it to the next one, and `METHOD=NONE` in the
+    middle of a playlist genuinely means "the rest of this is in the clear". A single
+    playlist-level flag cannot express either, and a pump that assumed one key for the whole
+    list would decrypt cleartext segments into noise the moment a provider rotated.
+    """
+    method: str = "NONE"          # NONE | AES-128 | SAMPLE-AES | SAMPLE-AES-CTR | anything
+    uri: str = ""                 # where to fetch the key. Relative URIs are common.
+    iv: str = ""                  # `0x...` hex, or empty -- then the sequence number is the IV
+    #: `identity` means "the URI is the key". Anything else -- `urn:uuid:edef8ba9-...` is
+    #: Widevine, `com.apple.streamingkeydelivery` is FairPlay -- is DRM wearing an AES-128
+    #: METHOD, and there is no key at the other end of that URI that we could use.
+    keyformat: str = "identity"
+
+    @property
+    def encrypted(self) -> bool:
+        return self.method.upper() not in ("", "NONE")
+
+
+NO_KEY = HlsKey()
+
+
 @dataclass
 class HlsSegment:
     uri: str
     duration: float = 0.0
     sequence: int = 0
+    key: HlsKey = NO_KEY
 
 
 @dataclass
@@ -174,11 +242,29 @@ class HlsPlaylist:
     target_duration: float = 6.0
     media_sequence: int = 0
     ended: bool = False           # #EXT-X-ENDLIST -- a VOD-shaped playlist, not a live one
-    encrypted: bool = False       # #EXT-X-KEY with a method we cannot honour
 
     @property
     def is_master(self) -> bool:
         return bool(self.variants) and not self.segments
+
+    @property
+    def keys(self) -> list[HlsKey]:
+        """Every distinct encryption key in effect over this playlist's segments."""
+        out: list[HlsKey] = []
+        for seg in self.segments:
+            if seg.key.encrypted and seg.key not in out:
+                out.append(seg.key)
+        return out
+
+    @property
+    def encrypted(self) -> bool:
+        """True if any segment is encrypted at all -- by any method, supported or not.
+
+        Kept as a property with the name it had as a field, because it is the honest one-line
+        answer to "does this need a key?" and callers still ask it. What changed is that
+        answering `True` no longer means "refuse": see `sessions.py`, which branches on METHOD.
+        """
+        return any(seg.key.encrypted for seg in self.segments)
 
 
 _ATTR_LIST = re.compile(r'([A-Za-z0-9-]+)=("[^"]*"|[^,]*)')
@@ -191,15 +277,17 @@ def _attrs(s: str) -> dict[str, str]:
 def parse_hls(text: str) -> HlsPlaylist:
     """Parse an HLS master or media playlist.
 
-    Only the tags the pump acts on are interpreted. `EXT-X-KEY` is noticed but not honoured:
-    we have no AES-128 segment decryption here, so an encrypted stream is reported as such and
-    refused rather than piped to ffmpeg as garbage that fails ten seconds later with a
-    misleading error.
+    Only the tags the pump acts on are interpreted. `EXT-X-KEY` is parsed in full -- METHOD,
+    URI, IV and KEYFORMAT -- and attached to each segment it governs, because the pump can now
+    decrypt `AES-128` and must be able to tell that apart from `SAMPLE-AES` (which it refuses)
+    and from DRM (which wears an AES-128 METHOD and has no usable key). Reporting a single
+    playlist-level boolean was what forced the old blanket refusal.
     """
     pl = HlsPlaylist()
     seq = None
     pending_duration = 0.0
     pending_variant: HlsVariant | None = None
+    current_key = NO_KEY
 
     for raw in text.lstrip("﻿").splitlines():
         line = raw.strip()
@@ -228,9 +316,15 @@ def parse_hls(text: str) -> HlsPlaylist:
             elif upper.startswith("#EXT-X-ENDLIST"):
                 pl.ended = True
             elif upper.startswith("#EXT-X-KEY"):
+                # Applies from here to the next #EXT-X-KEY. `#EXT-X-SESSION-KEY` is deliberately
+                # not matched (it does not start with `#EXT-X-KEY`): it only announces a key so
+                # a player can pre-fetch it, and encrypts nothing by itself.
                 a = _attrs(line.split(":", 1)[1] if ":" in line else "")
-                if a.get("METHOD", "NONE").upper() != "NONE":
-                    pl.encrypted = True
+                current_key = HlsKey(
+                    method=(a.get("METHOD") or "NONE").strip().upper(),
+                    uri=(a.get("URI") or "").strip(),
+                    iv=(a.get("IV") or "").strip(),
+                    keyformat=(a.get("KEYFORMAT") or "identity").strip())
             elif upper.startswith("#EXTINF"):
                 try:
                     pending_duration = float(line.split(":", 1)[1].split(",")[0])
@@ -246,7 +340,8 @@ def parse_hls(text: str) -> HlsPlaylist:
 
         if seq is None:
             seq = pl.media_sequence
-        pl.segments.append(HlsSegment(uri=line, duration=pending_duration, sequence=seq))
+        pl.segments.append(HlsSegment(uri=line, duration=pending_duration, sequence=seq,
+                                      key=current_key))
         seq += 1
         pending_duration = 0.0
 

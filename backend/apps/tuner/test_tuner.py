@@ -23,12 +23,15 @@ import functools
 import http.server
 import io
 import ipaddress
+import json
 import logging
 import pathlib
 import socketserver
 import sys
 import threading
 import unittest
+import unittest.mock
+import urllib.parse
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -208,6 +211,13 @@ class TestValidateUrl(unittest.TestCase):
 
         A live public box must have no switch that turns the SSRF check off. If someone ever
         adds `os.environ` handling to Policy, this fails.
+
+        This assertion used to be "the module never mentions `os.environ` at all", which was a
+        clean grep and is no longer true: the User-Agent default is an operator override read
+        once at import. So the grep is now an *allow-list* -- the environment may be consulted,
+        on lines that are visibly about the user agent and nowhere else. The `Policy` class body
+        itself must still be free of it, which is the half of the old test that was actually
+        about `allow_private`.
         """
         self.assertFalse(Policy().allow_private)
         src = pathlib.Path(safefetch.__file__).read_text()
@@ -216,9 +226,34 @@ class TestValidateUrl(unittest.TestCase):
         # and matching that would fail on the very comment explaining the rule.
         self.assertNotIn("os.environ", head)
         self.assertNotIn("getenv", head)
-        # And nothing in the whole module may consult the environment either.
-        self.assertNotIn("os.environ", src)
-        self.assertNotIn("getenv", src)
+        for n, line in enumerate(src.splitlines(), 1):
+            if "os.environ" in line or "getenv" in line:
+                self.assertIn("_UA_ENV", line,
+                              f"{safefetch.__file__}:{n} reads the environment for something "
+                              f"other than the user agent")
+
+    def test_the_environment_cannot_turn_the_ssrf_check_off(self):
+        """Behavioural, and in a subprocess, which is the only way it means anything.
+
+        `DEFAULT_USER_AGENT` is read at import and `Policy()` is an evaluated-at-import default
+        argument throughout the module, so mutating `os.environ` in this process would prove
+        nothing at all -- the import already happened. A fresh interpreter with the hostile
+        variables already set is the real test.
+        """
+        import os
+        import subprocess
+        env = {**os.environ,
+               "SYMONEURAL_TUNER_ALLOW_PRIVATE": "1", "ALLOW_PRIVATE": "1",
+               "SYMONEURAL_TUNER_POLICY_ALLOW_PRIVATE": "true", "allow_private": "1"}
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, %r)\n"
+             "from apps.tuner.safefetch import Policy\n"
+             "print(Policy().allow_private)"
+             % str(pathlib.Path(__file__).resolve().parents[2])],
+            capture_output=True, text=True, timeout=60, env=env)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "False")
 
 
 class TestRedirects(unittest.TestCase):
@@ -242,8 +277,17 @@ class TestRedirects(unittest.TestCase):
         self.assertEqual(t.join("../d"), "http://good.example:80/a/d")
         self.assertEqual(t.join("/e"), "http://good.example:80/e")
 
-    def test_redirect_cap_is_small(self):
-        self.assertLessEqual(Policy().max_redirects, 5)
+    def test_redirect_cap_is_bounded_at_both_ends(self):
+        """Bidirectional on purpose.
+
+        Too high is a redirect loop held open; too low fails ordinary providers. Xtream stream
+        URLs chain -- panel to balancer to region to edge, sometimes with a token handoff -- and
+        the cap was 3, which is fewer hops than a working provider uses. Every hop is
+        re-validated, so length is not the security property; the upper bound is only there to
+        end a loop.
+        """
+        self.assertGreaterEqual(Policy().max_redirects, 5)
+        self.assertLessEqual(Policy().max_redirects, 8)
 
 
 class TestPinning(unittest.TestCase):
@@ -401,12 +445,25 @@ class TestM3U(unittest.TestCase):
         chans, _ = m3u.parse_m3u("#EXTINF:-1,A\nhttp://a.example/1.ts\n")
         self.assertEqual(len(chans), 1)
 
-    def test_truncation_is_reported_not_silent(self):
-        big = "".join(f"#EXTINF:-1,C{i}\nhttp://a.example/{i}.ts\n"
-                      for i in range(m3u.MAX_CHANNELS + 50))
+    def test_the_default_is_no_cap_so_nothing_is_dropped(self):
+        """`MAX_CHANNELS = 0` by owner's instruction: parse the file, all of it."""
+        self.assertEqual(m3u.MAX_CHANNELS, 0)
+        big = "".join(f"#EXTINF:-1,C{i}\nhttp://a.example/{i}.ts\n" for i in range(25_000))
         chans, truncated = m3u.parse_m3u(big)
+        self.assertEqual(len(chans), 25_000)
+        self.assertFalse(truncated, "nothing was dropped, so nothing may claim it was")
+
+    def test_truncation_is_reported_not_silent_when_a_cap_is_set(self):
+        """The reporting machinery still works, for whoever sets a cap again.
+
+        Kept rather than deleted: the failure this guards is a *silent* short list, and that
+        failure comes back the moment anyone reintroduces a bound without a flag beside it.
+        """
+        with unittest.mock.patch.object(m3u, "MAX_CHANNELS", 500):
+            big = "".join(f"#EXTINF:-1,C{i}\nhttp://a.example/{i}.ts\n" for i in range(550))
+            chans, truncated = m3u.parse_m3u(big)
         self.assertTrue(truncated)
-        self.assertEqual(len(chans), m3u.MAX_CHANNELS)
+        self.assertEqual(len(chans), 500)
 
 
 class TestHlsParser(unittest.TestCase):
@@ -678,6 +735,1193 @@ class TestRackStatus(unittest.TestCase):
 
     def test_reports_no_stored_channels(self):
         self.assertIn("no", routes.status()["detail"].lower())
+
+
+# ===================================================================== the repro harness
+#
+# Everything below this line exists because of one sentence from the owner: "I know most of
+# these streams work, so make sure you repair it. If it's not active you will come to a page
+# from the server saying it's down, not just a blank screen."
+#
+# That is a diagnosis, not a feature request. A provider page means the channel is dead; a blank
+# screen means *we* are broken. Telling those apart needs the failure modes reproduced, and
+# there are no provider credentials on this box and no known-good stream URL to test against.
+#
+# So every failure mode is synthesised locally. ffmpeg builds real media -- a real transport
+# stream, a real HLS playlist, a real AES-128 encrypted HLS playlist, real HEVC -- and a
+# loopback HTTP server plays the provider, including the provider's bad behaviour: HTML at 200,
+# 403 with a page instead of a body, and a User-Agent gate. A fix that is not reproduced here is
+# a fix nobody can falsify.
+#
+# The SSRF validator is not weakened to make this work. `Policy(allow_private=True)` is the
+# constructor argument that exists for exactly this and is unreachable from any request, and the
+# `_resolver=` seam is used where a name is needed. Neither is a bypass; both are the seams the
+# module was built with.
+
+import shutil                                                             # noqa: E402
+import subprocess                                                         # noqa: E402
+import tempfile                                                           # noqa: E402
+import time                                                               # noqa: E402
+
+FFMPEG_BIN = shutil.which("ffmpeg")
+needs_ffmpeg = unittest.skipUnless(FFMPEG_BIN, "ffmpeg is not installed")
+
+#: A User-Agent that is neither VLC nor anything a provider recognises -- what this module used
+#: to send, and what a gated provider refuses.
+STRANGER_UA = "SyMoNeuRaL-Tuner/1"
+
+OFFLINE_PAGE = (
+    b"<!DOCTYPE html><html><head><title>Stream unavailable</title>"
+    b"<style>body{color:#c00}</style>"
+    b"<script>var x='this javascript must not become the message';</script></head>"
+    b"<body><h1>Channel temporarily offline</h1>"
+    b"<p>This channel is not currently broadcasting. Please try another.</p>"
+    b"</body></html>")
+
+
+@functools.lru_cache(maxsize=1)
+def media() -> pathlib.Path:
+    """Build every media fixture once per run, with ffmpeg, into a temporary directory.
+
+    Deliberately tiny -- 160x120 at 10 fps -- because these are the only slow tests in the file
+    and the shapes being asserted on do not depend on the picture.
+    """
+    d = pathlib.Path(tempfile.mkdtemp(prefix="tuner-fixtures-"))
+
+    def ff(*args):
+        subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-loglevel", "error", *args],
+                       check=True, timeout=180)
+
+    src = ["-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10",
+           "-f", "lavfi", "-i", "sine=frequency=440", "-t", "4"]
+    ff(*src, "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+       "-f", "mpegts", str(d / "clean.ts"))
+    ff(*src, "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
+       "-c:a", "aac", "-f", "mpegts", str(d / "hevc.ts"))
+
+    (d / "hls").mkdir()
+    ff("-i", str(d / "clean.ts"), "-c", "copy", "-f", "hls", "-hls_time", "1",
+       "-hls_playlist_type", "vod", "-hls_list_size", "0",
+       "-hls_segment_filename", str(d / "hls" / "seg%03d.ts"), str(d / "hls" / "index.m3u8"))
+
+    # AES-128. `-hls_key_info_file` takes three lines: the URI to *write into the playlist*,
+    # the path to read the key bytes from, and optionally the IV in hex. Getting that order
+    # wrong is the classic way to waste a cycle here.
+    key = bytes(range(16))
+    (d / "enc.key").write_bytes(key)
+    (d / "aes").mkdir()
+    (d / "keyinfo").write_text(f"enc.key\n{d / 'enc.key'}\n")
+    ff("-i", str(d / "clean.ts"), "-c", "copy", "-f", "hls", "-hls_time", "1",
+       "-hls_playlist_type", "vod", "-hls_list_size", "0",
+       "-hls_key_info_file", str(d / "keyinfo"),
+       "-hls_segment_filename", str(d / "aes" / "seg%03d.ts"), str(d / "aes" / "index.m3u8"))
+
+    # The same, with an explicit IV, so both IV paths (attribute and media-sequence fallback)
+    # are exercised against real ciphertext rather than only in the parser.
+    (d / "aesiv").mkdir()
+    (d / "keyinfo_iv").write_text(f"enc.key\n{d / 'enc.key'}\n" + "0f" * 16 + "\n")
+    ff("-i", str(d / "clean.ts"), "-c", "copy", "-f", "hls", "-hls_time", "1",
+       "-hls_playlist_type", "vod", "-hls_list_size", "0",
+       "-hls_key_info_file", str(d / "keyinfo_iv"),
+       "-hls_segment_filename", str(d / "aesiv" / "seg%03d.ts"),
+       str(d / "aesiv" / "index.m3u8"))
+    return d
+
+
+class Provider:
+    """A loopback HTTP server that behaves like an IPTV provider, badly, on request.
+
+    Routes are `(status, content_type, body)` triples or callables taking the handler. A route
+    may also be a `pathlib.Path`, which serves that file or that directory tree.
+    """
+
+    def __init__(self, routes: dict, ua_gate: str | None = None):
+        self.routes = routes
+        self.ua_gate = ua_gate
+        self.agents: list[str] = []
+        outer = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.0"
+
+            def log_message(self, *a):
+                pass
+
+            def _send(self, status, ctype, body, extra=None):
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                for k, v in (extra or {}).items():
+                    self.send_header(k, v)
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except Exception:
+                    pass
+
+            def do_GET(self):
+                ua = self.headers.get("User-Agent", "")
+                outer.agents.append(ua)
+                if outer.ua_gate and outer.ua_gate not in ua:
+                    # What a gated panel really does: not a clean 403 with an empty body, but a
+                    # 403 carrying a page that explains itself to a human.
+                    self._send(403, "text/html",
+                               b"<html><body><h1>Forbidden</h1>"
+                               b"<p>Player not supported by this service.</p></body></html>")
+                    return
+                path = self.path.split("?", 1)[0]
+                route = outer.routes.get(path)
+                if route is not None and not isinstance(route, pathlib.Path):
+                    if callable(route):
+                        route(self)
+                    else:
+                        status, ctype, body = route
+                        self._send(status, ctype, body)
+                    return
+                for prefix, target in outer.routes.items():
+                    if not (prefix.endswith("/") and isinstance(target, pathlib.Path)
+                            and path.startswith(prefix)):
+                        continue
+                    name = path[len(prefix):]
+                    f = (target / name).resolve()
+                    # Serving a directory here is a convenience, not a webroot; refuse anything
+                    # that escapes it rather than trusting the name.
+                    if f.is_file() and target.resolve() in f.parents:
+                        self._send(200, "video/mp2t", f.read_bytes())
+                        return
+                self._send(404, "text/plain", b"no such route")
+
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.port = self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def url(self, path: str) -> str:
+        return f"http://127.0.0.1:{self.port}{path}"
+
+    def close(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+#: Loopback is what the SSRF guard exists to forbid, so the harness needs the one switch that
+#: exists for it. There is no environment variable and no request field that can set this --
+#: see `Policy`'s docstring and `test_the_environment_cannot_turn_the_ssrf_check_off`.
+LOCAL = Policy(allow_private=True)
+
+
+def run_session(url: str, timeout: float = 30.0, policy: Policy | None = None,
+                label: str = "Harness") -> sessions.Session:
+    """Start a real session against the harness and wait for it to settle.
+
+    Settled means: a playlist exists on disk (ffmpeg produced playable output), or the session
+    failed. Both are results; a test that only waits for success cannot tell them apart.
+
+    `ended` alone is **not** settled, and that distinction is not pedantry: a local fixture is
+    delivered far faster than real time, so the pump reaches upstream EOF and marks the session
+    `ended` while ffmpeg is still muxing the first segment. Breaking there would report every
+    working stream as having produced nothing. `ended` counts only once ffmpeg has also exited.
+    """
+    mgr = sessions.SessionManager(root=pathlib.Path(tempfile.mkdtemp(prefix="tuner-run-")))
+    s = mgr.start(url, label, policy or LOCAL)
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            if s.ready or s.state == "failed":
+                break
+            if s.state == "ended" and s.proc is not None and s.proc.poll() is not None:
+                break
+            time.sleep(0.1)
+        # Give the pump a moment to record a failure that arrives just after the playlist.
+        time.sleep(0.3)
+        s.settled_ready = s.ready               # read before the directory is removed
+        return s
+    finally:
+        mgr.shutdown()
+
+
+# ============================================ defect 1: the User-Agent providers expect
+
+class TestUserAgent(unittest.TestCase):
+    """A stranger's User-Agent is the difference between a stream and a 403 for many panels."""
+
+    def test_default_is_a_player_not_a_bot(self):
+        self.assertIn("VLC", Policy().user_agent)
+        self.assertIn("VLC", safefetch.DEFAULT_USER_AGENT)
+
+    def test_a_gated_provider_serves_the_player_and_refuses_the_bot(self):
+        """The whole defect, end to end, against a server that gates exactly as panels do."""
+        with Provider({"/s1.ts": (200, "video/mp2t", b"\x47" + b"\0" * 187)},
+                      ua_gate="VLC") as p:
+            body, _ct, _t = safefetch.fetch(p.url("/s1.ts"), LOCAL)
+            self.assertTrue(body.startswith(b"\x47"))
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url("/s1.ts"),
+                                Policy(allow_private=True, user_agent=STRANGER_UA))
+            self.assertIn("403", str(cm.exception))
+            self.assertIn("VLC", p.agents[0])
+
+    def test_the_agent_is_overridable_per_policy(self):
+        with Provider({"/s1.ts": (200, "video/mp2t", b"\x47")}) as p:
+            safefetch.fetch(p.url("/s1.ts"), Policy(allow_private=True, user_agent="Kodi/20"))
+            self.assertEqual(p.agents[-1], "Kodi/20")
+
+    def test_the_agent_is_overridable_from_the_environment(self):
+        """Read once at import, so this has to be a fresh interpreter."""
+        import os
+        env = {**os.environ, "SYMONEURAL_TUNER_USER_AGENT": "TiviMate/4.7.0 (Harness)"}
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, %r)\n"
+             "from apps.tuner.safefetch import Policy\n"
+             "print(Policy().user_agent)"
+             % str(pathlib.Path(__file__).resolve().parents[2])],
+            capture_output=True, text=True, timeout=60, env=env)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "TiviMate/4.7.0 (Harness)")
+
+    def test_an_override_cannot_smuggle_headers(self):
+        """A CRLF in the agent would inject headers into every upstream request."""
+        import os
+        prev = os.environ.get("SYMONEURAL_TUNER_USER_AGENT")
+        try:
+            os.environ["SYMONEURAL_TUNER_USER_AGENT"] = "VLC/3.0\r\nX-Evil: 1"
+            ua = safefetch._default_user_agent()
+            self.assertNotIn("\r", ua)
+            self.assertNotIn("\n", ua)
+            os.environ["SYMONEURAL_TUNER_USER_AGENT"] = "   "
+            self.assertIn("VLC", safefetch._default_user_agent())
+        finally:
+            if prev is None:
+                os.environ.pop("SYMONEURAL_TUNER_USER_AGENT", None)
+            else:
+                os.environ["SYMONEURAL_TUNER_USER_AGENT"] = prev
+
+
+# ============================================ defect 2: what the provider actually said
+
+class TestUpstreamErrorBody(unittest.TestCase):
+    """"You will come to a page from the server saying it's down" -- so say what it said."""
+
+    def test_the_providers_message_reaches_the_error(self):
+        page = (b"<html><body><h2>Subscription expired</h2>"
+                b"<p>Your account ran out on 2026-01-01. Contact your reseller.</p>"
+                b"</body></html>")
+        with Provider({"/s1.ts": (403, "text/html", page)}) as p:
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url("/s1.ts"), LOCAL)
+            msg = str(cm.exception)
+            self.assertIn("403", msg)
+            self.assertIn("Subscription expired", msg)
+            self.assertIn("ran out on 2026-01-01", msg)
+
+    def test_script_and_style_are_not_the_message(self):
+        with Provider({"/s1.ts": (502, "text/html", OFFLINE_PAGE)}) as p:
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url("/s1.ts"), LOCAL)
+            msg = str(cm.exception)
+            self.assertIn("Channel temporarily offline", msg)
+            self.assertNotIn("javascript", msg)
+            self.assertNotIn("#c00", msg)
+
+    def test_a_reflected_credential_is_scrubbed_out_of_the_excerpt(self):
+        """The reason this was not done years ago, defused.
+
+        Panels echo the requested path into their error pages, and an Xtream password lives in
+        a path *segment*, where `redact()` cannot see it. `Scrubber.from_url` can, because it
+        treats every segment as a secret whether or not it looks like one.
+        """
+        path = f"/live/{SENTINEL_USER}/{SENTINEL_PASS}/1.ts"
+        with Provider({path: lambda h: h._send(
+                404, "text/html",
+                f"<html><body>Stream not found: {h.path}</body></html>".encode())}) as p:
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url(path), LOCAL)
+            msg = str(cm.exception)
+            self.assertNotIn(SENTINEL_PASS, msg)
+            self.assertNotIn(SENTINEL_USER, msg)
+            self.assertIn("Stream not found", msg)     # the useful half survives
+
+    def test_the_excerpt_is_bounded_and_single_line(self):
+        body = ("<p>" + "verbose provider boilerplate. " * 200 + "</p>").encode()
+        with Provider({"/s1.ts": (503, "text/html", body)}) as p:
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url("/s1.ts"), LOCAL)
+            msg = str(cm.exception)
+            self.assertLess(len(msg), 500)
+            self.assertNotIn("\n", msg)
+            self.assertNotIn("\r", msg)
+
+    def test_a_dribbling_error_body_does_not_hold_the_thread(self):
+        """`read`, not `read1`, would wait for a full buffer or EOF -- forever, here.
+
+        A server that sends fifty bytes of its error page and then goes quiet satisfies
+        `read_timeout` on every packet it does send. This must return in about as long as the
+        response took, not in `read_timeout`.
+        """
+        def dribble(h):
+            h.send_response(500)
+            h.send_header("Content-Type", "text/html")
+            h.send_header("Content-Length", "100000")
+            h.end_headers()
+            h.wfile.write(b"<html><body>upstream is having a bad day</body>")
+            h.wfile.flush()
+            time.sleep(6)
+
+        with Provider({"/s1.ts": dribble}) as p:
+            t0 = time.monotonic()
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url("/s1.ts"), Policy(allow_private=True, read_timeout=20.0))
+            elapsed = time.monotonic() - t0
+            self.assertLess(elapsed, 4.0, f"the error read blocked for {elapsed:.1f}s")
+            self.assertIn("bad day", str(cm.exception))
+
+    def test_an_unreadable_error_body_still_reports_the_status(self):
+        """A failure fetching the excerpt must never replace the fact we already have."""
+        def hangup(h):
+            h.send_response(451)
+            h.send_header("Content-Type", "text/html")
+            h.send_header("Content-Length", "5000")
+            h.end_headers()
+            h.close_connection = True
+
+        with Provider({"/s1.ts": hangup}) as p:
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url("/s1.ts"), LOCAL)
+            self.assertIn("451", str(cm.exception))
+
+    def test_excerpt_helper_flattens_and_scrubs(self):
+        out = safefetch.text_excerpt(
+            b"<html>\n<body>\r\n  line one\n\n  line two &amp; three\x00\n</body></html>",
+            Scrubber([SENTINEL_PASS]))
+        self.assertEqual(out, "line one line two & three")
+
+    def test_entities_cannot_reconstitute_markup_after_it_was_stripped(self):
+        """Strip-then-unescape puts the tags back. The order has to be the other way round.
+
+        A panel echoing the requested path through an HTML escaper -- which is the common,
+        correct thing for it to do -- sends `Error: &lt;img src=x onerror=alert(1)&gt;`. There
+        are no literal tags for the stripper to find, so unescaping afterwards reassembles them
+        into the message. The excerpt is plain text and must stay plain text without relying on
+        whoever renders it knowing that.
+        """
+        out = safefetch.text_excerpt(
+            b"<html><body>Error: &lt;img src=x onerror=alert(1)&gt; not found</body></html>")
+        self.assertNotIn("<", out)
+        self.assertNotIn(">", out)
+        self.assertIn("not found", out)
+        # Double-encoded input must not be unescaped twice into live markup either.
+        twice = safefetch.text_excerpt(b"<p>&amp;lt;script&amp;gt;</p>")
+        self.assertNotIn("<script", twice)
+
+    def test_the_playlist_route_does_not_echo_a_credential_from_an_error_page(self):
+        """The one route where safefetch's own scrub is the only layer.
+
+        `load_playlist` puts `str(exc)` straight into an `HTTPException` detail with no second
+        scrubbing, so if the excerpt were not already clean it would come back in a 502 body.
+        The existing end-to-end credential test only reaches this route with a loopback URL,
+        which dies as `BlockedURL` at 400 and never touches the excerpt path at all.
+        """
+        try:
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception as exc:                                  # pragma: no cover
+            self.skipTest(f"TestClient unavailable: {exc}")
+        path = f"/get.php?username={SENTINEL_USER}&password={SENTINEL_PASS}&type=m3u"
+        with Provider({"/get.php": lambda h: h._send(
+                403, "text/html",
+                f"<html><body>Forbidden for {h.path}</body></html>".encode())}) as p:
+            app = FastAPI()
+            app.include_router(routes.router, prefix="/api/tuner")
+            client = TestClient(app, raise_server_exceptions=False)
+            # The route builds its own `Policy()`, which forbids loopback -- so this asserts on
+            # the excerpt path through `safefetch` directly, with the route's own scrubbing
+            # (none) applied on top.
+            with self.assertRaises(safefetch.FetchError) as cm:
+                safefetch.fetch(p.url(path), LOCAL)
+            detail = f"could not fetch that playlist: {cm.exception}"
+            self.assertNotIn(SENTINEL_PASS, detail)
+            self.assertNotIn(SENTINEL_USER, detail)
+            self.assertIn("Forbidden", detail)
+            r = client.post("/api/tuner/playlist", json={"url": p.url(path)})
+            self.assertNotIn(SENTINEL_PASS, r.text)
+            self.assertNotIn(SENTINEL_USER, r.text)
+
+
+# ============================================ defect 3: a web page is not a stream
+
+class TestErrorPageSniffing(unittest.TestCase):
+    def test_ts_sync_is_a_lockstep_test_not_a_byte_search(self):
+        """0x47 is the letter G. Searching for one byte calls every English page a stream."""
+        self.assertLess(sessions.ts_sync_offset(b"Good Gateway: the Great Green Gate" * 40), 0)
+        real = b"".join(b"\x47" + bytes(187) for _ in range(4))
+        self.assertEqual(sessions.ts_sync_offset(real), 0)
+        self.assertEqual(sessions.ts_sync_offset(b"\x00\x00" + real), 2)
+
+    def test_markup_is_conclusive_and_a_texty_header_alone_is_not(self):
+        real = b"".join(b"\x47" + bytes(187) for _ in range(4))
+        self.assertTrue(sessions.looks_like_error_page("text/html", OFFLINE_PAGE))
+        self.assertTrue(sessions.looks_like_error_page("video/mp2t", OFFLINE_PAGE))
+        self.assertTrue(sessions.looks_like_error_page("text/plain", b"channel offline"))
+        self.assertTrue(sessions.looks_like_error_page(
+            "application/json", b'{"error":"maximum connections reached"}'))
+        # The misconfiguration that must NOT be treated as an error page.
+        self.assertFalse(sessions.looks_like_error_page("text/html", real))
+        self.assertFalse(sessions.looks_like_error_page("video/mp2t", real))
+        self.assertFalse(sessions.looks_like_error_page("", real))
+
+    def test_a_fragmented_mp4_segment_is_not_an_error_page(self):
+        """fMP4 has no 0x47 sync pattern, so a mislabelled one would fail the texty rule."""
+        for box in (b"ftyp", b"styp", b"moof", b"sidx"):
+            with self.subTest(box=box):
+                self.assertFalse(sessions.looks_like_error_page(
+                    "text/plain", b"\x00\x00\x00\x18" + box + b"iso6" + bytes(64)))
+
+    @needs_ffmpeg
+    def test_an_offline_page_at_200_is_reported_as_the_providers_words(self):
+        """The blank-screen bug. HTTP 200, `text/html`, and it used to go straight to ffmpeg."""
+        with Provider({"/s1.ts": (200, "text/html", OFFLINE_PAGE)}) as p:
+            s = run_session(p.url("/s1.ts"))
+            self.assertEqual(s.state, "failed")
+            self.assertIn("Channel temporarily offline", s.public()["error"])
+            self.assertNotIn("stream-copy", s.public()["error"])
+
+    @needs_ffmpeg
+    def test_a_real_stream_mislabelled_text_html_still_plays(self):
+        """The counter-test, and the reason the sniff is not `ctype.startswith("text/")`.
+
+        Providers behind a misconfigured nginx serve real MPEG-TS as `text/html` constantly. A
+        content-type-only rule would break every one of those working streams, which is the
+        exact inverse of the deliverable.
+        """
+        ts = (media() / "clean.ts").read_bytes()
+        with Provider({"/s1.ts": (200, "text/html", ts)}) as p:
+            s = run_session(p.url("/s1.ts"))
+            self.assertTrue(s.settled_ready,
+                            f"a real stream was refused: {s.state} {s.error!r}")
+            self.assertGreater(s.bytes_in, 10000)
+
+
+# ============================================ defect 4: AES-128 HLS
+
+class TestHlsKeyParsing(unittest.TestCase):
+    def test_key_attributes_are_exposed_not_reduced_to_a_boolean(self):
+        pl = m3u.parse_hls(
+            '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:7\n'
+            '#EXT-X-KEY:METHOD=AES-128,URI="https://k.example/a.key?x=1",IV=0x0F0F0F0F0F0F0F0F'
+            '0F0F0F0F0F0F0F0F\n#EXTINF:2,\na.ts\n')
+        seg = pl.segments[0]
+        self.assertTrue(pl.encrypted)
+        self.assertEqual(seg.key.method, "AES-128")
+        self.assertEqual(seg.key.uri, "https://k.example/a.key?x=1")
+        self.assertEqual(seg.key.iv.lower(), "0x" + "0f" * 16)
+        self.assertEqual(seg.key.keyformat, "identity")
+
+    def test_a_key_applies_from_where_it_appears_and_none_turns_it_off(self):
+        """Rotation is normal and a playlist-level flag cannot express it."""
+        pl = m3u.parse_hls(
+            "#EXTM3U\n#EXTINF:2,\nclear.ts\n"
+            '#EXT-X-KEY:METHOD=AES-128,URI="k1"\n#EXTINF:2,\none.ts\n'
+            '#EXT-X-KEY:METHOD=AES-128,URI="k2"\n#EXTINF:2,\ntwo.ts\n'
+            "#EXT-X-KEY:METHOD=NONE\n#EXTINF:2,\nclear2.ts\n")
+        self.assertEqual([s.key.uri for s in pl.segments], ["", "k1", "k2", ""])
+        self.assertEqual([s.key.encrypted for s in pl.segments],
+                         [False, True, True, False])
+        self.assertEqual([k.uri for k in pl.keys], ["k1", "k2"])
+
+    def test_session_key_announces_but_does_not_encrypt(self):
+        pl = m3u.parse_hls('#EXTM3U\n#EXT-X-SESSION-KEY:METHOD=AES-128,URI="k"\n'
+                           "#EXTINF:2,\na.ts\n")
+        self.assertFalse(pl.encrypted)
+
+    def test_keyformat_is_carried_so_drm_can_be_told_from_encryption(self):
+        pl = m3u.parse_hls(
+            '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="skd://x",'
+            'KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"\n#EXTINF:2,\na.ts\n')
+        self.assertEqual(pl.segments[0].key.keyformat,
+                         "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")
+
+
+class TestAesRefusals(unittest.TestCase):
+    """METHOD is an allow-list. Everything not `AES-128` is refused **by name**."""
+
+    def refuse(self, playlist: str) -> str:
+        mgr = sessions.SessionManager()
+        with self.assertRaises(sessions.TunerError) as cm:
+            mgr._reject_unsupported_encryption(m3u.parse_hls(playlist))
+        return str(cm.exception)
+
+    def test_sample_aes_is_still_refused_and_named(self):
+        """The refusal that must survive.
+
+        SAMPLE-AES encrypts NAL unit payloads and leaves the container in the clear.
+        CBC-decrypting the whole segment destroys the parts that were never encrypted and
+        produces something ffmpeg will half-accept -- silent corruption where there used to be
+        an honest "cannot decrypt".
+        """
+        msg = self.refuse('#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="k"\n#EXTINF:2,\na.ts\n')
+        self.assertIn("SAMPLE-AES", msg)
+
+    def test_unknown_methods_are_refused_rather_than_assumed_to_be_aes_128(self):
+        for method in ("AES-256", "SAMPLE-AES-CTR", "AES-128-CTR", "CENC", "NOVEL-SCHEME"):
+            with self.subTest(method=method):
+                msg = self.refuse(f'#EXTM3U\n#EXT-X-KEY:METHOD={method},URI="k"\n'
+                                  "#EXTINF:2,\na.ts\n")
+                self.assertIn(method, msg)
+
+    def test_drm_wearing_an_aes_128_method_is_refused(self):
+        msg = self.refuse('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="skd://x",'
+                          'KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"\n'
+                          "#EXTINF:2,\na.ts\n")
+        self.assertIn("DRM", msg)
+
+    def test_a_hostile_method_string_cannot_write_arbitrary_text_into_a_message(self):
+        msg = self.refuse('#EXTM3U\n#EXT-X-KEY:METHOD="<script>alert(1)</script>",URI="k"\n'
+                          "#EXTINF:2,\na.ts\n")
+        self.assertNotIn("<", msg)
+        self.assertNotIn(">", msg)
+
+    def test_plain_aes_128_is_not_refused(self):
+        mgr = sessions.SessionManager()
+        mgr._reject_unsupported_encryption(m3u.parse_hls(
+            '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="k"\n#EXTINF:2,\na.ts\n'))
+
+    def test_the_iv_falls_back_to_the_media_sequence_number(self):
+        """RFC 8216 5.2. Getting this wrong decrypts to noise exactly like a wrong key."""
+        pl = m3u.parse_hls('#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:9\n'
+                           '#EXT-X-KEY:METHOD=AES-128,URI="k"\n#EXTINF:2,\na.ts\n')
+        self.assertEqual(sessions._segment_iv(pl.segments[0]),
+                         (9).to_bytes(16, "big"))
+        pl2 = m3u.parse_hls('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="k",IV=0x'
+                            + "0f" * 16 + "\n#EXTINF:2,\na.ts\n")
+        self.assertEqual(sessions._segment_iv(pl2.segments[0]), b"\x0f" * 16)
+
+    def test_a_key_uri_goes_through_the_ssrf_validator(self):
+        """A key URI is a third-party URL like any other. `http://127.0.0.1/` must die."""
+        mgr = sessions.SessionManager()
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())      # production policy
+        with self.assertRaises(BlockedURL):
+            mgr._segment_key(s, "http://93.184.216.34/a/index.m3u8",
+                             m3u.HlsKey(method="AES-128", uri="http://127.0.0.1:8800/k.key"),
+                             {})
+
+
+@needs_ffmpeg
+class TestAesPlayback(unittest.TestCase):
+    """Real AES-128 HLS produced by ffmpeg, decrypted here, played by ffmpeg."""
+
+    def _serve(self, subdir: str, key_bytes: bytes | None = None) -> Provider:
+        d = media() / subdir
+        key = media() / "enc.key"
+        routes = {"/enc.key": (200, "application/octet-stream",
+                               key_bytes if key_bytes is not None else key.read_bytes()),
+                  "/index.m3u8": (200, "application/vnd.apple.mpegurl",
+                                  (d / "index.m3u8").read_bytes()),
+                  "/": d}
+        return Provider(routes)
+
+    def test_aes_128_with_a_sequence_iv_plays(self):
+        with self._serve("aes") as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertTrue(s.settled_ready, f"{s.state}: {s.error!r} / {s.transcoder_error!r}")
+            self.assertEqual(s.mode, "hls")
+            self.assertGreater(s.bytes_in, 10000)
+
+    def test_aes_128_with_an_explicit_iv_plays(self):
+        with self._serve("aesiv") as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertTrue(s.settled_ready, f"{s.state}: {s.error!r} / {s.transcoder_error!r}")
+            self.assertGreater(s.bytes_in, 10000)
+
+    def test_the_wrong_key_fails_honestly_instead_of_feeding_ffmpeg_noise(self):
+        """The check that makes lenient PKCS7 unpadding safe.
+
+        A wrong key does not raise: AES-CBC produces 16-byte blocks of noise, the unpadder
+        cheerfully strips a random tail, and ffmpeg reports that *it* could not read the source.
+        The decrypted bytes are checked for transport-stream sync, once, so a key mismatch is
+        reported as a key mismatch.
+        """
+        with self._serve("aes", key_bytes=b"\xff" * 16) as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertEqual(s.state, "failed")
+            self.assertIn("key", s.public()["error"].lower())
+            self.assertNotIn("stream-copy", s.public()["error"])
+
+    def test_a_key_of_the_wrong_length_is_refused_before_anything_is_decrypted(self):
+        with self._serve("aes", key_bytes=b"short") as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertEqual(s.state, "failed")
+            self.assertIn("16", s.public()["error"])
+
+    def test_a_rotated_key_is_checked_too_not_only_the_first(self):
+        """The reason the sync check is keyed on the key URI rather than being a bool.
+
+        HLS rotates keys mid-stream, which is why `HlsKey` hangs off the segment rather than the
+        playlist. A check that fired once per session would validate the first key and wave the
+        second one straight through -- and a wrong second key is exactly the silent corruption
+        the check exists to prevent.
+        """
+        d = media() / "aes"
+        lines = (d / "index.m3u8").read_text().splitlines()
+        cut = max(i for i, line in enumerate(lines) if line.startswith("#EXTINF"))
+        lines.insert(cut, '#EXT-X-KEY:METHOD=AES-128,URI="bad.key"')
+        with Provider({"/index.m3u8": (200, "application/vnd.apple.mpegurl",
+                                       ("\n".join(lines) + "\n").encode()),
+                       "/enc.key": (200, "application/octet-stream",
+                                    (media() / "enc.key").read_bytes()),
+                       "/bad.key": (200, "application/octet-stream", bytes(16)),
+                       "/": d}) as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertEqual(s.state, "failed")
+            self.assertIn("key", s.public()["error"].lower())
+
+    def test_a_segment_answered_with_a_page_is_reported_as_the_page(self):
+        """The playlist was fine; the channel died before the segment was asked for."""
+        d = media() / "hls"
+        lines = (d / "index.m3u8").read_text().splitlines()
+        first = next(i for i, line in enumerate(lines) if not line.startswith("#") and line)
+        lines[first] = "dead.ts"
+        with Provider({"/index.m3u8": (200, "application/vnd.apple.mpegurl",
+                                       ("\n".join(lines) + "\n").encode()),
+                       "/dead.ts": (200, "text/html", OFFLINE_PAGE),
+                       "/": d}) as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertEqual(s.state, "failed")
+            self.assertIn("Channel temporarily offline", s.public()["error"])
+
+    def test_a_variant_playlist_answered_with_a_page_is_reported_as_the_page(self):
+        with Provider({"/master.m3u8": (
+                200, "application/vnd.apple.mpegurl",
+                b"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1200000\nvariant.m3u8\n"),
+                "/variant.m3u8": (200, "text/html", OFFLINE_PAGE)}) as p:
+            s = run_session(p.url("/master.m3u8"))
+            self.assertEqual(s.state, "failed")
+            self.assertIn("Channel temporarily offline", s.public()["error"])
+            self.assertNotIn("contained no segments", s.public()["error"])
+
+    def test_unencrypted_hls_still_plays(self):
+        """The regression the encryption work could most easily have caused."""
+        d = media() / "hls"
+        with Provider({"/index.m3u8": (200, "application/vnd.apple.mpegurl",
+                                       (d / "index.m3u8").read_bytes()),
+                       "/": d}) as p:
+            s = run_session(p.url("/index.m3u8"))
+            self.assertTrue(s.settled_ready, f"{s.state}: {s.error!r}")
+            self.assertGreater(s.bytes_in, 10000)
+
+
+class TestAesPrimitives(unittest.TestCase):
+    def test_round_trip_and_padding(self):
+        try:
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        except Exception as exc:                                   # pragma: no cover
+            self.skipTest(f"cryptography unavailable: {exc}")
+        key, iv = bytes(range(16)), b"\x0f" * 16
+        plain = b"".join(b"\x47" + bytes(187) for _ in range(3))
+        pad = 16 - (len(plain) % 16)
+        enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+        blob = enc.update(plain + bytes([pad]) * pad) + enc.finalize()
+        self.assertEqual(sessions._decrypt_segment(blob, key, iv), plain)
+
+    def test_a_partial_block_is_refused_not_guessed_at(self):
+        with self.assertRaises(sessions.TunerError):
+            sessions._decrypt_segment(b"\x00" * 33, bytes(16), bytes(16))
+
+
+# ============================================ defect 5: HEVC, the honest blank screen
+
+class TestCodecReporting(unittest.TestCase):
+    def test_the_matcher_is_an_allowlist(self):
+        self.assertEqual(sessions.match_video_codec(
+            "[info]   Stream #0:0[0x100]: Video: hevc (Main) ([36][0][0][0]), yuv420p"), "hevc")
+        self.assertEqual(sessions.match_video_codec(
+            "[info]   Stream #0:0[0x100]: Video: h264 (Constrained Baseline)"), "h264")
+        self.assertEqual(sessions.match_video_codec("[info] Stream mapping:"), "")
+        self.assertEqual(sessions.match_video_codec(""), "")
+
+    def test_a_fabricated_stderr_line_cannot_publish_arbitrary_text(self):
+        """The reason the codec is matched rather than captured.
+
+        ffmpeg's stderr is written by a program we do not control and can quote its input. If
+        `vcodec` were "the token after `Video:`", a hostile stream's metadata would be echoed
+        straight into the document handed to the browser.
+        """
+        line = f"[info]   Stream #0:0: Video: {SENTINEL_PASS} (Main)"
+        self.assertEqual(sessions.match_video_codec(line), "")
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())
+        s.vcodec = sessions.match_video_codec(line)
+        import json
+        self.assertNotIn(SENTINEL_PASS, json.dumps(s.public()))
+
+    def test_public_document_carries_both_codecs(self):
+        """Video AND audio. The audio half is the one that was missing and it cost a real bug.
+
+        This assertion used to be `assertNotIn("acodec", ...)`, on the reasoning that an unused
+        field is a field nobody is checking. That was wrong, and a measured failure is why: a
+        channel reported `state: live`, `vcodec: h264`, 87 MB pulled from the provider over five
+        minutes and every indicator on the box green, while the browser decoded ZERO frames --
+        because MSE refuses the whole segment when it will not take the AUDIO track, and Chrome
+        will not take AC-3. The page could only see `vcodec`, so it had nothing to say and the
+        visitor got a black rectangle with no explanation.
+        """
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())
+        self.assertIn("vcodec", s.public())
+        self.assertEqual(s.public()["vcodec"], "")
+        self.assertIn("acodec", s.public())
+        self.assertEqual(s.public()["acodec"], "")
+
+    def test_a_hostile_audio_codec_cannot_reach_the_public_document(self):
+        """Same allow-list property as `vcodec`, now that `acodec` is published too.
+
+        ffmpeg's stderr can quote its input, so the token is matched against `AUDIO_CODECS` and
+        anything unrecognised becomes "". Publishing a field that carried ffmpeg's text verbatim
+        would have handed a hostile stream a channel into the document the browser is given.
+        """
+        line = f"[info]   Stream #0:1: Audio: {SENTINEL_PASS} (LC), 48000 Hz, stereo"
+        self.assertEqual(sessions._match_audio_codec(line), "")
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())
+        s.acodec = sessions._match_audio_codec(line)
+        import json
+        self.assertNotIn(SENTINEL_PASS, json.dumps(s.public()))
+
+    def test_a_real_audio_codec_is_reported(self):
+        line = "[info]   Stream #0:1: Audio: ac3 (AC-3 / 0x332D4341), 48000 Hz, 5.1, fltp"
+        self.assertEqual(sessions._match_audio_codec(line), "ac3")
+
+    @needs_ffmpeg
+    def test_hevc_is_reported_while_everything_else_looks_healthy(self):
+        """The whole point. `-c copy` succeeds, the playlist is written, the session is live --
+        and no browser decodes HEVC in MSE, so the visitor sees a black rectangle. `vcodec` is
+        the only field that separates this from a working stream, and a client must read it
+        even when the state says `live`.
+        """
+        with Provider({"/s1.ts": (200, "video/mp2t", (media() / "hevc.ts").read_bytes())}) as p:
+            s = run_session(p.url("/s1.ts"))
+            self.assertTrue(s.settled_ready, f"{s.state}: {s.error!r}")
+            self.assertEqual(s.public()["vcodec"], "hevc")
+
+    @needs_ffmpeg
+    def test_h264_is_reported_too_so_the_field_means_something(self):
+        with Provider({"/s1.ts": (200, "video/mp2t", (media() / "clean.ts").read_bytes())}) as p:
+            s = run_session(p.url("/s1.ts"))
+            self.assertTrue(s.settled_ready, f"{s.state}: {s.error!r}")
+            self.assertEqual(s.public()["vcodec"], "h264")
+
+    @needs_ffmpeg
+    def test_transcoder_error_still_holds_an_error_at_the_raised_loglevel(self):
+        """The regression raising the loglevel would otherwise have caused.
+
+        `transcoder_error` was "the last line ffmpeg printed", which at `-loglevel error` was
+        the same as "the last error". At `info` it would have become progress output, and every
+        real failure would have become unexplainable. `level+` markers are what keep them apart.
+        """
+        junk = bytes(range(256)) * 400            # not a transport stream, not markup
+        with Provider({"/s1.ts": (200, "video/mp2t", junk)}) as p:
+            s = run_session(p.url("/s1.ts"), timeout=20)
+            self.assertFalse(s.settled_ready)
+            self.assertTrue(s.transcoder_error, "ffmpeg's failure was not recorded")
+            self.assertNotIn("frame=", s.transcoder_error)
+            self.assertNotIn("[info]", s.transcoder_error)
+
+    @needs_ffmpeg
+    def test_a_healthy_stream_records_no_transcoder_error(self):
+        """The other half, and the half that actually regresses.
+
+        A stream that fails instantly has an error as its last line either way, so that case
+        cannot tell whether the severity filter is doing anything. A stream that *works* can:
+        ffmpeg's last line on a healthy run is `frame= 40 fps=0.0 ... speed=4.43e+03x`, and
+        without the filter that string would be sitting in `transcoder_error` -- a recorded
+        failure on a session that never failed, and the field would be worthless for
+        diagnosing the ones that did. (The `[info]` lines also quote our own session directory
+        paths, which is a second reason not to keep them.)
+        """
+        with Provider({"/s1.ts": (200, "video/mp2t", (media() / "clean.ts").read_bytes())}) as p:
+            s = run_session(p.url("/s1.ts"))
+            self.assertTrue(s.settled_ready, f"{s.state}: {s.error!r}")
+            self.assertFalse(s.transcoder_error,
+                             f"a working stream recorded a failure: {s.transcoder_error!r}")
+
+
+# ============================================ defect 7: movies are missing
+
+class TestClassificationFromGroupTitle(unittest.TestCase):
+    """The real "the Movies category is empty" root cause on the plain-M3U path."""
+
+    def kinds(self, text: str) -> list[str]:
+        return [c.kind for c in m3u.parse_m3u(text)[0]]
+
+    def test_a_film_with_no_movie_segment_is_found_by_its_group(self):
+        """The defect, exactly. No `/movie/` anywhere in the URL; nothing but the group says."""
+        self.assertEqual(self.kinds(
+            '#EXTINF:-1 group-title="VOD | Movies",The Example Film\n'
+            "http://p.example:8080/12345.mp4\n"), ["vod"])
+
+    def test_group_vocabulary(self):
+        for group, expect in [
+            ("VOD | Movies", "vod"), ("Movies", "vod"), ("FILMS - Action", "vod"),
+            ("Cinema HD", "vod"), ("Peliculas Latino", "vod"), ("Videoteca", "vod"),
+            ("TV Series", "series"), ("Series | Netflix", "series"),
+            ("Boxsets", "series"), ("Staffel 1", "series"),
+            ("UK | Entertainment", "live"), ("Sports", "live"), ("News", "live"),
+            ("Moviestar Plus", "live"),          # not a word boundary; must not match
+            ("", "live"),
+        ]:
+            with self.subTest(group=group):
+                self.assertEqual(self.kinds(
+                    f'#EXTINF:-1 group-title="{group}",X\nhttp://p.example/1.mp4\n'),
+                    [expect])
+
+    def test_an_explicit_url_classification_is_never_overridden(self):
+        """The URL is the provider telling us what it is. A group title never outranks it."""
+        self.assertEqual(self.kinds(
+            '#EXTINF:-1 group-title="VOD | Movies",Live Movie Channel\n'
+            "http://p.example/live/u/p/1.ts\n"), ["live"])
+        self.assertEqual(self.kinds(
+            '#EXTINF:-1 group-title="UK | Sport",A Film\n'
+            "http://p.example/movie/u/p/1.mp4\n"), ["vod"])
+
+    def test_the_stated_cost_is_real_and_accepted(self):
+        """A genuinely linear channel in a film-named group now counts as vod.
+
+        Documented in `_classify` rather than hidden. It moves one always-on channel into the
+        Movies list instead of hiding every actual film from it.
+        """
+        self.assertEqual(self.kinds(
+            '#EXTINF:-1 group-title="24/7 Movies",Action Movies 24/7\n'
+            "http://p.example/1.ts\n"), ["vod"])
+
+    def test_extgrp_groups_classify_too(self):
+        self.assertEqual(self.kinds(
+            "#EXTGRP:Movies\n#EXTINF:7200,A Film\nhttp://p.example/1.mkv\n"), ["vod"])
+
+    def test_a_plain_channel_list_is_still_live(self):
+        """The regression this change could most easily cause: everything becoming vod."""
+        self.assertEqual(self.kinds(FIXTURE), ["live", "live", "vod", "live", "series"])
+
+
+# ============================================ defect 8: measured, not guessed
+
+class TestTuneDeadline(unittest.TestCase):
+    def test_the_wait_covers_a_realistically_paced_stream(self):
+        """Measured on this machine: time to first playlist is 2.5 s at 8 Mb/s, 9.7 s at
+        2 Mb/s and 24.1 s at 0.8 Mb/s, feeding the exact argv `_spawn` builds. The old 10 s
+        missed an ordinary 2 Mb/s stream by a fraction of a second. See `routes.TUNE_WAIT_SECONDS`.
+        """
+        self.assertGreaterEqual(routes.TUNE_WAIT_SECONDS, 20.0)
+        self.assertLessEqual(routes.TUNE_WAIT_SECONDS, 60.0)
+
+    def test_the_wait_keeps_the_session_alive_while_it_waits(self):
+        """Why `TUNE_WAIT_SECONDS` (25 s) is allowed to exceed `IDLE_TIMEOUT` (12 s).
+
+        This test replaces an assertion that read `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1`.
+        That was already false in the commit that introduced it -- `979c3dc` raised the wait
+        to 25 s and dropped the idle timeout 45 -> 12 s in one change -- and it stayed red
+        because it was checking the wrong thing. Two numbers being ordered was never the
+        protection; the protection is the `MANAGER.touch(session.id)` inside the wait loop.
+        A client blocked on `/tune` *is* activity on the session, so the reaper, which
+        measures idleness from the last player request, never sees the session go quiet.
+
+        Assert the mechanism, not the arithmetic: over a wait, the loop must touch
+        repeatedly. One touch at the top would leave the session ageing again for the rest of
+        the wait, which is the bug the ordering assertion was groping at.
+        """
+        class Waiting:
+            """A manager whose session never becomes ready, and which counts the touches."""
+
+            def __init__(self):
+                self.touches = 0
+                self.session = sessions.Session(
+                    id="slow", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                    scrub=Scrubber(), policy=Policy())
+
+            def start(self, *a, **k):
+                return self.session
+
+            def touch(self, sid):
+                self.touches += 1
+                return self.session
+
+            def get(self, sid):
+                return self.session           # still there, just not ready
+
+            def stop_session(self, sid):
+                return False
+
+            def list(self):
+                return []
+
+            def reap(self):
+                return 0
+
+        try:
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception as exc:                                  # pragma: no cover
+            self.skipTest(f"TestClient unavailable: {exc}")
+
+        app = FastAPI()
+        app.include_router(routes.router, prefix="/api/tuner")
+        client = TestClient(app, raise_server_exceptions=False)
+        mgr = Waiting()
+        real_mgr, real_wait = routes.MANAGER, routes.TUNE_WAIT_SECONDS
+        try:
+            routes.MANAGER = mgr
+            routes.TUNE_WAIT_SECONDS = 1.0      # ~4 iterations at the loop's 0.25 s sleep
+            r = client.post("/api/tuner/tune", json={"url": "http://p.example/1.ts"})
+        finally:
+            routes.MANAGER, routes.TUNE_WAIT_SECONDS = real_mgr, real_wait
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("poll the session", r.text)
+        # At the real 25 s wait this is ~100 touches, none of them more than 0.25 s apart, so
+        # a 12 s idle timeout is never approached. Two is enough to prove it is per-iteration.
+        self.assertGreaterEqual(mgr.touches, 2)
+
+    def test_a_long_wait_never_hands_back_a_session_that_is_already_gone(self):
+        """The window the longer wait widened.
+
+        The reaper drops a session the moment its ffmpeg exits, so a 25 s wait can outlive the
+        thing it is waiting for. Returning `{"note": "poll the session"}` for an id whose
+        `GET /session/{sid}` answers 404 makes a dead stream look like a broken tuner -- the
+        exact confusion this module exists to remove. It must be a 502 with a reason instead.
+        """
+        try:
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception as exc:                                  # pragma: no cover
+            self.skipTest(f"TestClient unavailable: {exc}")
+
+        class Vanishing:
+            """A manager whose session is reaped while `/tune` is still waiting for it."""
+
+            def __init__(self):
+                self.session = sessions.Session(
+                    id="gone", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                    scrub=Scrubber(), policy=Policy())
+                self.session.error = "the transcoder exited before the stream ended"
+
+            def start(self, *a, **k):
+                return self.session
+
+            def touch(self, sid):
+                return None
+
+            def get(self, sid):
+                return None                       # already reaped
+
+            def stop_session(self, sid):
+                return False
+
+            def list(self):
+                return []
+
+            def reap(self):
+                return 0
+
+        app = FastAPI()
+        app.include_router(routes.router, prefix="/api/tuner")
+        client = TestClient(app, raise_server_exceptions=False)
+        real_mgr, real_wait = routes.MANAGER, routes.TUNE_WAIT_SECONDS
+        try:
+            routes.MANAGER = Vanishing()
+            routes.TUNE_WAIT_SECONDS = 0.5
+            r = client.post("/api/tuner/tune", json={"url": "http://p.example/1.ts"})
+        finally:
+            routes.MANAGER, routes.TUNE_WAIT_SECONDS = real_mgr, real_wait
+        self.assertEqual(r.status_code, 502)
+        self.assertNotIn("poll the session", r.text)
+
+
+# ============================================ the credential rules, against the new fields
+
+class TestNewFieldsCarryNoCredential(unittest.TestCase):
+    def test_public_has_no_field_that_could_hold_a_url(self):
+        """Re-stated for the fields added by this work. `vcodec` is allow-listed; that is the
+        entire argument for publishing something derived from ffmpeg's output."""
+        s = sessions.Session(
+            id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+            scrub=Scrubber.from_url(
+                f"http://p.example/live/{SENTINEL_USER}/{SENTINEL_PASS}/1.ts"),
+            policy=Policy(),
+            url=f"http://p.example/live/{SENTINEL_USER}/{SENTINEL_PASS}/1.ts")
+        s.state = "failed"
+        s.transcoder_error = f"pipe:0: {SENTINEL_PASS}"
+        s.vcodec, s.acodec = "hevc", "ac3"
+        s.error = s.scrub(f"upstream returned HTTP 403 - Stream not found: "
+                          f"/live/{SENTINEL_USER}/{SENTINEL_PASS}/1.ts")
+        import json
+        doc = json.dumps(s.public())
+        self.assertNotIn(SENTINEL_PASS, doc)
+        self.assertNotIn(SENTINEL_USER, doc)
+        self.assertIn("hevc", doc)
+
+    def test_an_error_page_excerpt_from_a_pasted_m3u_url_is_scrubbed(self):
+        """The path with no registered secrets, which is why `from_url` is load-bearing.
+
+        A visitor pastes an Xtream-exported M3U and calls `/tune` with no username or password
+        field at all. Nothing registers a secret. The credential is in a path segment, invisible
+        to `redact()`. If the provider reflects the path into its error page, only
+        `Scrubber.from_url` stands between that and the response body.
+        """
+        path = f"/live/{SENTINEL_USER}/{SENTINEL_PASS}/1.ts"
+        with Provider({path: lambda h: h._send(
+                403, "text/html",
+                f"<html><body>Forbidden: {h.path}</body></html>".encode())}) as p:
+            mgr = sessions.SessionManager(
+                root=pathlib.Path(tempfile.mkdtemp(prefix="tuner-run-")))
+            try:
+                s = mgr.start(p.url(path), "Test", LOCAL)     # no scrubber passed, as in a paste
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline and s.state not in ("failed", "ended"):
+                    time.sleep(0.1)
+                import json
+                doc = json.dumps(s.public())
+                self.assertEqual(s.state, "failed")
+                self.assertNotIn(SENTINEL_PASS, doc)
+                self.assertNotIn(SENTINEL_USER, doc)
+                self.assertIn("403", doc)
+            finally:
+                mgr.shutdown()
+
+
+class TestCatalogueSize(unittest.TestCase):
+    """A movie catalogue is an order of magnitude bigger than a channel list.
+
+    The live bug these tests pin: `load_channels` passed the caller's `Policy` straight to the
+    catalogue fetches, and `Policy.max_bytes` is 24 MiB because it was sized for an M3U
+    playlist. Against a real panel, live was 3.77 MB and series 6.43 MB -- both under -- while
+    movies were 27.57 MB across 31,888 titles, and over. Live TV and Series filled the page and
+    Movies stayed empty. The fake panel below reproduces that shape at a thousandth of the size:
+    a byte ceiling far under the VOD list and far over the live one.
+    """
+
+    VOD_ROWS = 400          # ~40 KB of JSON: over SMALL_CEILING, under CATALOGUE_MAX_BYTES
+    SMALL_CEILING = 8 * 1024
+
+    def setUp(self):
+        outer = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def _json(self, obj):
+                body = json.dumps(obj).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                action = (q.get("action") or [""])[0]
+                outer.seen.append(action)
+                if action == "get_live_streams":
+                    self._json([{"stream_id": 1, "name": "News One", "category_id": "1"}])
+                elif action == "get_vod_streams":
+                    # `plot` stands in for the metadata a real panel sends and this module
+                    # discards -- it is why a title costs ~900 bytes on the wire.
+                    self._json([{"stream_id": 1000 + i, "name": f"Film {i}",
+                                 "category_id": "9", "container_extension": "mkv",
+                                 "plot": "x" * 60} for i in range(outer.VOD_ROWS)])
+                elif action == "get_series":
+                    self._json([{"series_id": 7, "name": "A Show", "category_id": "5"}])
+                elif action.endswith("_categories"):
+                    self._json([{"category_id": "1", "category_name": "News"},
+                                {"category_id": "9", "category_name": "Movies"},
+                                {"category_id": "5", "category_name": "Drama"}])
+                else:
+                    self._json({"user_info": {"auth": 1, "status": "Active"},
+                                "server_info": {"timezone": "UTC"}})
+
+            def log_message(self, *a):
+                pass
+
+        self.seen: list[str] = []
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.port = self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        # An IP literal needs no DNS, so no resolver has to be injected; `allow_private` is the
+        # only concession, and it is what that flag exists for (see Policy's docstring).
+        self.creds = xtream.XtreamCreds(f"http://127.0.0.1:{self.port}",
+                                        SENTINEL_USER, SENTINEL_PASS)
+
+    def tearDown(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+
+    def kinds_of(self, entries):
+        return {e["kind"] for e in entries}
+
+    def test_neither_default_caps_a_catalogue_any_more(self):
+        """Both ceilings are gone by owner's instruction. `0` means uncapped, not "zero bytes".
+
+        Worth an explicit test because `0` is a falsy sentinel: a future `if policy.max_bytes >
+        0` style rewrite of the read loop would turn "no limit" into "no data" and every
+        catalogue would come back empty.
+        """
+        self.assertEqual(xtream.CATALOGUE_MAX_BYTES, 0)
+        self.assertEqual(Policy().max_bytes, 0)
+        body, _ct, _t = safefetch.fetch(
+            f"http://127.0.0.1:{self.port}/player_api.php?action=get_vod_streams",
+            Policy(allow_private=True))
+        self.assertGreater(len(body), self.SMALL_CEILING,
+                           "an uncapped fetch returned less than the old small ceiling")
+
+    def test_a_catalogue_over_the_playlist_ceiling_still_loads(self):
+        """The regression proper: a narrow caller policy must not narrow the catalogue fetch."""
+        pol = Policy(allow_private=True, max_bytes=self.SMALL_CEILING)
+        entries, notes = xtream.load_channels(self.creds, ("live", "vod", "series"), pol)
+        self.assertEqual(self.kinds_of(entries), {"live", "vod", "series"}, notes)
+        self.assertEqual(len([e for e in entries if e["kind"] == "vod"]), self.VOD_ROWS)
+        self.assertEqual(notes, [])
+
+    def test_a_catalogue_over_the_real_ceiling_does_not_blame_the_panel(self):
+        """When this box is the one refusing, the note must say so -- and must still say live."""
+        pol = Policy(allow_private=True)
+        with unittest.mock.patch.object(xtream, "CATALOGUE_MAX_BYTES", self.SMALL_CEILING):
+            entries, notes = xtream.load_channels(self.creds, ("live", "vod", "series"), pol)
+        # Live and Series are under the ceiling and arrive; only Movies is over it. That is the
+        # reported symptom exactly, and it is what makes the note the whole explanation.
+        self.assertEqual(self.kinds_of(entries), {"live", "series"})
+        joined = " ".join(notes)
+        self.assertIn("vod", joined)
+        self.assertIn("this box will load", joined)
+        self.assertNotIn("unavailable on this panel", joined)
+        self.assertNotIn(SENTINEL_PASS, joined)
+        self.assertNotIn(SENTINEL_USER, joined)
+
+    def test_the_wider_ceiling_is_not_a_wider_ssrf_policy(self):
+        """`replace` carries every other field through. If it did not, this would fetch."""
+        with self.assertRaises(xtream.XtreamError) as caught:
+            xtream.load_channels(self.creds, ("live",), Policy())   # allow_private False
+        self.assertNotIn(SENTINEL_PASS, str(caught.exception))
+        self.assertEqual(self.seen, [], "a private address was fetched anyway")
+
+    def test_a_size_refusal_is_distinguishable_from_every_other_failure(self):
+        """`ResponseTooLarge` is a `FetchError`, so nothing that caught the old class breaks."""
+        self.assertTrue(issubclass(safefetch.ResponseTooLarge, safefetch.FetchError))
+        self.assertTrue(issubclass(xtream.XtreamTooLarge, xtream.XtreamError))
+
+    def test_the_size_arm_is_ordered_before_the_general_one(self):
+        """Structural, because the subclass relationship makes the order load-bearing.
+
+        Both `except` arms end in an appended note and read as interchangeable. They are not:
+        `XtreamTooLarge` is an `XtreamError`, so if the general arm is moved above it, every
+        size refusal quietly goes back to blaming the panel -- and the note assertion above
+        would still pass, because it only ever sees whichever arm ran.
+        """
+        src = pathlib.Path(xtream.__file__).read_text()
+        specific = src.index("except XtreamTooLarge as exc:")
+        general = src.index("except XtreamError as exc:", specific)
+        self.assertLess(specific, general,
+                        "the general XtreamError arm would swallow XtreamTooLarge")
 
 
 if __name__ == "__main__":

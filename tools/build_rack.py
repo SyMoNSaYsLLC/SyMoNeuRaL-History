@@ -11,6 +11,14 @@ Every light is driven by the live socket. Nothing animates on a timer for effect
 whose entire argument is that it publishes measured numbers, a decorative activity LED
 would be the one dishonest pixel on the page.
 
+The rack names SyMoNeuRaL surfaces only. It used to carry `built on Qwen2.5-7B-Instruct`
+per unit, which LICENSES.md called out as an Apache-2.0 condition rather than decoration;
+that attribution now lives, in full and for every component, on /credits.html, and the
+closing note links to it. Consolidating is fine -- §4 requires the notice to be present in
+what we distribute, not repeated on every surface -- but it only works while the link is
+there, so do not drop it. Note that the per-unit detail lines come from `/api/status`, not
+from this file.
+
 Idempotent: the block lives between HTML markers and is replaced wholesale on each run.
 """
 from __future__ import annotations
@@ -118,6 +126,8 @@ RACK = f"""{BEGIN}
       One card, and the chat and image weight sets do not both fit in 15.92&nbsp;GiB &mdash; so a
       lock hands the GPU to exactly one surface at a time. RavenCalc is the exception: it is
       SymPy on the CPU, so it is always green.
+      Every unit above is a SyMoNeuRaL surface built on permissively licensed components;
+      <a href="/credits.html">the full attribution is on one page</a>.
     </p>
   </div>
 </section>

@@ -69,8 +69,41 @@ try {
          // does not recognise, which is the honest answer to an unknown value.
          units.every(u => ['GPU', 'CPU', 'ASIC', 'NET', '--'].includes(u.bus)),
          units.map(u => `${u.name}=${u.bus}`).join(', '));
-  record('train unit is renamed',
-         units.some(u => u.name === 'SyMoNeuRaL Quantized Low-Rank Adaptation Tool'));
+  // Renamed again 2026-08-17: the old label was our prefix bolted onto the expansion of a
+  // generic technique, and it wrapped to five lines in the compact GPU panel. What this
+  // assertion guards is unchanged -- that the training bay carries a real PRODUCT name in
+  // the SyMoNeuRaL series, not a technique description.
+  record('train unit carries a product name',
+         units.some(u => u.name === 'SyMoNeuRaL Reinforce'));
+
+  // ---- one unit per surface ------------------------------------------------
+  // Garrett: "you need to migrate tuner and guide to be 1". Tuner and Guide were two units
+  // with the SAME href, /tuner.html, so the rack showed one page twice and disagreed with
+  // itself about how many things this box runs. They are now one unit.
+  //
+  // The assertion is on the INVARIANT rather than on a count. `units.length === 11` would go
+  // red every time a genuine surface is added, which is the kind of assertion people delete
+  // instead of reading. What was actually broken is narrower and survives the rack growing:
+  // no two tiles may claim the same page AND the same bus, because then they are one thing
+  // shown twice. Tuner and Guide were exactly that -- both `cpu`, both /tuner.html.
+  //
+  // Sharing a page is fine on its own and two live cases prove it, which is why this is not
+  // the blunter check: the two Miner units are ASIC and GPU -- different hardware, different
+  // readings, one page -- and Coder and Project both link to /documentation.html because
+  // neither has a page yet and that beats linking to a 404. A rule that failed those would
+  // be measuring the wrong thing.
+  const tiles = await page.$$eval('#units .unit', els => els.map(e => ({
+    href: e.getAttribute('href'),
+    bus: e.querySelector('.ubus')?.textContent?.trim() || '',
+  })));
+  const keys = tiles.filter(t => t.href && t.href !== '/documentation.html')
+                    .map(t => `${t.href} [${t.bus}]`);
+  const dupes = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+  record('no two rack units are the same page on the same bus', dupes.length === 0,
+         dupes.length ? `duplicated: ${dupes.join(', ')}` : `${keys.length} distinct`);
+  record('the tuner unit carries the guide too',
+         units.some(u => /Tuner/.test(u.name || '') && /Guide/.test(u.name || '')),
+         units.map(u => u.name).filter(n => /Tuner|Guide/.test(n)).join(' | ') || 'no tuner unit');
 
   // the rack must lead the page now
   const order = await page.evaluate(() => {
@@ -160,7 +193,7 @@ try {
     return {
       ok: r.width > 0 && r.height > 0 && parseFloat(cs.fontSize) >= 10 &&
           cs.visibility !== 'hidden' && cs.display !== 'none' &&
-          !clipped && /seed \d/.test(t) && /FLUX/.test(t) && /RTX/.test(t),
+          !clipped && /seed \d/.test(t) && /SymonImage/.test(t) && /RTX/.test(t),
       why: `"${t.trim()}" at ${cs.fontSize}, ${Math.round(r.width)}px wide` +
            (clipped ? ' -- CLIPPED' : ', not clipped'),
     };
@@ -399,12 +432,29 @@ try {
     const paths = [...new Set([...src.matchAll(/['"](\/api\/tuner\/[a-z\/]+)['"]/g)].map(m => m[1]))];
     if (!paths.length) return { ok: false, why: 'the page names no /api/tuner endpoint' };
     const codes = {};
+    let routed = true;
     for (const name of paths) {
+      // A path ending in `/` is a PREFIX the page appends an id to -- `/session/<id>`,
+      // which the player polls to find out WHY a stream did not start. POSTing to the
+      // bare prefix probes a route nobody ever meant to exist and reports 405 for a
+      // perfectly healthy page, which is the "check that fails on healthy input" this
+      // suite is supposed to be the opposite of. Probe it the way the page uses it --
+      // GET, with an id on the end -- and tell "routed, no such session" apart from
+      // "no such route" by the body: FastAPI's own miss says "Not Found", ours says
+      // what is actually missing.
+      if (name.endsWith('/')) {
+        const r = await fetch(name + '__probe__');
+        const j = await r.json().catch(() => ({}));
+        const isRouted = typeof j.detail === 'string' && j.detail !== 'Not Found';
+        codes[name] = (isRouted ? 'routed' : 'NOT ROUTED') + `(GET ${r.status})`;
+        if (!isRouted) routed = false;
+        continue;
+      }
       const r = await fetch(name, { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: '{}' });
       codes[name] = r.status;
+      if (r.status === 404 || r.status === 405) routed = false;
     }
-    const routed = Object.values(codes).every(c => c !== 405 && c !== 404);
     return { ok: styled && routed,
              why: `styled=${styled}, ` + Object.entries(codes)
                    .map(([k, v]) => `${k.replace('/api/tuner', '')}=${v}`).join(' ') };
