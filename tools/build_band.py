@@ -149,7 +149,7 @@ def build() -> str:
       we own outright. We will do the same for your business, on a server you own outright,
       running models that answer to you.
     </p>
-    <a class="cta" href="#order">Start a build &rarr;</a>
+    <a class="cta" href="/build.html">Start a build &rarr;</a>
     <p class="band-foot">
       Every picture here was drawn by the image surface below &mdash; same card, same four
       steps you get, seed stamped on each one. Nothing is stock.

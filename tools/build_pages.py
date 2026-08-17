@@ -45,7 +45,8 @@ NAV = """    <nav>
           <a href="/account.html#support">Support<small>talk to a person</small></a>
         </div>
       </div>
-      <a class="cta ghost" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="cta" href="/build.html">Have one built</a>
     </nav>"""
 
 SHELL = """<!doctype html>

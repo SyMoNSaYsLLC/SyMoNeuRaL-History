@@ -76,6 +76,52 @@ try {
   record('no overlap at 390px', overlap.length === 0, overlap.join(', ') || 'clean');
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  // ---- nothing may run off the right edge at 390px --------------------------
+  // The header nav did exactly this: the <button> dropdowns are not <a>, so the rule
+  // that hides the nav links on a phone never touched them, and the nav ran 122px past
+  // a 390px viewport with the CTA entirely off screen.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.waitForTimeout(300);
+  const spill = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const bad = [];
+    document.querySelectorAll('header .bar > *, header nav > *, .cards > *').forEach(e => {
+      const r = e.getBoundingClientRect();
+      if (r.width && r.right > vw + 1) bad.push(`${e.className || e.tagName} -> ${Math.round(r.right)} > ${vw}`);
+    });
+    if (document.documentElement.scrollWidth > vw + 1) bad.push(`page scrolls to ${document.documentElement.scrollWidth}`);
+    return bad;
+  });
+  record('nothing spills past the right edge at 390px', spill.length === 0,
+         spill.join('; ') || 'clean');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // ---- the receipts grid, and the order page it feeds ----------------------
+  const cards = await page.$$eval('#more .card', els => els.map(e => ({
+    tag: e.querySelector('.ctag')?.textContent.trim(),
+    title: e.querySelector('b')?.textContent.trim(),
+    href: e.getAttribute('href'),
+  })));
+  record('receipts render as cards', cards.length >= 8 &&
+         cards.every(c => c.tag && c.title && c.href), `${cards.length} cards`);
+
+  // Every "Have one built" route must land on a real page. The order section was moved
+  // off the front page; a dangling link would take the one lead-generation click nowhere.
+  const buildLinks = await page.$$eval('a[href="/build.html"]', els => els.length);
+  const buildRes = await page.request.get(BASE + '/build.html');
+  const buildTxt = await buildRes.text();
+  record('the order page exists and is linked', buildRes.status() === 200 &&
+         buildLinks >= 2 && buildTxt.includes('Tell us what you want to run'),
+         `${buildLinks} links -> ${buildRes.status()}`);
+
+  // ---- stale CSS can never be served for new markup ------------------------
+  const unstamped = await page.$$eval(
+    'link[rel=stylesheet][href^="/"], script[src^="/"]',
+    els => els.map(e => e.getAttribute('href') || e.getAttribute('src'))
+             .filter(u => !/\?v=[0-9a-f]{6,}$/.test(u)));
+  record('every local asset is cache-busted', unstamped.length === 0,
+         unstamped.join(', ') || 'all stamped');
+
   // ---- calc ----------------------------------------------------------------
   await page.goto(BASE + '/calc.html', { waitUntil: 'networkidle' });
   const calcBox = await page.$('input[type=text], textarea');

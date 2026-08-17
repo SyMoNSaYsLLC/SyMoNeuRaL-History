@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL RavenCalc — exact mathematics</title>
 <meta name="description" content="SymPy-powered symbolic computation that checks its own work.">
-<link rel="stylesheet" href="/symoneural.css">
-<link rel="stylesheet" href="/rack-detail.css">
+<link rel="stylesheet" href="/symoneural.css?v=7a9417ac8f">
+<link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -53,7 +53,8 @@
           <a href="/account.html#support">Support<small>talk to a person</small></a>
         </div>
       </div>
-      <a class="cta ghost" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="cta" href="/build.html">Have one built</a>
     </nav>
   </div>
 </header>
@@ -169,8 +170,8 @@ async function api(path, payload) {
   return body;
 }
 </script>
-<script src="/console.js" defer></script>
-<script src="/ui.js" defer></script>
+<script src="/console.js?v=9c9663ee79" defer></script>
+<script src="/ui.js?v=63d442bce5" defer></script>
 <script>
 const form = $('#form'), out = $('#out'), op = $('#op');
 op.addEventListener('change', () =>
