@@ -2553,46 +2553,9 @@ TUNER_JS = """<script src="/hls.js"></script>
   var UNPLAYABLE = {hevc: 'H.265 / HEVC', h265: 'H.265 / HEVC', av1: 'AV1',
                     mpeg2video: 'MPEG-2', vc1: 'VC-1'};
 
-  // The audio half, which this page did not check for a long time and which is the more
-  // common failure by a distance. Chrome decodes none of these in Media Source Extensions.
-  // An undecodable audio track is not a silent picture: hls.js fails the whole media
-  // element, so the result is the identical black rectangle -- except `vcodec` reads
-  // `h264`, so every check the page made said the stream was fine. That is what a channel
-  // "not working with no error message" was.
-  var UNPLAYABLE_AUDIO = {ac3: 'Dolby Digital (AC-3)', eac3: 'Dolby Digital Plus (E-AC-3)',
-                          mp2: 'MPEG-1 Audio Layer II', dts: 'DTS', truehd: 'Dolby TrueHD'};
-
-  // Returns null, or {what, detail} naming the codec that will keep the screen black.
-  // Video is reported first when both are undecodable: re-muxing the audio would not
-  // save a stream whose picture is also unreadable, so it is the more useful thing to say.
   function codecWarning(j) {
     var v = j && j.vcodec ? String(j.vcodec).toLowerCase() : '';
-    var a = j && j.acodec ? String(j.acodec).toLowerCase() : '';
-    if (UNPLAYABLE[v]) {
-      return {what: UNPLAYABLE[v],
-              detail: 'video codec reported by the transcoder: ' + v + (a ? ', audio: ' + a : '')};
-    }
-    if (UNPLAYABLE_AUDIO[a]) {
-      return {what: UNPLAYABLE_AUDIO[a], audio: true,
-              detail: 'audio codec reported by the transcoder: ' + a + (v ? ', video: ' + v : '')};
-    }
-    return null;
-  }
-
-  // One sentence for each half, because the remedy differs: an unplayable picture cannot be
-  // fixed by picking a different audio track, and an unplayable soundtrack means the video
-  // itself is arriving perfectly well.
-  function codecWarningBody(w) {
-    if (w.audio) {
-      return 'The picture is arriving fine, but its soundtrack is ' + w.what
-           + ', which no browser on this machine can decode. A track the browser cannot '
-           + 'decode fails the whole player rather than just muting it, so the screen '
-           + 'stays black. Play it in VLC, or pick another audio track from your provider.';
-    }
-    return 'The box is receiving it and copying it through without re-encoding, so '
-         + 'nothing here has failed - but no browser on this machine can decode '
-         + w.what + ', so the picture will stay black. Play it in VLC, or pick another '
-         + 'quality from your provider.';
+    return UNPLAYABLE[v] ? UNPLAYABLE[v] : '';
   }
 
   function tune(c) {
@@ -2651,8 +2614,13 @@ TUNER_JS = """<script src="/hls.js"></script>
         if (j.state === 'live' && !j.note && (j.segments || 0) > 0) {
           nowEl.textContent = (c.name || '') + '  \\u00b7  live';
           if (warn) {
-            showFail('This stream is ' + warn.what + '.',
-                     codecWarningBody(warn), null, warn.detail);
+            showFail('This stream is ' + warn + '.',
+                     'The box is receiving it and copying it through without '
+                     + 're-encoding, so nothing here has failed \\u2014 but no browser '
+                     + 'on this machine can decode ' + warn + ', so the picture will '
+                     + 'stay black. Play it in VLC, or pick another quality from your '
+                     + 'provider.', null, 'video codec reported by the transcoder: '
+                     + j.vcodec);
           }
           play('/api/tuner/' + j.playlist, c, j);
           return;
@@ -2699,8 +2667,10 @@ TUNER_JS = """<script src="/hls.js"></script>
           nowEl.textContent = (c.name || '') + '  \\u00b7  live';
           var warn = codecWarning(j);
           if (warn) {
-            showFail('This stream is ' + warn.what + '.',
-                     codecWarningBody(warn), null, warn.detail);
+            showFail('This stream is ' + warn + '.',
+                     'The box is receiving it, but no browser on this machine can '
+                     + 'decode ' + warn + ', so the picture will stay black.',
+                     null, 'video codec reported by the transcoder: ' + j.vcodec);
           }
           play('/api/tuner/' + j.playlist, c, j);
           return;

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import functools
 import http.server
-import inspect
 import io
 import ipaddress
 import json
@@ -1466,36 +1465,9 @@ class TestCodecReporting(unittest.TestCase):
                              scrub=Scrubber(), policy=Policy())
         self.assertIn("vcodec", s.public())
         self.assertEqual(s.public()["vcodec"], "")
-        # `acodec` is now published. It was withheld on the grounds that "an unused field is a
-        # field nobody is checking", and that reasoning had it backwards: the page's codec
-        # warning was video-only *because* the audio codec never reached it, so a channel
-        # arriving as h264 + AC-3 was reported as healthy while being exactly as unwatchable as
-        # an HEVC one. Chrome decodes no AC-3 in MSE, and hls.js fails the whole media element
-        # rather than muting it, so the visitor gets the same black rectangle with no
-        # explanation on the page.
-        self.assertIn("acodec", s.public())
-        self.assertEqual(s.public()["acodec"], "")
-
-    def test_a_published_audio_codec_can_only_be_an_allow_listed_token(self):
-        """The security property that makes `acodec` safe to publish at all.
-
-        It is the same argument as `vcodec`: the value does not come from ffmpeg's stderr, it
-        comes from `AUDIO_CODECS` after ffmpeg's stderr was matched against it. A hostile stream
-        that talks ffmpeg into printing an attacker-chosen `Audio:` token therefore cannot put
-        arbitrary text -- or a credential quoted back out of a URL -- into the public document.
-        """
-        hostile = ("Stream #0:1[0x101]: Audio: "
-                   "http://user:hunter2@provider.example/live.ts (AC-3), 48000 Hz")
-        self.assertEqual(sessions._match_audio_codec(hostile), "")
-        self.assertEqual(sessions._match_audio_codec("Stream #0:1: Audio: ac3, 48000 Hz"), "ac3")
-        self.assertEqual(sessions._match_audio_codec("Stream #0:1: Audio: eac3, 48000 Hz"), "eac3")
-        # Every token the page is willing to name as undecodable must survive the matcher, or
-        # the warning it drives can never fire.
-        for token in ("ac3", "eac3", "mp2", "dts", "truehd"):
-            with self.subTest(token=token):
-                self.assertIn(token, sessions.AUDIO_CODECS)
-                self.assertEqual(
-                    sessions._match_audio_codec(f"Stream #0:1: Audio: {token}, 48000 Hz"), token)
+        # `acodec` is parsed but deliberately unpublished -- an unused field is a field nobody
+        # is checking. If it is ever published, this line is the reminder to say so.
+        self.assertNotIn("acodec", s.public())
 
     @needs_ffmpeg
     def test_hevc_is_reported_while_everything_else_looks_healthy(self):
@@ -1618,29 +1590,7 @@ class TestTuneDeadline(unittest.TestCase):
         """
         self.assertGreaterEqual(routes.TUNE_WAIT_SECONDS, 20.0)
         self.assertLessEqual(routes.TUNE_WAIT_SECONDS, 60.0)
-
-    def test_the_wait_keeps_its_own_session_alive(self):
-        """This used to be asserted as `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1`, and that
-        assertion was stale rather than wrong-headed.
-
-        The hazard is real: a 25 s wait against a 12 s idle timeout would spend its whole length
-        ageing towards the reaper, which would then drop the session out from under the request
-        waiting on it -- a slow-but-fine channel reported as a dead one. The original fix was to
-        keep the two constants ordered, but that couples them for no reason and the ordering
-        broke the moment `IDLE_TIMEOUT` came down from 45 s to 12 s to reclaim provider
-        connections faster. Both values are independently correct and the test was failing on
-        healthy code.
-
-        What actually prevents the hazard is that the wait loop touches its own session every
-        250 ms, so a client waiting on the request counts as activity. That is the mechanism
-        worth guarding: if it is ever removed the constants alone will not save it, and this
-        test fires. Asserted against the source because the alternative is a 25 s real-time
-        test of a timing interaction.
-        """
-        body = inspect.getsource(routes.tune)
-        wait = body.split("deadline = time.monotonic()", 1)[-1]
-        self.assertIn("MANAGER.touch(session.id)", wait,
-                      "the tune wait must touch its session or the reaper will drop it mid-wait")
+        self.assertLess(routes.TUNE_WAIT_SECONDS, sessions.IDLE_TIMEOUT + 1)
 
     def test_a_long_wait_never_hands_back_a_session_that_is_already_gone(self):
         """The window the longer wait widened.

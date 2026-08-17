@@ -360,7 +360,7 @@ class Session:
     #: at all: it comes out of ffmpeg's stderr, which is the one string in this object written
     #: by a program we do not control, and an allow-listed token cannot be a credential.
     vcodec: str = ""
-    #: The audio codec, same rules. Published; see `public()`.
+    #: The audio codec, same rules. Not currently published; see `public()`.
     acodec: str = ""
 
     def public(self) -> dict:
@@ -369,27 +369,17 @@ class Session:
         `error` is either one of our own origin-only messages or a fixed sentence. It is never
         ffmpeg's stderr and never an upstream library's exception text.
 
-        `vcodec` and `acodec` are the two fields here whose values originate in ffmpeg's output,
-        and they are safe for exactly one reason: they are not ffmpeg's text, they are tokens
-        from `VIDEO_CODECS` / `AUDIO_CODECS` that ffmpeg's text was matched against. Anything
-        unrecognised becomes "".
+        `vcodec` is the one field here whose value originates in ffmpeg's output, and it is safe
+        for exactly one reason: it is not ffmpeg's text, it is a token from `VIDEO_CODECS` that
+        ffmpeg's text was matched against. Anything unrecognised becomes "". `acodec` is
+        deliberately **not** published -- nothing consumes it yet, and an unused field is a
+        field nobody is checking.
 
         The reason `vcodec` is published at all: a session can be `live`, with a playlist, with
         segments being served, and still show the visitor a black rectangle, because the stream
         is HEVC and no browser decodes HEVC in MSE. **A client must read `vcodec` even when
         `state == "live"`.** It is the only signal that separates "working" from "working, and
         unwatchable here".
-
-        `acodec` is published for the same reason, and it was withheld for a bad one. This
-        docstring used to argue "nothing consumes it yet, and an unused field is a field nobody
-        is checking" -- but the unpublished field was itself the reason nothing could consume
-        it, and the page's codec warning was video-only as a direct consequence. Chrome decodes
-        neither AC-3 nor E-AC-3 nor MP2 nor DTS in MSE, and an undecodable audio track does not
-        merely mute a working picture: hls.js fails the whole media element, so the visitor gets
-        the same black rectangle as the HEVC case with nothing on the page saying why. A channel
-        reporting `vcodec: "h264"` was therefore reported as fine while being exactly as
-        unwatchable. Both halves of the codec pair have to be visible or the warning is a
-        half-truth.
         """
         error = self.error
         if error is None and self.state == "failed":
@@ -401,7 +391,6 @@ class Session:
             "error": error,
             "mode": self.mode,
             "vcodec": self.vcodec,
-            "acodec": self.acodec,
             "playlist": f"stream/{self.id}/{PLAYLIST_NAME}",
             "age_s": round(time.monotonic() - self.created, 1),
             "bytes_in": self.bytes_in,
