@@ -32,12 +32,21 @@ shape and it is caught by the fact that there is no path that skips the validato
 Nothing in this module logs a URL, and every exception it raises is constructed from a fixed
 string plus a host, never from the URL and never from an upstream exception's message. Use
 `redact()` on anything that might have touched one before it goes near a log.
+
+There is exactly **one** exception to "never from the body", and it is deliberate: an HTTP
+error response's body is excerpted into the `FetchError` message, because "account expired" is
+the answer the visitor needs and "upstream returned HTTP 403" is not. That excerpt is the most
+dangerous string in this file -- panels reflect the requested path, credentials and all -- so it
+goes through `Scrubber.from_urls`, which treats every path segment and query value of both the
+requested and the reached URL as a secret. See the section headed "what the provider said".
 """
 from __future__ import annotations
 
 import base64
+import html
 import http.client
 import ipaddress
+import os
 import re
 import socket
 import ssl
@@ -47,9 +56,53 @@ from dataclasses import dataclass
 from typing import Iterable
 
 __all__ = [
-    "BlockedURL", "FetchError", "Policy", "Target",
+    "BlockedURL", "FetchError", "ResponseTooLarge", "Policy", "Target",
     "validate_url", "open_stream", "fetch", "redact", "Scrubber",
+    "DEFAULT_USER_AGENT", "text_excerpt",
 ]
+
+
+# ---------------------------------------------------------------- the User-Agent question
+#
+# Why this is not "SyMoNeuRaL-Tuner/1", which is what it used to be, and which is the polite,
+# honest, correct thing for a bot to send:
+#
+# An IPTV provider's edge is not a web server serving documents to crawlers. It is a paywall
+# whose only real enforcement is per-connection, and the cheapest filter any panel operator
+# applies is on User-Agent: the paying customer is running VLC, Kodi, TiviMate or a set-top box,
+# so anything that is not one of those is a scraper, a reseller re-streaming their feed, or a
+# competitor's probe. A large fraction of providers therefore refuse an unknown agent outright.
+#
+# The refusal is often *not* an honest 403. Panels commonly answer HTTP 200 with an HTML
+# "access denied" or "please use a supported player" page, which then arrives at the pump as
+# the stream body -- which is precisely the blank-screen-with-everything-green failure this
+# module's callers spend so much effort explaining. Sending the agent the provider expects is
+# the difference between a stream that plays and a stream that does not.
+#
+# This is not spoofing to defeat a security control: the credential in the URL is the visitor's
+# own, and the request is the one their own player would make. It is stating the client the
+# protocol expects. If a provider genuinely wants to identify this box, the override below is
+# how an operator gives it a name.
+_UA_ENV = "SYMONEURAL_TUNER_USER_AGENT"
+_UA_FALLBACK = "VLC/3.0.20 LibVLC/3.0.20"
+
+
+def _default_user_agent() -> str:
+    """Read the operator's override once, at import, and make it safe to put in a header.
+
+    This is the **only** environment variable this module reads, and it deliberately cannot
+    touch anything but the agent string -- see `Policy`'s docstring for why `allow_private` in
+    particular has no such switch. A CR or LF here would be request smuggling into every
+    upstream connection, so control characters are dropped rather than the value refused: an
+    operator typo must not take the tuner offline.
+    """
+    raw = os.environ.get(_UA_ENV, "") or ""
+    cleaned = "".join(c for c in raw if c.isprintable() and c not in "\r\n").strip()
+    return cleaned[:200] or _UA_FALLBACK
+
+
+#: The agent every outbound request carries unless a `Policy` says otherwise.
+DEFAULT_USER_AGENT = _default_user_agent()
 
 
 class BlockedURL(Exception):
@@ -64,6 +117,16 @@ class FetchError(Exception):
     """An allowed URL could not be fetched. Message is sanitized -- see the module docstring."""
 
 
+class ResponseTooLarge(FetchError):
+    """The upstream answered, and the answer was bigger than `Policy.max_bytes`.
+
+    A subclass rather than a flag because callers need to tell it apart from every other fetch
+    failure to say an honest sentence about it: "this panel has no VOD" and "this box refused to
+    load that panel's VOD" are different facts, and reporting the second as the first blames the
+    provider for our own ceiling. Nothing that only catches `FetchError` changes behaviour.
+    """
+
+
 @dataclass(frozen=True)
 class Policy:
     """What this door will open for.
@@ -75,14 +138,30 @@ class Policy:
     serving path builds `Policy()` and nothing reaches in to change it.
     """
     allow_private: bool = False
-    max_redirects: int = 3
+    #: Xtream stream URLs chain redirects as a matter of course -- the panel answers `/live/...`
+    #: with a 302 to a load balancer, which redirects to a region, which redirects to the edge
+    #: node actually holding the channel, and a `?token=` handoff can add another hop. Three was
+    #: not a security bound (every hop is re-validated by `validate_url`, so a longer chain is
+    #: no more dangerous than a short one) -- it was a guess, and it was low enough to fail
+    #: perfectly ordinary providers with "too many redirects". Six covers the chains seen in the
+    #: wild while still ending a redirect loop promptly.
+    max_redirects: int = 6
     connect_timeout: float = 8.0
     read_timeout: float = 20.0
-    max_bytes: int = 24 * 1024 * 1024      # playlists; a big provider M3U is a few MB
+    #: **No byte cap by default.** `0` means uncapped, and `0` is the default at the owner's
+    #: explicit instruction (2026-08-17). It was 24 MiB, sized for an M3U playlist, and on a real
+    #: account it refused a 27.57 MB movie catalogue and left the Movies section empty. Every
+    #: number chosen here was wrong for somebody's catalogue, so the number is gone. What still
+    #: bounds a `fetch` is `total_timeout` plus the deadline in the read loop, which is the bound
+    #: that was doing the real work: a slow-drip server satisfies any byte cap indefinitely.
+    #: A caller that genuinely needs a ceiling passes one (`Policy(max_bytes=N)`); the tests do.
+    max_bytes: int = 0
     #: Wall clock for a whole `fetch`. `read_timeout` only bounds the gap between packets, which
     #: a slow-drip server satisfies indefinitely.
     total_timeout: float = 60.0
-    user_agent: str = "SyMoNeuRaL-Tuner/1"
+    #: See the note above this class. Overridable per-Policy, and by `SYMONEURAL_TUNER_USER_AGENT`
+    #: at import; nothing a visitor sends can reach it.
+    user_agent: str = DEFAULT_USER_AGENT
 
 
 @dataclass(frozen=True)
@@ -323,6 +402,107 @@ def _connect(target: Target, policy: Policy) -> http.client.HTTPConnection:
     return _PinnedHTTPConnection(target, policy.connect_timeout)
 
 
+# ---------------------------------------------------------------- what the provider said
+#
+# The user's diagnostic, in their words: "if it's not active you will come to a page from the
+# server saying it's down, not just a blank screen." A dead channel and a broken tuner are two
+# different bugs, and the only thing that tells them apart is the provider's own message --
+# "account expired", "maximum connections reached", "stream not found". This module used to
+# throw all of that away (`resp.read(0)`) and report `upstream returned HTTP 403`, which
+# describes the transport and says nothing about the channel.
+#
+# The reason it threw it away is real and has not gone away: **an error body is attacker-shaped
+# text and it routinely contains the visitor's credentials.** Panels reflect the requested path
+# back -- "Stream not found: /live/<user>/<pass>/12345.ts" -- and an Xtream password lives in a
+# path segment, where `redact()` cannot see it. So every excerpt goes through a `Scrubber` built
+# from the URL itself with `Scrubber.from_url`, which treats every path segment and query value
+# as a secret whether or not it looks like one. Over-scrubbing costs readability; under-scrubbing
+# publishes a password.
+
+#: How much of an error body to look at. Small on purpose: this is a sentence for a human, not
+#: a document, and the whole read must fit in one buffered read (see `_read_error_excerpt`).
+ERROR_BODY_BYTES = 8192
+#: How much of it may reach a message. A provider page is mostly navigation and boilerplate;
+#: 300 characters is enough for the sentence that matters and short enough to sit in a log line.
+EXCERPT_CHARS = 300
+
+_SCRIPTISH = re.compile(r"(?is)<(script|style|head)\b.*?</\1\s*>")
+_ANY_TAG = re.compile(r"(?s)<[^>]*>")
+_WHITESPACE = re.compile(r"\s+")
+
+
+def text_excerpt(raw: bytes | str, scrub=None, limit: int = EXCERPT_CHARS) -> str:
+    """Turn an HTML or plain-text error body into one short, scrubbed, log-safe sentence.
+
+    Order matters and is not arbitrary:
+
+    1. decode leniently -- an error page's charset is frequently a lie, and a decode error must
+       not swallow the message;
+    2. drop `<script>`, `<style>` and `<head>` *with their contents*, or a page's JavaScript and
+       CSS become the "message";
+    3. **unescape entities first, then strip tags.** The obvious order is the other way round
+       and it puts markup back after removing it: a panel that echoes the requested path through
+       an HTML escaper sends `Error: &lt;img src=x onerror=alert(1)&gt;`, which has no literal
+       tags for the tag-stripper to find, and unescaping afterwards reconstitutes them into the
+       message. Unescaping once and stripping after leaves double-encoded input inert, and the
+       final `<>` sweep catches anything the tag pattern would not match as a tag;
+    4. flatten every non-printable and every run of whitespace to single spaces -- a newline
+       here is how a scrubbed log line becomes two lines, only one of which was scrubbed;
+    5. **scrub**, with the caller's session scrubber;
+    6. only then truncate. Truncating first could cut a credential in half and leave the half
+       that is still a credential.
+
+    The result is plain text and is safe to render as plain text. It is not sanitised HTML and
+    must never be inserted as markup -- but it also does not rely on the consumer knowing that,
+    which is why the angle brackets go rather than merely the tags.
+    """
+    if isinstance(raw, bytes):
+        text = raw.decode("utf-8", "replace")
+    else:
+        text = raw or ""
+    text = _SCRIPTISH.sub(" ", text)
+    text = html.unescape(text)
+    text = _SCRIPTISH.sub(" ", text)
+    text = _ANY_TAG.sub(" ", text)
+    text = text.replace("<", " ").replace(">", " ")
+    text = "".join(c if c.isprintable() else " " for c in text)
+    text = _WHITESPACE.sub(" ", text).strip()
+    if scrub is not None:
+        text = scrub(text)
+    text = _WHITESPACE.sub(" ", text).strip()
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "..."
+    return text
+
+
+def _read_error_excerpt(resp: http.client.HTTPResponse, url: str, target: Target) -> str:
+    """A few kilobytes of an error body, scrubbed. Never raises; returns "" if it cannot.
+
+    `read1`, not `read`: `read(8192)` blocks until it has 8192 bytes or EOF, so a server
+    dribbling its error page one byte at a time would hold this thread for `read_timeout` per
+    packet, indefinitely. `read1` takes at most one underlying read and returns what arrived.
+    A partial page is a fine excerpt; a hang is not.
+
+    Failure here must never replace the error we already have -- an HTTP 403 with an unreadable
+    body is still an HTTP 403, and reporting "socket timeout" instead would lose the one fact
+    the visitor needs.
+    """
+    try:
+        raw = resp.read1(ERROR_BODY_BYTES)
+    except Exception:
+        return ""
+    if not raw:
+        return ""
+    # Both URLs: the one the visitor typed and the one we actually reached. A provider that
+    # redirects and then reflects the *redirected* path back would otherwise be scrubbed
+    # against the wrong string.
+    try:
+        scrub = Scrubber.from_urls(url, target.join(""))
+    except Exception:                                     # pragma: no cover - defence in depth
+        scrub = Scrubber.from_url(url)
+    return text_excerpt(raw, scrub)
+
+
 # ---------------------------------------------------------------- request
 
 def open_stream(url: str, policy: Policy = Policy(), *, headers: dict[str, str] | None = None,
@@ -378,9 +558,14 @@ def open_stream(url: str, policy: Policy = Policy(), *, headers: dict[str, str] 
             continue
 
         if resp.status >= 400:
-            resp.read(0)
+            # Read the provider's own words before closing. See the section above for why this
+            # is worth the risk and what makes it safe.
+            excerpt = _read_error_excerpt(resp, url, target)
             conn.close()
-            raise FetchError(f"{target.origin}: upstream returned HTTP {resp.status}")
+            msg = f"{target.origin}: upstream returned HTTP {resp.status}"
+            if excerpt:
+                msg = f"{msg} - {excerpt}"
+            raise FetchError(msg)
         return resp, conn, target
 
 
@@ -400,7 +585,10 @@ def fetch(url: str, policy: Policy = Policy(), *, headers: dict[str, str] | None
         deadline = time.monotonic() + policy.total_timeout
         chunks: list[bytes] = []
         total = 0
-        while total <= policy.max_bytes:
+        # `max_bytes == 0` means no byte cap, which is now the default -- see `Policy`. The
+        # deadline is what still bounds this loop, and it is the bound that actually mattered:
+        # a slow-drip server was never stopped by the byte cap anyway.
+        while not policy.max_bytes or total <= policy.max_bytes:
             if time.monotonic() > deadline:
                 raise FetchError(f"{target.origin}: took longer than "
                                  f"{policy.total_timeout:g}s to respond")
@@ -409,8 +597,9 @@ def fetch(url: str, policy: Policy = Policy(), *, headers: dict[str, str] | None
                 break
             chunks.append(chunk)
             total += len(chunk)
-        if total > policy.max_bytes:
-            raise FetchError(f"{target.origin}: response exceeds {policy.max_bytes} bytes")
+        if policy.max_bytes and total > policy.max_bytes:
+            raise ResponseTooLarge(
+                f"{target.origin}: response exceeds {policy.max_bytes} bytes")
         ctype = (resp.getheader("Content-Type") or "").split(";")[0].strip().lower()
         return b"".join(chunks), ctype, target
     except (OSError, http.client.HTTPException, ssl.SSLError) as exc:
@@ -442,6 +631,22 @@ def redact(text: str) -> str:
     text = _USERINFO.sub(r"\1***@", text)
     text = _QUERY_SECRET.sub(lambda m: f"{m.group(1)}=***", text)
     return text
+
+
+def _url_secrets(url: str) -> list[str]:
+    """Every literal in one URL that could be a credential. See `Scrubber.from_url`."""
+    try:
+        u = urllib.parse.urlsplit(url or "")
+    except ValueError:
+        return []
+    secrets = [urllib.parse.unquote(seg) for seg in u.path.split("/") if seg]
+    for _k, v in urllib.parse.parse_qsl(u.query, keep_blank_values=False):
+        secrets.append(v)
+    if u.password:
+        secrets.append(urllib.parse.unquote(u.password))
+    if u.username:
+        secrets.append(urllib.parse.unquote(u.username))
+    return secrets
 
 
 class Scrubber:
@@ -476,18 +681,19 @@ class Scrubber:
         and log lines, where turning "live" into "***" costs a little readability and turning a
         password into "***" is the entire point.
         """
-        secrets: list[str] = [s for s in extra if s]
-        try:
-            u = urllib.parse.urlsplit(url)
-        except ValueError:
-            return cls(secrets)
-        secrets.extend(urllib.parse.unquote(seg) for seg in u.path.split("/") if seg)
-        for _k, v in urllib.parse.parse_qsl(u.query, keep_blank_values=False):
-            secrets.append(v)
-        if u.password:
-            secrets.append(urllib.parse.unquote(u.password))
-        if u.username:
-            secrets.append(urllib.parse.unquote(u.username))
+        return cls([*(s for s in extra if s), *_url_secrets(url)])
+
+    @classmethod
+    def from_urls(cls, *urls: str) -> "Scrubber":
+        """`from_url` over several URLs at once.
+
+        Needed because a request can reach a different URL than the one it was given: a
+        provider that redirects and then reflects the *redirected* path back into its error
+        page would be scrubbed against the wrong string if only the original were registered.
+        """
+        secrets: list[str] = []
+        for u in urls:
+            secrets.extend(_url_secrets(u))
         return cls(secrets)
 
     def __call__(self, text: str) -> str:

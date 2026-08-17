@@ -31,9 +31,30 @@ log = logging.getLogger("symoneural.tuner")
 
 router = APIRouter(tags=["tuner"])
 
-#: A pasted playlist. Generous, because provider exports genuinely are megabytes, and bounded,
-#: because an unbounded POST body is a memory bug with a friendly name.
-MAX_PASTE = 24 * 1024 * 1024
+#: A pasted playlist. `0` means no limit, and `0` is the default at the owner's instruction
+#: (2026-08-17) — provider exports genuinely are tens of megabytes and every ceiling picked here
+#: has so far been someone's missing Movies section.
+MAX_PASTE = 0
+
+#: How long `POST /tune` waits for ffmpeg to write a playable playlist before handing the
+#: session back for the client to poll.
+#:
+#: **Measured on this machine**, feeding a 1.9 Mb/s H.264/AAC transport stream into the exact
+#: argv `sessions._spawn` builds, at four throttled rates, timing the appearance of
+#: `live.m3u8`:
+#:
+#:     unthrottled   0.1 s      8 Mb/s   2.5 s      2 Mb/s   9.7 s      0.8 Mb/s   24.1 s
+#:
+#: The old value was 10 s, which a stream delivered at 2 Mb/s -- an entirely ordinary IPTV
+#: rate, and what a provider that paces at real time gives you -- misses by a fraction of a
+#: second. Every such stream returned "no playable output yet" on a request that was about to
+#: succeed. 25 s covers the measured range down to 0.8 Mb/s.
+#:
+#: The same measurement is why `-probesize`/`-analyzeduration` were **left alone**: repeating it
+#: at 2M, 5M and 10M produced times identical to within 0.1 s at every rate. Time to first
+#: playlist is bounded by how much data the HLS muxer needs to close its first segment, not by
+#: the probe. Raising the probe would have been a guess dressed as a fix.
+TUNE_WAIT_SECONDS = 25.0
 
 
 # ---------------------------------------------------------------- models
@@ -67,6 +88,15 @@ class TuneBody(BaseModel):
     # be recognised inside ffmpeg's stderr. Not stored, not echoed.
     username: str = ""
     password: str = ""
+    #: The session this client is finished with, released before the new one is allocated.
+    #:
+    #: Changing channel is the common case and it used to leak a slot every time: the page threw
+    #: its `sid` away and the old session lived on until the idle reaper noticed. On a two-slot
+    #: surface that meant the third channel a visitor clicked was refused. Doing it here rather
+    #: than as a separate `DELETE` is deliberate -- a client that stops and then starts can lose
+    #: the slot it just freed to another visitor in between, and a channel change should not be
+    #: able to fail because of that race.
+    release: str = ""
 
 
 def _creds(body: XtreamBody) -> XtreamCreds:
@@ -105,7 +135,7 @@ async def load_playlist(body: PlaylistBody) -> dict:
         text = raw.decode("utf-8", "replace")
     if not text.strip():
         raise HTTPException(400, "supply either a playlist URL or the playlist text")
-    if len(text) > MAX_PASTE:
+    if MAX_PASTE and len(text) > MAX_PASTE:
         raise HTTPException(413, "playlist is too large")
 
     channels, truncated = await asyncio.to_thread(parse_m3u, text)
@@ -161,14 +191,19 @@ async def tune(body: TuneBody) -> dict:
 
     The wait is the honest part. `POST /tune` could return the moment the process is spawned,
     but ffmpeg on a source it cannot stream-copy exits a few seconds later -- so an immediate
-    "ok" would be a status the box has not yet earned. This waits up to ten seconds for a real
-    `.m3u8` to appear on disk and reports what actually happened.
+    "ok" would be a status the box has not yet earned. This waits for a real `.m3u8` to appear
+    on disk and reports what actually happened.
     """
     url = body.url.strip()
     if not url:
         raise HTTPException(400, "no stream URL given")
     if not FFMPEG:
         raise HTTPException(503, "ffmpeg is not installed on this machine")
+    # Free the caller's previous slot first. Unconditional and unvalidated on purpose: an id
+    # that is unknown, already reaped, or somebody else's simply stops nothing, and there is no
+    # information to leak either way -- `stop_session` answers the same for all three.
+    if body.release.strip():
+        MANAGER.stop_session(body.release.strip())
     scrub = Scrubber([body.username, body.password])
     try:
         session = await asyncio.to_thread(
@@ -178,7 +213,7 @@ async def tune(body: TuneBody) -> dict:
     except TunerError as exc:
         raise HTTPException(400, str(exc)) from None
 
-    deadline = time.monotonic() + 10.0
+    deadline = time.monotonic() + TUNE_WAIT_SECONDS
     while time.monotonic() < deadline:
         if session.ready:
             session.state = "live" if session.state == "starting" else session.state
@@ -186,10 +221,22 @@ async def tune(body: TuneBody) -> dict:
         if session.state == "failed":
             MANAGER.stop_session(session.id)
             raise HTTPException(502, session.error or "the stream could not be opened")
+        # A client waiting on this request *is* activity on the session, and the reaper measures
+        # idleness from the last player request. Without this the wait spends its whole length
+        # ageing towards `IDLE_TIMEOUT` without ever being seen as alive.
+        MANAGER.touch(session.id)
         await asyncio.sleep(0.25)
     else:
         # Still nothing. Do not claim it is playing; hand back the session so the client can
         # keep polling, and say which state it is actually in.
+        #
+        # Unless it is already gone: the reaper drops a session the moment its ffmpeg exits, so
+        # a long wait can outlive the thing it is waiting for. Handing back an id whose
+        # `GET /session/{sid}` answers 404 makes a dead stream look like a broken tuner, which
+        # is the exact confusion this whole module is trying to remove.
+        if MANAGER.get(session.id) is None:
+            raise HTTPException(502, session.error
+                                or "the transcoder stopped before producing playable output")
         return {**session.public(), "note": "no playable output yet; poll the session"}
     session.last_seen = time.monotonic()
     return session.public()
@@ -208,6 +255,25 @@ async def session_stop(sid: str) -> dict:
     if not MANAGER.stop_session(sid):
         raise HTTPException(404, "no such session")
     return {"stopped": sid}
+
+
+@router.post("/session/{sid}/stop", summary="Release a session on page unload")
+async def session_release(sid: str) -> dict:
+    """The same stop, reachable by `navigator.sendBeacon`, which can only issue a POST.
+
+    This exists because of what a closed tab used to cost. `DELETE` cannot be sent from an
+    unload handler with any reliability -- `fetch` is cancelled as the document goes away -- so
+    the only signal a leaving visitor could give was silence, and silence took `IDLE_TIMEOUT`
+    plus a reaper tick to interpret. On a two-slot surface that is the whole tuner unavailable
+    for the best part of a minute after everybody has already left.
+
+    A missing session is **not** an error here. A beacon can arrive after the reaper has already
+    collected the session, can be sent twice by a browser that fires both `pagehide` and
+    `visibilitychange`, and cannot be retried by a page that no longer exists. Answering 404
+    would turn all three into console noise on a page nobody is looking at, for an operation
+    whose only purpose is that the slot ends up free -- which it is in every one of those cases.
+    """
+    return {"stopped": sid, "was_running": MANAGER.stop_session(sid)}
 
 
 @router.get("/stream/{sid}/{name}", summary="HLS playlist and segments for a session")

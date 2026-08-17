@@ -23,16 +23,44 @@ from __future__ import annotations
 
 import json
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from . import safefetch
-from .safefetch import BlockedURL, FetchError, Policy, Scrubber
+from .safefetch import BlockedURL, FetchError, Policy, ResponseTooLarge, Scrubber
 
-__all__ = ["XtreamCreds", "XtreamError", "panel_info", "load_channels", "stream_url"]
+__all__ = ["XtreamCreds", "XtreamError", "XtreamTooLarge", "CATALOGUE_MAX_BYTES",
+           "panel_info", "load_channels", "stream_url"]
+
+#: Byte ceiling for the catalogue documents this module fetches, replacing `Policy.max_bytes`
+#: for those requests only.
+#:
+#: `Policy.max_bytes` is 24 MiB and its comment says what it was sized for -- "playlists; a big
+#: provider M3U is a few MB". The catalogue path then inherited it, and a VOD catalogue is not a
+#: playlist. Every film row the panel returns carries `plot`, `cast`, `director` and
+#: `youtube_trailer` -- metadata `load_channels` throws away -- so a title costs ~900 bytes on
+#: the wire where a channel costs a few hundred. Measured against one real panel: live 10,124
+#: channels in 3.77 MB, series 7,883 shows in 6.43 MB, **movies 31,888 titles in 27.57 MB**.
+#: Only the third exceeded 24 MiB, which is exactly why Live TV and Series filled in and Movies
+#: stayed empty. Peak RSS to fetch and decode that 27.57 MB was 189 MB, so the ceiling below has
+#: real headroom on a 96 GiB box without being unbounded -- the cap is a memory-exhaustion guard
+#: reachable by anyone who can type a hostname into the page, and it stays a cap.
+#:
+#: Raising `Policy.max_bytes` itself would have been wrong: that ceiling also governs playlist
+#: fetches and the stream sessions, and widening all of them to fix one is how a guard quietly
+#: stops guarding.
+CATALOGUE_MAX_BYTES = 0        # 0 = uncapped, at the owner's instruction. See Policy.max_bytes.
 
 
 class XtreamError(Exception):
     """A panel-level failure. The message never contains a credential."""
+
+
+class XtreamTooLarge(XtreamError):
+    """The panel answered and the document was over `CATALOGUE_MAX_BYTES`.
+
+    Separated from `XtreamError` so the note a visitor reads can attribute the refusal to this
+    box instead of to their provider. See `safefetch.ResponseTooLarge`.
+    """
 
 
 @dataclass(frozen=True)
@@ -92,6 +120,8 @@ def _get_json(url: str, policy: Policy, scrub: Scrubber):
         body, _ctype, _target = safefetch.fetch(url, policy)
     except BlockedURL as exc:
         raise XtreamError(scrub(str(exc))) from None
+    except ResponseTooLarge as exc:
+        raise XtreamTooLarge(scrub(str(exc))) from None
     except FetchError as exc:
         raise XtreamError(scrub(str(exc))) from None
     try:
@@ -109,6 +139,9 @@ def panel_info(creds: XtreamCreds, policy: Policy = Policy()) -> dict:
     proves nothing and the body must be read. Some panels omit `auth` entirely on success,
     hence the `== 0` test rather than a truthiness test -- a missing field is not a failure.
     """
+    # Deliberately the caller's policy, not `CATALOGUE_MAX_BYTES`. This is the account document,
+    # not a catalogue: 515 bytes measured against a real panel, so the 24 MiB playlist ceiling is
+    # four orders of magnitude of headroom and widening it here would buy nothing.
     data = _get_json(_api(creds), policy, creds.scrubber)
     if not isinstance(data, dict) or "user_info" not in data:
         raise XtreamError("panel response was not an Xtream Codes account document")
@@ -149,6 +182,10 @@ def load_channels(creds: XtreamCreds, kinds: tuple[str, ...] = ("live",),
     scrub = creds.scrubber
     entries: list[dict] = []
     notes: list[str] = []
+    # Catalogue documents, not playlists -- see CATALOGUE_MAX_BYTES. Every other field of the
+    # caller's policy is carried through unchanged, `allow_private` above all: a wider byte
+    # ceiling must never become a wider SSRF policy by accident.
+    cat_policy = replace(policy, max_bytes=CATALOGUE_MAX_BYTES)
 
     spec = {
         "live":   ("get_live_categories", "get_live_streams", "live", "ts"),
@@ -160,16 +197,27 @@ def load_channels(creds: XtreamCreds, kinds: tuple[str, ...] = ("live",),
             continue
         cat_action, list_action, path, default_ext = spec[kind]
         try:
-            cats = _get_json(_api(creds, cat_action), policy, scrub)
+            cats = _get_json(_api(creds, cat_action), cat_policy, scrub)
         except XtreamError:
             cats = []
         names = {str(c.get("category_id")): str(c.get("category_name", ""))
                  for c in cats if isinstance(c, dict)}
         try:
-            rows = _get_json(_api(creds, list_action), policy, scrub)
-        except XtreamError as exc:
+            rows = _get_json(_api(creds, list_action), cat_policy, scrub)
+        # `XtreamTooLarge` must be caught FIRST: it is an `XtreamError`, so the general arm
+        # below would swallow it and silently restore the note that blames the panel.
+        except XtreamTooLarge as exc:
             if kind == "live":
                 raise                       # live is the point; vod/series are extras
+            # Do not say "unavailable on this panel" here. The panel has it; this box declined
+            # to hold it. Naming the real limit is also the only way the visitor's report is
+            # actionable -- "movies don't load" is not, "over the 64 MiB ceiling" is.
+            notes.append(f"{kind}: this panel's catalogue is larger than this box will load in "
+                         f"one request, so it was skipped ({exc})")
+            continue
+        except XtreamError as exc:
+            if kind == "live":
+                raise
             notes.append(f"{kind}: unavailable on this panel ({exc})")
             continue
         if not isinstance(rows, list):
