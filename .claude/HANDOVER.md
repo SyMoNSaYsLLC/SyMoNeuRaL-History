@@ -1119,6 +1119,36 @@ nav bar floated in the middle of a full-bleed page. Now
 `body:has(#hero), body:has(#rack), body:has(#console), body:has(#more)` so it can only reach the
 four section pages and cannot touch the front page or the prompt surfaces.
 
+> **SUPERSEDED — both numbers in the paragraph above have changed.** Garrett: *"we really need
+> the site enlarged like i requested almost an hour ago."* The first pass was too subtle to see,
+> so (a) the gate came down `1601px -> 1360px`, which is what puts growth on ordinary laptops
+> rather than only on a 1990px desk monitor, (b) the ceiling went `1.35x -> 1.5x`, and (c) the
+> four-page scope was **deleted** — the scale is on `:root` and reaches every page. That third
+> change is the one that mattered: documentation, chat, build and account had been excluded
+> entirely, which is why the enlargement was invisible on most of the site.
+>
+> **The trap that followed, and the reason this note exists.** Garrett: *"i notice diffrence in
+> control board and receipts but not live stack and overview."* Moving the scale to `:root` did
+> not reach `#rack` and `#console`, because a separate rule reset all seven tokens to base size
+> behind `@media (min-width:1360px) and (max-height:999px)` — and a 1080p window has ~970px of
+> content height, so it is caught. Measured at 1990x970, share of text elements that changed
+> size: overview/receipts/index/build **100%**, livestack **25%**, controlboard **19%**.
+>
+> Those two sections now get a **1.20x** scale rather than a flat pin. 1.20x is a measured
+> ceiling, not a taste call: 1.30x overflows one screen by 2px at 1855x745 and 20px at 1990x970,
+> and full 1.5x by 31px and 85px. **Do not raise it without re-measuring**, and when you do,
+> repeat each measurement with a settle wait — these sections take live readings, and a probe
+> without one reported fitting at 850px and overflowing at 900px, which is impossible.
+> `tests/frontend.mjs` now asserts both halves (it grew AND it still fits), because either
+> alone is satisfied by the bug.
+>
+> **`--max` was NOT widened for the prose pages**, and that is deliberate and still open. At a
+> simulated 1800px, bare `section p` on documentation.html and chat.html reaches **158
+> characters per line**, which is worse than the empty space it fills; it needs prose caps in
+> the same change. `/overview` needs nothing — measured, `.mh` already spans 1820px of a 1990px
+> window at 42-55 characters per line, so its remaining emptiness is the fixed-size art, not the
+> text column.
+
 **3. The control board was 383px tall inside a 1277px panel** — half the glass empty under a
 dashboard. `html.ns #console > .wrap` and `html.ns #more > .wrap` become column flexboxes and
 the grids get `flex:1 1 auto; grid-auto-rows:minmax(0,1fr)`, so the rows divide the spare height
