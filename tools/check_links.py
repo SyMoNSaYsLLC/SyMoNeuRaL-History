@@ -31,6 +31,14 @@ The only targets that are legitimately not files on disk are the four section pa
 anything under `/api/*` -- all served by FastAPI rather than off the webroot. Adding a fifth
 section means adding it to `ROUTES` here as well as to `ops/Caddyfile`, `tools/build_split.py`
 and `backend/api.py`.
+
+**The failure mode that costs the most is this one, so check `ROUTES` before believing a
+BROKEN line.** A link to a path FastAPI serves and the webroot does not is reported broken here
+even though it works in a browser, and the tempting repair -- "fix" the link -- breaks a link
+that was right. That has not happened yet (the watch surface shipped as a file,
+`site/tuner-watch.html`, and Reinforce as `site/reinforce.html`), but several sessions are
+adding surfaces at once and any of them could add the first one. A BROKEN line naming a path
+with no dot in it is that case until proven otherwise.
 """
 from __future__ import annotations
 import collections
