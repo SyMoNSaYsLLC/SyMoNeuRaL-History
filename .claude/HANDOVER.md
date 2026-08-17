@@ -277,7 +277,7 @@ Built as `<details class="tn-stats">` on `/tuner.html` and as the `s` panel on
 screen. See §2h. Every figure is read from the player or the session document, and a figure the
 player has not reported yet renders `-`, which is itself the reading.
 
-### 4. Five surfaces to bring online — ONE SESSION EACH, IN FLIGHT (see §1b)
+### 4. Five surfaces to bring online — 1 of 5 DONE (Miner); the rest ONE SESSION EACH, IN FLIGHT (see §1b)
 
 **Do not start these from a general session.** As of 14:55 there is a dedicated background
 session per surface and they are already writing: `site/reinforce.html` and
@@ -296,9 +296,10 @@ import router, status"` imports clean on the **system** interpreter (7 routes) �
 torch into the serving path.
 
 
-In his order: **Reinforce** as a real tuning/training studio, **Miner** online, **Coder** online,
-**Gateway** online, **Project** online ("this is like cowork"). All five already have rack units
-and backend apps; "online" means a working page and route, not a new surface. (An earlier
+In his order: **Reinforce** as a real tuning/training studio, **~~Miner~~ DONE — see below**,
+**Coder** online, **Gateway** online, **Project** online ("this is like cowork"). All five
+already have rack units and backend apps; "online" means a working page and route, not a new
+surface. (An earlier
 revision said Reinforce carried a red test and an alpha/rank question for Garrett. It carries
 neither — that was stale bytecode, settled in `f9f3546`. See §1.)
 
@@ -323,6 +324,77 @@ What each one actually needs, established by reading the code rather than assumi
 change** — verified by reading both. `handle /api/*` delegates the whole subtree, and
 `is_route()` in `scripts/deploy.sh` checks a new page as a *file*. Only a new top-level *section*
 path (the `/overview /livestack /controlboard /receipts` class) costs four files.
+
+#### Miner — DONE on disk 2026-08-17 ~15:00, branch `worktree-miner-online`, NOT deployed
+
+The gap was not the ASIC page: it was that the `gpuminer` rack unit — the surface that actually
+hashes — linked to a page that only talked about Antminer rigs. `/miner.html` now carries **both**
+units, kept visibly distinct (`#mg-stage` GPU, `#mn-stage` ASIC; separate routes, separate
+tokens, and the page says so).
+
+- **Public rows** come from `/api/status` via the same `unit_state()` the rack uses, so the page
+  and the home page cannot disagree. **Numeric telemetry stays behind `SYM_MINER_TOKEN`** and
+  reads `token required` rather than showing a number — withheld, never faked.
+- **No second poller.** `site/console.js`'s single `render()` now dispatches a `sym:status`
+  event; the miner page listens. Its deliberate quiet-while-hidden behaviour is preserved.
+- **Two-click arm on Start**, re-labelled inline — *not* `window.confirm`, because a modal dialog
+  blocks every subsequent event in the page.
+- **Verified live on the card, twice**, through `POST /api/gpuminer/control` — the button's own
+  route. The page showed `52.32 MH/s · measured, reported by the miner binary (4s ago)`; after
+  stop, no `kawpowminer`, 876 MiB / 19.4 W, and the queued `image` tenant took the lock. Runs 3–4
+  are in `backend/apps/cryptominer/README.md`; steady state is now **52.3 – 53.2 MH/s across four
+  runs** and the ~0.9 MH/s spread has **no established cause**.
+- **Tests:** `tests/frontend.mjs` **32/32** — six new value-based miner assertions, each watched
+  go red against a copy with the status wiring cut, the panel's VRAM row deleted, and a fabricated
+  `53.01 MH/s` written into a gated row (27/32). Backend, run on the rebased tree:
+  `cryptominer` **72/72**, and `pytest backend/apps` **618 passed, 23 skipped, 4 failed**. None
+  of the four is mine — `reinforce` and `sigils` are the two red tests already recorded in §1,
+  plus a second `sigils` failure (`UnboundLocalError: doc`) and a timing assertion in
+  `tuner` (`25.0 not less than 13`), all in files this commit does not touch. `reinforce/tests`
+  and `remix/tests` do not collect at all without their venvs (`cupy`, `symoneural_dj`) and were
+  excluded from that run.
+- **`docs/specs/miner-preemption.md` now exists** — it was cited twice here, once in the
+  cryptominer README and once in the module docstring while missing. It specifies the yield
+  protocol; its §7 says why it is still **not** implemented: it changes the hot path of the only
+  arbitrator of the only contended resource on this box.
+- **The two miner rows are now ONE rack row.** Garrett saw `SyMoNeuRaL Miner` (ASIC, OFFLINE,
+  no rig attached) sitting above `SyMoNeuRaL Miner GPU` (READY, the only one that has ever
+  hashed) and read it as a single half-broken surface — the plain product name was on the dead
+  row while the working one wore a qualifier. His call was to merge them **if both halves have
+  working parts**, so that was verified on the real box first, not in the worktree: the ASIC
+  half has its venv and probe installed, **20 real firmware packages** on disk, both
+  `qemu-system-arm` and `qemu-system-aarch64` present, and 42 green tests. It is switched off,
+  not broken. So: one `Unit(id="miner", label="SyMoNeuRaL Miner", bus="gpu", slot="6U")`.
+- **The merge does not flatten the two states**, because that is where a merged row would start
+  lying — the halves fail independently. `Unit` gained an optional `sub: list[SubUnit]` (new
+  model, optional, so every other unit serialises exactly as before) carrying `gpuminer` and
+  `asicminer` with their own state, bus and detail. The row's state is the GPU half whenever it
+  is `busy`/`queued` (it is the half that takes the card, which every other surface feels),
+  `ready` if **either** half can be started, `offline` only when neither can. Its detail always
+  names both: `GPU: … · ASIC: …`.
+- **Both API shapes are read by the page and by the tests**, top level first, because the static
+  site deploys before the API restarts — for a while the browser talks to an API that still
+  publishes `gpuminer` as its own unit. Verified both ways: **33/33 against the merged API, and
+  33/33 against the live pre-merge one.**
+- **`tests/frontend.mjs` now has 33** — the new one is *no rack name is a prefix of another*,
+  which is stricter than a duplicate check on purpose. The old pair were two *distinct* strings,
+  so a duplicate check passed them; the defect was that one name read as the general case of the
+  other. Watched fail against the live API: `"SyMoNeuRaL Miner" is a prefix of "SyMoNeuRaL Miner
+  GPU"`, 32/33.
+- **This now needs an API restart as well as a deploy** (`backend/api.py` changed — it did not
+  in the first commit):
+  ```
+  sudo scripts/deploy.sh --prune && sudo systemctl restart symoneural-api
+  ```
+  Still no Caddyfile change — `/miner.html` is a static file Caddy already serves, not a new
+  top-level route.
+- **Two decisions are Garrett's, and neither was guessed:** whether `SYM_MINER_CMD` should point
+  at a real pool and wallet (it is `-U -M 500000` today — a benchmark that earns nothing and says
+  so on the page), and whether the miner should ever be left holding the card on a box that also
+  serves chat and image, given it is **not preemptible** (§5 item 8).
+- **Contention to know about:** at 15:00 the shared checkout had ~2,000 uncommitted lines of
+  *someone else's* work in `tools/build_pages.py`. My commit is rebased onto `e38f463` and does
+  not touch theirs, but whoever lands second in that file resolves the conflict.
 
 ### 5. Site-wide, and he repeated it twice
 
@@ -1649,10 +1721,14 @@ broken** — this is a queue of new work, not a repair list.
    which must **not** be the same string as `SYM_ASIC_TOKEN` — this one gates a process that
    takes the card from every other surface.
    **KawPow hashrate is now measured on this machine, not vendor and not projected:
-   52.75 – 53.01 MH/s across two runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
-   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. The ~0.5%
-   run-to-run spread is quoted rather than the best run and **no cause has been established**
-   for it.
+   52.3 – 53.2 MH/s across four runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
+   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. (Runs 3 and 4
+   were added later the same day and are the first driven through `POST /api/gpuminer/control`
+   rather than the CLI; the per-run table is in `backend/apps/cryptominer/README.md`. This line
+   read "52.75 – 53.01 across two runs" until then.) The spread is now ~0.9 MH/s, under two
+   percent, is quoted rather than the best run, and **no cause has been established** for it —
+   clocks, temperature and the benchmark's own variance are all candidates and none has been
+   isolated. Anyone quoting a single number should quote the low end.
    **That run is a benchmark against no pool: measured, and earning nothing.** A miner with
    nowhere to submit a share earns nothing whatever its hashrate says, so `pool()` and
    `benchmarking()` now detect the absence of a pool URL (kawpowminer's own rule — "when

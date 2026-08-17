@@ -106,14 +106,36 @@ pool. Neither is a vendor number and neither is a projection.
 | Binary | `kawpowminer 1.2.4+commit.8bd0d598.dirty`, built by `contrib/build-kawpowminer.sh` |
 | Command | `kawpowminer -U -M 500000` — CUDA only, `--benchmark` on block 500000, **no pool** |
 | Date | 2026-08-17 |
-| **Steady state** | **52.75 – 53.01 MH/s** across two runs: 52.90–53.01 over ~96 s, and 52.75–52.81 over ~42 s |
+| **Steady state** | **52.3 – 53.2 MH/s** across four runs (below) |
 | First sample | `0.0` — the miner has not reported at t+7s; that is spin-up, not a stall |
 
-The run-to-run spread is about 0.25 MH/s, or half a percent, and **no cause has been
+| Run | Length | Reading |
+|---|---|---|
+| 1 | ~96 s | 52.90 – 53.01 MH/s |
+| 2 | ~42 s | 52.75 – 52.81 MH/s |
+| 3 | ~70 s | 52.63 → 53.21 MH/s climbing; the binary's own summary line reads `Simulation results : Max 53.209880 Mh Mean 53.026032 Mh` |
+| 4 | ~26 s | 52.32 – 52.46 MH/s |
+
+Runs 3 and 4 were added 2026-08-17 and are the first two driven **through the HTTP surface
+rather than the CLI** — `POST /api/gpuminer/control {"action":"start"}` and the matching
+`stop`, which is the path the button on `/miner.html` uses. Both returned 200 with a real pid,
+and after `stop` the card measurably came back: no `kawpowminer` process, 876 MiB / 19.4 W on
+`nvidia-smi`, and the `image` tenant that had been queued behind the miner took the lock.
+
+The run-to-run spread is now about 0.9 MH/s, or under two percent, and **no cause has been
 established** for it — clocks, temperature and the benchmark's own variance are all candidates
 and none has been isolated. The range is quoted rather than the best run, and the spread is
 stated rather than smoothed away. Anyone quoting a single number from this table should quote
 the low end.
+
+Run 4 is the shortest and reads lowest, which is the same effect the 48.36 mean below is an
+instance of: a short capture's average carries proportionally more spin-up. It is **not**
+evidence of a slower card, and a run should not be cut short and then quoted.
+
+One line in run 3's log is easy to misread and is not what it looks like:
+`**Accepted 5 ms. localhost:0` — that is kawpowminer's *simulated* pool in benchmark mode
+accepting its own solution. **No share was submitted to anybody and nothing was earned.**
+Nothing on the site quotes it, and nothing should.
 
 The committed fixture `testdata/kawpowminer-1.2.4-sm120-bench.log` is a separate, shorter
 capture (`timeout -s INT 150`), and kawpowminer's own summary line for it reads:

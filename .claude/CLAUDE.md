@@ -163,7 +163,7 @@ that is fine, because it only writes to stdout and sets nothing its caller reads
 ## Test in a real browser, not with curl
 
 ```bash
-node tests/frontend.mjs      # 26 assertions; system Chrome via Playwright, nothing to download
+node tests/frontend.mjs      # 33 assertions; system Chrome via Playwright, nothing to download
 ```
 
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries a

@@ -1347,6 +1347,79 @@
 }
 .mn-note:empty{display:none}
 
+/* ---- SyMoNeuRaL Miner GPU (Ravencoin) --------------------------------------
+   `mg-` prefixed, and grepped against both stylesheets before use: zero prior definitions,
+   and no collision with `.mn-` above or with the shared GPU panel's `.gbar`/`.gpu-*`. That
+   check is why this block exists as its own namespace rather than extending `.mn-` -- these
+   are two different units on one page and a shared rule would couple them.
+   No `text-overflow` anywhere in here on purpose: every value below is a reading or the
+   reason there is no reading, and truncating either is data loss. */
+.mg-col{display:grid; gap:22px; align-content:start}
+/* Both cards size to their content. `.stage`'s 340px floor is right for a chat transcript
+   and wrong twice over on a page carrying two stages. */
+.mg-col .stage{min-height:0}
+
+.mg-lede{margin:0 0 16px; color:var(--dim); font-size:var(--t5); line-height:1.65}
+.mg-lede code, .mg-warn code, .mg-facts code{
+  font:var(--t6)/1.4 ui-monospace,Menlo,Consolas,monospace; color:var(--fg);
+}
+
+.mg-facts{
+  display:grid; grid-template-columns:auto 1fr; gap:8px 16px; margin:0;
+  padding:14px 16px; border:1px solid var(--line); border-radius:10px;
+  background:var(--panel2);
+}
+.mg-facts dt{
+  color:var(--faint); font:600 var(--t6)/1.5 ui-sans-serif,system-ui,sans-serif;
+  letter-spacing:.04em;
+}
+/* Wraps rather than truncating, and tabular figures so a hashrate does not jitter as it
+   updates in place. */
+.mg-facts dd{
+  margin:0; color:var(--fg); font:var(--t6)/1.5 ui-monospace,Menlo,Consolas,monospace;
+  overflow-wrap:break-word; font-variant-numeric:tabular-nums;
+}
+@media (max-width:520px){
+  .mg-facts{grid-template-columns:1fr; gap:2px 0}
+  .mg-facts dd{margin-bottom:8px}
+}
+.mg-telhead{
+  margin:16px 0 7px; color:var(--faint);
+  font:650 var(--t7)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+  text-transform:uppercase;
+}
+.mg-tel dd{color:var(--dim)}
+
+.mg-warn{
+  margin:16px 0 0; padding:13px 15px; border-radius:10px;
+  border:1px solid rgba(255,171,61,.34); background:rgba(255,171,61,.07);
+  color:var(--dim); font-size:var(--t6); line-height:1.65;
+}
+.mg-warn b{color:var(--fg)}
+
+.mg-ops{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:18px 0 0}
+.mg-ops label{
+  color:var(--faint); font:600 var(--t6)/1 ui-sans-serif,system-ui,sans-serif;
+}
+.mg-ops input{
+  flex:1 1 190px; min-width:0; padding:9px 12px; border-radius:9px;
+  border:1px solid var(--line); background:var(--panel); color:var(--fg);
+  font:var(--t6)/1.3 ui-monospace,Menlo,Consolas,monospace;
+}
+.mg-ops input:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.mg-btn{
+  padding:9px 15px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--line); background:var(--panel2); color:var(--fg);
+  font:600 var(--t6)/1.3 ui-sans-serif,system-ui,sans-serif;
+  transition:border-color .16s ease, color .16s ease;
+}
+.mg-btn:hover{border-color:rgba(46,224,138,.45)}
+.mg-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.mg-btn.ghost{color:var(--dim)}
+/* The armed state of Start. Amber because the second click takes the card off every other
+   surface; it is a real consequence, not a decoration. */
+.mg-btn.warn{border-color:var(--amber); color:var(--amber)}
+
 /* ---- SyMoNeuRaL Tuner ------------------------------------------------------
    `tn-` prefixed, all grepped against both stylesheets first: zero prior definitions.
    These were missing entirely when the page shipped, so the form rendered as raw
