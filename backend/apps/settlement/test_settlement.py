@@ -513,6 +513,37 @@ class TestRecorder:
         assert r, "a nonce is only unique within one deployment"
         assert s.count() == 2
 
+    def test_the_readable_workspace_and_its_word_mean_the_same_thing(self):
+        """`quote` takes a readable string; the chain stores keccak256 of it.
+
+        An operator who passes the same `--workspace` to both commands must not be told the
+        licence covers a different workspace. This is the one place the two CLIs could
+        disagree while both looking right.
+        """
+        from settlement.record import workspace_key
+        human = "debian-13 · cuda-12.8 · sm_120"
+        word = workspace_key(human)
+        assert word.startswith("0x") and len(word) == 66
+        assert workspace_key(word) == word, "hashing an already-hashed word"
+
+        # The same rule ops/gateway/gateway-cli.py applies, checked against its source rather
+        # than trusted: nothing may import from ops/, so the two implementations are separate.
+        cli = (Path(__file__).resolve().parents[3]
+               / "ops/gateway/gateway-cli.py").read_text()
+        assert 'workspace.startswith("0x")' in cli
+        assert "keccak256(workspace.encode())" in cli
+
+    def test_recording_by_readable_workspace_matches_the_quoted_licence(self, tmp_path):
+        from settlement.record import record_settlement, workspace_key
+        human = "debian-13 · cuda-12.8 · sm_120"
+        onchain = workspace_key(human)
+        s = self._store(tmp_path)
+        r = record_settlement(NET, CONTRACT, 7, store=s,
+                              fetch=node(encode_licence(workspace=onchain)),
+                              **ok_args(expect_workspace=workspace_key(human)))
+        assert r, str(r)
+        assert s.count() == 1
+
     def test_there_is_no_way_to_record_without_a_chain_read(self):
         """No bypass flag, no caller-supplied record: every write follows a chain read.
 

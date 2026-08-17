@@ -45,9 +45,28 @@ from .store import Clearance, ClearanceStore
 from .verify import Granted, Refused, verify_payment
 
 try:
-    from gateway import chain
+    from gateway import chain, keccak
 except ImportError:                             # pragma: no cover - exercised by __main__
-    from ..gateway import chain                 # type: ignore[no-redef]
+    from ..gateway import chain, keccak         # type: ignore[no-redef]
+
+
+def workspace_key(workspace: str) -> str:
+    """The 32-byte workspace word, from either the human string or the word itself.
+
+    `gateway-cli.py quote` takes `--workspace "debian-13 · cuda-12.8 · sm_120"` and stores
+    `keccak256` of it, because the contract's field is a `bytes32`. `verify_payment` compares
+    against that word exactly. So an operator who quoted with the readable string and then
+    recorded with the same readable string would get "the licence covers a different
+    workspace" — a refusal that reads like the customer did something wrong, for two commands
+    that were given identical arguments.
+
+    Both commands therefore accept both forms and mean the same thing by them. This is the
+    same rule as `gateway-cli.py`, reimplemented rather than imported: nothing under
+    `backend/apps/` may import from `ops/`. `keccak` is the backend's own copy.
+    """
+    if workspace.startswith("0x"):
+        return workspace
+    return "0x" + keccak.keccak256(workspace.encode()).hex()
 
 
 class AlreadyRecorded(Refused):
@@ -123,13 +142,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--nonce", required=True, type=int)
     p.add_argument("--payer", required=True, help="the address that was quoted")
     p.add_argument("--token", required=True, help="the token the fee was denominated in")
-    p.add_argument("--workspace", required=True, help="the workspace string that was quoted")
+    p.add_argument("--workspace", required=True,
+                   help="the workspace as quoted: either the readable string or its 0x… word")
     p.add_argument("--min-amount", required=True, type=int)
     a = p.parse_args(argv)
 
     result = record_settlement(a.network, a.contract, a.nonce,
                                expect_payer=a.payer, expect_token=a.token,
-                               expect_workspace=a.workspace, min_amount=a.min_amount)
+                               expect_workspace=workspace_key(a.workspace),
+                               min_amount=a.min_amount)
     print(result)
     if isinstance(result, AlreadyRecorded):
         return 0                                 # re-running is not an error

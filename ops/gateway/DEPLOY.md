@@ -342,8 +342,13 @@ told to trust you:
 cd backend && python3 -m apps.settlement.record \
     --network nile --contract <licence address> --nonce <the quote's nonce> \
     --payer <customer address> --token <token address> \
-    --workspace 0x<the 32-byte workspace from the quote> --min-amount 250000000
+    --workspace "debian-13 · cuda-12.8 · sm_120" --min-amount 250000000
 ```
+
+**Pass `--workspace` exactly what you passed to `quote`.** The contract's field is a `bytes32`,
+so both commands keccak-hash a readable string and take a `0x…` word as already hashed. If they
+disagreed here the refusal would read "the licence covers a different workspace", which sounds
+like the customer's fault and is not.
 
 It re-reads `licenceByNonce` from the node, checks the payer, token, amount and workspace, and
 writes a clearance only if all four match. A refusal writes nothing — including when the
