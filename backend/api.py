@@ -63,7 +63,11 @@ assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found a
 # and it was one character away from happening during the backend/ move.
 RUN = ROOT / "run"
 RUN.mkdir(exist_ok=True)
-sys.path.insert(0, str(HERE))  # ravencalc.py is a sibling in backend/
+# RavenCalc is an app, not a helper module: 648 self-contained lines whose only
+# dependency is sympy. It lives in backend/apps/calc/ alongside the other surfaces
+# rather than loose in backend/, which is where it sat purely because it was written
+# before there was an apps/ directory to put it in.
+sys.path.insert(0, str(HERE / "apps" / "calc"))
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
