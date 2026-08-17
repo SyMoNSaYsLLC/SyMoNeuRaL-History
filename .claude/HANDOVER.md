@@ -196,7 +196,7 @@ to start.
    was the good one; it is not. Requirement: load `playlist.m3u` **or** Xtream Codes
    url/username/password. **Credentials: visitor supplies their own, localStorage only, never
    stored on the box** (the user chose this explicitly).
-4. **SyMoNeuRaL Miner** — GPU, Ravencoin. Base: `backend/apps/miner/` (first-party, the
+4. **SyMoNeuRaL Miner** — GPU, Ravencoin. Base: `backend/apps/cryptominer/` (first-party, the
    user's own prior work; PowerShell-oriented, needs porting to Linux). It already refuses to
    start without `SYM_MINING_ENABLED=1` and reads real `nvidia-smi` telemetry. **Two
    constraints:** the governor has no concept of a tenant that *everything else* evicts (a

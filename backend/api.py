@@ -67,7 +67,7 @@ RUN.mkdir(exist_ok=True)
 # dependency is sympy. It lives in backend/apps/calc/ alongside the other surfaces
 # rather than loose in backend/, which is where it sat purely because it was written
 # before there was an apps/ directory to put it in.
-sys.path.insert(0, str(HERE / "apps" / "calc"))
+sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"

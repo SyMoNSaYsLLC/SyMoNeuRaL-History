@@ -280,7 +280,7 @@ def cmd_image(args) -> int:
 # --------------------------------------------------------------------------
 
 def cmd_calc(args) -> int:
-    sys.path.insert(0, str(ROOT / "backend" / "apps" / "calc"))
+    sys.path.insert(0, str(ROOT / "backend" / "apps" / "ravencalc"))
     try:
         import ravencalc
     except ImportError as exc:

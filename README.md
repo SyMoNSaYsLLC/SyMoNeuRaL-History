@@ -60,11 +60,12 @@ CLAUDE.md               a one-line import -- must stay at root or the rules stop
 
 backend/                the server
   api.py                chat, image, calc, remix, status, /api/gen
-  ravencalc.py          exact symbolic maths (SymPy, CPU, never takes the GPU lock)
   apps/                 components with their own code, docs and lifecycle
-    reinforce/          the native CUDA engine
+    ravencalc/          exact symbolic maths (SymPy, CPU, never takes the GPU lock)
+    reinforce/          native CUDA engine -- hand-written kernels via NVRTC.
+                        NOT the QLoRA; the fine-tune lives in training/
     remix/              playlist client of the chat surface
-    miner/              GPU miner worker (not yet wired to the rack)
+    cryptominer/        GPU miner worker (not yet wired to the rack)
 
 bin/symoneural          the CLI -- one command over the whole stack
 
