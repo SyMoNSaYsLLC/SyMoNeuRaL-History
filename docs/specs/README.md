@@ -22,6 +22,7 @@ reaches a visitor.
 | `cuda-audit.md` | Audit of the CUDA engine (§5 item 8) | findings; nothing fixed |
 | `symon-ml-review.md` | Review of the SyMoN_ML blueprint and the TRON licensing PoC | review; nothing implemented |
 | `miner-preemption.md` | The GPU miner yield protocol — why a live miner is never evicted, and the mechanism that would change it | **specified, deliberately not implemented — read its §7 first** |
+| `voice-spec.md` | SyMoNeuRaL Voice (§5 item 12) — the ASR half **measured** on the CPU build already on disk, which settles the governor question; TTS unmeasured and says why | proposed, nothing built |
 
 ## What is worth acting on, and what was verified independently
 
