@@ -73,7 +73,7 @@ Points that matter:
 | `label` | `SyMoNeuRaL Project` |
 | `slot` | `1U` |
 | `bus` | `cpu` |
-| `href` | `/documentation.html` — **see below** |
+| `href` | `/project.html` — **see below** |
 | `spec` | `SQLite · FTS5 · no weights` |
 | `state` / `detail` | computed, three cases below |
 
@@ -88,11 +88,13 @@ omission.** `busy` on this rack means holding the card. This surface never holds
 workspace that flashed `busy` while a SQL query ran would be exactly the decorative indicator
 the house rules forbid. There is nothing to queue behind either.
 
-**`href` points at `/documentation.html`, not `/project.html`, because `site/project.html`
-does not exist.** `apps/coder` does the same thing for the same reason. `scripts/deploy.sh`'s
-reference check can fail the build on a link to a page that is not there, and a rack tile
-linking to a 404 is a dishonest pixel. Change it in the same commit that adds the page — a
-test in `test_project.py` asserts the target file exists, so it will tell you.
+**`href` points at `/project.html`, which `tools/build_project.py` generates.** It pointed at
+`/documentation.html` until that page existed, because `scripts/deploy.sh`'s reference check
+can fail the build on a link to a page that is not there and a rack tile linking to a 404 is
+a dishonest pixel; the page and this link changed in one commit, which is what that rule
+asks for. A test in `test_project.py` asserts the target file exists, so the two cannot drift
+apart again. **`apps/coder` still points at `/documentation.html`** and for the original
+reason — it has no page and is not mounted in `api.py` at all.
 
 **`bus` is `cpu` and there is deliberately no fifth value.** `site/console.js` maps the four
 known buses to plate text and prints `--` for anything else. Inventing `db` or `store` would
@@ -427,10 +429,15 @@ index correct, because `delete_project` also sweeps by `project_id`. Removing bo
 
 Blunt list. Nothing here is hidden behind a "coming soon".
 
-1. **There is no page.** `site/project.html` does not exist and this package does not generate
-   one — `tools/build_pages.py` is owned by another writer and rewriting files under `site/`
-   from here would clobber them. The rack unit therefore links to `/documentation.html`. The
-   API is complete and usable from `curl`, a script or a phone; the web UI is not started.
+1. ~~**There is no page.**~~ **Done.** `tools/build_project.py` generates `site/project.html`
+   and the rack unit links to it. The generator writes that one new file and nothing else, so
+   it cannot clobber the writers that share `site/index.html`; it imports `build_pages` for
+   `SHELL` and `NAV` but never calls `page()`. `tests/project.mjs` drives the page in real
+   Chrome against `tests/project-harness.py` — 15 assertions, including that the token gate
+   actually hides the workspace, that the denylist refusal for `training/corpus.jsonl` reaches
+   the UI, and that a draft with no model wired says why instead of rendering empty.
+   **What the page does not do:** there is no pagination control (item 5 below is unchanged),
+   no editing of a file reference (item 6), and it is single-user because the API is (item 7).
 2. **Nothing schedules the backup.** `POST /api/project/backup` and `store.backup()` work and
    write a dated, consistent copy. There is no cron entry and no systemd timer, so until
    somebody adds one the backup is only as good as remembering. Given there is no git remote
