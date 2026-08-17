@@ -1816,3 +1816,66 @@ tuner/site agent holds (precedent: `tests/tuner_failpaths.mjs`).
   the original author's call to make, not mine — but `/api/sigils/state` carries the nuance.
 - Recording needs a secure context. The page detects this and says so rather than offering a
   microphone button that cannot work.
+
+### 2h-bis. The rate lane was half-wired, and the HTTP suite is now in the repo
+
+Two follow-ups after the commit above, both fixed and verified.
+
+**The `sigil` rate lane was built and never spent from.** Adding `"sigil": (20, 300)` to
+`_RATE_SUGGESTED` makes `LIMITS` carry the name and makes `SYM_RATE_SIGIL` parse — it does
+*not* make any route consult it. No sigils route depended on `throttled_for`, so an operator
+who set `SYM_RATE_SIGIL=20/300` would have got two live `RateLimiter` objects, no error, and
+no cap. **That is worse than being openly unmetered**, because the meter reads as present.
+Fixed at `backend/api.py:2091` by mounting the router with
+`dependencies=[Depends(throttled_for("sigil"))]` — applied at the include, not inside
+`apps/sigils/routes.py`, because `throttled_for` lives in `api.py` and `api.py` imports the
+app, so the dependency the other way is an import cycle.
+
+Router-wide on purpose: it covers `/packs` and `/state` as well as the three POSTs, so a
+route added to this surface later is metered by default rather than by somebody remembering.
+
+Worth knowing: **every surface is unmetered by default** at the operator's standing
+instruction (see the comment above `_RATE_SUGGESTED`), so this changes nothing until
+`SYM_RATE_SIGIL` is set. It changes what happens when he does.
+
+No other app router (`tuner`, `accounts`, `gateway`, `guide`, `project`) is throttled either.
+That is *not* flagged as a bug here — none of them spends the GPU. Stickers is the one that
+does, and the one aimed at a phone app.
+
+**`tests/sigils_http.py`** is the throwaway end-to-end suite, made durable. It covers what
+the browser cannot: every refusal path returns a status code no DOM ever sees.
+
+- No fixture image is committed. The photograph stand-in is **drawn by the test** — and that
+  is better than a real photo, not a compromise. It is an ellipse of known radii, so its true
+  area is `pi*rx*ry = 0.2614`, and the assertion compares the u2net matte against ground
+  truth instead of merely checking that some alpha exists. Measured: **0.2613, error 0.0001**.
+  A solid opaque square scores 1.0 and an empty matte scores 0.0; both fail.
+- The silent WAV is written in pure Python rather than shelled out to `ffmpeg`. Requiring a
+  media toolchain to assert that silence is refused is the tail wagging the dog.
+- The speech sample is `contrib/whisper.cpp/samples/jfk.wav`, which is behind a symlink and
+  untracked, so it is present here and absent from a fresh clone. Missing means **skip and
+  say so** — the run prints a skip list and never passes silently.
+- `SYM_RATE_SIGIL` set on the *API's* environment turns on the rate assertion. Set it
+  generously (`30/500`) — the functional assertions spend from the same bucket first.
+
+**Both browser suites take the base URL as `argv[2]` and default to `:8800`, which is the
+shared dev API and does not have this worktree's code in it.** Running `node tests/stickers.mjs`
+bare fails with `GET /api/sigils/state -> 404` and looks like a broken surface. Pass the port.
+
+The server-free guard for all of this is `TestMountedAndMetered` in
+`backend/apps/sigils/test_sigils.py`: it parses `backend/api.py` with `ast` rather than
+importing it (importing the serving module from a plug-in inverts the dependency) and asserts
+the router is included *and* that the include throttles against `"sigil"` specifically.
+Confirmed to fail when the kwarg is reverted — `AssertionError: [] is not true : the sigils
+router is mounted with no dependencies= at all`.
+
+Verified 2026-08-17, all against `:8877` running this worktree's code:
+
+- `python3 -m unittest discover -s backend/apps/sigils -t backend` → **27 passed** (was 25)
+- `SYM_RATE_SIGIL=30/500 python3 tests/sigils_http.py` → **35 passed, 0 failed, 0 skipped**,
+  including `the 30/500 lane actually denies past its budget` — the 429 is real, not inferred
+- `node tests/stickers.mjs http://127.0.0.1:8877` → **25/25**
+- `node tests/frontend.mjs http://127.0.0.1:8877` → **26/26**, 13 rack units
+
+Both browser suites pass *with the lane active*, which is the evidence that throttling
+`/state` router-wide does not disturb a real page session.

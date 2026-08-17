@@ -2077,7 +2077,19 @@ app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accoun
 app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
 app.include_router(guide_routes.router, prefix="/api/guide", tags=["guide"])
 app.include_router(project.router, prefix="/api/project", tags=["project"])
-app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"])
+# Stickers is the one app router that spends the GPU, so it is the one that needs the
+# meter actually connected. Listing "sigil" in _RATE_SUGGESTED builds the buckets; it does
+# not spend from them. Without this dependency SYM_RATE_SIGIL=20/300 would be read,
+# validated, turned into two RateLimiter objects -- and consulted by nothing, which is a
+# worse state than being openly unmetered because the operator would believe a cap was in
+# force. Applied here rather than in apps/sigils/routes.py because throttled_for lives in
+# this module and this module imports that one; the dependency the other way is a cycle.
+#
+# Router-wide, so it covers /packs and /state as well as the three POSTs. That is
+# deliberate: a new route added to this surface later is metered by default rather than by
+# remembering, and /state is exactly what a phone app polls.
+app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
+                   dependencies=[Depends(throttled_for("sigil"))])
 
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a

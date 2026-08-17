@@ -20,6 +20,7 @@ exactly the sort of assertion this project does not accept.
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import pathlib
 import re
@@ -398,6 +399,70 @@ class TestSurface(unittest.TestCase):
         self.assertIn("ephemeral", doc["note"])
         self.assertFalse(written["raw"].exists(),
                          "the raw field render was left on disk")
+
+
+class TestMountedAndMetered(unittest.TestCase):
+    """`backend/api.py` is read as source, not imported.
+
+    Importing the serving module from inside a plug-in inverts the dependency -- api.py
+    imports this package -- and would also execute the whole app at test time. Both of the
+    facts asserted here are single lines in that file, and both have already been wrong.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.api_py = pathlib.Path(__file__).resolve().parents[2] / "api.py"
+        cls.tree = ast.parse(cls.api_py.read_text())
+
+    def _include_call(self) -> ast.Call:
+        """The `app.include_router(sigils.router, ...)` call node, or fail saying so."""
+        for node in ast.walk(self.tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr == "include_router"):
+                continue
+            first = node.args[0]
+            if (isinstance(first, ast.Attribute) and first.attr == "router"
+                    and isinstance(first.value, ast.Name) and first.value.id == "sigils"):
+                return node
+        self.fail(f"{self.api_py} never calls include_router on the sigils router")
+
+    def test_the_surface_is_mounted(self):
+        """The defect this whole surface shipped with.
+
+        `site/sigils.html` was live and reachable while api.py contained no occurrence of
+        the string 'sigil' anywhere in it, so every route the page called answered 404. The
+        page looked finished; nothing behind it was connected.
+        """
+        self.assertIn("sigils", self.api_py.read_text(),
+                      "api.py does not mention the sigils app at all")
+        self._include_call()
+
+    def test_the_rate_lane_is_actually_spent_from(self):
+        """Listing a surface in _RATE_SUGGESTED builds its buckets. It does not spend them.
+
+        Half of this was already true and was worse than being openly unmetered: with the
+        name listed but no dependency wired, `SYM_RATE_SIGIL=20/300` would be read, parsed,
+        validated and turned into two live RateLimiter objects that nothing ever consulted
+        -- so an operator who set it would believe a cap was in force when none was. This
+        is the surface that spends the GPU and the one aimed at a phone app, so an
+        imaginary limit is exactly the wrong thing to have.
+        """
+        src = self.api_py.read_text()
+        self.assertIn('"sigil"', src, "no sigil lane in _RATE_SUGGESTED")
+
+        call = self._include_call()
+        deps = [kw for kw in call.keywords if kw.arg == "dependencies"]
+        self.assertTrue(
+            deps, "the sigils router is mounted with no dependencies= at all, so the "
+                  "sigil rate lane is built and never consulted")
+        # Depends(throttled_for("sigil")) -- assert on the surface name too, because
+        # throttling this router against someone else's budget would still parse.
+        wired = ast.dump(deps[0].value)
+        self.assertIn("throttled_for", wired, f"dependencies= does not throttle: {wired}")
+        self.assertIn("'sigil'", wired,
+                      f"dependencies= throttles against the wrong surface: {wired}")
 
 
 if __name__ == "__main__":
