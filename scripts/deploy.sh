@@ -127,8 +127,22 @@ missing=0
 # Routes FastAPI serves through the proxy are not files and never will be. Checking them
 # with -f produced "MISSING docs" on a deploy where /docs was answering 200 from uvicorn --
 # a check that cries wolf is worse than no check, because the next real failure gets ignored.
+#
+# The four front-page sections belong in this list for exactly the same reason as docs.
+# tools/build_split.py writes them as overview.html, livestack.html and so on, but every
+# page links them WITHOUT the extension because ops/Caddyfile reverse-proxies those paths
+# to FastAPI. So `/livestack` is a real, working URL that is correctly not a file, and
+# checking it with -f reported MISSING on a deploy where all four answered 200.
+#
+# Note the asymmetry this list encodes: `livestack` is a route, `livestack.html` is a file,
+# and both resolve. Only the extensionless form is exempted here, so a genuinely missing
+# livestack.html is still caught.
 is_route() {
-  case "$1" in docs|docs/*|openapi.json|api|api/*) return 0;; *) return 1;; esac
+  case "$1" in
+    docs|docs/*|openapi.json|api|api/*) return 0;;
+    overview|livestack|controlboard|receipts) return 0;;
+    *) return 1;;
+  esac
 }
 while read -r ref; do
   if is_route "$ref"; then
