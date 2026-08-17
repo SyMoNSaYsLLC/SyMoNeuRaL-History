@@ -55,6 +55,20 @@ site/*.pdf
 # the snapshots moved out of site/ -- keep them on disk, not in the repo
 docs/archive/site-snapshot-*/
 
+# ---- Agent worktrees ----
+# Claude Code creates isolated git worktrees under here. Four of them held 105 MB across
+# 1,407 files, and each is a checkout of this same repo -- so a `git add -A` from the root
+# would try to commit a second copy of the tree into itself. Remove a stale one with
+# `git worktree remove --force .claude/worktrees/<name>`, never with rm -rf, or git keeps
+# the registration and `git worktree list` lies to the next agent.
+.claude/worktrees/
+
+# ---- Session scratch ----
+# Neither of these is source. q.json is a hand-built request body for probing the tuner
+# guide; claudesessioninterrupted is a partial tool call captured when a session died.
+/q.json
+.claude/claudesessioninterrupted
+
 # Contract signing private keys. The public half (contract-signing.pub) ships and is
 # tracked; the private half must never be committed, never be on a rig, and never be in
 # the environment of a web process. Belt and braces -- issue.py also chmods it 0600.
