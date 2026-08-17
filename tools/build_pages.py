@@ -993,7 +993,7 @@ MINER_BODY = """    <div class="pgwrap">
       <div class="mg-col">
 
       <div class="stage" id="mg-stage">
-        <div class="head" id="mghead"><s id="mgdot"></s>SyMoNeuRaL Miner GPU &mdash; Ravencoin
+        <div class="head" id="mghead"><s id="mgdot"></s>SyMoNeuRaL Miner &mdash; GPU, Ravencoin
           <span class="grow" id="mgstate">reading&hellip;</span></div>
         <div class="body" id="mgbody">
           <p class="mg-lede">KawPow on the RTX 5070 Ti described on the home page, through
@@ -1045,7 +1045,7 @@ MINER_BODY = """    <div class="pgwrap">
       </div>
 
       <div class="stage" id="mn-stage">
-        <div class="head" id="mnhead"><s></s>SyMoNeuRaL Miner ASIC &mdash; stack controller
+        <div class="head" id="mnhead"><s></s>SyMoNeuRaL ASIC &mdash; stack controller
           <span class="grow" id="mnstate">reading&hellip;</span></div>
         <div class="body" id="mnbody">
 
@@ -1148,11 +1148,24 @@ MINER_BODY = """    <div class="pgwrap">
             <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>.</p>
         </div>
         <div class="callout">
-          <h3>Two units, two kinds of hardware</h3>
-          <p><b>Miner GPU</b> is the card in this box. <b>Miner ASIC</b> below reads Antminer
-            and MicroBT rigs on the operator&rsquo;s own network and is offline here because
-            none are attached. They are separate surfaces &mdash; separate tokens, separate
-            routes &mdash; and the rack lists them separately for the same reason.</p>
+          <h3>One miner, two kinds of hardware</h3>
+          <p>The rack lists <b>one</b> SyMoNeuRaL Miner. Under it are two halves that fail
+            independently, so this page gives each its own card and its own status chip
+            rather than averaging them into a single light.</p>
+          <p><b>GPU &middot; Ravencoin</b> is the card in this box &mdash; KawPow on the RTX
+            5070 Ti, and the only thing here that has ever hashed. It is also the only half
+            that takes the GPU, which is why the merged row reports <i>busy</i> whenever it
+            is running: that is a fact every other surface on this machine feels.</p>
+          <p><b>ASIC &middot; Antminer + MicroBT</b> reads rigs on your own network, and
+            carries a firmware emulator and a network scanner &mdash; the two parts that do
+            real work with <i>no rig attached</i>. It reports offline here because none is
+            attached and the surface is switched off, and that is the reading rather than a
+            placeholder.</p>
+          <p>They keep separate tokens and separate routes. They were two rack rows until
+            2026-08-17 &mdash; <i>SyMoNeuRaL Miner</i>, offline with no rig attached, beside
+            <i>SyMoNeuRaL Miner GPU</i>, which was the one actually hashing. The plain
+            product name was on the dead row and the working one wore a qualifier, so the
+            pair read as a single half-broken surface.</p>
         </div>
         <div class="callout">
           <h3>What the switches actually switch</h3>
@@ -1323,9 +1336,24 @@ MINER_JS = """<script>
   fetch('/api/status', {headers: {'Accept': 'application/json'}})
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (s) {
-      var u = s && (s.units || []).filter(function (x) { return x.id === 'asicminer'; })[0];
-      stEl.textContent = u ? u.state : 'not present';
+      // The ASIC half is a sub-unit of the merged `miner` row, so look in both places --
+      // top level first, because the site goes live before the API restarts and until then
+      // this id is still a rack unit of its own. Same helper shape as the GPU card below;
+      // deliberately duplicated rather than shared, because these two IIFEs share no state
+      // and one of them holds a token that must never reach the other's routes.
+      var us = (s && s.units) || [], u = null, i, j, sub;
+      for (i = 0; i < us.length && !u; i++) { if (us[i].id === 'asicminer') u = us[i]; }
+      for (i = 0; i < us.length && !u; i++) {
+        sub = us[i].sub || [];
+        for (j = 0; j < sub.length && !u; j++) { if (sub[j].id === 'asicminer') u = sub[j]; }
+      }
+      // `offline` rather than a fifth state literal like "not present": the four states are
+      // what every other surface reports, and a word only this card uses reads as a broken
+      // probe.
+      stEl.textContent = u ? u.state : 'offline';
       if (u && u.state === 'offline') say(u.detail);
+      if (!u) say('this server did not report an ASIC unit at all — the surface is built '
+                + 'but not registered, which is a server-side fault rather than a missing rig');
     })
     .catch(function () { stEl.textContent = 'unreachable'; });
 })();
@@ -1362,13 +1390,29 @@ MINER_JS = """<script>
     });
   }
 
+  // The two mining halves are ONE rack row with a `sub` array under it, so a lookup by id
+  // has to try both places. Top level FIRST and on purpose: the static site deploys before
+  // the API restarts, so for a while the browser will be talking to an API that still
+  // publishes `gpuminer` as its own unit. Both shapes read correctly, and neither invents
+  // a state when the id is genuinely absent.
+  function unitById(s, id) {
+    var us = (s && s.units) || [], i, j, sub;
+    for (i = 0; i < us.length; i++) { if (us[i].id === id) return us[i]; }
+    for (i = 0; i < us.length; i++) {
+      sub = us[i].sub || [];
+      for (j = 0; j < sub.length; j++) { if (sub[j].id === id) return sub[j]; }
+    }
+    return null;
+  }
+
   // The public half. GET /api/status needs no token and carries the same (state, detail)
   // pair the rack renders, so this card and the home page read from one source.
   function paint(s) {
-    var u = s && (s.units || []).filter(function (x) { return x.id === 'gpuminer'; })[0];
+    var u = unitById(s, 'gpuminer');
     if (!u) { stEl.textContent = 'not present'; return; }
     stEl.textContent = u.state;
-    $('mg-unit').textContent = u.id + ' \\u2014 ' + u.state + ' \\u00b7 ' + u.slot;
+    // A sub-unit carries no slot of its own -- the slot belongs to the merged row.
+    $('mg-unit').textContent = u.id + ' \\u2014 ' + u.state + (u.slot ? ' \\u00b7 ' + u.slot : '');
     $('mg-detail').textContent = u.detail || '';
     // Not decorative: green only when the surface is actually usable, amber while it holds
     // or waits for the card, grey when it is offline. Straight off unit_state().
@@ -3278,20 +3322,23 @@ def main() -> int:
               "one page.",
          body=REMIX_BODY, script=REMIX_JS)
 
-    page("miner.html", gpu=True, surface="Miner GPU",
-         why="<b>Miner GPU</b> is the one surface here that holds the card for its whole "
-             "process lifetime rather than for a single job, and it cannot be preempted. "
-             "While <i>holding</i> reads <b>miner</b>, chat, image and remix will queue and "
-             "then fail &mdash; which is why it is started by hand and stopped by hand.",
+    page("miner.html", gpu=True, surface="SyMoNeuRaL Miner",
+         why="<b>SyMoNeuRaL Miner</b> is the one surface here that holds the card for its "
+             "whole process lifetime rather than for a single job, and it cannot be "
+             "preempted. While <i>holding</i> reads <b>miner</b>, chat, image and remix will "
+             "queue and then fail &mdash; which is why it is started by hand and stopped by "
+             "hand.",
          title="SyMoNeuRaL Miner — the GPU in this box, and ASIC rigs on your network",
          desc="KawPow on the RTX 5070 Ti, plus an operator panel for Antminer and MicroBT "
               "rigs. Measured readings only, and a benchmark says it is a benchmark.",
          icon="/terminal-64.png", eyebrow="Operator surface · GPU + ASIC",
          heading="Mining hardware, read the same way as the card.",
-         lede="Two units answer here. The GPU miner runs KawPow on the RTX 5070 Ti in this "
-              "room, through the same governor every other surface queues on. The ASIC "
-              "panel below reads Antminer and MicroBT rigs on the operator's network, and "
-              "no rigs are attached to this machine — so it reports offline, which is the "
+         lede="Two units answer here. SyMoNeuRaL Miner runs KawPow on the RTX 5070 Ti in "
+              "this room, through the same governor every other surface queues on, and it "
+              "is the only thing here that has ever hashed. SyMoNeuRaL ASIC below is the "
+              "operator panel for Antminer and MicroBT rigs on your own network — plus a "
+              "firmware emulator and a network scanner, which work with no rig attached. No "
+              "rigs are attached to this machine, so it reports offline, which is the "
               "reading rather than a placeholder.",
          body=MINER_BODY, script=MINER_JS)
 

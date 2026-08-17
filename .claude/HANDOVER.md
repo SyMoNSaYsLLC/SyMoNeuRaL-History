@@ -205,9 +205,37 @@ tokens, and the page says so).
   cryptominer README and once in the module docstring while missing. It specifies the yield
   protocol; its §7 says why it is still **not** implemented: it changes the hot path of the only
   arbitrator of the only contended resource on this box.
-- **`backend/api.py` deliberately untouched**, so this needs **only** `sudo scripts/deploy.sh
-  --prune` — no API restart, and no Caddyfile change (`/miner.html` is a static file Caddy
-  already serves, not a new top-level route).
+- **The two miner rows are now ONE rack row.** Garrett saw `SyMoNeuRaL Miner` (ASIC, OFFLINE,
+  no rig attached) sitting above `SyMoNeuRaL Miner GPU` (READY, the only one that has ever
+  hashed) and read it as a single half-broken surface — the plain product name was on the dead
+  row while the working one wore a qualifier. His call was to merge them **if both halves have
+  working parts**, so that was verified on the real box first, not in the worktree: the ASIC
+  half has its venv and probe installed, **20 real firmware packages** on disk, both
+  `qemu-system-arm` and `qemu-system-aarch64` present, and 42 green tests. It is switched off,
+  not broken. So: one `Unit(id="miner", label="SyMoNeuRaL Miner", bus="gpu", slot="6U")`.
+- **The merge does not flatten the two states**, because that is where a merged row would start
+  lying — the halves fail independently. `Unit` gained an optional `sub: list[SubUnit]` (new
+  model, optional, so every other unit serialises exactly as before) carrying `gpuminer` and
+  `asicminer` with their own state, bus and detail. The row's state is the GPU half whenever it
+  is `busy`/`queued` (it is the half that takes the card, which every other surface feels),
+  `ready` if **either** half can be started, `offline` only when neither can. Its detail always
+  names both: `GPU: … · ASIC: …`.
+- **Both API shapes are read by the page and by the tests**, top level first, because the static
+  site deploys before the API restarts — for a while the browser talks to an API that still
+  publishes `gpuminer` as its own unit. Verified both ways: **33/33 against the merged API, and
+  33/33 against the live pre-merge one.**
+- **`tests/frontend.mjs` now has 33** — the new one is *no rack name is a prefix of another*,
+  which is stricter than a duplicate check on purpose. The old pair were two *distinct* strings,
+  so a duplicate check passed them; the defect was that one name read as the general case of the
+  other. Watched fail against the live API: `"SyMoNeuRaL Miner" is a prefix of "SyMoNeuRaL Miner
+  GPU"`, 32/33.
+- **This now needs an API restart as well as a deploy** (`backend/api.py` changed — it did not
+  in the first commit):
+  ```
+  sudo scripts/deploy.sh --prune && sudo systemctl restart symoneural-api
+  ```
+  Still no Caddyfile change — `/miner.html` is a static file Caddy already serves, not a new
+  top-level route.
 - **Two decisions are Garrett's, and neither was guessed:** whether `SYM_MINER_CMD` should point
   at a real pool and wallet (it is `-U -M 500000` today — a benchmark that earns nothing and says
   so on the page), and whether the miner should ever be left holding the card on a box that also

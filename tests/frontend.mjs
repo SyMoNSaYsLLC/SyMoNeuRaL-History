@@ -75,6 +75,24 @@ try {
   // the SyMoNeuRaL series, not a technique description.
   record('train unit carries a product name',
          units.some(u => u.name === 'SyMoNeuRaL Reinforce'));
+  // No rack name may be a prefix of another, which is a stricter rule than "no duplicates"
+  // and it is the stricter one that was needed here.
+  //
+  // The miner shipped as two rows: "SyMoNeuRaL Miner", OFFLINE on the ASIC bus with no rig
+  // attached, and "SyMoNeuRaL Miner GPU", READY and the only one that has ever hashed. Two
+  // distinct strings, so a duplicate check passes them both -- and Garrett still read the
+  // pair as one surface that was half broken, because the clean product name sat on the
+  // dead row while the working one wore a qualifier. That is the defect: not a collision,
+  // but a name that reads as the general case of the name beside it. They are now one row.
+  {
+    const names = units.map(u => u.name).filter(Boolean);
+    const bad = [];
+    names.forEach(a => names.forEach(b => {
+      if (a !== b && b.startsWith(a)) bad.push(`"${a}" is a prefix of "${b}"`);
+    }));
+    record('no rack name is a prefix of another', bad.length === 0,
+           bad.length ? bad.join('; ') : `${names.length} names, none a prefix of another`);
+  }
 
   // the rack must lead the page now
   const order = await page.evaluate(() => {
@@ -233,7 +251,13 @@ try {
       // The same public endpoint the page reads, so the assertion compares the DOM against
       // the API rather than against a string written into this test.
       const api = await fetch('/api/status').then(r => r.json()).catch(() => null);
-      const u = api && (api.units || []).find(x => x.id === 'gpuminer');
+      // The two mining halves are one rack row with a `sub` array, so look in both places.
+      // Top level first, exactly as the page does: an API that has not restarted yet still
+      // publishes `gpuminer` as a unit of its own, and this assertion must pass against
+      // both shapes or it fails on the deploy gap rather than on a real defect.
+      const all = (api && api.units) || [];
+      const u = all.find(x => x.id === 'gpuminer')
+             || all.flatMap(x => x.sub || []).find(x => x.id === 'gpuminer');
       return {
         unit: t('mg-unit'), detail: t('mg-detail'), chip: t('mgstate'),
         dot: document.getElementById('mgdot')?.className || '',
@@ -269,10 +293,18 @@ try {
     // One page, two units, two different pieces of hardware. If a future edit merges them,
     // one of the two states has to become a lie -- the GPU miner is configured here and the
     // ASIC panel has no hardware attached.
+    //
+    // Asserted on the heads being DIFFERENT and the ASIC one naming ASIC, rather than on the
+    // GPU one matching a literal: the GPU unit is now just "SyMoNeuRaL Miner" (it is the
+    // miner on this box), so a test pinned to the old "Miner GPU" string would fail the
+    // rename while the page was perfectly correct -- and pinning it to the new string would
+    // pass even if BOTH heads said it.
     record('the miner page keeps its GPU and ASIC units distinct',
-           /Miner GPU/.test(mg.gpuHead) && /ASIC/.test(mg.asicHead) &&
+           /Miner/.test(mg.gpuHead) && !/ASIC/.test(mg.gpuHead) &&
+           /ASIC/.test(mg.asicHead) && mg.gpuHead !== mg.asicHead &&
            STATES.includes(mg.asicChip) && perrs.length === 0,
-           `gpu chip "${mg.chip}", asic chip "${mg.asicChip}"` +
+           `gpu head "${mg.gpuHead.slice(0, 34)}" chip "${mg.chip}", ` +
+           `asic head "${mg.asicHead.slice(0, 34)}" chip "${mg.asicChip}"` +
            (perrs.length ? `, JS ERROR: ${perrs[0]}` : ''));
 
     // Nothing on this page may be clipped, and it must not scroll sideways on a phone. The
