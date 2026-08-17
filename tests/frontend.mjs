@@ -580,6 +580,51 @@ try {
   record('every local asset is cache-busted', unstamped.length === 0,
          unstamped.join(', ') || 'all stamped');
 
+  // ---- the fleet table states its assumption, and loses nothing -------------
+  // Two separate risks, both worth a permanent guard.
+  //
+  // The honesty one first: every money column in that table is projected off an occupancy
+  // assumption, and docs/specs/symon-ml-review.md §5 exists because a pitch once quoted
+  // "~$5,800/month" whose arithmetic only closed at 59.9% occupancy that the document never
+  // stated. The generator prints the rate into the caption from a named constant. If someone
+  // later edits the copy and drops it, the table silently becomes the thing that review
+  // criticised -- so assert the caption still carries a percentage.
+  //
+  // The layout one second: it is a 7-column table, and the fluid scale takes cells to
+  // 18.75px at 2560px. CLAUDE.md forbids truncation outright -- the rack was cutting an
+  // Apache-2.0 attribution down to "...7B-Ins..." -- so check at the widest viewport that no
+  // cell is clipping and that the page itself never scrolls sideways. `.tw` scrolling
+  // internally is fine and expected; the body scrolling is not.
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  await page.goto(BASE + '/documentation.html', { waitUntil: 'networkidle' });
+  const fleet = await page.evaluate(() => {
+    const tws = [...document.querySelectorAll('#cost .tw')];
+    if (!tws.length) return { missing: true };
+    const t = tws[tws.length - 1].querySelector('table');
+    const clipped = [...t.querySelectorAll('th,td,span')].filter(e => {
+      const s = getComputedStyle(e);
+      return s.textOverflow === 'ellipsis' ||
+             (s.whiteSpace === 'nowrap' && e.scrollWidth > e.clientWidth + 1);
+    }).map(e => e.textContent.trim().slice(0, 40));
+    return {
+      caption: (t.querySelector('caption') || {}).textContent?.trim() || '',
+      cols: t.querySelectorAll('thead th').length,
+      rows: t.querySelectorAll('tbody tr').length,
+      clipped,
+      bodyScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  record('the fleet table states its occupancy assumption',
+         !fleet.missing && /\d+\s*%/.test(fleet.caption),
+         fleet.missing ? 'no table found in #cost' : fleet.caption);
+  record('the fleet table loses no text at 2560px',
+         !fleet.missing && fleet.clipped.length === 0 && !fleet.bodyScrolls,
+         fleet.missing ? 'no table' :
+           `${fleet.cols} cols x ${fleet.rows} rows, ` +
+           (fleet.clipped.length ? `CLIPPED: ${fleet.clipped.join(' | ')}` : 'nothing clipped') +
+           `, body h-scroll ${fleet.bodyScrolls}`);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   // ---- calc ----------------------------------------------------------------
   await page.goto(BASE + '/ravencalc.html', { waitUntil: 'networkidle' });
   const calcBox = await page.$('input[type=text], textarea');
