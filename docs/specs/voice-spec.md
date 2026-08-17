@@ -119,7 +119,11 @@ whole fix and it belongs in the route unconditionally.
 
 ### 2.5 TWO TRAPS, both of which produce a working-looking empty answer
 
-**`whisper-cli` exits 0 on a file it could not read.** stderr says
+**`whisper-cli` exits 0 on a file it could not read.** Re-checked after the table above was
+first written, because the run that produced it read `$?` through a `tr`/`sed` pipeline and so
+was reporting `sed`'s status rather than whisper's: invoked directly, with no pipeline, all five
+formats — including both that transcribe nothing — exit **0**. The claim stands as written.
+stderr says
 `read_audio_data: failed to read audio data` / `error: failed to read audio file`, and the exit
 code is still **0**. A route that shells out and checks `returncode` sees success and returns an
 empty transcript. The visitor hears their question vanish. **Check for empty stdout and treat
@@ -220,6 +224,19 @@ first surface where that reasoning does not apply** — it is CPU work with no q
 it, so the bucket is the only backstop there is. A suggested starting pair, by the same logic
 the existing rows use: `"voice": (60, 900)` — ~0.6 s of CPU each, an order of magnitude cheaper
 than image, an order dearer than RavenCalc.
+
+**Read the two halves of that as two separate jobs, or you will ship an unmetered endpoint.**
+The comment says of `_RATE_SUGGESTED` that "nothing reads it", and that is true of the *numbers*
+but not of the *keys*: `LIMITS = {name: _rate_for(name) for name in _RATE_SUGGESTED}` (`:189`)
+iterates them, so a surface absent from the table never has its environment variable read and
+can never be metered at all — that is why the row is required. What the row does not do is set a
+budget. `_rate_for` returns `(0, 0)` when `SYM_RATE_VOICE` is unset, the `_limiters`
+comprehension at `:477` drops any pair that is not `> 0` on both, and `check_rate` treats a
+missing limiter as **unmetered** (deliberately — the comment there explains that building a
+zero-capacity bucket instead would deny every request forever). So the pair above is
+documentation of an intended budget; the operative change is `SYM_RATE_VOICE=60/900` in
+`ops/symoneural-api.service`, and that needs a service restart, which is Garrett's to run.
+Adding the row and stopping there gives you a route that throttles nothing and reports no error.
 
 ### 4.4 Concurrency: a blocking subprocess on an async loop, and 8 threads twice over
 
