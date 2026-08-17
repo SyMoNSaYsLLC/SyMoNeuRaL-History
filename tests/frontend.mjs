@@ -121,6 +121,45 @@ try {
          spill.join('; ') || 'clean');
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  // ---- the header holds its nav in the tablet band --------------------------
+  // Why this exists, and why the 390px check above could never have caught it. That one
+  // runs on /index.html, whose nav is five links plus the CTA; the four prompt surfaces and
+  // the operator pages carry SIX plus the CTA -- they add "Live stack". The hide rule at
+  // symoneural.css:123 is `max-width:780px`, and it was sized against the FIVE-link nav, so
+  // at 781px the longer nav became visible and immediately overflowed: measured 66px past
+  // `header .bar`'s right edge at 781px, 47px at 800px, 27px at 820px, clear only at 860px,
+  // with the wordmark squeezed 138px -> 108px across the whole band because flex shrinks
+  // `.logo` before it gives up on the nav. It was live on the site.
+  //
+  // Asserting on the six-link nav, at 781px because that is one pixel inside the hide rule
+  // and therefore the worst case by construction. Two separate things are checked: that no
+  // nav item extends past the bar, and that the wordmark keeps its natural width -- the
+  // second is what tells you the nav is being given room rather than taking it from the
+  // brand.
+  for (const bandW of [781, 800, 860]) {
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: bandW, height: 900 });
+    await probe.goto(new URL('/chat.html', BASE).href, { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(250);
+    const band = await probe.evaluate(() => {
+      const bar = document.querySelector('header .bar');
+      const nav = document.querySelector('header nav');
+      const logo = document.querySelector('header .logo');
+      const barR = bar.getBoundingClientRect().right;
+      const items = [...nav.children].filter(e => e.getBoundingClientRect().width > 0);
+      const past = Math.max(0, ...items.map(e => Math.round(e.getBoundingClientRect().right - barR)));
+      return { past, links: items.length, logoW: Math.round(logo.getBoundingClientRect().width),
+               spillX: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+    });
+    await probe.close();
+    // 130px is the wordmark's natural width at this size (measured 138px); anything much
+    // under it means flex has started eating the brand to pay for the nav.
+    record(`the header holds a six-link nav at ${bandW}px`,
+           band.past === 0 && band.spillX === 0 && band.links >= 7 && band.logoW >= 130,
+           `${band.links} items, ${band.past}px past the bar, logo ${band.logoW}px, page spill ${band.spillX}`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   // The gutter renders live in the masthead, which is the `hero` panel. Open it -- the
   // three assertions below all reach for `a.gart`, and a hidden element has no box.
   await openTab(page, 'hero');
