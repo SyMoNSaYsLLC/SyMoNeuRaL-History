@@ -335,8 +335,21 @@ broken** — this is a queue of new work, not a repair list.
 6. **Backstage.io backend API pattern** — the user said this "MUST follow". References:
    `references/backstage-master/`, `references/software-templates-main/`. Needs its own scoping pass.
 7. **`references/nx-master/`** as the server frontend reference.
-8. **Audit the other agent's CUDA work** against the cuda-samples layout, the Python tooling,
-   the cpp libraries and `references/reading/cuda-programming-guide.pdf`.
+8. **Audit the CUDA work — DONE 2026-08-17. Report: `docs/specs/cuda-audit.md`.**
+   Nothing was changed; it is an audit and the fixes are a separate decision. Three things
+   worth knowing before you open it:
+
+   - **The brief's premise was wrong and the report corrects it.** There is no
+     `symoneural_reinforce/`; the engine is `backend/apps/reinforce/`, 35 Python files
+     compiled through NVRTC at runtime, with no `.cu` and no CMake. Verified directly.
+   - **`symoneural/core/context.py:149`** is the only `_attr` call in that file with no
+     explicit default, and `_attr` defaults to `0` — so a name mismatch silently yields
+     zero SMs while every neighbouring call guards itself. Verified directly.
+   - **The honest-labelling findings deserve a careful second look**, because they touch the
+     argument the whole site rests on: an orchestrator prompt describing projected figures
+     as "measured facts about the machine", a `pcie_bound` that is `return True` beside a
+     comment saying it is computed, and wall-clock reported in a field named `device_ms`.
+     These are unverified beyond the report — reproduce before acting.
 12. **Split `api.py` by concern, and put the engines behind an interface.** Garrett asked
     for this and the shape is agreed; it was deferred only because it would have been the
     seventh structural move of one long session.
@@ -713,18 +726,34 @@ why truncating it mattered.
 
 ## 10. Repo layout after the flatten
 
+This block was stale in two ways and both would have sent you to paths that do not exist:
+the generators moved into `tools/` and the scripts into `scripts/` in `4b6eaba`, and
+`symoneural_reinforce/` moved to `backend/apps/reinforce/` in `9b5da84`. Corrected:
+
 ```
-api.py  symoneural  ravencalc.py            # the API, the CLI, the SymPy engine
-build_pages.py build_rack.py build_console.py build_cost.py build_stack.py
-build_training.py build_gallery.py         # generators
-symoneural.sh gpu-governor.sh deploy.sh fetch-models.sh
+backend/api.py                             # the API -- 1,573 lines, see §5 item 12
+backend/apps/                              # the surfaces: ravencalc, remix, reinforce,
+                                           #   cryptominer (GPU), asicminer (ASIC)
+backend/models/  backend/output/           # weights; generated renders
+bin/                                       # the CLI
+tools/          build_pages.py build_masthead.py build_rack.py build_console.py
+                build_cost.py build_stack.py build_training.py build_sky.py
+                build_gallery.py build_cachebust.py _art.py
+scripts/        symoneural.sh gpu-governor.sh deploy.sh fetch-models.sh setup.sh
 ops/            Caddyfile, install-caddy.sh, install-service.sh, symoneural-api.service
-site/           the deployable site (index, documentation, account, 4 surfaces, art-*.png)
+site/           the deployable site (index, documentation, account, 5 surfaces, art-*.png)
 tests/          frontend.mjs
 training/       corpus, train_lora.py, adapter/, .venv
-llama.cpp/ stable-diffusion.cpp/ models/    # gitignored, large
-symoneural_reinforce/ symoneural_remix/     # CUDA engine, remix client
+docs/specs/     design specs and audits -- PROPOSALS, not state. See its README.
+contrib/        llama.cpp, stable-diffusion.cpp, cuda-samples   # gitignored, large
+references/     dropped-in reference trees                      # gitignored wholesale
 ```
+
+**`backend/apps/reinforce/` is not a C++ project.** It is 35 Python files that compile
+through NVRTC at runtime — no `.cu` files, no CMakeLists, nothing to `make`. The
+`CMakeLists.txt`, `cmake/` and `bin/` you may be thinking of belong to `contrib/cuda-samples/`.
+An audit brief that assumed otherwise sent an agent looking for a build system that was never
+there.
 
 Gitignored: `models/` (40 GB), all vendored checkouts, `references/Projects_Crypto/` (~2.5 GB),
 `references IPTV/`, `references/Pete/`, every `.venv`, `run/`, `site/gen-*.png`, `*.safetensors`, `*.gguf`.
