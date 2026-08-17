@@ -51,19 +51,28 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 HERE = pathlib.Path(__file__).resolve().parent
-ROOT = HERE
-RUN = HERE / "run"
+# backend/ sits one level below the repo root. models/, site/, run/, scripts/ and
+# contrib/ all hang off the root, not off here. This calculation has been wrong four
+# times in this repo and it fails silently, because the wrong parent usually exists.
+ROOT = HERE.parent
+assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found at {ROOT}"
+# ROOT, emphatically not HERE. gpu-governor.sh takes its mkdir lock in <root>/run,
+# so pointing this at backend/run would give the API and the governor two different
+# lock directories -- both would acquire, both would load weights, and ~12 GB of
+# models would hit a 16 GB card. It is the failure this repo documents most loudly
+# and it was one character away from happening during the backend/ move.
+RUN = ROOT / "run"
 RUN.mkdir(exist_ok=True)
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(HERE))  # ravencalc.py is a sibling in backend/
 
-GOVERNOR = HERE / "scripts" / "gpu-governor.sh"
-LLAMA_SERVER = HERE / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
-SD_CLI = HERE / "contrib" / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
-MODELS = ROOT / "models"
+GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
+LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
+SD_CLI = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
+MODELS = HERE / "models"  # weights are a backend concern; backend/models/
 GALLERY = ROOT / "site"
 
 CHAT_MODEL = MODELS / "llm" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
-CHAT_ADAPTER = HERE / "training" / "adapter" / "symoneural-lora.gguf"
+CHAT_ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"
 # Draft model for speculative decoding. Measured on this box: shallow drafting wins and
 # deep drafting loses badly -- see SPEC_DRAFT_MAX.
 DRAFT_MODEL = MODELS / "llm" / "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"

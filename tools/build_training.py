@@ -31,8 +31,8 @@ import re
 # flattened and once here -- and it fails *silently*, because the wrong parent is
 # usually a directory that exists. Assert rather than trust it.
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-assert (ROOT / "api.py").is_file(), f"repo root not found at {ROOT}"
-SRC = ROOT / "symoneural-manual.html"
+assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
+SRC = ROOT / "docs" / "symoneural-manual.html"
 DST = ROOT / "site" / "training.html"
 
 # Remap the document's own design tokens onto the SyMoNeuRaL palette, and bolt the site

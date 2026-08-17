@@ -21,7 +21,7 @@ set -uo pipefail
 # it fails silently, because the wrong parent is usually a directory that exists.
 # The guard below turns that into an immediate, obvious failure.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-[ -f "$ROOT/api.py" ] || { echo "repo root not found at $ROOT" >&2; exit 1; }
+[ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
 HERE="$ROOT"
 RUN="$ROOT/run"; mkdir -p "$RUN"
 PIDFILE="$RUN/api.pid"
@@ -32,7 +32,7 @@ running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 case "${1:-status}" in
   on)
     if running; then echo "already up (pid $(cat "$PIDFILE"))"; exit 0; fi
-    setsid python3 "$HERE/api.py" >>"$RUN/api.out" 2>&1 &
+    setsid python3 "$ROOT/backend/api.py" >>"$RUN/api.out" 2>&1 &
     echo $! > "$PIDFILE"
     sleep 2
     if running; then

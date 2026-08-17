@@ -17,7 +17,7 @@ set -uo pipefail
 # it fails silently, because the wrong parent is usually a directory that exists.
 # The guard below turns that into an immediate, obvious failure.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[ -f "$ROOT/api.py" ] || { echo "repo root not found at $ROOT" >&2; exit 1; }
+[ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
 cd "$ROOT"
 
 ok=0; warn=0; fail=0
@@ -69,12 +69,12 @@ done
 
 say "Weights"
 missing_w=0
-for w in models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf models/image/flux1-schnell-q4_k.gguf; do
+for w in backend/models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf backend/models/image/flux1-schnell-q4_k.gguf; do
   [ -s "$w" ] && pass "$(basename "$w")" || { note "$(basename "$w") missing"; missing_w=1; }
 done
 [ "$missing_w" = "1" ] && note "run ./scripts/fetch-models.sh to download weights and their licences"
-[ -d models/licenses ] && pass "model licences present (required for any customer build)" \
-                       || note "models/licenses missing — ./scripts/fetch-models.sh fetches them"
+[ -d backend/models/licenses ] && pass "model licences present (required for any customer build)" \
+                       || note "backend/models/licenses missing — ./scripts/fetch-models.sh fetches them"
 
 say "Adapter"
 [ -s training/adapter/symoneural-lora.gguf ] \

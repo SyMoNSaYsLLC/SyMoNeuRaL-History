@@ -56,9 +56,17 @@ explains every flag it passes.
 ## Layout
 
 ```
-api.py                  the API: chat, image, calc, remix, status, /api/gen
-symoneural              the CLI
-ravencalc.py            exact symbolic maths (SymPy, CPU, never takes the GPU lock)
+CLAUDE.md               a one-line import -- must stay at root or the rules stop loading
+
+backend/                the server
+  api.py                chat, image, calc, remix, status, /api/gen
+  ravencalc.py          exact symbolic maths (SymPy, CPU, never takes the GPU lock)
+  apps/                 components with their own code, docs and lifecycle
+    reinforce/          the native CUDA engine
+    remix/              playlist client of the chat surface
+    miner/              GPU miner worker (not yet wired to the rack)
+
+bin/symoneural          the CLI -- one command over the whole stack
 
 tools/                  the site generators, all idempotent
   build_pages.py        chat/image/calc/remix pages   -> site/
@@ -69,7 +77,7 @@ tools/                  the site generators, all idempotent
   build_training.py     the manual                    -> site/training.html
   build_gallery.py      homepage artwork (uses the GPU, watermarks each render)
 
-.claude/                agent working material -- handover, kickoff prompt, permissions
+.claude/                CLAUDE.md (the rules), HANDOVER.md, START-PROMPT.txt, settings
 site/                   the deployable site
 scripts/                everything you execute
   setup.sh              verify a fresh clone can run here
@@ -96,10 +104,10 @@ apps/                   components with their own code, docs and lifecycle
   reinforce/            the native CUDA engine
   remix/                playlist client of the chat surface
   miner/                GPU miner worker (not yet wired to the rack)
-docs/                   hardware dossier, environments, verification
+docs/                   the manual, hardware dossier, environments, verification
 docs/archive/           superseded -- do not act on anything in here
 references/             third-party reference material, ~8.5 GB, none of it ours
-models/                 weights, 40 GB, fetched not committed
+  models/               weights, 40 GB, fetched not committed
 ```
 
 **Why `apps/` has three entries and chat/image/calc do not.** The surfaces on the rack are
@@ -111,7 +119,7 @@ they belong in `apps/`; if they are just more routes, they belong in `api.py`.
 
 ## The rules this project actually runs on
 
-Read `CLAUDE.md` before changing anything. The short version:
+Read `.claude/CLAUDE.md` before changing anything. The short version:
 
 - **Label every figure** — measured on this machine, vendor specification, or projected
   arithmetic. A projection is never presented as a result.
@@ -129,10 +137,10 @@ Read `CLAUDE.md` before changing anything. The short version:
 
 | Question | File |
 |---|---|
-| What are the rules? | `CLAUDE.md` |
+| What are the rules? | `.claude/CLAUDE.md` |
 | What is the state, what is left to do? | `.claude/HANDOVER.md` |
 | What can we ship, and what must travel with it? | `LICENSES.md` |
-| What does the hardware actually do? | `symoneural-manual.md`, `docs/` |
+| What does the hardware actually do? | `docs/symoneural-manual.md`, `docs/` |
 | Why is the code like this? | `git log` — every commit states its reason |
 
 ## Licensing

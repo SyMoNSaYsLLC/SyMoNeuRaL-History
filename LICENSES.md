@@ -56,7 +56,7 @@ HTML, and the `art-*.png` renders. © SymonSays LLC. All rights reserved.
 | **FLUX.1-schnell** (+ VAE) | image | **Apache-2.0** | model card declares it; explicitly permits commercial use |
 | **T5-XXL**, **CLIP-L** | FLUX text encoders | **Apache-2.0** as redistributed | the GGUF repos we fetched from are Apache-2.0 tagged |
 
-Licence texts are saved to **`models/licenses/`** by `scripts/fetch-models.sh`. `models/` is gitignored
+Licence texts are saved to **`backend/models/licenses/`** by `scripts/fetch-models.sh`. `models/` is gitignored
 (40 GB), so those files live on disk beside the weights rather than in git — **they must be
 included in any customer image.**
 
@@ -123,7 +123,7 @@ clause first.** It is the only thing in this stack that can stop you shipping.
 Proprietary to SymonSays LLC, all rights reserved, and **not** covered by any licence above:
 
 - `api.py`, the `build_*.py` generators, `symoneural`, `ravencalc.py`, the shell tooling
-- `apps/reinforce/` (the CUDA engine) and `apps/remix/`
+- `backend/apps/reinforce/` (the CUDA engine) and `backend/apps/remix/`
 - **`training/corpus.jsonl`** and **`training/build_dataset.py`** — the authored identity
   corpus and the method that produces it
 - **`training/adapter/`** — the LoRA weights
@@ -135,7 +135,7 @@ carries as `built on Qwen2.5-7B-Instruct`. That line is a licence condition, not
 
 The corpus and its generator are protected only by not being public. Trade secret, unlike
 copyright, exists only while reasonable measures are taken to keep it secret, and it cannot be
-recovered once disclosed. See the never-publish rule in `CLAUDE.md`.
+recovered once disclosed. See the never-publish rule in `.claude/CLAUDE.md`.
 
 ---
 

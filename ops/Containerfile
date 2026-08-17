@@ -62,4 +62,4 @@ WORKDIR /app
 # Loopback only, exactly as on the host: Caddy is the only thing that should reach this.
 # Run with --network host so 127.0.0.1:8800 means the same thing inside and out.
 EXPOSE 8800
-CMD ["python3", "api.py"]
+CMD ["python3", "backend/api.py"]

@@ -6,7 +6,7 @@ Read this file first and read all of it. It is standalone — you will not have 
 conversation, so every number, path and decision you need is stated here.
 
 > **Precedence:** this file supersedes `HANDOVER-2026-08-16-1910.md` (the previous session's,
-> archived for history) and `PROJECT-STATE.md`. `CLAUDE.md` remains authoritative for *rules*;
+> archived for history) and `PROJECT-STATE.md`. `.claude/CLAUDE.md` remains authoritative for *rules*;
 > this file is authoritative for *state and what is left to do*.
 
 ---
@@ -146,7 +146,7 @@ to polling, and neither works when pages are served from a different port than t
 
 ## 4. Rules that are not negotiable
 
-`CLAUDE.md` has the full set. The ones that actually bit during this session:
+`.claude/CLAUDE.md` has the full set. The ones that actually bit during this session:
 
 - **Never invent pricing.** `account.html` and the order section both say outright that
   prices are quoted, not published, and *why*. The user has not asked for a price to be added
@@ -196,7 +196,7 @@ to start.
    was the good one; it is not. Requirement: load `playlist.m3u` **or** Xtream Codes
    url/username/password. **Credentials: visitor supplies their own, localStorage only, never
    stored on the box** (the user chose this explicitly).
-4. **SyMoNeuRaL Miner** — GPU, Ravencoin. Base: `apps/miner/` (first-party, the
+4. **SyMoNeuRaL Miner** — GPU, Ravencoin. Base: `backend/apps/miner/` (first-party, the
    user's own prior work; PowerShell-oriented, needs porting to Linux). It already refuses to
    start without `SYM_MINING_ENABLED=1` and reads real `nvidia-smi` telemetry. **Two
    constraints:** the governor has no concept of a tenant that *everything else* evicts (a
@@ -454,7 +454,7 @@ exit 144. Put the pkill in a command that does not otherwise mention the process
   code. **Check `git status` before `git add -A`** — the user drops large reference trees into
   the repo root while you are working, and several have already had to be caught this way.
 - **Three files claimed to be "current state".** There is now one: this file. `PROJECT-STATE.md`,
-  the previous `HANDOVER`, the eleven root-level playbooks (superseded by `symoneural-manual.md`),
+  the previous `HANDOVER`, the eleven root-level playbooks (superseded by `docs/symoneural-manual.md`),
   the old `.claude/START-PROMPT.txt` and `checkcoderswork.txt` all moved to **`docs/archive/`**, which
   has a README explaining what each one is and why it is not authoritative. Do not create a
   second state document; update this one.
@@ -481,7 +481,7 @@ Nothing is GPL or AGPL, and nothing forces this project's own code to be opened.
 brought weak copyleft in. It does not: `certifi` is a Debian OS package on this box (pulled in
 by certbot and requests), the serving stack never imports it — verified, importing fastapi,
 uvicorn and sympy does not load it — and we do not redistribute it. The MPL line came from
-`apps/remix/THIRD-PARTY-LICENSES.md`, which audits the **remix component's** bundled
+`backend/apps/remix/THIRD-PARTY-LICENSES.md`, which audits the **remix component's** bundled
 dependencies. That is a different distribution unit; if remix is ever shipped as a package, the
 obligation is real there.
 
@@ -496,7 +496,7 @@ swagger-ui-bundle.js.LICENSE.txt` — a file that does not exist in `site/`, in 
 anywhere on the box. Swagger UI is Apache-2.0 and the bundle embeds MIT code (core-js). Fetch
 that file from the matching swagger-ui-dist release and drop it beside the bundle; `scripts/deploy.sh`
 will pick it up.
-`apps/remix/THIRD-PARTY-LICENSES.md` has the full audit. The Apache-2.0 attribution on
+`backend/apps/remix/THIRD-PARTY-LICENSES.md` has the full audit. The Apache-2.0 attribution on
 the rack's `detail` line ("built on Qwen2.5-7B-Instruct") is a **licence condition** — that is
 why truncating it mattered.
 

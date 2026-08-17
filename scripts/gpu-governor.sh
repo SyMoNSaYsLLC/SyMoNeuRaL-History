@@ -29,7 +29,7 @@ set -uo pipefail
 # wrong directory and the lock silently stops being shared -- two tenants both acquire,
 # both load weights, and ~12 GB of models hit a 16 GB card.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[ -f "$ROOT/api.py" ] || { echo "repo root not found at $ROOT" >&2; exit 1; }
+[ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
 HERE="$ROOT"
 RUN="$ROOT/run"
 LOCKDIR="$RUN/gpu.lock.d"

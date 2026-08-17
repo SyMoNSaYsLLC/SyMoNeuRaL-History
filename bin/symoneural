@@ -29,7 +29,11 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE
+# The CLI lives in bin/, so the repo root is one level up. This calculation has been
+# wrong four times in this repo and it fails silently, because the wrong parent is
+# usually a directory that exists. Assert it.
+ROOT = HERE.parent
+assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 MODELS = ROOT / "models"
 RUN = HERE / "run"
 GOVERNOR = HERE / "gpu-governor.sh"

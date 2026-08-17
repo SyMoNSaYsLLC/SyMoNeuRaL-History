@@ -1,5 +1,5 @@
 # ---- Model weights (40 GB) — fetched by fetch-models.sh, never committed ----
-models/
+backend/models/
 
 # ---- Vendored third-party checkouts (each carries its own .git) ----
 cuda-samples/

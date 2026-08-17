@@ -23,7 +23,7 @@ WorkingDirectory=@@ROOT@@
 # first request after a restart is not delayed by a stale-lock poll, and the rack does not
 # briefly show a holder that no longer exists.
 ExecStartPre=-/usr/bin/env bash -c '@@ROOT@@/scripts/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/scripts/gpu-governor.sh release image >/dev/null 2>&1 || true'
-ExecStart=/usr/bin/python3 @@ROOT@@/api.py
+ExecStart=/usr/bin/python3 @@ROOT@@/backend/api.py
 # Give in-flight generations a chance to finish rather than cutting a visitor off mid-answer.
 # Slightly above the 120 s job timeout so a job that is already doomed is not waited on twice.
 TimeoutStopSec=140

@@ -14,8 +14,8 @@ set -euo pipefail
 # it fails silently, because the wrong parent is usually a directory that exists.
 # The guard below turns that into an immediate, obvious failure.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-[ -f "$ROOT/api.py" ] || { echo "repo root not found at $ROOT" >&2; exit 1; }
-M="$ROOT/models"
+[ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
+M="$ROOT/backend/models"
 get() { # url dest
   local url="$1" dest="$2"
   [ -s "$dest" ] && { echo "  have $(basename "$dest")"; return; }

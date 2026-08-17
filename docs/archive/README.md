@@ -4,11 +4,11 @@ Nothing in this directory is current. It is here because deleting it would lose 
 and because more than one agent has previously rediscovered a stale file at the repo root and
 treated it as authoritative. **If a file is in here, do not act on it.**
 
-The live hierarchy is stated in `CLAUDE.md`; the short version is:
+The live hierarchy is stated in `.claude/CLAUDE.md`; the short version is:
 
 | Question | File |
 |---|---|
-| What are the rules? | `CLAUDE.md` |
+| What are the rules? | `.claude/CLAUDE.md` |
 | What is the current state, what is left to do? | `.claude/HANDOVER.md` |
 | What does the hardware actually do? | `MIT_AI_Training.md`, and `docs/` |
 | Why is the code like this? | `git log` — every commit states its reason |
