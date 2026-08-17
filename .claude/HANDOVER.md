@@ -252,6 +252,41 @@ to start.
     `LLAMA_SERVER`, `SD_CLI`, `MODELS` and `GALLERY` all hang off it. That calculation has
     been wrong four times in this repo. Assert the root, as the generators and scripts now do.
 
+13. **Compose the backend as plugins — the Backstage model, which Garrett required.**
+    This is the other half of item 12 and the two fit together: llama.cpp gives the file
+    layout, Backstage gives the composition model. Read
+    `references/backstage-master/packages/backend/src/index.ts` and
+    `references/backstage-master/plugins/search-backend/src/plugin.ts` for the real shape.
+
+    Backstage declares a plugin as an id plus a register hook whose init receives its
+    dependencies (`httpRouter`, `logger`, `rootConfig`) rather than importing them. Three
+    consequences matter here, and each one solves a problem this repo already has:
+
+    - **Every surface becomes a peer.** Garrett's objection was "why do reinforce and remix
+      get directories but chat and image do not — cannot play favourites". Under a plugin
+      model chat, image, calc, remix, IPTV and miner are the same kind of thing by
+      construction, not by a naming convention someone has to remember.
+
+    - **Injected services give the engine abstraction for free.** A plugin declares
+      `deps: {gpu, limits, config}` and never learns whether llama.cpp or vLLM is behind
+      the GPU service. Item 12's `backend/engines/` interface stops being a separate
+      refactor and becomes a consequence of the composition model.
+
+    - **The rack becomes a registry.** Today the five units are a hardcoded list inside
+      `api.py`, so adding the IPTV player means editing the Unit list, the rack generator
+      and the routes. Under a plugin model a surface appears on the rack *because it
+      registered*. That is the difference between the six queued surfaces being days of
+      work and being weeks of it. Do this **before** building IPTV and Miner, not after —
+      they are the first two customers of it.
+
+    URL shape already matches: Backstage mounts plugins at `/api/<pluginId>`, and this API
+    already serves `/api/chat`, `/api/image`, `/api/calc`.
+
+    **Take the boundary, not the ceremony.** Backstage's extension points, alpha service
+    refs and DI container earn their keep across dozens of plugins and many teams. This is
+    one box and one developer. Take the plugin boundary, the injected services and the
+    registry; leave the rest until something actually hurts.
+
 10. **Fix the `deploy.sh` subshell bug** (§1). Garrett asked for this explicitly
    and his reasoning is sound: the whole project is NVIDIA-bound, so learning the container
    path now is better than learning it under delivery pressure. He saved a reference at
