@@ -56,6 +56,18 @@ ART = [
     ("build", 3364,
      "an engineer's desk covered in cables, a multimeter and an open server chassis, "
      "top down, dark tones, green accents"),
+    ("gpu",      7714, "a single graphics card fan blade close up, macro, dark, teal rim light"),
+    ("rack2",    9182, "three server units stacked, front panel LEDs, very dark room, green glow"),
+    ("cable",    2296, "a bundle of network cables coiled on a dark surface, top down, minimal"),
+    ("chip",     5527, "a silicon die under magnification, iridescent, dark field, abstract"),
+    ("desk",     1840, "a laptop closed on a desk beside a small server tower, night, one lamp"),
+    ("meter",    6635, "an analogue power meter needle at mid scale, dark instrument panel, amber"),
+    ("vault",    3971, "a heavy safe door slightly ajar, dark room, thin green light spilling out"),
+    ("map",      8408, "an abstract network graph of glowing nodes and thin lines, dark background"),
+    ("box",      4153, "a plain cardboard shipping box on a dark floor, single overhead light"),
+    ("token",    7062, "abstract streams of small glowing particles flowing left to right, dark"),
+    ("hands",    2735, "two hands shaking over a desk with a server rack behind, warm dim light"),
+    ("clock",    9540, "a wall clock in a dark server room, motion blurred second hand, green cast"),
 ]
 
 FOOT = 34  # watermark bar height
