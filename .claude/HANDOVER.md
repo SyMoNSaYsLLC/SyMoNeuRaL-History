@@ -561,8 +561,21 @@ Five of the eighteen exist because of specific bugs and are worth not deleting:
 **Run it against production too**, not just localhost. The two differ in exactly the way
 that has caused every "it's still broken" exchange in this project.
 
-Playwright lives in `llama.cpp/tools/ui/node_modules` (installed for the webui build) and is
-imported by absolute path. `channel: 'chrome'` uses the system browser, so nothing downloads.
+Playwright lives in **`contrib/llama.cpp/tools/ui/node_modules`** (installed for the webui
+build) and is imported by a path derived from the test's own location. An earlier draft of
+this line omitted `contrib/`, which is a dead path — the restructure in `4b6eaba` moved the
+vendored checkouts. `channel: 'chrome'` uses the system browser, so nothing downloads.
+
+**Found while verifying the watermark work, pre-existing, NOT fixed — your call.** Four of
+the nineteen hover captions on `/build.html` are positioned partly off the **left** edge of
+the viewport at 1440px: the caption box is a fixed 220px centred on renders that are only
+55–64px wide and sit near the left edge, so it overhangs by 13–71px. Measured identically on
+production (offsets −14, −70, −47) and locally (−13, −71, −48), so it long predates this
+work and the longer provenance text did not cause it — that change adds height, not width.
+It is hover-only and clips nothing. The fix is to clamp `.sky .art figcaption` inside the
+viewport rather than centring it unconditionally; it was left alone because nudging
+absolutely-positioned, counter-rotated elements is exactly the class of change this project
+has lost rounds to, and it deserves a screenshot-and-confirm rather than a drive-by.
 
 Two scratch scripts worth recreating if you need them (they were in `/tmp`, not committed):
 a **truncation checker** (compare `scrollWidth` to `clientWidth` across widths) and a **type
