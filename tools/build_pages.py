@@ -131,7 +131,66 @@ async function api(path, payload) {
 """
 
 
-def page(name: str, **kw) -> None:
+# ---------------------------------------------------------------- the GPU panel
+# Reuses `site/console.js` outright rather than adding a second data path. That file
+# connects when it finds `#units` OR `#m-vram` on the page (console.js:266) and then writes
+# m-vram / m-pwr / m-temp / m-holder / m-queue / con-link. So carrying those ids is the whole
+# integration: same WebSocket, same readings, same fallback to polling. Its txt()/meter()
+# helpers no-op on ids that are absent, so the ids the rack uses and this does not are safe.
+#
+# Every number here is read from nvidia-smi through /api/status. `holder` is which surface
+# owns the card right now, which is the one that explains a wait -- if it names something
+# other than this page, you are queued behind it, and that is why the button is slow.
+def gpu_panel(uses_gpu: bool, surface: str) -> str:
+    if uses_gpu:
+        why = (f"While a prompt runs, <b>{surface}</b> holds the card and every other GPU "
+               "surface waits. If <i>holding</i> names something else, you are queued behind "
+               "it &mdash; that is the honest reason a request is slow.")
+    else:
+        why = (f"<b>{surface} does not use the GPU.</b> This is the card the rest of the "
+               "stack shares, shown here so you can see what it is doing; nothing on this "
+               "page waits for it.")
+    return f'''<div class="gpu-panel">
+          <p class="gpu-head"><s></s>RTX 5070 Ti<span class="gpu-link" id="con-link">socket: connecting</span></p>
+          <div class="gpu-row">
+            <label>VRAM free <b id="m-vram">&mdash;</b></label>
+            <div class="gbar" id="m-vrambar"><i style="width:0%"></i></div>
+          </div>
+          <div class="gpu-row">
+            <label>Power <b id="m-pwr">&mdash;</b></label>
+            <div class="gbar" id="m-pwrbar"><i style="width:0%"></i></div>
+          </div>
+          <dl class="gpu-facts">
+            <dt>Temperature</dt><dd id="m-temp">&mdash;</dd>
+            <dt>Holding</dt><dd id="m-holder">&mdash;</dd>
+            <dt>Queued</dt><dd id="m-queue">&mdash;</dd>
+          </dl>
+          <!-- The whole stack, not just the holder. console.js already renders the rack
+               into #units, so carrying that id here shows every surface and which one is
+               actually busy -- "something else is running" answered by looking, rather
+               than inferred from one field. Styled compact for a sidebar. -->
+          <div class="units gpu-stack" id="units"></div>
+          <p class="gpu-why">{why}</p>
+        </div>
+        '''
+
+
+def page(name: str, gpu: bool | None = None, surface: str = "", **kw) -> None:
+    """Render one surface page.
+
+    `gpu` places the live GPU panel at the top of the page's aside -- beside the prompt,
+    which is where it answers the question it exists for ("why is this slow"). Pass False
+    for a surface that does not use the card: the panel still appears, because the card is
+    shared and its state is worth seeing, but it says plainly that this page does not wait
+    for it. Omit entirely for a page with no prompt.
+    """
+    if gpu is not None:
+        body = kw.get("body", "")
+        i = body.find("<aside")
+        if i >= 0:
+            j = body.find(">", i)
+            kw["body"] = (body[:j + 1] + "\n        " + gpu_panel(gpu, surface or name)
+                          + body[j + 1:])
     html = SHELL.replace("@@NAV@@", NAV)
     for key, value in kw.items():
         html = html.replace(f"@@{key.upper()}@@", value)
@@ -1238,7 +1297,7 @@ TUNER_JS = """<script src="/hls.js"></script>
 
 def main() -> int:
     print("building surface pages:")
-    page("chat.html",
+    page("chat.html", gpu=True, surface="Chat",
          title="SyMoNeuRaL Chat — talk to the box",
          desc="A 7B running locally on an RTX 5070 Ti. Nothing leaves the machine.",
          icon="/chat-64.png", eyebrow="Live surface",
@@ -1248,7 +1307,7 @@ def main() -> int:
               "measured, not claimed.",
          body=CHAT_BODY, script=CHAT_JS)
 
-    page("image.html",
+    page("image.html", gpu=True, surface="Image",
          title="SyMoNeuRaL Image — make it draw",
          desc="FLUX.1-schnell in four steps, rendered locally on a consumer GPU.",
          icon="/image-64.png", eyebrow="Live surface",
@@ -1257,7 +1316,7 @@ def main() -> int:
               "Every image below prints the wall-clock it actually took.",
          body=IMAGE_BODY, script=IMAGE_JS)
 
-    page("ravencalc.html",
+    page("ravencalc.html", gpu=False, surface="RavenCalc",
          title="SyMoNeuRaL RavenCalc — exact mathematics",
          desc="SymPy-powered symbolic computation that checks its own work.",
          icon="/calc-64.png", eyebrow="Live surface · CPU",
@@ -1266,7 +1325,7 @@ def main() -> int:
               "runs on the CPU, so it is the one surface here that never waits for the GPU.",
          body=CALC_BODY, script=CALC_JS)
 
-    page("remix.html",
+    page("remix.html", gpu=True, surface="Remix",
          title="SyMoNeuRaL Remix — playlists that are ordered sets",
          desc="Prompt to sequenced tracklist, generated locally.",
          icon="/dj-64.png", eyebrow="Live surface",
@@ -1298,7 +1357,7 @@ def main() -> int:
               "labels every figure it quotes as vendor or projected.",
          body=GATEWAY_BODY, script=GATEWAY_JS)
 
-    page("tuner.html",
+    page("tuner.html", gpu=False, surface="Tuner",
          title="SyMoNeuRaL Tuner — your playlist, your credentials",
          desc="IPTV over ffmpeg stream copy. Credentials stay in your browser.",
          icon="/terminal-64.png", eyebrow="Live surface · network",

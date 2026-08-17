@@ -181,6 +181,35 @@ try {
   });
   record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
 
+  // ---- the GPU panel beside a prompt carries a real reading ---------------
+  // The rule this exists for: no decorative indicators. A panel that renders its layout but
+  // never receives data is exactly the fake gauge the site argues against, and it looks
+  // identical to a working one in a screenshot. So this asserts on the VALUES, not the
+  // markup -- em-dash placeholders and a 0% bar fail.
+  await page.goto(new URL('/image.html', BASE).href, { waitUntil: 'networkidle' });
+  const gpanel = await page.evaluate(async () => {
+    const el = document.querySelector('.gpu-panel');
+    if (!el) return { ok: false, why: 'no .gpu-panel on a surface page' };
+    // console.js fills these over the websocket it already opens for the rack.
+    await new Promise(r => {
+      const t0 = Date.now();
+      (function poll() {
+        const v = document.getElementById('m-vram');
+        if ((v && v.textContent && v.textContent !== '\u2014') || Date.now() - t0 > 20000) return r();
+        setTimeout(poll, 300);
+      })();
+    });
+    const txt = id => (document.getElementById(id)?.textContent || '').trim();
+    const vram = txt('m-vram'), temp = txt('m-temp');
+    const units = document.querySelectorAll('.gpu-stack .unit').length;
+    return {
+      ok: /[0-9]/.test(vram) && /[0-9]/.test(temp) && units >= 5,
+      why: `vram="${vram}" temp="${temp}" stack=${units} units link="${txt('con-link')}"`,
+    };
+  });
+  record('the GPU panel beside a prompt shows a real reading', gpanel.ok, gpanel.why);
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+
   // ---- the tuner form is styled, and posts to routes that exist ----------
   // Two bugs shipped together on this page. The `tn-` CSS was never written, so the form
   // rendered as raw unstyled HTML; and the JS posted to /api/tuner/channels, which no

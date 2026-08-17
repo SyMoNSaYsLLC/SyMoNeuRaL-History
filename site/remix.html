@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Remix — playlists that are ordered sets</title>
 <meta name="description" content="Prompt to sequenced tracklist, generated locally.">
-<link rel="stylesheet" href="/symoneural.css?v=e51d825a45">
+<link rel="stylesheet" href="/symoneural.css?v=731dc93b8c">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -61,6 +61,29 @@
       </div>
 
       <aside class="panel">
+        <div class="gpu-panel">
+          <p class="gpu-head"><s></s>RTX 5070 Ti<span class="gpu-link" id="con-link">socket: connecting</span></p>
+          <div class="gpu-row">
+            <label>VRAM free <b id="m-vram">&mdash;</b></label>
+            <div class="gbar" id="m-vrambar"><i style="width:0%"></i></div>
+          </div>
+          <div class="gpu-row">
+            <label>Power <b id="m-pwr">&mdash;</b></label>
+            <div class="gbar" id="m-pwrbar"><i style="width:0%"></i></div>
+          </div>
+          <dl class="gpu-facts">
+            <dt>Temperature</dt><dd id="m-temp">&mdash;</dd>
+            <dt>Holding</dt><dd id="m-holder">&mdash;</dd>
+            <dt>Queued</dt><dd id="m-queue">&mdash;</dd>
+          </dl>
+          <!-- The whole stack, not just the holder. console.js already renders the rack
+               into #units, so carrying that id here shows every surface and which one is
+               actually busy -- "something else is running" answered by looking, rather
+               than inferred from one field. Styled compact for a sidebar. -->
+          <div class="units gpu-stack" id="units"></div>
+          <p class="gpu-why">While a prompt runs, <b>Remix</b> holds the card and every other GPU surface waits. If <i>holding</i> names something else, you are queued behind it &mdash; that is the honest reason a request is slow.</p>
+        </div>
+        
         <h3>Parameters</h3>
         <div class="ctl">
           <label for="count">Tracks <b id="countv">12</b></label>
