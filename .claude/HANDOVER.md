@@ -1552,6 +1552,15 @@ because they are the cheapest real work available.
     SyMoNeuRaL Chat.** Asked for by Garrett 2026-08-17. Nothing is built; this is a spec
     task first.
 
+    **The spec now exists: `docs/specs/voice-spec.md` (2026-08-17 15:30).** It settles the
+    two-way design question posed below by measurement, and the answer is the first bullet:
+    `contrib/whisper.cpp` is already built here with `GGML_CUDA:BOOL=OFF`, so ASR is CPU work
+    at 284 MiB peak RSS and 579 ms for a 3-second utterance — there is nothing for the
+    governor to arbitrate and option two is retired. **Do not implement a third governor
+    surface.** The TTS half is still unmeasured, deliberately: nothing that speaks is
+    installed and Piper needs its own venv, which is Garrett's call. Read the spec before
+    acting on the two bullets below; they predate the numbers.
+
     **The constraint that decides the whole design is VRAM, not model choice.** One RTX
     5070 Ti, 15.92 GiB, and chat (~5 GB) plus image (~7 GB) already cannot coexist — that
     is why the governor exists. Speech-to-speech is *two* extra models resident at once
