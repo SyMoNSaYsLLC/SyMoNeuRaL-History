@@ -76,6 +76,10 @@ tron_address = _leaf("address")
 _keccak = _leaf("keccak")
 NODES = _leaf("chain").NODES
 
+# The secp256k1 group order. Only used to check that a signature we are about to hand a buyer
+# satisfies the same malleability bound `SymoneuralLicence._recover` enforces.
+_SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
 try:
     from tronpy import Tron
     from tronpy.keys import PrivateKey
@@ -323,6 +327,17 @@ def cmd_quote(args) -> int:
     if isinstance(digest, str):
         digest = bytes.fromhex(digest.removeprefix("0x"))
     sig = key.sign_msg_hash(digest)
+
+    # `_recover` rejects an s in the upper half of the curve order, so a high-s quote reverts —
+    # and it reverts at the buyer's expense, reading like a contract bug rather than a signer
+    # one. tronpy 0.6.2 hard-depends on coincurve (libsecp256k1), which normalises, and 500
+    # signatures were measured low-s; but that is a transitive pin, and the pure-Python `ecdsa`
+    # fallback does not normalise. Check the property rather than trusting the dependency —
+    # test_contracts.mjs signs with @noble/curves, so the suite would never catch this.
+    if sig.s > _SECP256K1_N // 2:
+        sys.exit("refusing to emit this quote: the signature's s is in the upper half of the "
+                 "curve order, which the contract rejects. The signing backend is not "
+                 "normalising — check that coincurve is installed in this venv.")
 
     quote = {
         "network": args.network, "contract": args.contract, "payer": args.payer,

@@ -26,8 +26,14 @@ if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
 ./.venv/bin/pip install --quiet --disable-pip-version-check --upgrade pip
-./.venv/bin/pip install --quiet --disable-pip-version-check tronpy
-./.venv/bin/python -c "import tronpy; print('    tronpy ok')"
+# coincurve is named explicitly even though tronpy already requires it. tronpy signs through
+# coincurve (libsecp256k1) when it is importable and through the pure-Python `ecdsa` package
+# when it is not -- and only the former normalises s into the lower half of the curve order.
+# The contract REJECTS high-s, so the silent fallback would revert roughly half of all quotes
+# at the buyer's expense. gateway-cli.py checks the property at signing time as well; this line
+# is so the failure cannot be introduced by a future tronpy dropping the dependency.
+./.venv/bin/pip install --quiet --disable-pip-version-check tronpy coincurve
+./.venv/bin/python -c "import tronpy, coincurve; print('    tronpy ok, coincurve ok')"
 
 echo "==> node toolchain for solc + the local EVM (contract side)"
 mkdir -p .solc

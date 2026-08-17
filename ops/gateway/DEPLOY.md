@@ -15,6 +15,29 @@ and nowhere earlier.
 
 ---
 
+## Phase 0 — get this work into your checkout *(nothing below exists there yet)*
+
+All of it — `ops/gateway/`, `backend/apps/gateway/__main__.py`, the contracts, the two new
+frontend assertions — is on the branch **`worktree-gateway-online`**, commit `15ac0cf`. In your
+working checkout `ops/gateway/setup.sh` is still a missing file, so Phase A step 1 fails until
+you do this. The branch lives in the shared `.git`, so it survives the worktree being removed.
+
+```bash
+cd /home/google/Symoneural
+git merge worktree-gateway-online          # or cherry-pick 15ac0cf
+python3 tools/build_pages.py               # re-run: build_pages.py moved under me once already
+python3 tools/build_cachebust.py           # LAST, always
+node tests/frontend.mjs                    # expect 28/28
+sudo scripts/deploy.sh --prune             # the page is repo-only until this runs
+```
+
+The regeneration matters and the order matters. `tools/build_pages.py` is shared ground —
+another session landed the Tuner EPG guide in it partway through this work, and re-running the
+generators after the merge is what stops a stale seed from silently reverting somebody's page.
+`build_cachebust.py` runs last or the stamps are wrong.
+
+---
+
 ## What is already true, measured rather than assumed
 
 Run these first; they need no key, no funds and no sudo, and they are the floor everything
@@ -37,6 +60,29 @@ Measured 2026-08-17 from this box:
 | the same address on Nile / Shasta | **absent** — the node answers `{}` |
 | `SymoneuralLicence` | 4,453 bytes, solc 0.8.18, evm istanbul, 17/17 logic tests |
 | `MockTRC20` | 1,860 bytes, same settings |
+| the *configured* `offline` line, rendered | 215 chars, 3 lines at 1440px / 6 at 390px, 0 clipped, 0 ellipsis rules |
+| tronpy signature `s` values | 0 of 500 in the upper half — the bound the contract enforces |
+
+That second-to-last row is the one worth knowing about, because it is the state the rack will
+actually be in after Phase B. Until today every check had seen the surface *unconfigured*, so
+the page only ever rendered the short "not configured" string; the richer branch — the one that
+names the network, contract, block height and reading age — existed only in unit tests holding
+synthetic readings. It has now been driven end to end, chain → API → page → DOM, by pointing a
+throwaway app at real mainnet USDT: the rack row carries `TetherToken`, its power LED stays
+**unlit** (`class="led"`, `data-state="offline"`), and nothing wraps off the screen at 390px.
+
+### What has *not* run, and you should know it before you trust it
+
+Honest gaps, since everything above is stated as measured:
+
+- **`gateway-cli.py deploy`, `inspect` and `quote` have never executed against a chain.** Only
+  `keygen`, `balance`, the dry-run paths and the refusal guards are exercised. Phase B is their
+  first real run — expect to debug there, not to have it work silently.
+- **No transaction has ever been signed or broadcast**, so no key, no funds and no gas
+  estimate has been tested. The contracts are proven by *execution* in a local EVM at Istanbul,
+  which is much stronger than compiling, but it is not the TVM.
+- The 57 backend tests all inject `fetch=`, so they never touch the network. That gap is
+  exactly why `python3 -m apps.gateway` exists; run it if you want the transport proven today.
 
 ---
 
@@ -136,6 +182,42 @@ should be the last thing that ever changes.
 
 The tool refuses mainnet without `--yes-mainnet` and then asks you to type `MAINNET`. That is
 deliberate friction on the only irreversible step in this document.
+
+### Before mainnet, settle `isLicensed` — it does not scale, and the contract cannot be upgraded
+
+`SymoneuralLicence.isLicensed(payer, workspace)` walks the whole `_nonces` array and does two
+cold storage reads per entry:
+
+```solidity
+for (uint256 i = _nonces.length; i > 0; i--) {
+    Licence storage l = _byNonce[_nonces[i - 1]];
+    if (l.payer == payer && l.workspace == workspace) return true;
+}
+```
+
+As a `view` this is free when read off-chain — but TRON caps energy on
+`wallet/triggerconstantcontract`, so the call gets slower as licences accumulate and eventually
+reverts. Everything here is fail-closed, which is right, and which means the revert reads as
+**"not licensed."** A licence check that quietly starts denying customers as the business
+succeeds. On Nile it will never be hit; there is no traffic. It is a mainnet problem and it
+arrives on a delay.
+
+**This must be decided before Phase D, not after, because the contract is deliberately not
+upgradeable.** Two ways out, and they are not the same decision:
+
+1. **Keep the check on-chain, make it O(1).** Add `mapping(bytes32 => bool) private _licensed`
+   keyed on `keccak256(abi.encode(payer, workspace))`, written in `redeem` beside the nonce
+   burn. Small change, changes the storage layout, needs `build.mjs` and `test_contracts.mjs`
+   re-run.
+2. **Delete it.** If `docs/specs/symon-ml-review.md` finding 2 resolves the way that review
+   itself recommends — the chain is a *payment rail*, not a DRM, and entitlement is minted
+   off-chain by `backend/apps/licensing/` on a confirmed payment — then `isLicensed` is not
+   the source of truth for anything and should not be on-chain at all.
+
+Option 2 is likelier to be correct, which is exactly why this was left alone rather than
+optimised: fixing the loop now would bake in the assumption that the answer is option 1. That
+is your call, not an agent's. **Nothing else in this document is blocked on it** — Phases A–C
+are safe to run today, and the loop is harmless at Nile volumes.
 
 ---
 
