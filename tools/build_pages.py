@@ -65,14 +65,6 @@ SHELL = """<!doctype html>
 </head>
 <body>
 
-<div class="status">
-  <div class="wrap">
-    <b><s></s>Under Construction</b>
-    <span>Active infrastructure development in progress. Every surface on this site runs
-    live on one consumer GPU in production &mdash; be kind to it.</span>
-  </div>
-</div>
-
 <header>
   <div class="wrap bar">
     <a class="logo" href="/">

@@ -120,12 +120,19 @@ def build() -> str:
             cap = (f'<figcaption><q>{prompt}</q>'
                    f'<span>FLUX.1-schnell &middot; 4 steps &middot; seed {seed} &middot; {secs}s '
                    f'on an RTX&nbsp;5070&nbsp;Ti</span></figcaption>') if prompt else ""
+            # An <a> to the PNG, not a <figure>. At 38-59px the watermark printed into every
+            # render -- model, size, steps, seed, seconds -- is completely illegible, which
+            # defeats the reason the images are here: they are the proof, not the decoration.
+            # Clicking opens the full render. ui.js upgrades that to an overlay; with no
+            # JavaScript the link still works and shows the file itself.
             arts.append(
-                f'    <figure class="art" style="left:{x}%;top:{y}%;width:{w}px;'
-                f'transform:rotate({rot}deg)" title="{esc}">'
+                f'    <a class="art" href="/art-{src}.png" '
+                f'style="left:{x}%;top:{y}%;width:{w}px;transform:rotate({rot}deg)" '
+                f'title="{esc}" data-prompt="{esc}" data-seed="{seed}" data-secs="{secs}" '
+                f'aria-label="Open the full render: {esc}">'
                 f'<img src="/art-{src}.png" alt="{ALT.get(slug, "Rendered by SyMoNeuRaL Image")}, '
                 f'rendered by SyMoNeuRaL Image" loading="lazy" width="768" height="802">'
-                f'{cap}</figure>'
+                f'{cap}</a>'
             )
             # from the question anchor to the centre of the render
             lines.append(f'    <line x1="{c["qx"]}" y1="{c["qy"]}" x2="{x}" y2="{y}" />')
@@ -153,6 +160,7 @@ def build() -> str:
     <p class="band-foot">
       Every picture here was drawn by the image surface below &mdash; same card, same four
       steps you get, seed stamped on each one. Nothing is stock.
+      <b>Click any of them</b> to read the watermark.
     </p>
   </div>
 </div>

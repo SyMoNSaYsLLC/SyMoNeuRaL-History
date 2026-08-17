@@ -96,6 +96,28 @@ try {
          spill.join('; ') || 'clean');
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  // ---- the renders open large enough to read their watermark ---------------
+  // Each render carries a watermark naming the model, seed and wall-clock -- the claim the
+  // whole band makes. At 38-59px it is unreadable, and `.band-art` had pointer-events:none,
+  // which silently disabled every descendant: the hover caption never appeared either.
+  const lb = await page.evaluate(async () => {
+    const a = document.querySelector('.band a.art');
+    if (!a) return { ok: false, why: 'no .band a.art' };
+    if (getComputedStyle(a).pointerEvents === 'none') return { ok: false, why: 'pointer-events:none' };
+    a.click();
+    await new Promise(r => setTimeout(r, 300));
+    const box = document.querySelector('.lightbox.on');
+    if (!box) return { ok: false, why: 'lightbox did not open' };
+    const img = box.querySelector('img');
+    await new Promise(r => img.complete ? r() : img.addEventListener('load', r, { once: true }));
+    const w = img.getBoundingClientRect().width;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await new Promise(r => setTimeout(r, 200));
+    return { ok: img.naturalWidth >= 768 && w >= 400 && !document.querySelector('.lightbox.on'),
+             why: `natural ${img.naturalWidth}px, shown ${Math.round(w)}px, closed on Escape` };
+  });
+  record('a render opens large enough to read its watermark', lb.ok, lb.why);
+
   // ---- the receipts grid, and the order page it feeds ----------------------
   const cards = await page.$$eval('#more .card', els => els.map(e => ({
     tag: e.querySelector('.ctag')?.textContent.trim(),

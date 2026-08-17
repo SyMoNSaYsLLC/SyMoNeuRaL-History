@@ -974,12 +974,6 @@ app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
 
 
 DOCS_HEADER = """
-<div class="status">
-  <div class="wrap">
-    <b><s></s>Under Construction</b>
-    <span>Active infrastructure development in progress. This API runs on one consumer GPU.</span>
-  </div>
-</div>
 <header>
   <div class="wrap bar">
     <a class="logo" href="/">
