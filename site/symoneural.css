@@ -105,6 +105,8 @@
 
   /* ---------- sections ---------- */
   section{padding:70px 0; border-top:1px solid var(--line)}
+  /* the rack is the first thing under the hero -- pull it up to meet it */
+  #rack{padding-top:24px; border-top:none}
   .shead{
     margin:0 0 10px; font-size:12px; letter-spacing:.17em; text-transform:uppercase;
     color:var(--accent); font-weight:600; display:flex; align-items:center; gap:10px;
@@ -398,12 +400,18 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
 
-  /* vent grille -- the bit that reads as a real 1U face */
-  .vent{
-    height:22px; min-width:54px; border-radius:3px; align-self:center;
-    background:repeating-linear-gradient(90deg,#0b0d0c 0 2px,#171c19 2px 4px);
-    box-shadow:inset 0 0 4px rgba(0,0,0,.85);
+  /* bus plate. This slot used to hold a painted-on vent grille: it read as a 1U face
+     and told you nothing, which is the one thing this page is not allowed to do. It now
+     carries the unit's actual bus from /api/status -- GPU for the surfaces that queue
+     behind the card, CPU for RavenCalc, "--" when the box is unreachable. */
+  .ubus{
+    align-self:center; justify-self:end; padding:4px 8px; border-radius:4px;
+    border:1px solid #262e29; background:#0d100e;
+    font:650 10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+    letter-spacing:.12em; color:var(--faint);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04), inset 0 -1px 2px rgba(0,0,0,.6);
   }
+  .unit[data-state="offline"] .ubus{color:#3a443e}
 
   .ustate{
     display:flex; align-items:center; gap:9px; justify-self:end;
@@ -452,6 +460,19 @@
   .bar i{display:block; height:100%; background:linear-gradient(90deg,var(--accent-dim,#12a866),var(--accent));
     box-shadow:0 0 8px rgba(46,224,138,.55); transition:width .5s ease}
   .bar.warn i{background:linear-gradient(90deg,#b8792a,var(--amber)); box-shadow:0 0 8px rgba(255,171,61,.55)}
+
+  /* chassis identity. These are measured facts about the card, so they get the same
+     lit treatment as the gauge values rather than sitting flat in --faint. */
+  .chassis-id{flex:0 0 auto; min-width:0}
+  .cspec{
+    margin:0; font:12px/1.6 ui-monospace,Menlo,Consolas,monospace; color:var(--faint);
+  }
+  .cspec b{
+    font-weight:600; color:var(--accent); letter-spacing:.02em;
+    text-shadow:0 0 9px rgba(46,224,138,.35);
+  }
+  .cspec s{text-decoration:none; color:#2c352f; padding:0 2px}
+  .cspec span{color:var(--faint)}
 
   /* ==================== control console ====================
      Instrument modules. Each one declares where its number came from, because on this
@@ -647,3 +668,25 @@
   section:not(:has(> .wrap > details.fold)) + section:has(> .wrap > details.fold){
     padding-top:34px; border-top:1px solid var(--line);
   }
+
+/* ==================== rack on a phone ====================
+   .unit is a five-column grid (leds · power · name · bus · state). Below ~620px those
+   columns cannot all fit, and the 1fr name column was being squeezed until the bus
+   plate and the state text collided -- reported on a real phone, reproduced at 390px.
+   Reflow to two rows: identity on top, instruments beneath. */
+@media (max-width:620px){
+  .unit{
+    grid-template-columns:auto auto 1fr;
+    grid-template-areas:"leds pwr name" "state state state";
+    gap:10px 12px; padding:12px 13px;
+  }
+  .unit .leds{grid-area:leds}
+  .unit .pwr{grid-area:pwr}
+  .unit .uname{grid-area:name}
+  .unit .ustate{grid-area:state; justify-self:start; gap:8px}
+  /* the bus is already carried by the third LED (blue = cpu), so on a phone the
+     plate is redundant rather than informative. */
+  .unit .ubus{display:none}
+  .chassis{margin:12px 0 0; padding:14px 2px 3px; gap:16px}
+  .chassis-id{flex:1 1 100%}
+}

@@ -93,13 +93,16 @@
 .unit[data-state="busy"] .pwr{--ring:rgba(255,171,61,.26)}
 .pwr svg{filter:drop-shadow(0 0 3px currentColor)}
 
-/* vent: lit top edge, shadowed floor, so the slats read as actual depth */
-.vent{
-  background:
-    linear-gradient(180deg, rgba(0,0,0,.55), transparent 20%, transparent 80%, rgba(0,0,0,.5)),
-    repeating-linear-gradient(90deg,#0b0d0c 0 2px, rgba(242,246,243,.05) 2px 2.4px,#171c19 2.4px 4px);
-  box-shadow:inset 0 0 4px rgba(0,0,0,.85), inset 0 1px 0 rgba(242,246,243,.05);
+/* bus plate: stamped, not printed -- a lit top bevel and a shadowed floor, matching
+   the engraved slot plate beside it. The slat grille that used to sit here was the
+   only element on the rack that carried no reading. */
+.ubus{
+  background:linear-gradient(180deg,#141916,#0b0d0c);
+  box-shadow:inset 0 1px 0 rgba(242,246,243,.07), inset 0 -2px 3px rgba(0,0,0,.75),
+             0 1px 0 rgba(0,0,0,.5);
 }
+.unit[data-state="ready"] .ubus{color:#6f8478}
+.unit[data-state="busy"]  .ubus{color:var(--amber); border-color:#5c4a2a}
 
 /* ---------- LED bloom ----------
    A real indicator has a bright lens core, a tight halo and a wide weak

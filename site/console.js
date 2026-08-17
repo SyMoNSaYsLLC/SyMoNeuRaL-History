@@ -51,7 +51,7 @@
         '<span class="pwr">' + POWER + '</span>' +
         '<span class="uname"><b>' + u.label + '</b><span>' + u.spec +
           ' &middot; ' + u.detail + '</span></span>' +
-        '<span class="vent"></span>' +
+        '<span class="ubus">' + (u.bus === 'cpu' ? 'CPU' : 'GPU') + '</span>' +
         '<span class="ustate"><span class="txt">' + (WORDS[u.state] || u.state) + '</span>' +
           '<span class="slot">' + u.slot + '</span></span>' +
         '<span class="scan"><i></i></span></a>';
@@ -136,7 +136,7 @@
         '<span class="pwr">' + POWER + '</span>' +
         '<span class="uname"><b>Stack powered down</b><span>' + reason +
         ' &mdash; the rest of the site is unaffected</span></span>' +
-        '<span class="vent"></span>' +
+        '<span class="ubus">--</span>' +
         '<span class="ustate"><span class="txt">offline</span><span class="slot">--</span></span>' +
         '</div>';
     }
