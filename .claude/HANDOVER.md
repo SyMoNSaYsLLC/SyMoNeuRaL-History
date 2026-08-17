@@ -268,6 +268,81 @@ fails on `vram="" temp=""`. A panel that renders and never receives data is prec
 decorative gauge this site argues against, and it is indistinguishable from a working one in
 a screenshot.
 
+## 2f. Third session tail — type scale, chat rebuild, and two open design questions
+
+### The type scale came down a step (global, affects every page)
+
+Garrett put the site beside ESPN and claude.ai: our body was **16px** where ESPN runs 13–14
+and Claude's sidebar is 13; h1 was 44.6px, h2 29. Everything was one step larger than the
+sites it sits next to, which reads as zoomed in.
+
+**Every type value was scaled by 0.88** — `font-size`, the `font:` shorthand, and the
+`clamp()` heading values. Body is now 14.1px, h1 41.4, h2 25.5, nav 12.3. **Only values at
+or above 13px were touched**: the 10.5/11.5px mono labels were already at the readability
+limit and scaling them would have hit 9px. Verified after — smallest rendered text across
+five pages is still 10–10.5px, because those rules were skipped rather than shrunk.
+
+Side effect worth knowing: the rack moved from 759px to **713px** down the viewport, so the
+"pitch, hero and rack fit one look" requirement is met with more room than before.
+
+### The chat page was rebuilt (§5 item 7, done)
+
+Rail + conversation history + document attach + multi-turn. `docs/specs/chat-spec.md` was
+the input and both of its documented traps were real and avoided.
+
+- **Conversations live in the browser.** No history endpoint, no conversation id on the
+  server. The transcript is replayed to `/api/chat` each turn; the client caps at 19 to
+  match the server's 20, so a long chat is trimmed client-side rather than refused.
+- **`/api/chat` gained `history`** — a list of `{role, content}` turns. `role` is
+  `Literal["user","assistant"]`, so a client **cannot inject a `system` turn** and override
+  the trained persona and refusals. That is deliberate, not incidental.
+- **Attach is text-only, and this is a hardware fact rather than a choice.**
+  `Qwen2.5-7B-Instruct` has **no vision projector** — verified, there is no mmproj in
+  `backend/models/`. It cannot see an image. An image picker would be a control that can
+  never work. If image chat is ever wanted it needs a VLM downloaded, and chat and image
+  weights already cannot co-reside in 15.92 GiB.
+
+### THE ESCAPING BUG, which has now bitten twice
+
+`TUNER_JS` and `CHAT_JS` are **normal triple-quoted Python strings, not raw**. A `\n`
+written in the source becomes a REAL newline in the emitted JavaScript — inside a string
+literal, which leaves it unterminated and kills the entire page's script. It shipped to
+production once on `tuner.html`, and the suite passed 22/22 while the page was dead, because
+every assertion checked markup, CSS and endpoints and none of those care whether the script
+runs.
+
+**If you add or edit inline JS in `tools/build_pages.py`, write `\\n`, not `\n`.** The
+`no page throws a script error` assertion now loads all twelve pages and fails on any
+`pageerror`; it caught the same bug in `CHAT_JS` before that one shipped.
+
+## 2g. Two open design questions Garrett raised (NOT decided, NOT built)
+
+**1. A no-scroll front page.** His words: *"i really like the no scroll sites maybe we could
+do that but links/tabs would have to be perfect."* Worth taking seriously — the front page is
+already close, with the rack at 713/1000 after the type change. Considerations before anyone
+builds it: the site's argument rests on showing measured detail, so no-scroll means folding
+most of it behind tabs (legitimate — §4 allows folding, forbids *dropping*); it is much
+harder at 390px, and most real no-scroll sites still scroll on mobile; and it tends to break
+at 200% browser zoom, which is an accessibility regression. `site/ui.js` already implements
+`.tab[role="tab"]` with proper roles, so the tab machinery exists. **Recommend: no-scroll on
+desktop, scroll on mobile.**
+
+**2. A site-development agent, access-controlled.** His words: *"i want to be able to somehow
+integrate site development agent but we have to be careful to only give me that maybe by the
+seat — only thing with seat is i use xrdp also for this."*
+
+The security shape matters more than the licensing shape. **An agent that can develop the
+site is arbitrary code execution on the box that serves the public internet.** It must never
+be reachable from a visitor-facing route, and "behind a password" is not sufficient on its
+own for that capability.
+
+His xrdp habit is actually the *safest* answer rather than a complication: an agent that runs
+inside his desktop session is local-only and never exposed on `:8800` or through Caddy at
+all — no route, no token to leak, no rate limit to get wrong. Per-seat licensing is a
+separate question from access control and should not be conflated with it; the `licensing/`
+module already issues signed contract keys and could gate a seat, but that gates *use*, not
+*reach*.
+
 ## 2d. The dev fee — `backend/apps/licensing/`
 
 Garrett set the standard rate at **2.5% (250 bps)**, matching Braiins' headline. Modelled on
