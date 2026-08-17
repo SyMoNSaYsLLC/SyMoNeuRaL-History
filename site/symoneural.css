@@ -1688,4 +1688,50 @@
     justify-content:safe center; padding-top:18px; padding-bottom:18px}
   html.ns footer{padding:10px 0}
   html.ns .foot{font-size:11.5px}
+
+  /* ---- making the other three panels fit, by spending width -----------------
+     Every panel is a single-column stack inside a 1064px `.wrap`, which is correct for a
+     scrolling page and wrong for a one-screen one: at 1440-1920px there is 400-850px of
+     unused horizontal room and not one spare vertical pixel. So the panels go full-bleed
+     and their grids get more columns. NOTHING IS REMOVED OR TRUNCATED -- the same 8 units,
+     19 modules and 8 receipts are on screen, laid out wider instead of taller.
+     The budget is the tightest in-gate viewport: 740 - 156 = 584px. */
+  html.ns #rack > .wrap,html.ns #console > .wrap,html.ns #more > .wrap,
+  html.ns .rackrow{max-width:none; padding-inline:clamp(20px,2.4vw,44px)}
+
+  /* The section heading costs 100-134px of a 584px budget. The lede moves up beside the
+     title instead of under it -- same words, fewer rows. It is NOT a grid on the wrap:
+     #console and #more keep their whole contents in one `.wrap`, so gridding it puts the
+     control board itself in a narrow column and takes it from 1,043px to 3,553px tall.
+     Measured, after I did exactly that. Only the three heading elements are touched. */
+  html.ns :is(#rack,#console,#more) > .wrap > .shead{margin-bottom:0}
+  html.ns :is(#rack,#console,#more) > .wrap > h2{
+    display:inline; margin:0; vertical-align:baseline;
+  }
+  html.ns :is(#rack,#console,#more) > .wrap > .sub{
+    display:inline; margin:0 0 0 14px; max-width:none; vertical-align:baseline;
+  }
+  /* h2 and .sub are inline, so the run of text needs a gap after it before the content
+     below. Only the .sub pseudo-element does that -- an `h2::after` with empty content
+     and display:inline generates no box at all, and a dead rule that looks load-bearing
+     is worse than no rule. */
+  html.ns :is(#rack,#console,#more) > .wrap > .sub::after{
+    content:""; display:block; height:14px;
+  }
+
+  /* NO TWO-COLUMN RACK. It looks like the obvious win -- eight units at 76px stack to
+     611px, so two columns ought to halve it -- and it does the opposite, because a unit
+     row is a HORIZONTAL layout: name and attribution on the left, badges pushed right.
+     Halve its width and the attribution wraps to three lines. Measured: units went 76px
+     -> 178px each at 1440 (611 -> 775 total) and -> 403px each at 1301 (611 -> 2,696).
+     The unit row needs width; it is the one thing here that must not be narrowed. */
+
+  /* The control board: 19 modules at six columns is four rows. auto-fit takes it to three
+     rows on any in-gate width and to two on a wide monitor. */
+  html.ns .console{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+
+  /* The receipts: eight cards, and the minimum is set so all eight reach ONE row on a wide
+     screen. At minmax(228px,...) a 1855px window fitted seven, putting one card on a
+     second row and overflowing the panel by 15px -- the whole 191px row for one card. */
+  html.ns .cards{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 }
