@@ -1470,15 +1470,32 @@ that put nineteen full-size renders down the left of the live page.
 node tests/frontend.mjs                          # local API on :8800
 node tests/frontend.mjs https://symoneural.com   # production
 ```
-**Measured 2026-08-17 ~14:15 — the suite is 26 assertions now, not 18, and the two runs
-disagree:** local **26/26**, production **25/26**. The one production failure is
-`each section has its own URL, carrying only itself, fitting one screen`: `/livestack`
-content overflows its panel by 3px at 1855×745 (595/592) and by **32px at 1301×740**
-(619/587). It passes locally at 589/589, and production is serving
-`symoneural.css?v=5d6297cfb8` while the working tree is at `?v=3c8fa4fd4c`. So this is
-almost certainly the §3.0 chassis-strip fix sitting undeployed rather than a new
-regression — but that last clause is inferred, not measured. `sudo scripts/deploy.sh
---prune` needs Garrett's password; no agent can close it.
+**Measured 2026-08-17 — the suite is 26 assertions now, not 18. Local 26/26 and production
+26/26, verified at 14:04 after the 14:01:05 deploy.**
+
+Worth keeping, because it is the clearest example in this file of §7's "they judge the
+deployed site" and of how fast that judgement goes stale. Before that deploy, production was
+**25/26**: `each section has its own URL, carrying only itself, fitting one screen` failed
+because `/livestack` content overflowed its panel by 3px at 1855×745 (595/592) and by **32px
+at 1301×740** (619/587), while local passed at 589/589. The diagnosis was the cachebust
+stamp — production on `symoneural.css?v=5d6297cfb8` against a working tree at
+`?v=3c8fa4fd4c` — so it was the §3.0 chassis-strip fix sitting undeployed, not a
+regression. Confirmed by the deploy closing it: production now measures 589/589 and 587/587,
+identical to local.
+
+**The check that resolves this class in one line, and the order to do it in.** The webroot is
+world-readable, so you never have to guess and you never need sudo to find out:
+
+```bash
+for f in site/*.html site/*.css site/*.js; do
+  cmp -s "$f" "/var/www/symoneural/$(basename "$f")" || echo "DIFFERS $(basename "$f")"
+done
+```
+
+Silence means the webroot is current and a failing assertion is a real defect. Do that
+**before** concluding anything from a production run — and re-check it after, because a
+concurrent session can deploy while your suite is still running, which is exactly what
+happened here.
 
 Also seen on **both** runs and **not** a failure: four `400`/`404` lines for
 `/api/tuner/{playlist,xtream/channels,tune,session/__probe__}` in the trailing
