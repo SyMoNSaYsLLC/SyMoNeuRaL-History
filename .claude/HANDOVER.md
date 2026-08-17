@@ -269,8 +269,15 @@ path (the `/overview /livestack /controlboard /receipts` class) costs four files
   in a 1277px panel. All three fixed in `site/symoneural.css` (which is **not** generator-written,
   so it is safe to edit by hand). Both browser suites re-run green afterwards: `frontend.mjs`
   26/26, `tuner_failpaths.mjs` 23/23.
-- **Verify every link works.** `scripts/deploy.sh` has a reference check; the browser suite can
-  walk them.
+- **Verify every link works. DONE, and it is now a command rather than an audit:**
+  `python3 tools/check_links.py` — 20 pages, 912 links, 282 unique targets, **clean**, exit 1 if
+  not (re-run 14:58, after `site/reinforce.html` and `site/tuner-watch.html` appeared). One real
+  break existed and is fixed in `b5f4e4f`: the masthead's `See it running` pointed at `#rack`,
+  which does not exist on `/overview` since the page split — and `/` 302s there, so it was dead
+  on the page nearly every visitor reads. Two false positives are guarded in the script and
+  documented in its docstring, because both cost time: `data-src="live"` is not a link (a bare
+  `(href|src)=` regex matches the tail of `data-src`), and `documentation.html#hardware` is a
+  file *plus* an anchor, so both halves need checking — that second one is what found the break.
 - **Fix grammar, capitalisation, and sentences that do not make sense.** Sweep, do not
   blind-replace — most `MIT` matches in this corpus are ordinary words.
 - **`SYM_ASIC_ENABLED=1` is confusing on the QEMU Antminer emulators.** His words. **DONE in
