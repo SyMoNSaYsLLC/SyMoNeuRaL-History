@@ -21,7 +21,24 @@ more. What changed, against §7's own numbering:
 | 6 | frontend assertion | **done** — two, in `tests/frontend.mjs`; both verified to go red when broken |
 | 8 (a) | draft the Solidity | **done** — `ops/gateway/contracts/`, compiled AND executed, 17/17 |
 | 7, 8 (b), 8b, 9 | keypair, deployment, page redeploy, service env | **not done — yours.** `ops/gateway/DEPLOY.md` is the procedure |
-| 10–13 | the daemon, gating, key exchange, `ready` | **not started, correctly.** Still gated on the decision in §7 phase 3 |
+| 10, 11 | the off-chain verifier, and gating that actually gates | **done** — `backend/apps/settlement/`, 47 tests. Every fail-closed case was verified to go red with the bug put back |
+| 12 | key exchange, or an explicit decision not to do DRM | **decided** — payment rail, not DRM, per the review's own recommendation. Written into `settlement/__init__.py`, `ops/gateway/DEPLOY.md` and the page |
+| 13 | `ready` | **reachable, and correctly not reached.** `unit_state` can now return it, through exactly one route: a settlement recorded against the configured network *and* contract. None has ever settled, so the rack reads `offline` |
+| — | a payment path a real person can complete | **not built.** Quoting is a CLI invocation; a buyer needs a page. This is now the only engineering left before `ready` |
+| 7, 8 (b), 8b, 9 | keypair, deployment, page redeploy, service env | **not done — yours** |
+
+**§7 phase 3 said "do NOT start until the fail-open question is resolved". It is resolved, in
+writing, which is what unblocked 10–13.** The gate was never that the work was hard; it was
+that starting it without an answer would have baked an unexamined authorization model into the
+product. The answer is the one the review recommended, it is recorded in three places, and it
+is cheap to reverse — one docstring, one page paragraph, no code.
+
+**A correction to this document's own framing.** The heading above says "every agent-doable
+item is done", and §7 marks 10–13 as **(c)**, blocked. That reading put the surface's
+completion behind a keypair and two `sudo` commands, and it was wrong: `unit_state`'s first
+condition for `ready` is a daemon that exists, and none did. Garrett with a mainnet key and
+full root still could not have made this surface honestly green. The blocker was code, and
+code is the agent-doable kind.
 
 **Two gaps this spec did not anticipate, both now closed:**
 

@@ -271,26 +271,47 @@ published anywhere, which is as close to "quoted, not published" as a public led
 The rack's `ready` means one thing across every unit: *this surface will do its job if you
 click it.* For the Gateway that means a visitor can obtain a licence. Phase C does not deliver
 that, and lighting the LED on a deployed contract would be the decorative indicator
-`.claude/CLAUDE.md` forbids. Still missing:
+`.claude/CLAUDE.md` forbids.
 
-1. **The off-chain daemon** — the approval pause and the log hashing the page describes.
-2. **A payment path a real person can complete**, not a CLI invocation.
-3. **An unlock that actually gates something** — and this is the open question, not a task.
-   `docs/specs/symon-ml-review.md` finding 2: a blockchain is public, so a decryption key
-   cannot live in it; if a server we run hands out the key, that server is the licence
-   authority and the chain is a payment rail rather than a moat.
-4. **One complete round trip**, exercised end to end at least once.
+**Two of the four are now built.** `backend/apps/settlement/` verifies a settlement — payer,
+token, amount and workspace, fail-closed — and issues a short-lived Ed25519 entitlement for it.
+`python3 -m apps.settlement` walks the whole round trip and prints each step.
 
-**The review's own recommendation is worth taking as the answer rather than a fallback: keep
-the at-rest encryption, treat the chain as a payment rail, and describe both as exactly that.**
-A payment rail is a good product. A DRM claim we cannot back is the thing this site exists to
-argue against.
+| | | |
+|---|---|---|
+| 1 | **The off-chain verifier** | **done** — `apps/settlement/`, 47 tests, each fail-closed case verified to go red with the bug put back |
+| 2 | **The unlock decision** | **answered** — payment rail, not DRM; see below |
+| 3 | **A payment path a real person can complete** | not built. Quoting is a CLI invocation today (`gateway-cli.py quote`); a buyer needs a page |
+| 4 | **One complete round trip against a real chain** | not done, and cannot be until Phase B deploys something |
 
-There is a neat fit available if that answer is taken, and it needs no new cryptography:
-`backend/apps/licensing/` already mints Ed25519-signed contract keys that a rig verifies
-**offline**, so a confirmed payment could mint one. That closes the loop without ever putting a
-secret on chain. It also needs the licensing signing key regenerated first
-(`.claude/HANDOVER.md` §5 item 0) — another of yours.
+Item 3 is now the only *engineering* left, and it is small next to what it sits on. Item 4 is
+not engineering at all — it needs a deployed contract and somebody to buy something.
 
-**That decision is the last thing standing between this surface and `ready`. It is not an
-agent's to make.**
+### The decision, taken
+
+Finding 2 is answered the way the review itself recommended: **keep the at-rest encryption,
+treat the chain as a payment rail, and describe both as exactly that.** A blockchain is public,
+so a key placed in it is published to everyone; every arrangement that actually withholds one
+puts a server we run in the loop, which makes that server the authority. A payment rail is a
+good product — final, auditable, no card processor — and a DRM claim we cannot back is the
+thing this site exists to argue against. `site/gateway.html` now says so in those words.
+
+Reverse it if you disagree; it is one docstring, one page paragraph and no code. But it is
+written down and acted on rather than left open, which is what was blocking items 10–13.
+
+### The signing key is still yours
+
+`apps/settlement/entitlement.py` needs an Ed25519 authority key to mint with. Generating it is
+the same class of decision as the TRON key in Phase A — a company artefact with an owner — and
+`.claude/HANDOVER.md` §5 item 0 sets the precedent. **The serving process only ever needs the
+public half**, and the code is built so it cannot use anything else: `entitlement.verify` takes
+a public key and there is no code path in the web process that can reach a private one.
+
+### Why the rack still reads `offline` here, and what changes that
+
+`unit_state` can now return `ready`, through exactly one route: a settlement recorded against
+the configured network *and* the configured contract address. Not a flag, not a config file —
+`_cleared` reads the clearance store, and an operator who could turn the light green by editing
+a setting would have a decorative indicator. No settlement has ever been recorded, so the
+answer is `offline`, and it will stay `offline` through Phases A–C. **Phase D, or a Nile
+purchase, is what turns it green — and it will do so on its own, with no further code.**
