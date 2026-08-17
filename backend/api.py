@@ -5,7 +5,7 @@ Four surfaces, and they are not alike:
 
     POST /api/chat    GPU. Proxied to llama-server, streamed token by token.
     POST /api/image   GPU. Evicts chat, runs stable-diffusion.cpp, returns a PNG url.
-    POST /api/calc    CPU. RavenCalc/SymPy. Exact, and never queues behind anything.
+    POST /api/ravencalc  CPU. RavenCalc/SymPy. Exact, and never queues behind anything.
     POST /api/remix   GPU indirectly -- a client of the chat surface, not its own tenant.
     GET  /api/status  Per-unit state for the rack display on the home page.
 
@@ -64,7 +64,7 @@ assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found a
 RUN = ROOT / "run"
 RUN.mkdir(exist_ok=True)
 # RavenCalc is an app, not a helper module: 648 self-contained lines whose only
-# dependency is sympy. It lives in backend/apps/calc/ alongside the other surfaces
+# dependency is sympy. It lives in backend/apps/ravencalc/ alongside the other surfaces
 # rather than loose in backend/, which is where it sat purely because it was written
 # before there was an apps/ directory to put it in.
 sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
@@ -121,7 +121,7 @@ JOB_TIMEOUT_S = 180
 #
 #                    per-minute, per-hour
 LIMITS = {
-    "calc":  (240, 6000),   # CPU only, never queues, ~0.1 s -- effectively "go ahead"
+    "ravencalc": (240, 6000),   # CPU only, never queues, ~0.1 s -- effectively "go ahead"
     "chat":  (120, 2000),   # ~1-3 s of GPU, and the queue is the real backstop
     "remix": (40,  600),    # a longer generation, one per few seconds is already plenty
     "image": (20,  300),    # ~9 s of exclusive GPU each; 20/min from one IP is already
@@ -788,7 +788,7 @@ async def anticipate(prompt: str) -> dict | None:
         return None
     result["_anticipated_ms"] = round((time.time() - started) * 1000, 1)
     result["_operation"] = operation
-    await bus.announce("calc", "anticipated", operation=operation,
+    await bus.announce("ravencalc", "anticipated", operation=operation,
                        expression=expression, ms=result["_anticipated_ms"])
     log.info("anticipated %s(%s) in %sms", operation, expression, result["_anticipated_ms"])
     return result
@@ -990,7 +990,7 @@ DOCS_HEADER = """
     <nav>
       <a class="live" href="/chat.html"><s></s>Talk to the box</a>
       <a class="live" href="/image.html"><s></s>Make it draw</a>
-      <a href="/calc.html">RavenCalc</a>
+      <a href="/ravencalc.html">RavenCalc</a>
       <a href="/#rack">Stack</a>
       <a class="cta ghost" href="/openapi.json">openapi.json</a>
     </nav>
@@ -1035,7 +1035,7 @@ DOCS_HEADER = """
       <code style="color:var(--dim)">bus</code> (an agent announcing what it did).
       Client may send <code style="color:var(--dim)">ping</code>,
       <code style="color:var(--dim)">rack</code>,
-      <code style="color:var(--dim)">chat</code>, <code style="color:var(--dim)">calc</code>,
+      <code style="color:var(--dim)">chat</code>, <code style="color:var(--dim)">ravencalc</code>,
       <code style="color:var(--dim)">remix</code> &mdash; rate limited exactly like the REST
       routes, because holding a socket open is not a way around the caps.
     </p>
@@ -1136,8 +1136,8 @@ def build_status() -> Status:
             Unit(id="remix", label="SyMoNeuRaL Remix", slot="1U",
                  state=gpu_unit("remix", chat_ok), bus="gpu", href="/remix.html",
                  spec="client of the chat surface", detail="no weights of its own"),
-            Unit(id="calc", label="SyMoNeuRaL RavenCalc", slot="1U", state="ready",
-                 bus="cpu", href="/calc.html", spec="SymPy, exact symbolic",
+            Unit(id="ravencalc", label="SyMoNeuRaL RavenCalc", slot="1U", state="ready",
+                 bus="cpu", href="/ravencalc.html", spec="SymPy, exact symbolic",
                  detail="cpu only, never queues"),
             # The adapter bay. Idle most of the time, but when a fine-tune is running it
             # owns the card outright and every serving surface waits behind it -- so it
@@ -1234,7 +1234,7 @@ async def websocket(ws: WebSocket) -> None:
     try:
         await ws.send_text(json.dumps({
             "t": "welcome", "proto": 1,
-            "caps": ["rack", "chat", "calc", "remix", "ping"],
+            "caps": ["rack", "chat", "ravencalc", "remix", "ping"],
             "limits": {"prompt_chars": MAX_PROMPT_CHARS, "per_min": RATE_PER_MIN,
                        "per_hour": RATE_PER_HOUR, "queue_depth": QUEUE_DEPTH},
             "note": "One GPU. chat/image/remix take turns; calc never queues.",
@@ -1280,7 +1280,7 @@ async def websocket(ws: WebSocket) -> None:
 
             if kind == "chat":
                 await ws_chat(ws, msg)
-            elif kind == "calc":
+            elif kind == "ravencalc":
                 await ws_calc(ws, msg)
             elif kind == "remix":
                 await ws_remix(ws, msg)
@@ -1501,9 +1501,9 @@ async def gen(name: str) -> FileResponse:
     return FileResponse(path, media_type="image/png",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
-@app.post("/api/calc", tags=["surfaces"])
+@app.post("/api/ravencalc", tags=["surfaces"])
 async def calc(body: CalcRequest,
-                _: Annotated[None, Depends(throttled_for("calc"))]) -> dict:
+                _: Annotated[None, Depends(throttled_for("ravencalc"))]) -> dict:
     """Exact symbolic mathematics. No GPU, no lock, no queue.
 
     Returns a `ravencalc/result/v1` document. Note `check`: where verification is cheap the

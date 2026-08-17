@@ -25,7 +25,28 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 [ -d "$SRC" ] || { echo "no staged site at $SRC" >&2; exit 1; }
 [ -d "$DST" ] || { echo "no webroot at $DST" >&2; exit 1; }
 
-echo "staged:  $SRC  ($(find "$SRC" -maxdepth 1 -type f | wc -l) files)"
+# Only real web assets are published. `find -type f` used to publish whatever happened to
+# be sitting in site/, and what was sitting in site/ was an 11.6 MB browser "Save page as"
+# capture of the site plus its PDF print -- dropped there to show what a broken deploy
+# looked like. Those would have gone straight into the public webroot. The staging
+# directory is a working directory; the webroot is not.
+#
+# .json is deliberately absent. The only .json a page could want is /openapi.json, and Caddy
+# proxies that to FastAPI, which generates it -- a static copy would be shadowed and go
+# stale. The other twenty are art-*.json, build-time metadata that tools/build_band.py reads
+# to print each prompt into the page; nothing fetches them. Both are already handled: the
+# reference check below treats openapi.json as a route, and no page links an art-*.json.
+#
+# Alternatives are ordered longest-first where one is a prefix of another. `js` before
+# `json` silently dropped every .json file: find's -regex must match the whole path, `js`
+# matched, the trailing `on` did not, and it did not back up to try `json`.
+PUBLISH='.*\.\(html\|css\|jpeg\|jpg\|js\|png\|svg\|ico\|webp\|woff2\|txt\|xml\)'
+skipped="$(find "$SRC" -maxdepth 1 -type f ! -regex "$PUBLISH" -printf '%f\n' | sort)"
+echo "staged:  $SRC  ($(find "$SRC" -maxdepth 1 -type f -regex "$PUBLISH" | wc -l) files)"
+if [ -n "$skipped" ]; then
+  echo "skipped: not a web asset --"
+  printf '  %s\n' $skipped
+fi
 
 if [ -f "$DST/index.html" ]; then
   cp -p "$DST/index.html" "$DST/index.prev-$STAMP.html"
@@ -33,7 +54,8 @@ if [ -f "$DST/index.html" ]; then
 fi
 
 # Top-level files.
-find "$SRC" -maxdepth 1 -type f -exec install -o www-data -g www-data -m 644 {} "$DST/" \;
+find "$SRC" -maxdepth 1 -type f -regex "$PUBLISH" \
+  -exec install -o www-data -g www-data -m 644 {} "$DST/" \;
 
 # There is deliberately no /docs case here any more. Caddy proxies /docs and /openapi.json
 # to FastAPI, which generates them, so a static copy in the webroot would be shadowed by the

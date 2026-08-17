@@ -481,7 +481,7 @@ form.addEventListener('submit', async e => {
   try {
     const payload = {expression, operation: op.value, variable: $('#var').value.trim()};
     if (op.value === 'limit') payload.point = $('#pt').value.trim();
-    const r = await api('/api/calc', payload);
+    const r = await api('/api/ravencalc', payload);
     const c = r.check || {};
     const verdict = c.performed
       ? (c.passed === true ? '<span class="v">verified</span>'
@@ -606,7 +606,7 @@ def main() -> int:
               "Every image below prints the wall-clock it actually took.",
          body=IMAGE_BODY, script=IMAGE_JS)
 
-    page("calc.html",
+    page("ravencalc.html",
          title="SyMoNeuRaL RavenCalc — exact mathematics",
          desc="SymPy-powered symbolic computation that checks its own work.",
          icon="/calc-64.png", eyebrow="Live surface · CPU",

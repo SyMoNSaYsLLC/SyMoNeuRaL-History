@@ -33,7 +33,7 @@ sudo systemctl restart symoneural-api
 sudo /home/google/Symoneural/scripts/deploy.sh --prune
 ```
 
-`https://symoneural.com/api/calc` currently returns `RavenCalc is unavailable.` The
+`https://symoneural.com/api/ravencalc` currently returns `RavenCalc is unavailable.` The
 service has been running since 00:19, and `ravencalc.py` moved to
 `backend/apps/ravencalc/` after that — so the process is holding a `sys.path` that no
 longer points anywhere. The code on disk is correct: a fresh container returns exact
@@ -301,7 +301,7 @@ to start.
       they are the first two customers of it.
 
     URL shape already matches: Backstage mounts plugins at `/api/<pluginId>`, and this API
-    already serves `/api/chat`, `/api/image`, `/api/calc`.
+    already serves `/api/chat`, `/api/image`, `/api/ravencalc`.
 
     **Take the boundary, not the ceremony.** Backstage's extension points, alpha service
     refs and DI container earn their keep across dozens of plugins and many teams. This is

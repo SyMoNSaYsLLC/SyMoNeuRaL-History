@@ -44,3 +44,13 @@ __MACOSX/
 # Everything here is somebody else's code or a saved document kept for reference.
 # ~8.5 GB, none of it ours, none of it tracked.
 /references
+
+# ---- Browser "Save page as" captures ----
+# site/ is a staging directory that deploy.sh publishes wholesale. An 11.6 MB .mhtml and
+# its .pdf print were saved into it to show a broken deploy, and a `git add -A` put both in
+# a commit. deploy.sh now filters by extension; this keeps them out of the repo as well.
+site/*.mhtml
+site/*.pdf
+
+# the snapshots moved out of site/ -- keep them on disk, not in the repo
+docs/archive/site-snapshot-*/

@@ -5,7 +5,7 @@ Three surfaces share one workstation, and they do not share it equally:
 
     chat    llama.cpp + Qwen2.5-14B Q4_K_M     ~9 GB of VRAM, needs the card
     image   stable-diffusion.cpp + FLUX.1-schnell q4_k   ~7 GB, needs the card
-    calc    ravencalc + sympy                  exact, CPU only, needs nothing
+    ravencalc   sympy, exact symbolic          CPU only, needs nothing
 
 The first two cannot be resident at the same time in 15.92 GiB, so every GPU
 operation here goes through the governor, which serialises them and -- more
@@ -120,7 +120,7 @@ def cmd_status(_args) -> int:
     sdb = sd_binary()
     print(f"{c('image', DIM)}  {'built' if sdb else c('not built', AMBER)}"
           f"   {'weights present' if FLUX_UNET.exists() else c('weights missing', AMBER)}")
-    print(f"{c('calc', DIM)}   always available {c('(cpu, no gpu, never queues)', DIM)}")
+    print(f"{c('ravencalc', DIM)}   always available {c('(cpu, no gpu, never queues)', DIM)}")
     return 0
 
 
@@ -276,10 +276,10 @@ def cmd_image(args) -> int:
 
 
 # --------------------------------------------------------------------------
-# calc -- no GPU, no lock, no queue
+# ravencalc -- no GPU, no lock, no queue
 # --------------------------------------------------------------------------
 
-def cmd_calc(args) -> int:
+def cmd_ravencalc(args) -> int:
     sys.path.insert(0, str(ROOT / "backend" / "apps" / "ravencalc"))
     try:
         import ravencalc
@@ -343,14 +343,14 @@ def main() -> int:
     p.add_argument("--clip-on-cpu", action="store_true", default=True)
     p.set_defaults(fn=cmd_image)
 
-    p = sub.add_parser("calc", help="exact mathematics (cpu, never queues)")
+    p = sub.add_parser("ravencalc", help="exact mathematics (cpu, never queues)")
     p.add_argument("operation", choices=sorted(
         ("differentiate", "integrate", "limit", "series", "solve", "simplify", "evaluate")))
     p.add_argument("expression")
     p.add_argument("-v", "--variable")
     p.add_argument("--point")
     p.add_argument("--json", action="store_true")
-    p.set_defaults(fn=cmd_calc)
+    p.set_defaults(fn=cmd_ravencalc)
 
     sub.add_parser("_stop-chat").set_defaults(fn=cmd_stop_chat)
 

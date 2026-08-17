@@ -123,17 +123,17 @@ try {
          unstamped.join(', ') || 'all stamped');
 
   // ---- calc ----------------------------------------------------------------
-  await page.goto(BASE + '/calc.html', { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/ravencalc.html', { waitUntil: 'networkidle' });
   const calcBox = await page.$('input[type=text], textarea');
   if (calcBox) {
     await calcBox.fill('integrate(x**2, x)');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(4000);
     const txt = await page.evaluate(() => document.body.innerText);
-    record('calc renders an exact result', /x\*\*3\/3|x\^{3}|frac/.test(txt),
+    record('ravencalc renders an exact result', /x\*\*3\/3|x\^{3}|frac/.test(txt),
            txt.match(/x\*\*3\/3/)?.[0] || 'see page');
   } else {
-    record('calc input found', false, 'no input on /calc.html');
+    record('ravencalc input found', false, 'no input on /ravencalc.html');
   }
 
   // ---- image: the one that was broken --------------------------------------

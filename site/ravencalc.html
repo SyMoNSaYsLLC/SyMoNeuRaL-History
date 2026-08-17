@@ -186,7 +186,7 @@ form.addEventListener('submit', async e => {
   try {
     const payload = {expression, operation: op.value, variable: $('#var').value.trim()};
     if (op.value === 'limit') payload.point = $('#pt').value.trim();
-    const r = await api('/api/calc', payload);
+    const r = await api('/api/ravencalc', payload);
     const c = r.check || {};
     const verdict = c.performed
       ? (c.passed === true ? '<span class="v">verified</span>'
