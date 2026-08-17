@@ -18,22 +18,36 @@ and nowhere earlier.
 ## Phase 0 — get this work into your checkout *(nothing below exists there yet)*
 
 All of it — `ops/gateway/`, `backend/apps/gateway/__main__.py`, the contracts, the two new
-frontend assertions — is on the branch **`worktree-gateway-online`**, commit `15ac0cf`. In your
-working checkout `ops/gateway/setup.sh` is still a missing file, so Phase A step 1 fails until
-you do this. The branch lives in the shared `.git`, so it survives the worktree being removed.
+frontend assertions — is on the branch **`worktree-gateway-online`**, currently through
+`7ac0881` (it starts at `15ac0cf`). In your working checkout `ops/gateway/setup.sh` is still a
+missing file, so Phase A step 1 fails until you do this. The branch lives in the shared `.git`,
+so it survives the worktree being removed.
+
+**Take the branch, not a single commit.** Cherry-picking `15ac0cf` alone silently drops
+everything in `7ac0881` — the low-s signing guard, the coincurve pin, the `isLicensed`
+pre-mainnet decision below, and this section.
 
 ```bash
 cd /home/google/Symoneural
-git merge worktree-gateway-online          # or cherry-pick 15ac0cf
+git status                                 # FIRST -- see the next paragraph
+git merge worktree-gateway-online
 python3 tools/build_pages.py               # re-run: build_pages.py moved under me once already
 python3 tools/build_cachebust.py           # LAST, always
 node tests/frontend.mjs                    # expect 28/28
 sudo scripts/deploy.sh --prune             # the page is repo-only until this runs
 ```
 
-The regeneration matters and the order matters. `tools/build_pages.py` is shared ground —
-another session landed the Tuner EPG guide in it partway through this work, and re-running the
-generators after the merge is what stops a stale seed from silently reverting somebody's page.
+**The merge will abort if you run it today.** The shared checkout is dirty across exactly the
+files this branch touches — `backend/api.py`, a dozen `site/*.html`, `tools/build_rack.py`,
+`tools/build_stack.py`, `tools/build_training.py` — plus untracked `backend/apps/{accounts,
+coder,cryptominer,guide,project,reinforce,sigils}/` from other sessions still working. Git
+refuses to merge when local modifications would be overwritten, and the error reads as though
+this branch is broken when the problem is only that the tree is busy. Commit or stash that work
+first. Expect the conflict in `tools/build_pages.py` specifically: it is shared ground and it
+already moved under this work once, when another session landed the Tuner EPG guide in it.
+
+The regeneration matters and the order matters. Re-running the generators after the merge is
+what stops a stale seed from silently reverting somebody else's page.
 `build_cachebust.py` runs last or the stamps are wrong.
 
 ---
