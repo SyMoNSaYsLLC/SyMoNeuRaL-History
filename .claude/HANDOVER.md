@@ -26,6 +26,27 @@ conversation, so every number, path and decision you need is stated here.
 
 ---
 
+## 0b. DO THIS FIRST — the live calc surface is broken
+
+```bash
+sudo systemctl restart symoneural-api
+sudo /home/google/Symoneural/scripts/deploy.sh --prune
+```
+
+`https://symoneural.com/api/calc` currently returns `RavenCalc is unavailable.` The
+service has been running since 00:19, and `ravencalc.py` moved to
+`backend/apps/ravencalc/` after that — so the process is holding a `sys.path` that no
+longer points anywhere. The code on disk is correct: a fresh container returns exact
+SymPy for the same request. **A restart fixes it; nothing needs editing.**
+
+The deploy publishes the new constellation band and prunes 26 orphaned files from the
+webroot.
+
+**The general lesson, which bit twice tonight:** a running Python process pins its
+import paths and its resolved `pathlib` constants at start. Moving files under a live
+service leaves it working until it touches the moved thing, which is the worst way to
+find out. After any move, restart the service and hit the surface you moved.
+
 ## 1. The deploy blocker — resolved, and it was not the password
 
 `sudo ./scripts/deploy.sh` failed for hours with:
