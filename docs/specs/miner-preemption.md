@@ -1,11 +1,11 @@
 # Miner preemption — the yield protocol
 
 **Status: specified, NOT implemented. Do not implement it without reading §7.**
-Written 2026-08-17. Cited by `.claude/HANDOVER.md` (§5 items 4 and 8),
-`backend/apps/cryptominer/README.md` and `backend/apps/cryptominer/__init__.py`'s
-`start()` docstring — all three referred to this file before it existed, which is the same
-defect as `asicminer.probe()` citing a README that had not been written. The citations are
-now true; the feature is still deliberately absent, and §7 is why.
+Written 2026-08-17. Cited by `.claude/HANDOVER.md` §5 item 8,
+`backend/apps/cryptominer/README.md` and `backend/apps/cryptominer/__init__.py` — all three
+referred to this file before it existed, which is the same defect as `asicminer.probe()` citing
+a README that had not been written. The citations are now true; the feature is still
+deliberately absent, and §7 is why.
 
 ---
 

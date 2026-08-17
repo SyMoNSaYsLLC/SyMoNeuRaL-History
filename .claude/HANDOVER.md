@@ -194,7 +194,13 @@ tokens, and the page says so).
   runs** and the ~0.9 MH/s spread has **no established cause**.
 - **Tests:** `tests/frontend.mjs` **32/32** — six new value-based miner assertions, each watched
   go red against a copy with the status wiring cut, the panel's VRAM row deleted, and a fabricated
-  `53.01 MH/s` written into a gated row (27/32). Backend 106 passed.
+  `53.01 MH/s` written into a gated row (27/32). Backend, run on the rebased tree:
+  `cryptominer` **72/72**, and `pytest backend/apps` **618 passed, 23 skipped, 4 failed**. None
+  of the four is mine — `reinforce` and `sigils` are the two red tests already recorded in §1,
+  plus a second `sigils` failure (`UnboundLocalError: doc`) and a timing assertion in
+  `tuner` (`25.0 not less than 13`), all in files this commit does not touch. `reinforce/tests`
+  and `remix/tests` do not collect at all without their venvs (`cupy`, `symoneural_dj`) and were
+  excluded from that run.
 - **`docs/specs/miner-preemption.md` now exists** — it was cited twice here, once in the
   cryptominer README and once in the module docstring while missing. It specifies the yield
   protocol; its §7 says why it is still **not** implemented: it changes the hot path of the only
@@ -1248,10 +1254,14 @@ broken** — this is a queue of new work, not a repair list.
    which must **not** be the same string as `SYM_ASIC_TOKEN` — this one gates a process that
    takes the card from every other surface.
    **KawPow hashrate is now measured on this machine, not vendor and not projected:
-   52.75 – 53.01 MH/s across two runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
-   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. The ~0.5%
-   run-to-run spread is quoted rather than the best run and **no cause has been established**
-   for it.
+   52.3 – 53.2 MH/s across four runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
+   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. (Runs 3 and 4
+   were added later the same day and are the first driven through `POST /api/gpuminer/control`
+   rather than the CLI; the per-run table is in `backend/apps/cryptominer/README.md`. This line
+   read "52.75 – 53.01 across two runs" until then.) The spread is now ~0.9 MH/s, under two
+   percent, is quoted rather than the best run, and **no cause has been established** for it —
+   clocks, temperature and the benchmark's own variance are all candidates and none has been
+   isolated. Anyone quoting a single number should quote the low end.
    **That run is a benchmark against no pool: measured, and earning nothing.** A miner with
    nowhere to submit a share earns nothing whatever its hashrate says, so `pool()` and
    `benchmarking()` now detect the absence of a pool URL (kawpowminer's own rule — "when
