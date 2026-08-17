@@ -205,6 +205,17 @@ VIDEO_CODECS = frozenset({
 #: tag (`[out#0/null @ 0x55…] [error] …`), so this is searched for, not anchored.
 _LEVEL_RE = re.compile(r"\[(fatal|error|panic|warning|info|verbose|debug|trace)\]")
 _VIDEO_RE = re.compile(r"Stream #\d+:\d+.*?:\s*Video:\s*([A-Za-z0-9_]+)")
+#: The end of ffmpeg's input inventory. Searched, not anchored: `-loglevel level+info` prefixes
+#: every line with `[info]`.
+#:
+#: A repair cannot be decided from the FIRST codec line, and the reason is a bug this avoided
+#: rather than one it fixed. ffmpeg prints one `Stream #0:N` line per stream, so an HEVC/AC-3
+#: channel announces its picture before its soundtrack. Deciding on the video line alone yields
+#: "re-encode the picture, copy the audio" -- and since a session is only ever repaired once, the
+#: AC-3 would then survive into the repaired stream and the channel would still be silent, or
+#: black, with the tuner reporting that it had fixed it. Both codecs are known by the time this
+#: marker appears, so the decision waits for it.
+_DUMP_DONE_RE = re.compile(r"Stream mapping:|Output #\d")
 
 
 def match_video_codec(line: str) -> str:
@@ -237,6 +248,150 @@ def _match_audio_codec(line: str) -> str:
         return ""
     token = m.group(1).lower()
     return token if token in AUDIO_CODECS else ""
+
+
+# ---------------------------------------------------------------- codec repair
+#
+# Making a channel the browser cannot decode play, instead of only explaining why it does not.
+#
+# WHAT PLAYS IS AN ALLOW-LIST, AND THE POLARITY IS THE POINT. The obvious shape is a deny-list
+# of known-bad codecs, and it was tried: a deny-list containing `mp2` shipped briefly on another
+# branch and was reverted, because Chrome decodes mp2 perfectly and the list would have re-encoded
+# -- and warned about -- channels that work. A deny-list is wrong in the direction that breaks
+# working channels and silently passes codecs nobody thought of; an allow-list is wrong only in
+# the direction of an unnecessary transcode, which costs CPU and nothing else.
+#
+# Both sets are MEASURED, not reasoned about, via `MediaSource.isTypeSupported()` on the Chrome in
+# this repo's test path (Chrome 151) against `video/mp2t` and fMP4 -- the box serves TS and hls.js
+# remuxes, so both containers have to be asked. Accepted: h264, aac, mp2, mp3. Refused: hevc,
+# mpeg2video, vc1, av1, vp9, ac3, eac3, dts, truehd. `tests/tuner_codecs.mjs` re-asks the browser
+# and fails if these two sets have drifted from what it answers, so this cannot rot into a claim.
+PLAYABLE_VIDEO = frozenset({"h264"})
+#: mp2 and mp3 are HERE, in the playable set, and that is the whole lesson of the reverted commit.
+PLAYABLE_AUDIO = frozenset({"aac", "mp2", "mp3"})
+
+#: `auto` repairs what needs repairing, preferring the video engine and falling back to CPU.
+#: `cpu` never touches the GPU. `off` restores the old behaviour exactly -- stream copy or fail --
+#: and exists because a new re-encode path in the middle of a working tuner deserves a kill switch
+#: that does not require an edit to turn.
+REPAIR_MODE = (os.environ.get("SYMONEURAL_TUNER_REPAIR") or "auto").strip().lower()
+
+#: A repaired stream needs about 515 MiB of VRAM (measured, flat across 1-4 concurrent streams).
+#: Below this much free, the video engine is declined and CPU takes it: `libx264 veryfast` was
+#: measured at 13.4x realtime on real 720p, so the fallback is comfortable rather than a
+#: degradation, and stealing the last of the card from a model that is mid-answer is not.
+VRAM_FLOOR_MIB = _env_int("SYMONEURAL_TUNER_VRAM_FLOOR", 1024, 0, 16000)
+
+
+@dataclass(frozen=True)
+class RepairPlan:
+    """How to make one session's codecs playable. `None` anywhere means "no repair needed"."""
+    vargs: tuple[str, ...]
+    aargs: tuple[str, ...]
+    #: Short, fixed, published. Built from this module's own vocabulary, never from ffmpeg's text.
+    reason: str
+    uses_gpu: bool
+
+
+def plan_repair(vcodec: str, acodec: str, nvenc: bool = False) -> RepairPlan | None:
+    """The cheapest repair that makes `vcodec`/`acodec` playable, or None if they already are.
+
+    Pure and separately testable, like `match_video_codec`, and for a similar reason: the
+    interesting property is *which* streams get re-encoded, and that is only checkable if the
+    decision can be asked directly instead of inferred from a running ffmpeg.
+
+    An empty codec means "not detected yet" and never triggers a repair -- guessing from absence
+    would re-encode every stream whose input dump had not arrived.
+    """
+    v_bad = bool(vcodec) and vcodec not in PLAYABLE_VIDEO
+    a_bad = bool(acodec) and acodec not in PLAYABLE_AUDIO
+    if not v_bad and not a_bad:
+        return None
+    # Audio is always re-encoded to AAC when it is the problem; there is no hardware path for it
+    # and none is wanted -- measured at 34.4x realtime on real 720p for +0 MiB of VRAM.
+    aargs = ("-c:a", "aac", "-b:a", "128k") if a_bad else ("-c:a", "copy")
+    if not v_bad:
+        # THE COMMON CASE, and the reason this is two tiers rather than one. The picture is
+        # already h264; copying it through untouched costs nothing and keeps the stream-copy
+        # guarantee for every frame the visitor actually sees.
+        return RepairPlan(("-c:v", "copy"), aargs,
+                          f"soundtrack re-encoded from {acodec} to aac", False)
+    if nvenc:
+        # No `-hwaccel cuda` and no `*_cuvid`: hardware decode measured 17.0x against 17.1x for
+        # software decode at 720p, which is noise. The encoder is the bottleneck, so the flag
+        # that buys nothing is left out rather than carried for looking thorough -- and software
+        # decode accepts every codec on the input side, including the ones with no cuvid decoder.
+        vargs = ("-c:v", "h264_nvenc", "-preset", "p4", "-b:v", "6M")
+        gpu = True
+    else:
+        vargs = ("-c:v", "libx264", "-preset", "veryfast", "-b:v", "6M")
+        gpu = False
+    reason = f"picture re-encoded from {vcodec} to h264"
+    if a_bad:
+        reason += f", soundtrack from {acodec} to aac"
+    return RepairPlan(vargs, aargs, reason, gpu)
+
+
+_NVENC: bool | None = None
+
+
+def _nvenc_available() -> bool:
+    """Whether this ffmpeg has `h264_nvenc`. Asked once, lazily, and never at import.
+
+    Not at import because this module is imported by the API at startup and a subprocess there is
+    latency on every boot for a fact that is only needed the first time a channel needs repairing.
+    """
+    global _NVENC
+    if _NVENC is None:
+        if not FFMPEG:
+            _NVENC = False
+        else:
+            try:
+                out = subprocess.run([FFMPEG, "-hide_banner", "-encoders"],
+                                     capture_output=True, timeout=10).stdout
+                _NVENC = b"h264_nvenc" in out
+            except Exception:
+                _NVENC = False
+    return _NVENC
+
+
+def _vram_free_mib() -> int | None:
+    """Free VRAM, or None if that cannot be determined -- which is not the same as zero.
+
+    None means "no card, or nvidia-smi did not answer", and the caller treats it as "do not use
+    the GPU" rather than "the GPU is empty".
+    """
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        out = subprocess.run([smi, "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                             capture_output=True, timeout=5, text=True).stdout
+        return int(out.strip().splitlines()[0].strip())
+    except Exception:
+        return None
+
+
+def _may_use_video_engine() -> bool:
+    """Whether the video engine is available *and* affordable right now.
+
+    **This deliberately does not take a `gpu-governor.sh` lease, and that is a considered
+    exception to "everything touching the GPU goes through the governor" rather than an
+    oversight.** Two measurements decide it. First, NVENC and NVDEC are dedicated ASIC blocks:
+    sampled while the `image` surface held the lock with compute at 67%, the encoder and decoder
+    both read 0%, and sampled during a transcode, compute read 2% while the encoder read 50%.
+    A transcode does not contend for what the governor arbitrates. Second, and this is the part
+    that makes a lease actively harmful, a tuner session lives for as long as somebody watches --
+    so a lease here would be held for a process lifetime, which is the one thing the governor's
+    own rules forbid, and it would lock the CLI and every model out until the acquire timeout.
+
+    What a transcode does contend for is VRAM, so that is what is checked, and the tuner yields
+    rather than competing: below `VRAM_FLOOR_MIB` free it takes the CPU path.
+    """
+    if REPAIR_MODE == "cpu" or not _nvenc_available():
+        return False
+    free = _vram_free_mib()
+    return free is not None and free >= VRAM_FLOOR_MIB
 
 
 # ---------------------------------------------------------------- AES-128 HLS
@@ -363,6 +518,17 @@ class Session:
     vcodec: str = ""
     #: The audio codec, same rules. Not currently published; see `public()`.
     acodec: str = ""
+    #: What was re-encoded to make this playable, or "" for the stream-copy path most channels
+    #: take. Published. Safe for the same reason `vcodec` is: it is built by `plan_repair` out of
+    #: this module's own vocabulary plus an allow-listed codec token, never from ffmpeg's text.
+    repair: str = ""
+    #: The plan the stderr reader decided on and the pump thread has yet to apply. Handing it
+    #: between threads as data is deliberate: only the pump thread ever touches `proc.stdin`, so
+    #: only the pump thread swaps the process, and the reader never has to synchronise with it.
+    pending_repair: RepairPlan | None = None
+    #: One repair per session, ever. Without this a source whose codecs are re-announced mid-stream
+    #: -- which happens on an ad insert -- would respawn ffmpeg on every announcement.
+    repaired: bool = False
 
     def public(self) -> dict:
         """What a visitor may see. Deliberately has no field that could hold a credential.
@@ -407,6 +573,14 @@ class Session:
             # it is a token from `AUDIO_CODECS` that ffmpeg's text was matched against, and
             # anything unrecognised becomes "". A fabricated stderr line cannot get through it.
             "acodec": self.acodec,
+            # What had to be re-encoded, or "" for the stream-copy path. Published because
+            # `vcodec: hevc` on a picture that is now playing would otherwise read as a
+            # contradiction: the field names what ffmpeg found on the INPUT, and after a repair
+            # that is no longer what the browser is being handed. A client that shows a codec
+            # warning must suppress it when this is non-empty, or it will apologise for a stream
+            # that works -- which is the same false-warning failure the reverted acodec commit
+            # would have shipped, arriving from the opposite direction.
+            "repair": self.repair,
             "playlist": f"stream/{self.id}/{PLAYLIST_NAME}",
             "age_s": round(time.monotonic() - self.created, 1),
             "bytes_in": self.bytes_in,
@@ -551,7 +725,12 @@ class SessionManager:
         log.info("tuner: session %s started (%s)", sid, safefetch.redact(s.label)[:60])
         return s
 
-    def _spawn(self, s: Session) -> subprocess.Popen:
+    def _spawn(self, s: Session, plan: RepairPlan | None = None) -> subprocess.Popen:
+        """Start ffmpeg for `s`. With no plan this is stream copy, which is what most channels get.
+
+        `plan` is set only on the respawn described in `_apply_repair`, and it is the only thing
+        that makes this process re-encode anything.
+        """
         cmd = [
             FFMPEG, "-hide_banner", "-nostdin",
             # `level+info`, not `error`. `info` is what prints the input dump -- the
@@ -568,10 +747,25 @@ class SessionManager:
             "-fflags", "+genpts+discardcorrupt",
             "-analyzeduration", "5M", "-probesize", "5M",
             "-i", "pipe:0",
-            # Stream copy, and only stream copy. If the source codecs cannot go into an MPEG-TS
-            # segment unchanged, ffmpeg fails and the session reports why -- it never quietly
-            # re-encodes, because the GPU belongs to inference and the CPU has a site to serve.
-            "-c", "copy",
+            # Stream copy FIRST, always, for every session -- and re-encoding only as a named,
+            # published second attempt. This comment used to end "it never quietly re-encodes,
+            # because the GPU belongs to inference and the CPU has a site to serve", and both
+            # halves of that reason were measured and turned out to be wrong in a way worth
+            # recording rather than deleting:
+            #
+            #   * the GPU does NOT belong to inference in the part that matters here. NVENC is a
+            #     dedicated ASIC: during a transcode the encoder read 50% while CUDA compute read
+            #     2%, and while inference held the card at 67% compute the encoder read 0%. The
+            #     two do not contend, except for VRAM -- see `_may_use_video_engine`.
+            #   * the CPU can serve the site and transcode. `libx264 veryfast` measured 13.4x
+            #     realtime on a real 720p channel, so one stream costs well under a tenth of a
+            #     core-hour per hour watched.
+            #
+            # What survives from the old promise is the word "quietly", and it is now the actual
+            # guarantee: a re-encode is never silent. It happens only when the browser has been
+            # measured unable to decode the source (`plan_repair`, an allow-list), it is announced
+            # in `public()["repair"]`, and stream copy is still what every playable channel gets.
+            *(plan.vargs + plan.aargs if plan else ("-c", "copy")),
             "-f", "hls",
             "-hls_time", str(HLS_SEGMENT_SECONDS),
             "-hls_list_size", str(HLS_WINDOW),
@@ -622,6 +816,18 @@ class SessionManager:
                 acodec = _match_audio_codec(text)
                 if acodec and not s.acodec:
                     s.acodec = acodec
+                # The input inventory is complete: decide whether this stream needs repairing.
+                # Only a decision is made here -- the pump thread performs the swap, because it
+                # owns `proc.stdin` and nothing else may write to it. `proc is s.proc` keeps the
+                # drain thread of an already-replaced process from planning a second repair.
+                if (REPAIR_MODE != "off" and not s.repaired and s.pending_repair is None
+                        and proc is s.proc and _DUMP_DONE_RE.search(text)):
+                    # `_may_use_video_engine` shells out to nvidia-smi, so it is only asked when
+                    # the picture is the problem. The common repair is audio-only and must not pay
+                    # for a GPU query it will not use.
+                    v_bad = bool(s.vcodec) and s.vcodec not in PLAYABLE_VIDEO
+                    s.pending_repair = plan_repair(
+                        s.vcodec, s.acodec, _may_use_video_engine() if v_bad else False)
                 m = _LEVEL_RE.search(text)
                 if m and m.group(1) not in ("error", "fatal", "panic"):
                     continue
@@ -677,13 +883,86 @@ class SessionManager:
         if s.bytes_in > MAX_SESSION_BYTES:
             raise TunerError("session reached its data cap")
 
+    def _apply_repair(self, s: Session) -> bool:
+        """Swap ffmpeg for one that re-encodes. Called on the pump thread only. True if it swapped.
+
+        Restarting the transcoder mid-stream sounds worse than it is, because of *which* streams
+        get here: a session is only ever repaired when the browser has been measured unable to
+        decode its codecs, so there is no working playback to interrupt. Whatever segments the
+        copy attempt produced are unplayable by construction, which is why they are deleted rather
+        than left for the playlist to reference.
+
+        MPEG-TS is what makes this possible at all. It is a self-synchronising container -- the PAT
+        and PMT recur every few hundred milliseconds -- so a fresh ffmpeg handed the middle of a
+        transport stream finds its bearings without ever seeing the beginning. `ts_sync_offset`
+        aligns the first write to a packet boundary to save it the work.
+        """
+        plan = s.pending_repair
+        s.pending_repair = None
+        if plan is None or s.repaired:
+            return False
+        old = s.proc
+        # Close stdin first: ffmpeg then sees EOF and exits on its own, and a terminate that
+        # arrives while it is mid-write to a segment is what leaves a half-written `.tmp` behind.
+        try:
+            if old and old.stdin:
+                old.stdin.close()
+        except Exception:
+            pass
+        if old:
+            try:
+                old.wait(timeout=2)
+            except Exception:
+                try:
+                    old.kill()
+                except Exception:
+                    pass
+        # Everything the copy attempt wrote refers to codecs the browser cannot decode. Removing
+        # the playlist too means `ready` goes back to False, so a client polling `/tune` waits for
+        # the repaired stream instead of being handed the broken one.
+        try:
+            for stale in list(s.dir.glob("s*.ts")) + list(s.dir.glob("s*.ts.tmp")):
+                stale.unlink(missing_ok=True)
+            (s.dir / PLAYLIST_NAME).unlink(missing_ok=True)
+        except Exception:
+            pass
+        # A copy-path error ("could not stream copy this source") describes a process that no
+        # longer exists. Keeping it would attach a stale explanation to a session that now works.
+        s.transcoder_error = None
+        s.repaired = True
+        s.proc = self._spawn(s, plan)
+        s.repair = plan.reason
+        s.state = "starting"
+        threading.Thread(target=self._drain_stderr, args=(s, s.proc), daemon=True,
+                         name=f"tuner-err-{s.id}-repair").start()
+        # The label is visitor data and is scrubbed; the reason is this module's own vocabulary.
+        log.info("tuner: session %s repairing -- %s (%s)", s.id, plan.reason,
+                 "video engine" if plan.uses_gpu else "cpu")
+        return True
+
     def _write(self, s: Session, chunk: bytes) -> None:
         """Write upstream bytes straight through. Read and written are the same bytes here."""
+        if s.pending_repair is not None and self._apply_repair(s):
+            # The new ffmpeg is joining a transport stream in progress. Hand it a packet boundary.
+            #
+            # `> 0` and not `>= 0`, and above all not a bare slice: `ts_sync_offset` returns **-1**
+            # when it cannot lock onto three consecutive packets, and `chunk[-1:]` would throw the
+            # whole chunk away except its final byte -- a repair that destroyed the stream it was
+            # repairing. -1 here means "too short to lock, or not a transport stream at all", and
+            # in both cases the honest move is to pass the bytes through untouched and let ffmpeg,
+            # which re-syncs for a living, decide what they are.
+            off = ts_sync_offset(chunk)
+            if off > 0:
+                chunk = chunk[off:]
         s.proc.stdin.write(chunk)
         self._account(s, len(chunk))
 
     def _feed(self, s: Session, chunk: bytes) -> None:
         """Write bytes that were already charged as ingress (a decrypted segment)."""
+        # No `ts_sync_offset` here: on the HLS path a chunk is a whole segment, which already
+        # begins on a packet boundary.
+        if s.pending_repair is not None:
+            self._apply_repair(s)
         s.proc.stdin.write(chunk)
 
     @staticmethod
