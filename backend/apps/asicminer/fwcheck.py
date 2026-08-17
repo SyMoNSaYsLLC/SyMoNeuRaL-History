@@ -103,12 +103,14 @@ def _safe_extract(pkg: pathlib.Path, dest: pathlib.Path) -> list[str]:
     return names
 
 
-def check(pkg: pathlib.Path, bitmain_pub: pathlib.Path | None = None) -> dict:
+def check(pkg: pathlib.Path, bitmain_pub: pathlib.Path | None = None,
+          blacklist: pathlib.Path | None = None) -> dict:
     out = {
         "package": pkg.name,
         "bytes": pkg.stat().st_size if pkg.is_file() else None,
         "contents": [], "missing": [], "unexpected": [],
         "version": None,
+        "runme_md5": None, "runme_sig_present": None, "blacklisted": None,
         "fw_verifies_against_cert": None,   # runme.sh step 5 -- always runs on the rig
         "cert_signed_by_bitmain": None,     # step 3 -- only on rigs with the Bitmain key
         "would_pass": None,
@@ -126,11 +128,50 @@ def check(pkg: pathlib.Path, bitmain_pub: pathlib.Path | None = None) -> dict:
 
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="fwcheck-"))
     try:
+        # The CGI rejects any tarball containing a symlink, before it reaches runme.sh:
+        #   tar ztvf $$.tgz | grep "^l"   -> "tarball contains symbol link", upload aborted.
+        # Report it as a gate rather than letting the extractor raise, because from the
+        # operator's point of view it is a reason the upload will be refused, not a broken
+        # file. (We refuse links too, for our own safety -- see _safe_extract.)
+        try:
+            with tarfile.open(pkg, "r:*") as tf:
+                links = [m.name for m in tf.getmembers() if m.issym() or m.islnk()]
+        except tarfile.TarError as e:
+            out["error"] = f"not a readable tar package: {e}"
+            return out
+        if links:
+            out.update(would_pass=False, would_exit=None,
+                       verdict="upgrade.cgi rejects tarballs containing symlinks, before "
+                               "runme.sh runs")
+            out["contents"] = links
+            return out
+
         try:
             out["contents"] = sorted(_safe_extract(pkg, tmp))
         except (tarfile.TarError, ValueError) as e:
             out["error"] = f"not a readable tar package: {e}"
             return out
+
+        # upgrade.cgi md5s the outer runme.sh and refuses it if the hash appears in
+        # /etc/blacklist on the rig -- a list of installers Bitmain has revoked. It sits
+        # BEFORE runme.sh runs, so a package can be perfectly signed and still be refused.
+        # The 2019 S17 Pro rootfs ships 27 entries. Pass --blacklist to check against a
+        # copy pulled off your own rig; without one this is reported, not evaluated.
+        rm = tmp / "runme.sh"
+        if rm.is_file():
+            import hashlib
+            out["runme_md5"] = hashlib.md5(rm.read_bytes()).hexdigest()
+        # The CGI also verifies runme.sh.sig against /etc/bitmain-pub.pem before running it.
+        # That is why runme.sh.sig is in the package at all -- runme.sh never checks itself.
+        out["runme_sig_present"] = (tmp / "runme.sh.sig").is_file()
+
+        if blacklist and blacklist.is_file() and out["runme_md5"]:
+            banned = {l.strip() for l in blacklist.read_text().split() if l.strip()}
+            out["blacklisted"] = out["runme_md5"] in banned
+            if out["blacklisted"]:
+                out["notes"].append(
+                    "This runme.sh is in the rig's /etc/blacklist. upgrade.cgi refuses it "
+                    "before any signature check, however well-formed the package is.")
 
         out["missing"] = [f for f in REQUIRED if not (tmp / f).is_file()]
         out["unexpected"] = [f for f in out["contents"] if f not in EXPECTED]
@@ -251,13 +292,16 @@ def main() -> int:
     ap.add_argument("package", type=pathlib.Path)
     ap.add_argument("--bitmain-pub", type=pathlib.Path, default=None,
                     help="Bitmain public key, to evaluate runme.sh step 3 as well")
+    ap.add_argument("--blacklist", type=pathlib.Path, default=None,
+                    help="a copy of /etc/blacklist from the target rig; upgrade.cgi refuses "
+                         "any runme.sh whose md5 is listed, before checking signatures")
     ap.add_argument("--sd", action="store_true",
                     help="treat this as an SD-card recovery zip, checked against readme.factory")
     a = ap.parse_args()
     # Guess by extension when not told, so the common case needs no flag -- but the flag
     # wins, because a mis-detected format silently checks the wrong thing.
     sd = a.sd or (not a.sd and pkg_is_zip(a.package))
-    print(json.dumps(check_sd(a.package) if sd else check(a.package, a.bitmain_pub), indent=2))
+    print(json.dumps(check_sd(a.package) if sd else check(a.package, a.bitmain_pub, a.blacklist), indent=2))
     return 0
 
 

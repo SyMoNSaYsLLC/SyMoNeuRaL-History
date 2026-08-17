@@ -25,6 +25,36 @@ Upload through *System → Upgrade* in the miner web UI. The rig untars it and r
 `runme.sh`, which is a signature gate, and that then unpacks `fw.tar.gz` into a tmpfs at
 `/tmp/mem/fw` and runs the **inner** `runme.sh`, which does the flashing.
 
+### Three gates run before `runme.sh` is reached at all
+
+Read out of `/www/pages/cgi-bin/upgrade.cgi` in the extracted rootfs (see "Opening a
+firmware image" below). None of these are in `runme.sh`, and a package can be perfectly
+signed and still be refused by all three.
+
+1. **Symlinks are rejected.** `tar ztvf $$.tgz | grep "^l"` — any symlink or hardlink in the
+   tarball aborts the upload with *"tarball contains symbol link"*. This is the first thing
+   that happens after the body is written to disk.
+2. **`runme.sh.sig` is verified against `/etc/bitmain-pub.pem` by the CGI**, not by
+   `runme.sh`. This is why `runme.sh.sig` is in the package at all — the installer never
+   checks itself. Failure gives *"Installer Not Signtured!!!"*.
+3. **The installer is checked against a revocation list.** `md5sum runme.sh` is looked up in
+   `/etc/blacklist`; a hit gives *"CANNOT USE THIS RUNME!!!"*. The 2019 S17 Pro rootfs ships
+   **27 entries**. This is how Bitmain revokes a known custom-firmware installer, and it is
+   independent of signing — a correctly self-signed package whose `runme.sh` is on the list
+   is still refused.
+
+`fwcheck.py` reports the symlink gate and the `runme.sh` md5, and evaluates the blacklist if
+you give it a copy pulled off your own rig:
+
+```bash
+python3 backend/apps/asicminer/fwcheck.py <pkg>.tar.gz --blacklist ./blacklist
+```
+
+There is also an **else-branch**: if the tarball contains no `runme.sh` at all, the CGI
+treats it as an SD-style payload — copying to `/dev/mmcblk0p1` if `/dev/mmcblk0p3` exists,
+and flashing `initramfs.bin.SD` to `mtd8` and `uImage.bin` to `mtd7`. That is a second,
+undocumented upgrade mode reachable through the same upload form.
+
 ### Outer runme.sh — the signature gate
 
 | Exit | Condition |
@@ -147,6 +177,61 @@ manifest first:
 ```bash
 unzip -q <sd-package>.zip -d sd/ && cd sd && sha256sum -c readme.factory
 ```
+
+---
+
+---
+
+## Opening a firmware image, to see what you are actually flashing
+
+`uramdisk.image.gz` is not a gzip despite the name — it is a **u-boot legacy uImage**
+wrapping a gzip, wrapping an ext2 filesystem. Three layers, and `file` tells you so:
+
+```
+uramdisk.image.gz: u-boot legacy uImage, Linux/ARM, RAMDisk Image (gzip),
+                   13027591 bytes, Load Address: 00000000, Entry Point: 00000000
+```
+
+`u-boot-tools` provides `mkimage -l` to read the header and `dumpimage` to strip it. Note
+the Debian build's syntax is `-o outfile`, **not** `-i` — `-i` is a newer upstream flag and
+gives `invalid option -- 'i'` here:
+
+```bash
+sudo apt install u-boot-tools
+mkimage -l uramdisk.image.gz                                   # read the 64-byte header
+dumpimage -T ramdisk -p 0 -o ramdisk.raw.img uramdisk.image.gz # strip it
+dd if=uramdisk.image.gz of=ramdisk.raw.img bs=64 skip=1        # identical result, no tools
+gunzip -c ramdisk.raw.img > ramdisk.img
+file ramdisk.img        # Linux rev 1.0 ext2 filesystem data, volume name "ramdisk"
+```
+
+Both strip methods were compared byte-for-byte here and produce the same file, so the `dd`
+fallback is not a degraded option — the header is a flat 64 bytes.
+
+**You do not need `mount` or root.** `debugfs` from `e2fsprogs` reads an ext2 image
+unprivileged, which matters because the point is usually to look at one file:
+
+```bash
+/sbin/debugfs -R "ls -l /"                            ramdisk.img
+/sbin/debugfs -R "cat /etc/ant_version"               ramdisk.img
+/sbin/debugfs -R "dump /www/pages/cgi-bin/upgrade.cgi out.cgi" ramdisk.img
+```
+
+The loop mount still works if you prefer it — `sudo mount -o loop ramdisk.img /mnt/miner`
+— it just costs root for a read.
+
+### What is worth looking at once it is open
+
+| Path | Why |
+|---|---|
+| `/etc/ant_version` | the number exit 7 compares. `5073` on this image — the same value as the package's `version`, so this package is not a downgrade |
+| `/etc/bitmain-pub.pem` | **present on this image**, so outer step 3 *does* run on a rig with this firmware, and a self-signed package exits 3 |
+| `/etc/blacklist` | the 27 revoked installer md5s |
+| `/www/pages/cgi-bin/upgrade.cgi` | the three gates above, and the upload contract: `multipart/form-data`, field name `file1` |
+| `/www/pages/cgi-bin/` | the rest of the API the control panel can drive |
+
+One incidental find: the shipped rootfs contains `/www/pages/cgi-bin/.upgrade.cgi.swp`, a
+vim swap file left in production firmware.
 
 ---
 
