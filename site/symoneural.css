@@ -690,3 +690,38 @@
   .chassis{margin:12px 0 0; padding:14px 2px 3px; gap:16px}
   .chassis-id{flex:1 1 100%}
 }
+
+/* ==================== top-of-page density ====================
+   The hero, the rack and the control board are the page's opening argument, and they
+   were costing 2,348px to clear on a 1,080px screen -- the control board sat two
+   screens down, which is a strange thing to do to a section titled "everything this
+   machine is, on one screen".
+
+   Everything here is spacing and type scale. No content is removed and nothing is
+   folded away: the rule on this site is that layout changes must not drop data. The
+   lower sections keep the original generous rhythm, because they are reference
+   material that benefits from air; only the opening is dense. */
+@media (min-width:900px){
+  .hero h1{font-size:clamp(30px,3.4vw,40px); line-height:1.07; max-width:26ch}
+  .eyebrow{margin-bottom:11px}
+  /* a wider measure means fewer lines, which is the cheapest vertical saving there is */
+  .lede{margin-top:15px; font-size:16px; line-height:1.55; max-width:92ch}
+  .actions{margin-top:18px}
+
+  #rack, #console{padding-top:24px; padding-bottom:24px}
+  #rack h2, #console h2{font-size:clamp(21px,2.1vw,26px)}
+  #rack .shead, #console .shead{margin-bottom:6px}
+  #rack .sub, #console .sub{margin-top:9px; font-size:15px; line-height:1.5; max-width:96ch}
+  #rack .tnote, #console .tnote{margin-top:9px; font-size:12.5px; line-height:1.5; max-width:96ch}
+
+  /* the rack: a 1U face does not need 13px of padding to read as 1U */
+  #rack .unit{padding:9px 15px; gap:13px}
+  #rack .units{gap:7px}
+  #rack .chassis{margin-top:8px; padding:11px 28px 2px}
+
+  /* the control board: narrower tiles fit more per row, so the grid loses rows */
+  #console .conhead{margin-top:14px}
+  #console .console{margin-top:13px; gap:8px;
+    grid-template-columns:repeat(auto-fit,minmax(152px,1fr))}
+  #console .mod{padding:10px 12px 9px}
+}
