@@ -246,8 +246,14 @@ try {
       // assertion now opens the tab it needs, which means none of them would notice if the
       // landing view broke -- the mirror image of the vacuous check this file just lost.
       // The masthead must be the open panel and the rest closed.
-      out.lands = ids.filter(i => {
-        const e = document.getElementById(i); return e && !e.hidden; }).join(',');
+      // COMPUTED DISPLAY, never `.hidden`. The `hidden` property reports the attribute,
+      // and an author rule that sets `display` beats the UA stylesheet's display:none --
+      // which is exactly how the masthead shipped rendering above every panel while
+      // reporting hidden:true, and how this assertion passed while it did.
+      const shown = i => { const e = document.getElementById(i);
+        return e && getComputedStyle(e).display !== 'none'; };
+      out.lands = ids.filter(shown).join(',');
+      const ghosts = new Set();
       for (const i of ids) {                       // measure each panel while IT is the open one
         const b = document.querySelector(`.ns-tab[data-panel="${i}"]`);
         if (b) b.click();
@@ -256,24 +262,33 @@ try {
         if (!e) continue;
         const share = Math.round(100 * e.clientHeight / innerHeight);
         if (share < out.worst) { out.worst = share; out.worstId = i; }
+        // While `i` is open, NO other panel may take vertical space. This is the check the
+        // whole layout rests on and the one that was missing: the masthead was taking 172px
+        // above whichever panel was open, which is where the second scrollbar came from.
+        if (d.classList.contains('ns')) {
+          ids.filter(o => o !== i && shown(o)
+                     && document.getElementById(o).getBoundingClientRect().height > 0)
+             .forEach(o => ghosts.add(`${o} visible while ${i} open`));
+        }
       }
+      out.ghosts = [...ghosts].join('; ');
       out.ns = d.classList.contains('ns');
       out.scrolls = d.scrollHeight > d.clientHeight + 1;
-      out.visible = ids.filter(i => {
-        const e = document.getElementById(i); return e && !e.hidden; }).length;
+      out.visible = ids.filter(shown).length;
       return out;
     }, PANELS);
     await probe.close();
   }
   // In-gate the landing view is the masthead alone; out-of-gate nothing is hidden at all.
   const folded = k => ns[k].ns && !ns[k].scrolls && ns[k].visible === 1 && ns[k].worst >= 45
-                      && ns[k].lands === 'hero';
+                      && ns[k].lands === 'hero' && !ns[k].ghosts;
   const plain = k => !ns[k].ns && ns[k].scrolls && ns[k].visible === PANELS.length
                      && ns[k].lands === PANELS.join(',');
   record('the front page folds into a panel big enough to read',
          folded('in') && folded('corner') && plain('out') && plain('slit'),
          Object.entries(ns).map(([k, v]) =>
            `${k}: ns=${v.ns} scroll=${v.scrolls} lands on [${v.lands}] min panel ${v.worst}% (${v.worstId})`
+           + (v.ghosts ? ` GHOSTS: ${v.ghosts}` : '')
          ).join(' | '));
 
   // ---- the GPU panel beside a prompt carries a real reading ---------------

@@ -1675,9 +1675,17 @@
      fit. Browsers too old to know the keyword drop the whole declaration and get
      flex-start, which is the same safe behaviour. Today the margin is 111px at the tightest
      in-gate corner (1301x740: a 437px masthead in a 584px panel), so this is a guard
-     against a future copy edit rather than a live bug. */
-  html.ns #hero{display:flex; flex-direction:column; justify-content:safe center;
-    padding-top:18px; padding-bottom:18px}
+     against a future copy edit rather than a live bug.
+
+     `:not([hidden])` IS LOAD-BEARING AND MUST NOT BE DROPPED. `hidden` hides an element by
+     applying `display:none` from the browser's OWN stylesheet, which any author rule with
+     a `display` beats. Written as a bare `html.ns #hero`, this rule outranked it and the
+     masthead could never be hidden: selecting any other tab left the hero rendering above
+     the panel, giving the page two scrollbars and defeating the whole layout. #rack,
+     #console and #more are untouched by this because nothing sets `display` on them.
+     Any future rule that sets `display` on a panel needs the same guard. */
+  html.ns #hero:not([hidden]){display:flex; flex-direction:column;
+    justify-content:safe center; padding-top:18px; padding-bottom:18px}
   html.ns footer{padding:10px 0}
   html.ns .foot{font-size:11.5px}
 }
