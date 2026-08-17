@@ -327,10 +327,11 @@ system and needs its own evidence.** Both halves, every time — that it goes re
 Reported during this pass: *"you video isnt working"*, then *"ive noticed most the issues are with
 the adult live tv"*.
 
-**The tuner is another session's file and, in the end, none of it was changed here.** This audit
-did commit a fix to it (`e0eb087`) after announcing the exact lines; that collided with better
-work already in the main checkout and was reverted in `3444ad5`. See below — the collision is
-recorded rather than tidied away, because what the audit got wrong is the useful part.
+**The tuner is another session's file, and the repair in it is theirs.** This audit did commit a
+fix after announcing the exact lines; it collided with better work already in the main checkout
+and was reverted, and both commits were later dropped in the rebase onto `aebd444`. See below —
+the collision is recorded rather than tidied away, because what the audit got wrong is the useful
+part. The transcode built in §7.5 is this branch's own work and sits on top of theirs.
 
 What this section is, then: the measurement that located the failure, plus the NVENC numbers the
 transcode work needs. The repair itself belongs to the tuner's own session, which has since
@@ -378,10 +379,14 @@ later finds nothing. One `ffprobe` on a segment from a failing channel held open
 `AUDIO_CODECS`, never ffmpeg's text, so a hostile stream cannot push arbitrary content or a
 URL-embedded credential into the public document.
 
-This audit independently reached the same diagnosis and committed the same fix (`e0eb087`), twenty
-minutes later and worse. **That commit was reverted in `3444ad5`, and the reason is worth keeping
-rather than burying**, because it is a case of the audit itself nearly shipping the thing the
-repo's honesty rules exist to prevent:
+This audit independently reached the same diagnosis and committed the same fix, twenty minutes
+later and worse, then reverted it. **Neither commit survives on this branch** — the pair cancelled
+to zero content and would have conflicted twice against a `sessions.py` the owning session had
+meanwhile rewritten, so both were dropped when this work was rebased onto `aebd444`. The reasoning
+is preserved here, in prose, which is where it was always doing the work; a net-zero commit pair
+carried in history to make a point is a worse record than a paragraph that explains it. It is
+worth keeping because it is a case of the audit itself nearly shipping the thing the repo's
+honesty rules exist to prevent:
 
 - The peer's page **asks the browser** — `MediaSource.isTypeSupported()` against both `video/mp2t`
   and fMP4, since the box serves TS and hls.js remuxes. This audit's version hardcoded
@@ -547,11 +552,17 @@ reaped; the directory itself is not. Harmless today, unbounded over time.
 ## 8. Reproducing this pass
 
 ```bash
-# backend, all eleven suites
+# backend, the eleven packages. `-t .` is not optional -- without it, discover treats the app
+# directory as top-level, every relative-import test module fails to load, and unittest reports
+# one ERROR while all of that module's tests silently do not run. That is how the tuner read
+# "126 tests, 1 error" here when the truth is 159 and green.
 for a in accounts asicminer coder cryptominer gateway guide licensing project reinforce sigils tuner; do
-  python3 -m unittest discover -s backend/apps/$a -p 'test_*.py' 2>&1 | tail -3; done
+  printf '%-14s ' "$a"
+  python3 -m unittest discover -s backend/apps/$a -t . -p 'test_*.py' 2>&1 | tail -3 | tr '\n' ' '; echo
+done
 
-# the new one
+# RavenCalc takes the plain form, and must: it has no __init__.py because api.py:70 puts it on
+# sys.path as a flat module. `-t .` fails on it with "Start directory is not importable".
 python3 -m unittest discover -s backend/apps/ravencalc -p 'test_*.py'
 
 # browser, both origins -- these must agree
@@ -583,37 +594,72 @@ orphan check in with it — the broken-link pass is silent about orphans by cons
 
 ## 9. State at close, and what only Garrett can do
 
-Re-verified at 14:58 on 2026-08-17, after the tuner work landed.
+Re-verified on 2026-08-17 after rebasing onto `aebd444`, with a **corrected harness** — see the
+warning below, because the first sweep of this audit under-counted by 33 tests and invented a
+failure that did not exist.
 
-### Test sweep
+### Test sweep — 598 tests, 10 of 12 suites green
 
-| Suite | Result |
-|---|---|
-| accounts, coder, cryptominer, gateway, guide, licensing, project, ravencalc | **OK** |
-| asicminer | OK (3 skipped) |
-| `node tests/frontend.mjs` — local `:8800` | **26/26** |
-| `node tests/frontend.mjs https://symoneural.com` | **26/26** |
-| tuner | **OK** (122) — was 1 failure, fixed in `da36bee` |
-| sigils | 1 failure, 1 error — another session's live work |
-| reinforce | 1 failure, 6 errors — both explained below |
+| Suite | Tests | Result |
+|---|---|---|
+| accounts | 46 | **OK** |
+| asicminer | 42 | OK (3 skipped) |
+| coder | 46 | **OK** |
+| cryptominer | 72 | **OK** |
+| gateway | 57 | **OK** |
+| guide | 50 | **OK** |
+| licensing | 21 | **OK** |
+| project | 102 | **OK** |
+| ravencalc | 14 | **OK** |
+| tuner | **159** | **OK** |
+| sigils | 24 | 1 error — another session's live work |
+| reinforce | 69 | 1 failure, 6 loader stubs — both explained below |
+| `node tests/frontend.mjs` — local `:8800` | 26 | **26/26** |
+| `node tests/frontend.mjs https://symoneural.com` | 26 | **26/26** |
+
+### The sweep command was wrong, and wrong in the direction that hides things
+
+Every earlier sweep in this document ran `unittest discover -s backend/apps/<app>` with no `-t`.
+That makes discover treat the app directory as the top-level package, so **any test module using a
+relative import fails to load** — and unittest reports that as a single `ERROR` while every test
+in that module silently does not run. The tuner is the case that matters: `test_epg.py` opens with
+`from . import epg`, so the old command reported
+
+```
+tuner   Ran 126 tests   FAILED (errors=1)
+```
+
+when the truth, with `-t .`, is **`Ran 159 tests ... OK`**. A third of the suite was invisible and
+the visible part looked broken. This is the more dangerous of the two failure modes: a red line
+gets investigated, whereas 33 absent tests look exactly like a suite that is smaller than it is.
+
+`ravencalc` needs the *opposite* treatment and is not an inconsistency to fix: it has no
+`__init__.py` because `api.py:70` puts it on `sys.path` as a flat module, with the reason stated
+there. `-t .` fails on it outright with *"Start directory is not importable"*. Eleven packages take
+`-t .`; RavenCalc takes the plain form. §8 carries both.
 
 **None of the failures is a regression from this audit**, and each was checked rather than
 assumed:
 
 - **tuner** — `test_the_wait_covers_a_realistically_paced_stream`, the stale
   `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1` assertion described in §7. It went red *in this branch
-  only*, because reverting `e0eb087` reverted the fix for it along with everything else.
+  only*, because reverting the acodec commit reverted the fix for it along with everything else.
 
-  **Now fixed here, in `da36bee`, and the branch is green.** The first plan was to leave it,
-  on the grounds that the tuner's own session had fixed it independently and it would go green
-  on merge. That was wrong in a way worth recording: it would have meant handing over a branch
-  that merges red unless somebody else's *uncommitted* work happens to land first. An ordering
-  constraint that exists only in a document is not a constraint. The fix is also strictly
-  separable — the peer's objection was to `acodec` and the static codec table, never to this
-  assertion — so re-applying it re-opens none of the collision. Worst case is a trivial
-  conflict on one test method, which is a much better failure than a red suite on `main`.
-- **sigils** — `test_despill_pulls_the_field_colour_out_of_the_edge` and
-  `test_a_whole_sticker_end_to_end_without_a_gpu`. The sticker surface is under active
+  **Resolved on `main`, and not by this branch.** This audit did briefly re-apply its own fix,
+  reasoning that handing over a branch which merges red unless somebody else's *uncommitted*
+  work lands first is not a real plan — an ordering constraint that exists only in a document is
+  not a constraint. That reasoning was right, and the fix was still dropped in the rebase,
+  because the owning session had already done it better. They did not delete the assertion; they
+  replaced it with `test_the_wait_keeps_the_session_alive_while_it_waits`, which asserts the
+  *mechanism* — that the wait loop touches the session repeatedly, so the reaper never sees it go
+  quiet — and which found the root cause this audit missed: `979c3dc` raised the wait to 25 s and
+  dropped the idle timeout 45 → 12 s in one change, so the assertion was false the day it was
+  written. Asserting the mechanism beats asserting the arithmetic, and deleting beats neither.
+- **sigils** — now one error, not two failures: the despill test went green on `main` while this
+  branch was being rebased. What remains is
+  `test_a_whole_sticker_end_to_end_without_a_gpu`, a `FileNotFoundError` on a
+  `backend/output/sigil-raw-*.png` that was never written, followed by an `UnboundLocalError` on
+  `doc` in the teardown path — the second masking the first. The sticker surface is under active
   development by another session. This branch contains no commit touching `backend/apps/sigils`.
 - **reinforce** — the six errors are a discovery artifact, not tests: `unittest discover` imports
   `bench/`, `symoneural/` and `tests/`, which `import cupy`, which is not installed. The one real
@@ -641,21 +687,20 @@ guard is not optional"*, so there is no path that reads the corpus even if prefl
 entirely. The test would be more honest asserting against the guard directly, or skipping when
 `registry.catalogue()` is empty, the way the GGUF test above it already skips.
 
-### The three things an agent cannot do
+### What only Garrett can do
 
-1. **Merge this branch.** `worktree-online-apps-audit` carries the RavenCalc fix, the
-   documentation corrections, the reverted tuner commit and its revert (kept in history
-   deliberately — see §7), the stale-deadline fix (`da36bee`), and the NVENC measurements.
-   **It merges green**: 10 of 12 backend suites OK and 26/26 in the browser on both origins,
-   with the two remaining failures carrying zero commits from this branch (`git log main..HEAD
-   -- backend/apps/sigils backend/apps/reinforce` is empty).
-2. **Commit the tuner session's work.** As of writing, the Tuner+Guide merge, `acodec`, the
-   `isTypeSupported` codec check, the hls.js path fix and the sticky codec panel exist only as
-   **uncommitted working-tree state in the shared checkout**, alongside many other sessions'
-   uncommitted changes. It is the most valuable tuner work done today and currently the least
-   durable.
-3. **`sudo systemctl restart symoneural-api`.** Two fixes are inert until this happens, and both
-   were confirmed still broken live at 14:58:
+1. **Merge `tuner-transcode`.** Branch `worktree-online-apps-audit` is superseded: its eight
+   commits were rebased onto `aebd444` as five, dropping the acodec commit, its revert and the
+   stale-deadline fix for the reasons given above. What remains is the RavenCalc fix, the
+   documentation, the NVENC measurements and `bench_nvenc.sh` — plus the two-tier transcode in
+   §7.5, which is built on top of the tuner session's committed work rather than beside it.
+2. **~~Commit the tuner session's work.~~ Done** — landed as `4b23f85` (guide grid,
+   `site/tuner-watch.html`, the statistics panel, the Tuner+Guide rack merge) and `aebd444` (a
+   review pass: the deadline test, watch-page `pageerror` coverage, a handoff slot-leak fix).
+   This was the least durable valuable thing on the box and is now the base this branch builds on.
+3. **`sudo systemctl restart symoneural-api`** *and* **`sudo scripts/deploy.sh --prune`.** Nothing
+   below is live: the running `:8800` process predates all of today's tuner work and still reports
+   12 rack units rather than the merged 11. Confirmed still broken live at 14:58:
 
    ```
    POST /api/ravencalc {"expression": "factorial(99999)"}
@@ -670,10 +715,9 @@ entirely. The test would be more honest asserting against the guard directly, or
 
 ### Still to build: the transcode
 
-Designed and measured in §7, not implemented. Deliberately not started on this branch: it must be
-built on top of the tuner session's rewritten `sessions.py`, which is not committed yet, and
-building it on this branch's older base would guarantee a conflict in exactly the file that was
-just rewritten. Two constraints carried forward from that session — detect-then-respawn is
-unavoidable, and `_spawn`'s *"it never quietly re-encodes, because the GPU belongs to inference"*
-must be rewritten with the engine-separation measurement as its justification rather than quietly
-contradicted.
+Designed and measured in §7, and **unblocked as of `aebd444`** — it had to be built on top of the
+tuner session's rewritten `sessions.py`, which is now committed, and this branch is rebased onto
+it. Not started at the time of this commit. Two constraints carried forward from that session:
+detect-then-respawn is unavoidable, and `_spawn`'s *"it never quietly re-encodes, because the GPU
+belongs to inference"* must be rewritten with the engine-separation measurement as its
+justification rather than quietly contradicted.
