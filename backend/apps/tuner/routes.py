@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import safefetch, xtream
+from . import epg, safefetch, xtream
 from .m3u import MAX_CHANNELS, parse_m3u
 from .safefetch import BlockedURL, FetchError, Policy, Scrubber
 from .sessions import (MANAGER, MAX_SESSIONS, PLAYLIST_NAME, SEGMENT_RE, FFMPEG,
@@ -78,6 +78,29 @@ class XtreamBody(BaseModel):
     username: str = ""
     password: str = ""
     kinds: list[str] = Field(default_factory=lambda: ["live"])
+
+
+class EpgBody(XtreamBody):
+    """One channel's guide, or a grid's worth.
+
+    Subclasses `XtreamBody` so the credential defaults and the `extra="ignore"` contract are
+    inherited rather than restated -- `kinds` comes along unused, which is harmless, and losing
+    the "every credential field has a default" leak fix would not be.
+    """
+    #: One stream id, or many. Both are accepted on the same route because the grid and the
+    #: focused row are the same question asked at different widths, and two routes that build
+    #: the same URL is how they drift apart.
+    stream_id: str = ""
+    stream_ids: list[str] = Field(default_factory=list)
+    limit: int = 0
+
+
+class XmltvBody(XtreamBody):
+    #: `tvg_id` values to keep. Empty means keep everything, which on a real account is 10,124
+    #: channels and 31 MB -- allowed, but the caller has to ask for it explicitly by omitting
+    #: this, rather than getting it because a filter was forgotten.
+    ids: list[str] = Field(default_factory=list)
+    max_per_channel: int = 0
 
 
 class TuneBody(BaseModel):
@@ -181,6 +204,113 @@ async def xtream_channels(body: XtreamBody) -> dict:
             seen.add(e["group"])
             groups.append(e["group"])
     return {"count": len(entries), "groups": groups, "notes": notes, "channels": entries}
+
+
+# ---------------------------------------------------------------- guide (EPG)
+#
+# How many of the panel's own guide requests may be in flight at once. Six, and the number is a
+# politeness bound rather than a performance one: the grid asks for one channel per request, so a
+# 40-row grid is 40 requests against somebody else's server, and a provider that reads that as
+# abuse throttles or bans the account -- the visitor's account, not ours. Six with a 20 s read
+# timeout also keeps the worst case for a whole grid inside one page load.
+EPG_CONCURRENCY = 6
+
+#: Rows per grid request. 60 is three screens of channels at a normal row height; past that the
+#: honest answer is that the visitor should scroll and the page should ask again.
+EPG_MAX_IDS = 60
+
+
+@router.post("/epg", summary="Programme guide for one channel or a grid of them")
+async def epg_route(body: EpgBody) -> dict:
+    """`get_short_epg` per channel, a few at a time. Returns what the panel actually said.
+
+    Empty is a real answer and is reported as one: `channels` carries a list for every id asked
+    about, and an id whose list is empty genuinely has no guide upstream. `failed` is separate
+    from that, so "the panel has no data for this channel" and "the request for this channel
+    broke" never render the same way.
+    """
+    creds = _creds(body)
+    ids = [str(s).strip() for s in (body.stream_ids or []) if str(s).strip()]
+    if body.stream_id.strip():
+        ids.insert(0, body.stream_id.strip())
+    # dict.fromkeys, not set(): the caller's order is the order the grid draws in, and a set
+    # would hand the rows back shuffled for no reason.
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        raise HTTPException(400, "give a stream_id, or stream_ids for a grid")
+    if len(ids) > EPG_MAX_IDS:
+        raise HTTPException(413, f"ask for at most {EPG_MAX_IDS} channels of guide at once")
+
+    limit = body.limit or epg.DEFAULT_LIMIT
+    gate = asyncio.Semaphore(EPG_CONCURRENCY)
+    started = time.monotonic()
+
+    async def one(sid: str) -> tuple[str, list[dict] | None, int, str]:
+        async with gate:
+            try:
+                progs, dropped = await asyncio.to_thread(
+                    epg.short_epg, creds, sid, limit, Policy())
+            except epg.EpgError as exc:
+                return sid, None, 0, str(exc)
+            return sid, [p.public() for p in progs], dropped, ""
+
+    results = await asyncio.gather(*(one(s) for s in ids))
+    channels: dict[str, list[dict]] = {}
+    failed: dict[str, str] = {}
+    dropped_total = 0
+    for sid, progs, dropped, err in results:
+        if progs is None:
+            failed[sid] = err
+            continue
+        channels[sid] = progs
+        dropped_total += dropped
+    # `now`/`next` are computed here rather than in the browser because the clock that matters
+    # is the one the timestamps are on, and a visitor with a wrong system clock would otherwise
+    # see a guide that is wrong in a way nothing on the page could explain.
+    now = {sid: epg.now_next([epg.Programme(**{k: p[k] for k in ("start", "stop", "title", "desc")})
+                              for p in progs])
+           for sid, progs in channels.items()}
+    return {
+        "source": "get_short_epg",
+        "asked": len(ids),
+        "answered": len(channels),
+        "limit": limit,
+        "channels": channels,
+        "now": now,
+        "failed": failed,
+        "dropped_no_clock": dropped_total,
+        "server_time": int(time.time()),
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "note": "no guide, playlist or credential is stored on this box",
+    }
+
+
+@router.post("/epg/xmltv", summary="The whole account's guide as XMLTV")
+async def epg_xmltv_route(body: XmltvBody) -> dict:
+    """One request for everything, keyed by `tvg_id`.
+
+    This is the heavy door and it is labelled: measured against one real account the document is
+    31 MB for 10,124 channels, so a page that wants now-and-next for what is on screen should
+    use `POST /epg` instead. Send `ids` to have the filtering happen during the parse, which is
+    where it is nearly free.
+    """
+    creds = _creds(body)
+    wanted = {str(i).strip() for i in body.ids if str(i).strip()} or None
+    started = time.monotonic()
+    try:
+        guide, meta = await asyncio.to_thread(
+            epg.xmltv_epg, creds, Policy(), wanted, max(0, int(body.max_per_channel or 0)))
+    except epg.EpgError as exc:
+        raise HTTPException(502, str(exc)) from None
+    return {
+        **meta,
+        "asked": len(wanted) if wanted else 0,
+        "guide": {k: [p.public() for p in v] for k, v in guide.items()},
+        "now": {k: epg.now_next(v) for k, v in guide.items()},
+        "server_time": int(time.time()),
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "note": "no guide, playlist or credential is stored on this box",
+    }
 
 
 # ---------------------------------------------------------------- tuning

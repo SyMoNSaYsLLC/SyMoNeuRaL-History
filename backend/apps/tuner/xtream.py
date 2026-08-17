@@ -29,7 +29,7 @@ from . import safefetch
 from .safefetch import BlockedURL, FetchError, Policy, ResponseTooLarge, Scrubber
 
 __all__ = ["XtreamCreds", "XtreamError", "XtreamTooLarge", "CATALOGUE_MAX_BYTES",
-           "panel_info", "load_channels", "stream_url"]
+           "panel_info", "load_channels", "stream_url", "api_url", "panel_base"]
 
 #: Byte ceiling for the catalogue documents this module fetches, replacing `Policy.max_bytes`
 #: for those requests only.
@@ -112,6 +112,14 @@ def _api(creds: XtreamCreds, action: str | None = None, **extra: str) -> str:
         params["action"] = action
     params.update({k: v for k, v in extra.items() if v})
     return f"{_base(creds.server)}/player_api.php?{urllib.parse.urlencode(params)}"
+
+
+#: Public names for the two URL builders. `epg.py` needs both, and reaching across a module
+#: boundary for `_api` would mean a private helper with two callers and no contract -- the next
+#: person to "clean up" the underscore breaks the guide. The underscored forms stay because this
+#: file uses them on nearly every line.
+api_url = _api
+panel_base = _base
 
 
 def _get_json(url: str, policy: Policy, scrub: Scrubber):
@@ -237,6 +245,11 @@ def load_channels(creds: XtreamCreds, kinds: tuple[str, ...] = ("live",),
                 "group": f"{kind.upper()} | {group}" if kind != "live" else group,
                 "kind": kind,
                 "tvg_id": str(row.get("epg_channel_id") or ""),
+                # The guide is addressed by stream id, not by name: `get_short_epg` takes
+                # `stream_id=N`. It was being dropped here, so the page had no way to ask for
+                # an EPG for a channel it had just listed. Not a credential and not a secret --
+                # it is the number already inside the `url` field two lines down.
+                "stream_id": str(sid),
                 # A series id is not a playable stream -- an episode is. The catalogue lists the
                 # series so the visitor can see it; `url` is empty and the UI must not offer a
                 # play button for it. Inventing an episode URL here would produce a channel that
