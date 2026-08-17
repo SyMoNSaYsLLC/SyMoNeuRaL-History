@@ -1986,6 +1986,12 @@ TUNER_JS = """<script src="/hls.js"></script>
   var nowEl = document.getElementById('tnnow');
 
   var mode = 'm3u', all = [], hay = [], view = [], hls = null;
+  // Which player got the stream, recorded when the choice is made rather than inferred from
+  // `hls` being non-null -- see the same variable on tuner-watch.html for the measurement.
+  // Inferring it means the panel starts claiming "the browser's own HLS" the moment the
+  // instance is destroyed, which is exactly when somebody is reading the panel to find out
+  // why the picture stopped.
+  var engine = '';
   var cat = 'live', favs = {}, sel = {}, groupRows = [], filterState = null;
   var carried = [], carriedBy = {}, carriedMaxG = 0, carriedMaxN = 0;
   var PAGE = 300, shown = PAGE;
@@ -2983,6 +2989,7 @@ TUNER_JS = """<script src="/hls.js"></script>
       return;
     }
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      engine = 'the browser\\u2019s own HLS';
       video.src = src; safePlay(); watch(c); return;
     }
     showFail('This browser cannot play HLS.',
@@ -3010,6 +3017,7 @@ TUNER_JS = """<script src="/hls.js"></script>
     // `segment_s` comes from the session's own `#EXTINF`, so the buffer targets below are
     // derived from what this stream actually produces rather than from what we asked for.
     var segS = (j && j.segment_s) || 2;
+    engine = 'hls.js ' + (window.Hls.version || '');
     hls = new window.Hls({
       lowLatencyMode: false,          // LL-HLS needs partial segments; ffmpeg is not making any
       liveSyncDurationCount: 1,       // was the default 3 -- this is the 31s -> 2.5s change
@@ -3565,8 +3573,7 @@ TUNER_JS = """<script src="/hls.js"></script>
     put('ps-buf', buf === null ? '-' : buf.toFixed(1) + ' s');
     put('ps-drop', q ? String(q.droppedVideoFrames) : '-');
     put('ps-dec', q ? String(q.totalVideoFrames) : '-');
-    put('ps-eng', hls ? 'hls.js ' + (window.Hls && window.Hls.version ? window.Hls.version : '')
-                      : 'the browser\\u2019s own HLS');
+    put('ps-eng', engine || '-');
 
     if (hls) {
       // `currentLevel` is **-1 while the level is being chosen automatically**, which is the
@@ -4094,6 +4101,15 @@ a.wb{text-decoration:none; display:inline-block}
   var psWhy = document.getElementById('ps-why');
 
   var cfg = null, chan = null, hls = null, sid = null;
+  // Which player the stream was actually handed to, recorded at the moment of the choice
+  // rather than inferred from `hls` being non-null. Inferring it was wrong in a way that
+  // mattered: `statsStart()` runs at the top of `play()`, BEFORE the engine is picked, and its
+  // first tick is synchronous -- so on a channel that dies inside a second (a dead channel,
+  // which is common) `stopTimers()` cleared the interval before any later tick, and the panel
+  // sat there reporting "the browser's own HLS" for a stream hls.js had in fact been given.
+  // That is the same misdirection as the original bug: the one readout that says which player
+  // is running has to be right when the picture is black, because that is when it gets read.
+  var engine = '';
   var waitT = null, watchT = null, hiddenT = null, statsT = null, lastSession = null;
 
   try { cfg = JSON.parse(localStorage.getItem(K) || 'null'); } catch (e) { cfg = null; }
@@ -4461,6 +4477,7 @@ a.wb{text-decoration:none; display:inline-block}
     // there, and it falls through to the native branch correctly.
     if (!window.Hls || !window.Hls.isSupported()) {
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        engine = 'the browser’s own HLS';
         video.src = src; safePlay(); watch(c); return;
       }
       showFail('This browser cannot play HLS.',
@@ -4489,6 +4506,8 @@ a.wb{text-decoration:none; display:inline-block}
       fragLoadingRetryDelay: 250,
       backBufferLength: 30
     });
+    engine = 'hls.js ' + (window.Hls.version || '');
+    statsTick();
     hls.loadSource(src); hls.attachMedia(video);
     hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
       safePlay(); watch(c); fillLevels();
@@ -4970,8 +4989,7 @@ a.wb{text-decoration:none; display:inline-block}
     put('ps-buf', buf === null ? '-' : buf.toFixed(1) + ' s');
     put('ps-drop', q ? String(q.droppedVideoFrames) : '-');
     put('ps-dec', q ? String(q.totalVideoFrames) : '-');
-    put('ps-eng', hls ? 'hls.js ' + (window.Hls && window.Hls.version ? window.Hls.version : '')
-                      : 'the browser’s own HLS');
+    put('ps-eng', engine || '-');
     if (hls) {
       // `currentLevel` is **-1 while the level is being chosen automatically**, which is the
       // default and therefore the normal case -- so reading it alone printed `-` for the level

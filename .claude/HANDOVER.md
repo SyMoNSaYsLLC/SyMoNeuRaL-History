@@ -947,6 +947,33 @@ whose test passes both with and without it is not a test.
    against the scripted provider: the record now carries `sid: "S1"`, and with the second call
    removed it is `sid: ""` again.
 
+### Writing the assertion found a fifth bug, in the readout that finds the others (~19:40)
+
+`tests/tuner_watch.mjs` is new: the watch page carries its **own** copy of `play()`, its own
+statistics panel and its own `#ps-eng`, deliberately duplicated from `TUNER_JS` — so duplicated
+code needs duplicated assertions or the identical bug can be reintroduced on the copy with
+every existing test still green. 8 assertions, self-contained against the scripted provider.
+
+It went 6/8 on the first run, and the second failure was real. **`#ps-eng` inferred the player
+from `hls` being non-null, so it lied in exactly the situation it exists to be read in.** On the
+watch page `statsStart()` is called at the *top* of `play()`, before the engine is chosen, and
+its first tick is synchronous — so a channel that dies inside a second (a dead channel, which is
+common) had `stopTimers()` clear the interval before any later tick, and the panel sat there
+reporting *"the browser's own HLS"* for a stream hls.js had in fact been handed. The same
+inference on `tuner.html` flips the readout the moment the instance is destroyed. Either way the
+one line that says which player is running is wrong precisely when the picture is black — which
+is how the original `canPlayType` bug stayed hidden for as long as it did.
+
+Both pages now record `engine` at the moment of the choice and print that, with `'-'` before a
+choice has been made. Removing the record takes the new suite to 7/8 with that assertion red.
+
+The other over-strict assertion is worth remembering as a pattern: the first version asserted
+the page reads *"live"*, and it got *"stopped"* — which is **true**, because the fixture serves
+a manifest and no segment data. Asserting it away would have been asserting that the page lies.
+It now asserts the page reaches a *definite* state and never sits on `opening…`, which is the
+real invariant. That is the second time this fixture has caught an assertion for being stricter
+than the truth; the first was the AAC control in `tuner_failpaths.mjs`.
+
 **And a build-order trap that nearly shipped, now written into `.claude/CLAUDE.md`.** Running
 `build_pages.py` **strips every `?v=` cache-bust stamp off the pages it writes**, because the
 generators emit plain hrefs and `tools/build_cachebust.py` stamps them afterwards. Seven pages
@@ -955,6 +982,13 @@ opposite — committing there would have shipped HTML whose CSS and JS are cache
 with no way to invalidate them, which is the exact failure that made the stamper exist. The
 tell is a page you never touched showing as modified. **Regenerate, then stamp, then re-read
 `git status`.**
+
+It had already bitten somebody else: `site/project.html` was committed with **no stamps at all**,
+and running the stamper here put all ten back. Check your own surface page for `?v=` before you
+call it done — `grep -c '?v=' site/<page>.html` should be non-zero. And note **`deploy.sh` does
+not stamp** — it only strips `?v=` when checking that references resolve, so a destamped page
+deploys silently. `python3 tools/build_cachebust.py` has to run before `sudo scripts/deploy.sh`,
+not as part of it.
 
 ## 2g. Two open design questions Garrett raised (NOT decided, NOT built)
 

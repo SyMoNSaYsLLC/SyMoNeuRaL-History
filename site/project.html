@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Project — a workspace you and the local models share</title>
 <meta name="description" content="Projects, work items, file references and session history, held on this machine. CPU only, so it answers while the GPU is busy.">
-<link rel="stylesheet" href="/symoneural.css">
-<link rel="stylesheet" href="/rack-detail.css">
-<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
-<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
+<link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
+<link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0823a86bfe">
 <meta name="theme-color" content="#0e100f">
 </head>
 <body>
@@ -17,7 +17,7 @@
 <header>
   <div class="wrap bar">
     <a class="logo" href="/">
-      <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <img src="/mark-64.png?v=ded4e8a102" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
       <b>SyMoNeu<i>RaL</i></b>
     </a>
     <nav>
@@ -34,7 +34,7 @@
 
 <div class="hero" style="padding:56px 0 26px">
   <div class="wrap">
-    <p class="eyebrow"><img src="/mark-64.png" alt="" width="20" height="20"
+    <p class="eyebrow"><img src="/mark-64.png?v=ded4e8a102" alt="" width="20" height="20"
        style="display:inline-block;vertical-align:-4px;margin-right:8px">Live surface · CPU</p>
     <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">A workspace you and the models share.</h1>
     <p class="lede" style="font-size:16.5px">Somewhere to keep what you are working on across sessions — the projects, what is left to do, the files each one touches and what happened last time. It owns no weights and never queues for the card, which is the point: the moment you most want to write down what you were doing is the moment the GPU is busy for three hours.</p>
@@ -172,7 +172,7 @@
 <footer>
   <div class="wrap foot">
     <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
-      <img src="/mark-32.png" alt="" width="22" height="22">
+      <img src="/mark-32.png?v=fc9400dc9f" alt="" width="22" height="22">
       <b style="font-size:14.5px;color:var(--fg)">SyMoNeu<i style="font-style:normal;color:var(--accent)">RaL</i></b>
     </a>
     <span>&copy; SymonSays LLC &middot; <a href="mailto:symonsayadmin@symoneural.com"
@@ -217,8 +217,8 @@ async function api(path, payload) {
   return body;
 }
 </script>
-<script src="/console.js" defer></script>
-<script src="/ui.js" defer></script>
+<script src="/console.js?v=9bd84a9bf7" defer></script>
+<script src="/ui.js?v=f86c53da5d" defer></script>
 <style>
 #pj-app { display: grid; gap: 18px; grid-template-columns: minmax(0,1fr) 320px; }
 @media (max-width: 900px) { #pj-app { grid-template-columns: minmax(0,1fr); } }
