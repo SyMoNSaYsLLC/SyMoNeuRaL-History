@@ -96,7 +96,18 @@ check() { # label url expected
   if [ "$code" = "$3" ]; then printf '  ok    %-28s %s\n' "$1" "$code"
   else printf '  FAIL  %-28s %s (wanted %s)\n' "$1" "$code" "$3"; fail=1; fi
 }
-check "https:// index"        "https://$DOMAIN/"             200
+# `/` is a 302 to /overview, so this must NOT assert 200 -- that is the same mistake the
+# http:// check below used to make. Follow the redirect and require the destination to be
+# right, which is the property that actually matters.
+idx_code="$(curl -fsSL -o /dev/null -w '%{http_code}' -m 15 "https://$DOMAIN/" 2>/dev/null || echo 000)"
+idx_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' -m 15 "https://$DOMAIN/" 2>/dev/null || echo '')"
+case "$idx_code:$idx_url" in
+  200:https://$DOMAIN/overview)
+    printf '  ok    %-28s 200 via %s\n' "https:// index" "$idx_url" ;;
+  *)
+    printf '  FAIL  %-28s %s at %s (wanted 200 at https://%s/overview)\n' \
+      "https:// index" "$idx_code" "${idx_url:-nothing}" "$DOMAIN"; fail=1 ;;
+esac
 check "https:// api status"   "https://$DOMAIN/api/status"   200
 check "https:// swagger"      "https://$DOMAIN/docs"         200
 check "https:// openapi"      "https://$DOMAIN/openapi.json" 200

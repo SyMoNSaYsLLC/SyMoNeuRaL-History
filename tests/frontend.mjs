@@ -18,6 +18,10 @@ const { chromium } = createRequire(import.meta.url)(
   join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright'));
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8800';
+// The tabbed front page is addressed as /index.html throughout, because `/` now redirects
+// to /overview. Loading BASE for a rack or control-board assertion would land on the
+// masthead and quietly assert nothing.
+
 const SHOTS = process.env.SHOT_DIR || '/tmp/symoneural-shots';
 const results = [];
 const record = (name, ok, detail) => {
@@ -49,7 +53,7 @@ const openTab = async (p, id) => {
 
 try {
   // ---- rack ----------------------------------------------------------------
-  await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
   await openTab(page, 'rack');
   await page.waitForSelector('.unit', { timeout: 15000 });
   const units = await page.$$eval('.unit', els => els.map(e => ({
@@ -238,7 +242,7 @@ try {
                              [1300, 900, 'out'], [1280, 800, 'slit']]) {
     const probe = await ctx.newPage();
     await probe.setViewportSize({ width: w, height: h });
-    await probe.goto(BASE, { waitUntil: 'networkidle' });
+    await probe.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
     await probe.waitForTimeout(250);
     ns[key] = await probe.evaluate(async (ids) => {
       const d = document.documentElement, out = { worst: 101, worstId: null };
@@ -290,6 +294,20 @@ try {
            `${k}: ns=${v.ns} scroll=${v.scrolls} lands on [${v.lands}] min panel ${v.worst}% (${v.worstId})`
            + (v.ghosts ? ` GHOSTS: ${v.ghosts}` : '')
          ).join(' | '));
+
+  // ---- the bare domain goes to /overview ----------------------------------
+  // Checked WITHOUT following, so the status code is visible: a 301 here would be a bug,
+  // because browsers cache it indefinitely and it could not be walked back. Also asserts
+  // the tabbed page is still reachable at /index.html rather than orphaned -- it is the
+  // page tools/build_split.py reads to build the other four.
+  const rootRedir = await ctx.request.get(new URL('/', BASE).href, { maxRedirects: 0 });
+  const idx = await ctx.request.get(new URL('/index.html', BASE).href);
+  record('the bare domain redirects to /overview, temporarily',
+         rootRedir.status() === 302
+           && (rootRedir.headers()['location'] || '').endsWith('/overview')
+           && idx.status() === 200,
+         `/ -> ${rootRedir.status()} ${rootRedir.headers()['location']}; `
+         + `/index.html = ${idx.status()}`);
 
   // ---- one page per section, at its own URL -------------------------------
   // tools/build_split.py writes these and backend/api.py routes them. Three properties,
@@ -357,7 +375,7 @@ try {
     };
   });
   record('the GPU panel beside a prompt shows a real reading', gpanel.ok, gpanel.why);
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
 
   // ---- the tuner form is styled, and posts to routes that exist ----------
   // Two bugs shipped together on this page. The `tn-` CSS was never written, so the form
@@ -392,7 +410,7 @@ try {
                    .map(([k, v]) => `${k.replace('/api/tuner', '')}=${v}`).join(' ') };
   });
   record('the tuner form is styled and its endpoints are routed', tuner.ok, tuner.why);
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
 
   // ---- .card is not redefined out from under the rest of the site ---------
   // `.card` was defined twice: the general card near the top of the stylesheet, and the
@@ -415,7 +433,7 @@ try {
          genCards.n > 0 && genCards.outside?.display === 'block',
          genCards.n ? `${genCards.n} general cards, display:${genCards.outside.display} `
                     + `padding:${genCards.outside.padding}` : 'no general .card found');
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
 
   // ---- the receipts grid, and the order page it feeds ----------------------
   const cards = await page.$$eval('#more .card', els => els.map(e => ({

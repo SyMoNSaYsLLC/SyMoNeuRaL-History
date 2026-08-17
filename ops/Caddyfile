@@ -58,7 +58,11 @@ symoneural.com, www.symoneural.com {
 	# so running the suite against production catches the omission immediately -- run it
 	# there after any change here, because against localhost the API answers directly and
 	# this block is not exercised at all.
-	@sections path /overview /livestack /controlboard /receipts
+	# `/` is in this list so the API can redirect it to /overview. `path /` is an EXACT
+	# match -- it does not cover /anything-else, which still falls through to file_server
+	# below. Without this line the redirect route in api.py is dead code: Caddy would serve
+	# index.html off disk and never ask.
+	@sections path / /overview /livestack /controlboard /receipts
 	handle @sections {
 		reverse_proxy 127.0.0.1:8800
 	}

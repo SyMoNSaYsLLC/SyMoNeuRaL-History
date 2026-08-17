@@ -44,7 +44,7 @@ from typing import Annotated, Literal
 from fastapi import (Depends, FastAPI, HTTPException, Request, Response, WebSocket,
                      WebSocketDisconnect, status as http)
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -1789,6 +1789,22 @@ def _section_route(filename: str):
 
 for _slug, _file in SECTION_PAGES.items():
     app.get(f"/{_slug}", include_in_schema=False)(_section_route(_file))
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    """Send the bare domain to /overview.
+
+    302, deliberately NOT 301. A permanent redirect is cached by browsers indefinitely and
+    is painful to walk back -- anyone who visited once would keep being bounced even after
+    the rule was removed. This is a presentation choice that may well be revisited, so it
+    stays reversible.
+
+    `site/index.html` is still built and still served at /index.html. It is the assembled
+    page tools/build_split.py reads to produce the four section pages, so it cannot simply
+    stop being generated.
+    """
+    return RedirectResponse("/overview", status_code=302)
 
 if SITE.is_dir():
     app.mount("/", StaticFiles(directory=str(SITE), html=True), name="site")
