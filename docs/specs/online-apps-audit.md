@@ -558,6 +558,11 @@ python3 -m unittest discover -s backend/apps/ravencalc -p 'test_*.py'
 node tests/frontend.mjs
 node tests/frontend.mjs https://symoneural.com
 
+# ...but from a git worktree that fails first with MODULE_NOT_FOUND on 'playwright'.
+# frontend.mjs resolves it out of contrib/, which a worktree does not get a copy of, so
+# symlink the real one in. contrib/ is gitignored, so this pollutes nothing.
+ln -s /home/google/Symoneural/contrib contrib
+
 # the transcode numbers in section 7. Takes a governor lease and releases it even on crash;
 # runs in about two minutes. Re-take them on a card that is otherwise idle -- a contended
 # measurement is a contaminated one, which is why they were not taken on the first attempt.
@@ -588,18 +593,25 @@ Re-verified at 14:58 on 2026-08-17, after the tuner work landed.
 | asicminer | OK (3 skipped) |
 | `node tests/frontend.mjs` — local `:8800` | **26/26** |
 | `node tests/frontend.mjs https://symoneural.com` | **26/26** |
-| tuner | 1 failure — see below |
+| tuner | **OK** (122) — was 1 failure, fixed in `da36bee` |
 | sigils | 1 failure, 1 error — another session's live work |
 | reinforce | 1 failure, 6 errors — both explained below |
 
-**None of the three failures is a regression from this audit**, and each was checked rather than
+**None of the failures is a regression from this audit**, and each was checked rather than
 assumed:
 
 - **tuner** — `test_the_wait_covers_a_realistically_paced_stream`, the stale
-  `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1` assertion described in §7. It is red *in this branch
-  only*, because reverting `e0eb087` reverted the fix for it along with everything else. The
-  tuner's own session fixed it independently in the main checkout. It goes green when that work
-  is committed and merged; nothing needs doing here.
+  `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1` assertion described in §7. It went red *in this branch
+  only*, because reverting `e0eb087` reverted the fix for it along with everything else.
+
+  **Now fixed here, in `da36bee`, and the branch is green.** The first plan was to leave it,
+  on the grounds that the tuner's own session had fixed it independently and it would go green
+  on merge. That was wrong in a way worth recording: it would have meant handing over a branch
+  that merges red unless somebody else's *uncommitted* work happens to land first. An ordering
+  constraint that exists only in a document is not a constraint. The fix is also strictly
+  separable — the peer's objection was to `acodec` and the static codec table, never to this
+  assertion — so re-applying it re-opens none of the collision. Worst case is a trivial
+  conflict on one test method, which is a much better failure than a red suite on `main`.
 - **sigils** — `test_despill_pulls_the_field_colour_out_of_the_edge` and
   `test_a_whole_sticker_end_to_end_without_a_gpu`. The sticker surface is under active
   development by another session. This branch contains no commit touching `backend/apps/sigils`.
@@ -633,7 +645,10 @@ entirely. The test would be more honest asserting against the guard directly, or
 
 1. **Merge this branch.** `worktree-online-apps-audit` carries the RavenCalc fix, the
    documentation corrections, the reverted tuner commit and its revert (kept in history
-   deliberately — see §7), and the NVENC measurements.
+   deliberately — see §7), the stale-deadline fix (`da36bee`), and the NVENC measurements.
+   **It merges green**: 10 of 12 backend suites OK and 26/26 in the browser on both origins,
+   with the two remaining failures carrying zero commits from this branch (`git log main..HEAD
+   -- backend/apps/sigils backend/apps/reinforce` is empty).
 2. **Commit the tuner session's work.** As of writing, the Tuner+Guide merge, `acodec`, the
    `isTypeSupported` codec check, the hls.js path fix and the sticky codec panel exist only as
    **uncommitted working-tree state in the shared checkout**, alongside many other sessions'
