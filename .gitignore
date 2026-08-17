@@ -37,3 +37,17 @@ training/adapter/tokenizer.json
 /skills
 /cuda-samples
 /Nemotron-main
+
+# ---- Reference trees added for the IPTV and Miner surfaces (third-party, large) ----
+# Projects_Crypto alone is ~2.5 GB of Antminer/Braiins firmware images.
+/Projects_Crypto
+/references IPTV
+/CGMiner-master
+/braiins-os-feeds-master
+/nx-master
+/software-templates-main
+/backstage-master
+/cuda-programming-guide.pdf
+/Pete
+/*.pdf
+__MACOSX/

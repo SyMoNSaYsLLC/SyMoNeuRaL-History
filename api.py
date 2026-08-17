@@ -43,6 +43,7 @@ from typing import Annotated, Literal
 
 from fastapi import (Depends, FastAPI, HTTPException, Request, Response, WebSocket,
                      WebSocketDisconnect, status as http)
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -1122,7 +1123,7 @@ def build_status() -> Status:
             # The adapter bay. Idle most of the time, but when a fine-tune is running it
             # owns the card outright and every serving surface waits behind it -- so it
             # belongs on the rack rather than being invisible infrastructure.
-            Unit(id="train", label="SyMoNeuRaL Adapter Bay", slot="2U",
+            Unit(id="train", label="SyMoNeuRaL Chat Model Tuner", slot="2U",
                  state="busy" if holder == "train" else
                        ("ready" if CHAT_ADAPTER.exists() else "offline"),
                  bus="gpu", href="/training.html",
@@ -1528,6 +1529,19 @@ async def remix(body: RemixRequest,
         note=("Generated locally. Resolving these against Spotify and writing the playlist "
               "runs on the box behind admin auth, not from this page."))
 
+
+# ---------------------------------------------------------------------------
+# Static site, mounted last so it never shadows an API route.
+#
+# In production Apache serves site/ from the webroot and only proxies /api, so
+# this mount is not on the public path. It exists so the box can serve the whole
+# thing from one origin -- which is the only way to exercise the real frontend:
+# console.js opens a WebSocket at /api/ws and falls back to polling /api/status,
+# and neither works when the pages are served from a different port than the API.
+# Testing the surfaces with curl proves the endpoints answer; it proves nothing
+# about the JavaScript that has to render them.
+if GALLERY.is_dir():
+    app.mount("/", StaticFiles(directory=str(GALLERY), html=True), name="site")
 
 if __name__ == "__main__":
     import uvicorn
