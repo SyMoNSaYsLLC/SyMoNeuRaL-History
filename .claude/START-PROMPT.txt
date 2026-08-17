@@ -1,56 +1,36 @@
-Paste this to the fresh agent as its first message.
+You are picking up symoneural.com, a live production site for SyMoNeuRaL (a SymonSays LLC
+company) that sells custom local AI infrastructure. The repo is /home/google/Symoneural.
 
-Start the session from the project directory:
+Read /home/google/Symoneural/.claude/HANDOVER.md first and read all of it — it is written
+for someone with zero prior context and every path, number and decision you need is in it.
+Then read /home/google/Symoneural/.claude/CLAUDE.md, which holds the rules, and skim
+`git log` (every commit states its reason; several design choices look arbitrary without it).
 
-    cd /home/google/Symoneural && claude --dangerously-skip-permissions
+Nothing is broken and nothing is blocked. Before you change anything, confirm that for
+yourself:
 
-------------------------------------------------------------------------------
-PROMPT — copy everything below this line
-------------------------------------------------------------------------------
+    cd /home/google/Symoneural
+    node tests/frontend.mjs                          # expect 17/17
+    node tests/frontend.mjs https://symoneural.com   # expect 17/17
 
-You are picking up symoneural.com mid-project. Before doing anything else, read
-.claude/HANDOVER.md in this directory, all of it, then CLAUDE.md. They are written for you
-and they are current — .claude/HANDOVER.md was rewritten at the end of the last session.
-Anything in docs/archive/ is superseded; do not act on it.
+Four things to know before your first edit:
 
-Three facts that will otherwise cost you an hour each:
+1. I do the deploys. Editing backend/api.py changes the API as soon as the service
+   restarts, but anything under site/ does not reach a visitor until I run
+   `sudo scripts/deploy.sh --prune`. When you finish a frontend change, tell me plainly
+   that it needs deploying and give me the command — do not describe it as live.
 
-  1. There is no demo/ directory. It was flattened into the repo root. api.py,
-     symoneural.sh, and the build_*.py generators all live at the top level. Any
-     path you see with demo/ in it is stale.
+2. Run every generator twice and diff before committing, and run
+   tools/build_cachebust.py LAST. HANDOVER §6 has the one-liner for both.
 
-  2. The site is a git repo now, 12+ commits, and every commit message explains
-     why the change was made. `git log` is the fastest way to understand a
-     decision. Keep that standard — say why, not what.
+3. One GPU, 15.92 GiB, one tenant at a time via a mkdir lock at run/gpu.lock.d.
+   Everything that touches the card goes through scripts/gpu-governor.sh and names its
+   surface when it releases.
 
-  3. The public site at symoneural.com is STALE. Everything from the last session
-     is built and committed but sits in site/ until Garrett runs
-     `sudo ./scripts/deploy.sh` himself — no agent can, sudo is denied and there is no TTY.
-     Unit names and GPU numbers come live from the API and change without a
-     deploy; layout, CSS and JS do not. Always say which of the two you mean.
+4. Put a running checklist at the bottom of every reply, split into what is live on the
+   site, what is built but waiting on my deploy, and what is repo-only. I lose track
+   across rapid-fire requests and I will interrupt you mid-task.
 
-How Garrett wants you to work:
-
-  - End every substantive reply with a running checklist grouped by status:
-    live on the site / built but needs his deploy / repo only / blocked on him /
-    queued. He sends many requests in quick succession and loses track otherwise.
-    He asked for this explicitly.
-  - He will interrupt mid-task and redirect. Expect it, and revert cleanly and
-    completely when he changes his mind — including any API field you added.
-  - Verify his references before building on them. He is often right but not
-    always: he pointed at an IPTV reference directory that turned out to be empty.
-  - Test in a real browser, not with curl: `node tests/frontend.mjs` (9/9 now).
-    A render once succeeded server-side and still showed as a broken image to
-    every visitor; curl proved the endpoint answered, which was never in doubt.
-  - Never invent a price, never let CSS truncate text, never add a decorative
-    indicator. These are the site's whole argument, not styling preferences.
-    CLAUDE.md has the full set.
-
-Start with the work queue in .claude/HANDOVER.md section 5. The first two items are the
-image page restyle (reference: stable-diffusion-webui-master/) and the chat page
-restyle (reference: the llama.cpp web UI, already built at
-llama.cpp/tools/ui/dist/ — serve it and screenshot it). After those: the IPTV
-player, the GPU miner, the ASIC control panel, the Backstage-pattern API, the nx
-frontend reference, and the CUDA audit.
-
-Tell me what you have read and what you plan to do first before you start editing.
+Start with HANDOVER §5 item 0 — there is one open question about the image watermarks that
+needs my answer before anyone acts on it. Ask me that, then propose an order for the rest
+of §5 and wait for me to confirm before you begin.

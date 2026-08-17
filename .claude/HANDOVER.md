@@ -1,117 +1,170 @@
 # HANDOVER — symoneural.com
 
-**Written 2026-08-16 ~23:10 by the outgoing agent, for a fresh agent with zero prior context.**
+**Last updated 2026-08-17 01:40. Written for a fresh agent with zero prior context.**
+
+> **If you read nothing else:** nothing is broken, nothing is blocked. Run
+> `node tests/frontend.mjs https://symoneural.com` (expect 17/17), read `git log`, then
+> pick up §5. The one thing you cannot do yourself is deploy — see §0b.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
 conversation, so every number, path and decision you need is stated here.
 
-> **Precedence:** this file supersedes `HANDOVER-2026-08-16-1910.md` (the previous session's,
-> archived for history) and `PROJECT-STATE.md`. `.claude/CLAUDE.md` remains authoritative for *rules*;
-> this file is authoritative for *state and what is left to do*.
+> **Precedence:** this file is authoritative for *state and what is left to do*.
+> `.claude/CLAUDE.md` remains authoritative for *rules*. Anything in `docs/archive/` is
+> superseded — do not act on it.
 
 ---
 
 ## 0. Sixty-second version
 
-- The repo is now **a git repository** (it was not before). 18 commits, working tree clean,
-  branch `main`, no remote. Every change below is committed with a reason in the message —
-  `git log` is genuinely worth reading before you touch anything.
-- **`demo/` is gone.** Everything moved to the repo root. `demo/api.py` is now `api.py`,
-  `demo/playground.sh` is now `scripts/symoneural.sh`. Old paths in your memory are wrong.
-- **Apache is retired; Caddy serves the site.** This is live and verified.
-- **The site is DEPLOYED and current** as of 2026-08-16 23:28. `scripts/deploy.sh` had been failing
-  for a different reason than everyone assumed — see §1. The API also runs under systemd now.
-- There is a **real browser test suite**: `node tests/frontend.mjs` — 9/9 passing. Run it
-  after any frontend change. It catches things curl cannot.
+- **Nothing is broken and nothing is blocked.** The site is deployed, the API is current,
+  and `node tests/frontend.mjs https://symoneural.com` passes **17/17 against the public
+  site** — including generating a real image on the real card mid-test.
+- The repo is at `/home/google/Symoneural`, branch `main`, no remote. **Every commit
+  states its reason**; `git log` is genuinely worth twenty minutes before you touch
+  anything. Several entries below will otherwise look arbitrary.
+- **Nothing hardcodes its own location.** Scripts derive their root from their own path,
+  `backend/api.py` from `__file__`, the engine binaries via `$ORIGIN` RUNPATH, the systemd
+  unit from a `@@ROOT@@` template. Clone it anywhere and `./scripts/setup.sh` works. Keep
+  it that way — the user asked for this explicitly and it has been broken four times.
+- **Caddy serves static files; FastAPI does all routing.** Apache is gone entirely. Do not
+  reintroduce a second thing that routes.
+- **One RTX 5070 Ti, 15.92 GiB, one tenant at a time**, arbitrated by a `mkdir` lock at
+  `<root>/run/gpu.lock.d`. That constraint is the architecture. See §4.
 
----
-
-## 0b. DO THIS FIRST — the site on disk is ahead of the site being served
+## 0b. First moves
 
 ```bash
-sudo /home/google/Symoneural/scripts/deploy.sh --prune
-```
-Then reload symoneural.com with **Ctrl-Shift-R**. The stale copy already in a browser was
-fetched before assets were cache-busted, so its HTML still points at unstamped URLs and it
-will keep using the cached stylesheet until it is forced past it. Every deploy after this
-one updates by itself.
-
-`--prune` matters here: the webroot holds 34 files this deploy will not publish — 19
-generated renders (13 MB) that moved to `backend/output/`, six superseded index backups,
-`calc.html` from before the ravencalc rename, and `openapi.json` plus six `art-*.json`
-that are build-time metadata Caddy has no business serving. `deploy.sh` prunes before it
-verifies, so the reference check reports on what is actually being served.
-
-**The API is current.** The service was restarted at 01:03 (PID 170388) and
-`/api/ravencalc` returns exact SymPy. `tests/frontend.mjs` is 13/13 against it.
-
-**The general lesson, which bit twice:** a running Python process pins its import paths
-and its resolved `pathlib` constants at start. Moving files under a live service leaves it
-working until it touches the moved thing, which is the worst way to find out. After any
-move, restart the service and hit the surface you moved.
-
-## 1. The deploy blocker — resolved, and it was not the password
-
-`sudo ./scripts/deploy.sh` failed for hours with:
-
-```
-no staged site at /home/google/MIT_AI_Training/site
+node tests/frontend.mjs                 # 17/17 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 17/17 against production
+git log --oneline -25
 ```
 
-The script computed its source as `dirname "$0"/..` — correct while it lived in `demo/`, one
-level too high after the flatten. **The password was never the problem; the path was.**
-`scripts/fetch-models.sh` carried the identical bug. Both fixed, and a sweep of every tracked shell
-script found no others (the two remaining `../` climbs are in correctly-nested scripts).
+**The one workflow fact that has caused every misunderstanding in this project:** API
+responses change the instant you edit `backend/api.py` and restart the service; static
+files under `site/` do not reach a visitor until someone with root runs
+`sudo scripts/deploy.sh --prune`. You cannot run that yourself. When you finish a frontend
+change, say so plainly and hand the user the command — do not describe the change as live.
 
-**Lesson worth keeping:** when the Python `.parent` climbs were fixed after the flatten, the
-shell scripts were missed because the search was for Python idiom. If you move directories
-again, grep for `dirname` and `../` in `*.sh` as well.
-
-Two further fixes to `scripts/deploy.sh` in the same pass:
-
-- Its verification loop piped into `while read`, so `missing=1` was set in a subshell and
-  discarded — it could print `MISSING` and still exit 0. It now counts and exits 1.
-- That check then cried wolf with `MISSING docs`, because `/docs` is a **route** served by
-  FastAPI through Caddy, not a file. It now recognises proxied routes. A check that reports a
-  false failure is worse than no check.
-
-The static Swagger copy that used to be deployed to `/var/www/symoneural/docs/` is gone from
-the deploy: Caddy proxies `/docs` to FastAPI, which generates it, so a disk copy is shadowed
-and only ever goes stale. It was also the last routing living outside the API.
-
-**Still true:** `sudo` is denied to agents and there is no TTY, so the user runs `scripts/deploy.sh`.
-It works now.
+A second, related one: **a running Python process pins its import paths and its resolved
+`pathlib` constants at start.** Moving a file under a live service leaves it working until
+something touches the moved thing. After any move, ask for `sudo systemctl restart
+symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
-## 2. Shipped in this session — all of it is live
+## 1. State of the machine, verified 2026-08-17 01:40
 
-All committed and deployed. Verified against symoneural.com after the deploy at 23:28:
-`/`, `/documentation.html`, `/account.html`, `/docs` and `/api/status` all 200, the rack
-precedes the control board, and the band artwork loads.
+| Thing | State |
+|---|---|
+| `https://symoneural.com/` | 200, current markup, cache-busted assets |
+| `/build.html`, `/ravencalc.html`, `/documentation.html`, `/account.html` | 200 |
+| `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
+| `symoneural-api.service` | active, restarted 01:03, PID 170388 |
+| Caddy | serving, TLS auto-renew |
+| `tests/frontend.mjs` | 17/17 local, 17/17 production |
+| Webroot orphans | 0 (35 pruned across two deploys) |
+| Generators | 9, all idempotent, hash-verified across two runs |
+| Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
 
-- **Homepage rebuilt as a lead-generation page.** Split hero ("Custom AI platforms that live
-  in *your* building"), a full-bleed band of business objections around "why are you renting
-  this?", an order section ("Tell us what you want to run"), and a flat link index.
-- **Six band images rendered on this card** by `tools/build_gallery.py`, each watermarked with
-  model, size, steps, seed and seconds. Seeds are pinned; `--force` re-renders.
-- **Landing page is live-machine only**: hero → rack → control board. 6,236px → ~2,059px.
-- **`documentation.html`** — the eight reference sections behind a tab strip, deep-linkable
-  (`/documentation.html#kernels`).
-- **`account.html`** — says plainly there is no signup/subscription/billing yet and quotes no
-  price. **Do not add a price to this page.** See §4.
-- **New header** across all pages: Documentation ⌄ / Manuals / API / Account ⌄ / Contact.
-- **Rack above the control board**, hero tightened, `.vent` → real GPU/CPU bus plate.
-- **Phone layout fixed** — `.unit` had no breakpoint at all below 620px.
-- **Control board**: all 19 modules now carry a plain-English line above the engineering line.
-- **No truncated text anywhere** — every `text-overflow:ellipsis` removed.
-- **"Playground" wording purged**; `playground.sh` → `scripts/symoneural.sh`.
-- Unit `train` renamed **SyMoNeuRaL Quantized Low-Rank Adaptation Tool**, detail
-  "adapter loaded · for model/adapter tuning".
+## 2. Shipped 2026-08-17 (all of it is live)
 
----
+Seven commits, `14f1599` through `677e25b`. In the order they happened:
+
+1. **The order form moved to `/build.html`.** The front page was ending on a form instead
+   of on the machine. Every "Have one built" route goes there, including the header CTA on
+   every page.
+2. **The receipts index is a card grid** — eight cards, each one claim plus what backs it.
+   The PCIe negative result is amber rather than green because it is not a win; the API
+   card carries a live dot because its destination is generated by the running service.
+3. **`tools/build_cachebust.py`** stamps `?v=<content hash>` on every local CSS/JS link.
+   The Caddyfile sets `max-age=604800`, which is right for immutable assets and wrong for a
+   site under development: it served a week-old stylesheet against new markup and put
+   nineteen full-size renders down the left of the live page in front of a visitor. **Run it
+   last, after every other generator.**
+4. **`calc` → `ravencalc` everywhere it is reachable** — route, page, rack unit id, WebSocket
+   frame type, rate-limit bucket, CLI subcommand, docs. No compatibility alias.
+5. **The Under Construction banner is gone**, all nine pages plus both generators.
+   `@keyframes pulse` stays: four live indicators use it.
+6. **Every render links to its full-size PNG** with a lightbox (`site/ui.js`). See §4 on
+   why this is not cosmetic.
+7. **Both header dropdowns are gone.** They painted underneath the hero, which was not a
+   tuning problem: `.menu` was `z-index:60` inside a header that is itself a `z-index:20`
+   stacking context, so 60 only ever competed with the header's own children. Both opened
+   onto a single destination. They are plain links; the JS and CSS behind them are deleted.
+8. **The front page was restructured so pitch, hero and rack fit one look.** See §3.
+9. **`scripts/deploy.sh` got three fixes** — see §3.
+
+### Bugs found while verifying, worth knowing about
+
+- **`.band-art` had `pointer-events:none`.** Correct for the layer, which spanned the band
+  and would otherwise swallow clicks on the CTA — but it also disabled every descendant, so
+  the hover captions showing each render's prompt **had never once appeared** since they
+  shipped. A feature that is written, styled and unreachable is invisible to any test that
+  only checks markup. The test added for it asserts computed `pointer-events`.
+- **The deploy's reference check would have failed on a correct deploy.** It tests `-f` on
+  every `(src|href)="/…"`, and cache-busting made it look for a file literally named
+  `symoneural.css?v=b56305bfed`. A verification step that fails on healthy input gets
+  switched off, and then it protects nothing.
+- **`js` listed before `json` in a `find -regex` alternation silently dropped every .json
+  file.** `-regex` must match the whole path; `js` matched, `on` did not, and it never
+  backed up to try the longer alternative. Order alternations longest-first.
 
 ## 3. What changed structurally (do not re-learn this the hard way)
+
+### 3.0 The front page layout, and why it is shaped like that
+
+The requirement, in the user's words: *"I am trying to get where you can see those two
+things plus the agent stack at 100% browser first look."* The page could not do it — a
+hero, then a 930px band restating the argument, then the rack (the machine reading its own
+sensors while you watch, which is the entire point of the page) beginning ~1,300px down.
+Three full-width sections stacked, and no trimming inside them adds up to a screen.
+
+The fix was to stop stacking:
+
+- **`tools/build_masthead.py`** owns the top of `site/index.html`. Four grid columns:
+  `[render | pitch | hero | render]`. The `h1` is on the right where the eye lands after
+  the nav; the pitch is on the left, quieter — serif, one shade down, a ghost button, so
+  two solid CTAs do not read as two competing offers. The `h1` is **first in the document**
+  and placed by `grid-area`, rather than writing an `h2` above the page's own `h1` to get
+  the visual order.
+- **The four renders live in the gutters.** At 1900px the readable centre column is 1120px
+  and the ~390px either side of it were empty at every width above 1280. Two flank the
+  masthead, two flank the rack (`tools/build_rack.py` emits those). They cost **zero**
+  vertical space instead of a full screen. Measured at 1906×950: rack top at 744px.
+- **They are capped at 268px, and 206px once they stack.** "They are gigantic" was a grid
+  column doing what grid columns do: below the breakpoint each render took a full `1fr`,
+  measuring 520px at an 1100px viewport — larger than they had ever been in the gutter they
+  were sized for. If you add a render anywhere, cap it.
+- **`tools/_art.py`** holds the markup all three placements share. The masthead, the rack
+  and the constellation each had their own copy of the prompt/seed/seconds lookup, and one
+  had already drifted.
+- **The constellation moved to `/build.html`** (`tools/build_sky.py`), in its own `.sky`
+  namespace. It is a good object and the user likes it; it just cannot live beside a
+  readable centre column, because below 1280px the absolutely-positioned renders collapsed
+  into a vertical stack down the left edge — which is what a visitor actually saw.
+  **`.band` no longer exists. `.sky` shares nothing with the masthead but the word "art".**
+  That namespace separation is deliberate: `.bar`, `.live` and `.sub` have each been
+  redefined twice in `site/symoneural.css` and every time the second definition silently
+  ate the first.
+
+**`tools/build_band.py` is deleted.** If you find a reference to it, it is stale.
+
+### 3.0b `scripts/deploy.sh` — three fixes, all worth understanding
+
+1. **It publishes web assets only.** It used to `find -maxdepth 1 -type f` and install
+   everything, and what was sitting in `site/` was an 11.6 MB browser "Save page as"
+   capture plus its PDF print. `site/` is a working directory; the webroot is not.
+   `.json` is deliberately excluded — `/openapi.json` is proxied to FastAPI and a static
+   copy would be shadowed and go stale, and the twenty `art-*.json` are build-time metadata
+   nothing fetches.
+2. **An orphan is "a file this deploy would not publish"**, not "a file absent from
+   `site/`". Those differ now, and under the old test every already-published copy of an
+   excluded file stayed in the webroot forever, never updated and never removed.
+3. **Prune runs before the reference check.** The check tests the webroot, so a page
+   referencing a file that lived only there was reported `ok` and then deleted by the prune
+   in the same run — passing on a state that no longer existed when the script exited.
+
 
 ### 3.1 `demo/` was flattened into the repo root
 Three things broke silently and are fixed; if you move anything again, check the same three:
@@ -202,8 +255,19 @@ cascade.** The tooling for that is in §6.
 
 ## 5. Still to do
 
-Roughly in the order the user asked for it. Items 1–2 are what the outgoing agent was about
-to start.
+Roughly in the order the user asked for it. **Nothing here is blocked and nothing is
+broken** — this is a queue of new work, not a repair list.
+
+0. **The watermark question — ask the user before doing anything else on it.** Each render
+   carries a strip naming model, quantisation, 768×768, steps, seed and the seconds it took
+   on this card. That strip is the claim the images make, and at any size that fits in a
+   page gutter it is roughly four pixels tall. The current answer is a lightbox: hovering
+   shows "Click to read the watermark", clicking opens the full 768px file with the prompt
+   beside it. The user twice said "you can't see the watermarks", so the standing option —
+   **offered, not yet accepted** — is to regenerate all nineteen renders via
+   `tools/build_gallery.py` with a substantially larger watermark strip. That costs ~11.2s
+   of GPU per image (≈3.5 min total, one governor lease) and changes every image on the
+   site. **Ask first.** Do not silently redesign the images.
 
 1. **Image page restyle** — reference `references/stable-diffusion-webui-master/`.
    The user's words: "the text is all jacked up and looks like shit. Make it look good like
@@ -268,7 +332,7 @@ to start.
     with a consumer card wants llama.cpp. The rack, the governor and the routes should not
     know which is running.
 
-    **Do it with the test suite as the safety net**: `node tests/frontend.mjs` passes 9/9
+    **Do it with the test suite as the safety net**: `node tests/frontend.mjs` passes 17/17
     today, and it asserts on rendered DOM rather than on endpoints, so it will catch a
     broken split. Run it after every extraction, not at the end.
 
@@ -391,25 +455,56 @@ to start.
 ./scripts/symoneural.sh off         # stops everything, frees the card
 ```
 
-### The build chain
+### The build chain — nine generators, and the order matters at the end
 ```bash
-python3 tools/build_pages.py       # chat/image/calc/remix surface pages
-python3 tools/build_rack.py        # live rack        -> site/index.html
-python3 tools/build_console.py     # control board    -> site/index.html
-python3 tools/build_cost.py        # Owned vs Rented  -> site/documentation.html
-python3 tools/build_stack.py       # Inference Arch   -> site/documentation.html
-python3 tools/build_gallery.py     # homepage artwork -> site/art-*.png (renders on the GPU)
+python3 tools/build_pages.py       # chat/image/ravencalc/remix surfaces -> site/*.html
+python3 tools/build_masthead.py    # pitch + hero side by side           -> site/index.html
+python3 tools/build_rack.py        # live rack + 2 gutter renders        -> site/index.html
+python3 tools/build_console.py     # control board                       -> site/index.html
+python3 tools/build_cost.py        # Owned vs Rented                     -> site/documentation.html
+python3 tools/build_stack.py       # Inference Architecture              -> site/documentation.html
+python3 tools/build_training.py    # the manual                          -> site/training.html
+python3 tools/build_sky.py         # the 19-render constellation         -> site/build.html
+python3 tools/build_cachebust.py   # <-- ALWAYS LAST. stamps ?v=<hash> on every local asset
 ```
-**Always run every generator twice and `diff` before committing.**
+`tools/build_gallery.py` is separate: it **renders on the GPU** (~11.2s per image, takes a
+governor lease) and only needs running if the artwork itself changes.
+`tools/_art.py` is a shared helper, not a generator — do not run it.
+
+**Always run every generator twice and diff before committing.** One line does it:
+```bash
+md5sum site/*.html site/*.css site/*.js > /tmp/a
+for g in pages masthead rack console cost stack training sky cachebust; do python3 tools/build_$g.py >/dev/null; done
+md5sum site/*.html site/*.css site/*.js > /tmp/b && diff /tmp/a /tmp/b && echo IDEMPOTENT
+```
+
+**`build_cachebust.py` must run last**, after anything that touches `site/*.css`, `site/*.js`
+or the pages that link them. If a stylesheet changes and the stamps are not refreshed, every
+visitor with a warm cache gets new markup against the old CSS — which is exactly the failure
+that put nineteen full-size renders down the left of the live page.
 
 ### Test in a real browser — this is the important one
 ```bash
-node tests/frontend.mjs                    # 9/9; uses system Chrome via Playwright
+node tests/frontend.mjs                          # 17/17 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 17/17 against production
 ```
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries
-GPU/CPU/`--`, nothing overlaps at 390px, calc returns `x**3/3`, and **a generated image
-actually decodes** (`naturalWidth > 0`). That last one is the assertion that would have caught
-the 404 that shipped — curl proved the endpoint answered, which was never in doubt.
+GPU/CPU/`--`, nothing overlaps or spills past the right edge at 390px, ravencalc returns
+`x**3/3`, and **a generated image actually decodes** (`naturalWidth > 0`). That last one is
+the assertion that would have caught the 404 that shipped — curl proved the endpoint
+answered, which was never in doubt.
+
+Four of the seventeen exist because of specific bugs and are worth not deleting:
+
+| Test | The bug it exists for |
+|---|---|
+| `a render opens large enough to read its watermark` | asserts computed `pointer-events` — a `pointer-events:none` parent had silently disabled a whole feature |
+| `nothing spills past the right edge at 390px` | the nav ran to x=512 on a 390px viewport |
+| `pitch, hero and rack fit one look` | asserts the *shape* (one row, four gutter renders, rack within one viewport), so copy edits do not break it but a return to stacked sections does |
+| `every local asset is cache-busted` | the stale-CSS failure above |
+
+**Run it against production too**, not just localhost. The two differ in exactly the way
+that has caused every "it's still broken" exchange in this project.
 
 Playwright lives in `llama.cpp/tools/ui/node_modules` (installed for the webui build) and is
 imported by absolute path. `channel: 'chrome'` uses the system browser, so nothing downloads.
@@ -453,6 +548,19 @@ exit 144. Put the pkill in a command that does not otherwise mention the process
   current front page). Ask for the reference if the description is ambiguous, but **verify it
   yourself** — they said the IPTV reference was "the one with mediatek" and that directory is
   empty.
+- **When they describe a layout, they mean it literally and spatially.** "Side by side",
+  "shift to the right center", "2 on each side of the server rack" are instructions about
+  position, not vibes. This session lost three rounds to reading them loosely; the fourth
+  round they drew it out with cropped screenshots and annotations, and that was the round
+  that worked. If a layout instruction is even slightly ambiguous, **screenshot what you
+  built at their viewport width and show it**, rather than describing it in prose.
+- **They frequently judge the deployed site, not your working tree.** Before answering "it's
+  still wrong", check what is actually deployed: `curl -s https://symoneural.com/index.html
+  | grep -o 'symoneural.css?v=[0-9a-f]*'` and compare to the local file's hash. Most of the
+  "this isn't working" exchanges in this project were a correct change that had not been
+  deployed yet, and saying so plainly ends them in one line.
+- **They will tell you when something is good.** Take the win, do not gild it, move on to
+  the next thing.
 
 ---
 

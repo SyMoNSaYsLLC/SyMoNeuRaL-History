@@ -59,7 +59,7 @@ explains every flag it passes.
 CLAUDE.md               a one-line import -- must stay at root or the rules stop loading
 
 backend/                the server
-  api.py                chat, image, calc, remix, status, /api/gen
+  api.py                chat, image, ravencalc, remix, status, /api/gen
   apps/                 components with their own code, docs and lifecycle
     ravencalc/          exact symbolic maths (SymPy, CPU, never takes the GPU lock)
     reinforce/          native CUDA engine -- hand-written kernels via NVRTC.
@@ -70,7 +70,7 @@ backend/                the server
 bin/symoneural          the CLI -- one command over the whole stack
 
 tools/                  the site generators, all idempotent
-  build_pages.py        chat/image/calc/remix pages   -> site/
+  build_pages.py        chat/image/ravencalc/remix    -> site/
   _art.py               shared markup for a render (not a generator)
   build_masthead.py     pitch + hero side by side     -> site/index.html
   build_rack.py         the live rack, two renders    -> site/index.html
@@ -103,24 +103,20 @@ contrib/                third-party source we build and run
   llama.cpp/            the chat engine
   stable-diffusion.cpp/ the image engine
   cuda-samples/         NVIDIA samples + the pinned 7-package venv
-tests/frontend.mjs      drives the real pages in a real browser (9/9)
+tests/frontend.mjs      drives the real pages in a real browser (17/17, local and production)
 training/               corpus, train_lora.py, adapter/, its own venv (torch cu128)
-apps/                   components with their own code, docs and lifecycle
-  reinforce/            the native CUDA engine
-  remix/                playlist client of the chat surface
-  miner/                GPU miner worker (not yet wired to the rack)
 docs/                   the manual, hardware dossier, environments, verification
 docs/archive/           superseded -- do not act on anything in here
 references/             third-party reference material, ~8.5 GB, none of it ours
   models/               weights, 40 GB, fetched not committed
 ```
 
-**Why `apps/` has three entries and chat/image/calc do not.** The surfaces on the rack are
+**Why `backend/apps/` has four entries and chat/image/ravencalc do not.** The surfaces on the rack are
 routes inside `api.py` — one process, one GPU lock, one deployment. The things under `apps/`
 are separate codebases with their own docs, dependencies and release cycle. That is a real
 distinction rather than a favourite, and it gives the next question a clear answer: if the
 IPTV player or the ASIC control panel arrive with their own dependencies and deploy story
-they belong in `apps/`; if they are just more routes, they belong in `api.py`.
+they belong in `backend/apps/`; if they are just more routes, they belong in `api.py`.
 
 ## The rules this project actually runs on
 

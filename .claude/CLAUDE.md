@@ -145,7 +145,7 @@ exit code.
 ## Test in a real browser, not with curl
 
 ```bash
-node tests/frontend.mjs      # 9/9; system Chrome via Playwright, nothing to download
+node tests/frontend.mjs      # 17/17; system Chrome via Playwright, nothing to download
 ```
 
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries a
