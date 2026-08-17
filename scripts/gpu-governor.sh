@@ -100,6 +100,20 @@ evict() {
       # record, not a tenant, and treating it as one wedged the card indefinitely.
       log evict "'train' recorded but no run is active -- treating as stale"
       ;;
+    # The exact opposite of 'train': a miner yields to everything, because no hashrate is
+    # worth making a visitor wait. It is stopped through its own module so the pidfile and
+    # the process group are handled in one place -- signalling the recorded pid alone
+    # leaves the actual miner orphaned and still resident, which reads as a clean stop and
+    # is not one.
+    #
+    # This case is inert until SYM_MINER_CMD names a real binary: nothing writes 'miner'
+    # into run/resident before then. Without it, a miner tenant would fall through to the
+    # '*)' arm below and be "evicted" by pkilling llama-server -- which would leave the
+    # miner holding the card while the governor logged a successful eviction.
+    miner)
+      python3 -c 'import sys; sys.path.insert(0, "'"$ROOT"'/backend/apps"); import cryptominer; cryptominer.stop()' \
+        >/dev/null 2>&1 || pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null || true
+      ;;
     *)     pkill -f 'llama-server|sd-cli' 2>/dev/null || true ;;
   esac
   drain
