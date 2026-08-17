@@ -1590,7 +1590,72 @@ class TestTuneDeadline(unittest.TestCase):
         """
         self.assertGreaterEqual(routes.TUNE_WAIT_SECONDS, 20.0)
         self.assertLessEqual(routes.TUNE_WAIT_SECONDS, 60.0)
-        self.assertLess(routes.TUNE_WAIT_SECONDS, sessions.IDLE_TIMEOUT + 1)
+
+    def test_the_wait_keeps_the_session_alive_while_it_waits(self):
+        """Why `TUNE_WAIT_SECONDS` (25 s) is allowed to exceed `IDLE_TIMEOUT` (12 s).
+
+        This test replaces an assertion that read `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1`.
+        That was already false in the commit that introduced it -- `979c3dc` raised the wait
+        to 25 s and dropped the idle timeout 45 -> 12 s in one change -- and it stayed red
+        because it was checking the wrong thing. Two numbers being ordered was never the
+        protection; the protection is the `MANAGER.touch(session.id)` inside the wait loop.
+        A client blocked on `/tune` *is* activity on the session, so the reaper, which
+        measures idleness from the last player request, never sees the session go quiet.
+
+        Assert the mechanism, not the arithmetic: over a wait, the loop must touch
+        repeatedly. One touch at the top would leave the session ageing again for the rest of
+        the wait, which is the bug the ordering assertion was groping at.
+        """
+        class Waiting:
+            """A manager whose session never becomes ready, and which counts the touches."""
+
+            def __init__(self):
+                self.touches = 0
+                self.session = sessions.Session(
+                    id="slow", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                    scrub=Scrubber(), policy=Policy())
+
+            def start(self, *a, **k):
+                return self.session
+
+            def touch(self, sid):
+                self.touches += 1
+                return self.session
+
+            def get(self, sid):
+                return self.session           # still there, just not ready
+
+            def stop_session(self, sid):
+                return False
+
+            def list(self):
+                return []
+
+            def reap(self):
+                return 0
+
+        try:
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception as exc:                                  # pragma: no cover
+            self.skipTest(f"TestClient unavailable: {exc}")
+
+        app = FastAPI()
+        app.include_router(routes.router, prefix="/api/tuner")
+        client = TestClient(app, raise_server_exceptions=False)
+        mgr = Waiting()
+        real_mgr, real_wait = routes.MANAGER, routes.TUNE_WAIT_SECONDS
+        try:
+            routes.MANAGER = mgr
+            routes.TUNE_WAIT_SECONDS = 1.0      # ~4 iterations at the loop's 0.25 s sleep
+            r = client.post("/api/tuner/tune", json={"url": "http://p.example/1.ts"})
+        finally:
+            routes.MANAGER, routes.TUNE_WAIT_SECONDS = real_mgr, real_wait
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("poll the session", r.text)
+        # At the real 25 s wait this is ~100 touches, none of them more than 0.25 s apart, so
+        # a 12 s idle timeout is never approached. Two is enough to prove it is per-iteration.
+        self.assertGreaterEqual(mgr.touches, 2)
 
     def test_a_long_wait_never_hands_back_a_session_that_is_already_gone(self):
         """The window the longer wait widened.
