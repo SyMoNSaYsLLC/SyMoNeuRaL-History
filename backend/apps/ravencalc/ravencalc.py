@@ -36,7 +36,9 @@ Parsing is the one genuinely dangerous thing here and it is treated that way; se
 """
 from __future__ import annotations
 
+import math
 import re
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -379,6 +381,75 @@ def validate_request(doc: Any) -> Request:
     )
 
 
+def _print_digits(value: Any) -> int:
+    """About how many decimal digits the widest integer inside `value` needs in order to print.
+
+    Estimated from `int.bit_length()` and never measured with `len(str(n))`, because measuring
+    is the very conversion the interpreter refuses to perform. The cheap-looking exact
+    alternative is not cheap: `Decimal(factorial(99999)).adjusted()` takes **11.8 s measured on
+    this box**, so counting the digits exactly would answer a refusal with the denial of service
+    the limit exists to prevent. `bit_length` is O(1).
+
+    The estimate agreed exactly with the true digit count on every case checked here
+    (`factorial(3000)` -> 9,131) and can sit one digit either side of it near a power of ten.
+    That is why every message built from this says "about" -- an engine whose whole argument is
+    exactness does not get to quote an estimate as a measurement.
+
+    Returns 0 when nothing here is an integer worth measuring, so the policy -- which limit,
+    and what to do about it -- lives entirely in the caller.
+    """
+    ints: list[int] = []
+    if isinstance(value, int):
+        ints.append(value)
+    else:
+        try:
+            atoms = value.atoms(sympy.Rational)
+        except Exception:
+            return 0
+        for atom in atoms:
+            # sympy Rationals (Integer among them) carry Python ints as .p and .q.
+            for part in (getattr(atom, "p", None), getattr(atom, "q", None)):
+                if isinstance(part, int):
+                    ints.append(part)
+    widest = max((abs(n) for n in ints), default=0)
+    if widest == 0:
+        return 0
+    return int(widest.bit_length() * math.log10(2)) + 1
+
+
+def _unprintable_error(digits: int, limit: int) -> RavenCalcError:
+    """The refusal for an answer that computed correctly and cannot be written down.
+
+    CPython 3.11+ will not convert an integer wider than `sys.get_int_max_str_digits()` --
+    4,300 digits by default -- into a string, because that conversion is quadratic
+    (CVE-2020-10735). It is an *interpreter* limit, not a sympy one, so it fires inside the
+    printer: `factorial(3000)` is computed exactly, correctly, and then dies on the way out.
+    Unguarded it leaves this module as a bare `ValueError`, which `run_request`'s contract
+    promises never happens and which reaches a visitor as an unexplained 500.
+
+    Raising the interpreter's limit is the other available fix and is deliberately not taken.
+    This engine answers an unauthenticated public route, the cost being guarded against is
+    real, and a visitor can type `2**200000` (about 60,000 digits) as easily as `2+2`.
+
+    `digits == 0` means the width could not be measured cheaply -- said plainly rather than
+    guessed at.
+    """
+    how_wide = (
+        f"it is an integer of about {digits:,} decimal digits" if digits
+        else "it contains an integer too wide to measure without performing the conversion itself"
+    )
+    return RavenCalcError(
+        "the exact answer is too wide for this engine to print",
+        [
+            how_wide,
+            f"this interpreter converts integers up to {limit:,} digits into text",
+            "the mathematics succeeded and only rendering it did not, so narrow the request -- "
+            "a smaller factorial or exponent -- rather than rephrasing it",
+        ],
+        RESULT_SCHEMA_ID,
+    )
+
+
 def _rendered(value: Any) -> dict[str, Any]:
     """One sympy object, rendered the three ways a caller might need it.
 
@@ -386,12 +457,26 @@ def _rendered(value: Any) -> dict[str, Any]:
     result be fed straight back in as the next request's expression. `latex` is for display.
     `tree` is `srepr`, the unambiguous form, kept because two different expressions can print
     identically once a renderer gets involved.
+
+    All three go through the integer printer, so all three are guarded together; see
+    `_unprintable_error`. The guard is layered the same way `parse` is, because either layer
+    could be wrong: the estimate refuses before the printer is asked, and the `except` catches
+    an integer the estimate failed to find rather than letting a bare `ValueError` escape.
     """
-    return {
-        "text": sympy.sstr(value),
-        "latex": sympy.latex(value),
-        "tree": sympy.srepr(value),
-    }
+    limit = sys.get_int_max_str_digits()
+    digits = _print_digits(value)
+    if limit and digits > limit:
+        raise _unprintable_error(digits, limit)
+    try:
+        return {
+            "text": sympy.sstr(value),
+            "latex": sympy.latex(value),
+            "tree": sympy.srepr(value),
+        }
+    except ValueError as exc:
+        if "integer string conversion" not in str(exc):
+            raise
+        raise _unprintable_error(digits, limit) from exc
 
 
 def _zero(expression: sympy.Expr) -> bool | None:
@@ -597,6 +682,29 @@ def _solve(expression: Any, variable: sympy.Symbol) -> tuple[Any, dict[str, Any]
     return result, _check(passed, how), note
 
 
+def _exact_note(result: sympy.Expr) -> str:
+    """The pre-rounding exact form, or an honest description of it when it cannot be printed.
+
+    This is deliberately *not* the refusal `_rendered` raises, and the difference is the point.
+    Here the answer the caller asked for is fine -- `evaluate` at `x: 3000` with `digits: 20`
+    returns a 20-digit Float that prints perfectly -- and only this note about the exact form
+    behind it is too wide. Refusing the whole request over a note would throw away a good
+    answer, so the note says what it could not show and how wide it was.
+
+    That is the same rule this project applies to any truncated line: name the limit, never cut
+    silently. A note reading `exact form before rounding:` followed by nothing would be the
+    `text-overflow:ellipsis` bug wearing a different hat.
+    """
+    limit = sys.get_int_max_str_digits()
+    digits = _print_digits(result)
+    if limit and digits > limit:
+        return (
+            f"exact form before rounding: an integer of about {digits:,} digits, too wide for "
+            f"this interpreter to print (its limit is {limit:,})"
+        )
+    return f"exact form before rounding: {sympy.sstr(result)}"
+
+
 def _evaluate(
     request: Request, expression: sympy.Expr, symbols: dict[str, sympy.Symbol]
 ) -> tuple[Any, dict[str, Any], str]:
@@ -613,7 +721,7 @@ def _evaluate(
     result = expression.subs(bindings)
     if request.digits:
         numeric = sympy.N(result, request.digits)
-        return numeric, _UNCHECKED, f"exact form before rounding: {sympy.sstr(result)}"
+        return numeric, _UNCHECKED, _exact_note(result)
     return sympy.simplify(result), _UNCHECKED, "exact -- pass digits: N for a decimal"
 
 
