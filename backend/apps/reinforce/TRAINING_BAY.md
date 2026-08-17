@@ -151,6 +151,18 @@ truncated and never named.
 The runner prints `REINFORCE key=value` on stdout and `jobs.parse_log()` reads it through an
 allowlist. Two failure modes here are **completely silent** and each has a test:
 
+A third pair has the same shape and is the expensive one: **every keyword handed to `DPOConfig`
+and `GRPOConfig` is checked against the installed trl**, by `TrlContractTests`, which reads the
+dataclass fields out of `training/.venv` in a subprocess. A misspelled field is a `TypeError` at
+stage `train` — *after* a governor acquire of up to 300 s and a 4-bit load of a 7B, having taken
+the card from chat and image to get there. Preflight cannot see it, because preflight never
+constructs a trl object. `reward_weights` is the proof it is not hypothetical: it reads as a
+`GRPOTrainer` argument, it is not one, and only a source read caught it.
+
+A fourth: `jobs.py` builds an argv and `runner.py` parses one, and neither imports the other. A
+flag on one side only is argparse exit 2 on **stderr**, which `parse_log()` never reads — so the
+panel shows a failed run with no kind and no stage. `ArgvContractTests` asserts the 36 flags agree.
+
 - A metric key absent from `jobs._ALLOWED_KEYS` is **dropped**, so a live RL run shows an empty
   reward curve. trl logs names like `rewards/chosen`, and `/` is outside the value character class
   — `runner._METRIC_KEYS` maps them, and `MetricProtocolTests` asserts the two ends agree per key.
@@ -164,7 +176,7 @@ traceback can carry a training example in it.
 ## Running it
 
 ```bash
-# The suites. 113 python assertions, 46 in a real browser.
+# The suites. 120 python assertions, 46 in a real browser.
 python3 backend/apps/reinforce/test_reinforce.py
 node    backend/apps/reinforce/test_page.mjs
 
@@ -208,8 +220,19 @@ a test enforces >80 characters of it:
 
 ## State
 
-The panel (`page.html` / `page.js`) is **staged, not wired in**: no generator or deploy step
-consumes it yet, and it renders only under `test_page.mjs`. Publishing it is a separate decision.
+**Neither end is wired in, and both are one line from being so.**
+
+- The HTTP surface is **not mounted**. `backend/api.py` contains no reference to this package;
+  `routes.py` used to open by asserting that it did, which was never true and is corrected.
+  Mounting is `app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])`
+  beside the `tuner` include. It is left un-taken deliberately: it turns on a route that takes
+  the whole card and is never evicted, so it is the owner's call. The surface still fails closed
+  on top of that — mounting is necessary to reach these routes, not sufficient to start a run.
+- The panel (`page.html` / `page.js`) is **staged**: no generator or deploy step consumes it, and
+  it renders only under `test_page.mjs`. Publishing it is a separate decision.
+
+The whole bay is also **untracked in the main checkout** — `git ls-files backend/apps/reinforce`
+returns only the CUDA engine's 62 files. It lives on the `worktree-reinforce-rl` branch.
 
 No preference or reinforcement run has been executed on this box. Every RL number in this package
 is arithmetic derived from the trl source with the source lines cited, labelled `projected`

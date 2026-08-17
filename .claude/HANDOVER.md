@@ -483,7 +483,7 @@ files have to agree and disagreement is silent, the agreement is a test, not a c
 ### Testing
 
 ```bash
-python3 backend/apps/reinforce/test_reinforce.py   # 113 passed, 0 skipped
+python3 backend/apps/reinforce/test_reinforce.py   # 120 passed, 0 skipped
 node    backend/apps/reinforce/test_page.mjs       # 46/46, real Chrome
 ```
 
@@ -504,6 +504,14 @@ presets must be **exactly** 0.0 *and* carry a rationale — the invariant tighte
 
 ### What is NOT done
 
+- **The HTTP surface is not mounted, and `routes.py` used to claim it was.** `backend/api.py` has
+  no reference to this package — `grep -n reinforce backend/api.py` returns nothing. The first
+  line of `routes.py` read "Mounted at `/api/train` by `backend/api.py`"; that was never true and
+  is now corrected in place. Mounting is one line beside the `tuner` include:
+  `app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])`. Left un-taken
+  on purpose — it turns on a route that takes the whole card and is never evicted, so it is the
+  owner's call, not an agent's. The gate still fails closed on top of it, so mounting is necessary
+  to reach the routes and not sufficient to start a run.
 - **The panel is staged, not wired in.** No generator and no deploy step consumes
   `page.html`/`page.js`; they render only under `test_page.mjs`. Publishing the bay is a separate
   decision, and it needs §4's gate story thought through first — the surface is off unless

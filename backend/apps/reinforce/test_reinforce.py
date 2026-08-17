@@ -106,6 +106,196 @@ def _dict_keys_and_kwargs(path: pathlib.Path) -> set[str]:
     return names
 
 
+def _config_kwargs(path: pathlib.Path) -> dict[str, set[str]]:
+    """The exact keys `runner.py` puts into each trl config, per objective.
+
+    Scoped deliberately: `_dict_keys_and_kwargs` over the whole file would sweep up
+    `parents=True` and every other unrelated keyword, and a test that asserts `parents` is a
+    `GRPOConfig` field is a test that fails for no reason. What matters here is only the dicts
+    that are splatted into `TrainingArguments`, `DPOConfig` and `GRPOConfig`.
+
+    `targs` is the shared base and is charged to both, because both are built with `dict(targs)`.
+    """
+    import ast
+    bases = {"targs": set(), "dpo": set(), "grpo": set()}
+    for node in ast.walk(ast.parse(path.read_text())):
+        # targs = dict(output_dir=..., ...)
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in bases:
+                    bases[t.id].update(k.arg for k in node.value.keywords if k.arg)
+        # targs["max_steps"] = ... / dpo["beta"] = ... / grpo["use_vllm"] = ...
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name) \
+                        and t.value.id in bases and isinstance(t.slice, ast.Constant) \
+                        and isinstance(t.slice.value, str):
+                    bases[t.value.id].add(t.slice.value)
+        # grpo.update(num_generations=..., ...)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "update" and isinstance(node.func.value, ast.Name) \
+                and node.func.value.id in bases:
+            bases[node.func.value.id].update(k.arg for k in node.keywords if k.arg)
+    return {"dpo": bases["targs"] | bases["dpo"],
+            "grpo": bases["targs"] | bases["grpo"],
+            "targs": bases["targs"]}
+
+
+class TrlContractTests(unittest.TestCase):
+    """Every keyword this package hands to trl must exist in the trl that is installed.
+
+    This is the third instance of the silent-agreement class that `MetricProtocolTests` and
+    `ArgvContractTests` cover, and it is by far the most expensive one to get wrong. A field
+    that trl 1.10.0 does not spell that way is a `TypeError` raised at stage `train` -- which
+    is to say *after* a governor acquire of up to 300 seconds and a 4-bit load of a 7B model,
+    having taken the card away from chat and image to get there. Preflight exists precisely so
+    that a configuration fails in milliseconds and without the GPU; a kwarg typo is the one
+    class of failure preflight could not see, because preflight never constructs a trl object.
+
+    `reward_weights` is the proof this is not hypothetical: it reads naturally as a
+    `GRPOTrainer` argument, it is not one, and only a source read caught it.
+
+    The check runs in `training/.venv` over a subprocess, because trl and torch are absent
+    from the serving interpreter this suite runs on -- and must stay absent.
+    """
+
+    PROBE = (
+        "import dataclasses,inspect,json;"
+        "from trl import GRPOConfig,DPOConfig,GRPOTrainer,DPOTrainer;"
+        "print(json.dumps({"
+        "'grpo':[f.name for f in dataclasses.fields(GRPOConfig)],"
+        "'dpo':[f.name for f in dataclasses.fields(DPOConfig)],"
+        "'grpo_init':list(inspect.signature(GRPOTrainer.__init__).parameters),"
+        "'dpo_init':list(inspect.signature(DPOTrainer.__init__).parameters)}))"
+    )
+
+    @classmethod
+    def _trl(cls):
+        """The trl facts, or a skip. Never an import into this interpreter."""
+        import subprocess
+        repo = pathlib.Path(__file__).resolve().parents[3]
+        python = repo / "training" / ".venv" / "bin" / "python"
+        if not python.exists():
+            raise unittest.SkipTest(f"no training venv at {python}; trl cannot be inspected")
+        out = subprocess.run([str(python), "-c", cls.PROBE],
+                             capture_output=True, text=True, timeout=180)
+        if out.returncode != 0:
+            raise unittest.SkipTest(f"trl not importable in the training venv: {out.returncode}")
+        return json.loads(out.stdout)
+
+    def test_every_config_kwarg_exists_in_trl(self):
+        trl = self._trl()
+        kw = _config_kwargs(pathlib.Path(__file__).with_name("runner.py"))
+        self.assertTrue(kw["grpo"] and kw["dpo"], "no config kwargs were extracted at all; "
+                        "the AST scan has drifted from how runner.py builds its configs")
+        for objective, fields in (("grpo", set(trl["grpo"])), ("dpo", set(trl["dpo"]))):
+            missing = kw[objective] - fields
+            self.assertEqual(missing, set(),
+                             f"runner.py passes {sorted(missing)} to the {objective} config, and "
+                             f"the installed trl has no such field. This is a TypeError at stage "
+                             f"'train', after the governor acquire and the model load.")
+
+    def test_trainer_arguments_are_spelled_the_way_trl_spells_them(self):
+        trl = self._trl()
+        for param in ("model", "reward_funcs", "args", "train_dataset", "processing_class",
+                      "callbacks"):
+            self.assertIn(param, trl["grpo_init"], f"GRPOTrainer has no `{param}` parameter")
+        for param in ("model", "ref_model", "args", "train_dataset", "eval_dataset",
+                      "processing_class", "callbacks"):
+            self.assertIn(param, trl["dpo_init"], f"DPOTrainer has no `{param}` parameter")
+
+    def test_reward_weights_is_a_config_field_and_not_a_trainer_argument(self):
+        """The specific mistake this class exists for, pinned so it cannot come back."""
+        trl = self._trl()
+        self.assertIn("reward_weights", trl["grpo"],
+                      "reward_weights is not a GRPOConfig field; runner.py sets it there")
+        self.assertNotIn("reward_weights", trl["grpo_init"],
+                         "reward_weights has become a GRPOTrainer parameter -- the comment in "
+                         "runner.py explaining why it is set on the config is now wrong")
+
+    def test_max_prompt_length_is_absent_so_the_cap_stays_ours_to_enforce(self):
+        """`registry` and `runner` bound the prompt themselves *because* trl will not.
+
+        If a later trl gains the field, the hand-rolled cap is no longer the only thing
+        standing between an over-long prompt and a truncation nobody asked for, and the two
+        would need reconciling. Asserted so that change is noticed rather than inherited.
+        """
+        trl = self._trl()
+        self.assertNotIn("max_prompt_length", trl["grpo"],
+                         "GRPOConfig now has max_prompt_length; this package drops over-long "
+                         "prompts itself on the stated grounds that it does not")
+
+
+class ArgvContractTests(unittest.TestCase):
+    """`jobs.py` builds an argv; `runner.py` parses one. Neither imports the other.
+
+    A flag on one side and not the other is argparse exit 2 with the complaint on *stderr* --
+    and `parse_log()` reads stdout through an allowlist, so the panel sees a run that failed
+    with no kind and no stage. That is the same silent outcome `MetricProtocolTests` exists to
+    prevent, reached by a different route.
+    """
+
+    @staticmethod
+    def _flags(name: str) -> set[str]:
+        import ast
+        path = pathlib.Path(__file__).with_name(name)
+        return {n.value for n in ast.walk(ast.parse(path.read_text()))
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                and n.value.startswith("--") and n.value != "--"}
+
+    def test_every_flag_jobs_emits_is_one_runner_accepts(self):
+        emitted, accepted = self._flags("jobs.py"), self._flags("runner.py")
+        self.assertTrue(len(emitted) > 20,
+                        "the flag scan found almost nothing; it has stopped testing anything")
+        unknown = emitted - accepted
+        self.assertEqual(unknown, set(),
+                         f"jobs.py passes {sorted(unknown)} and runner.py's parser does not "
+                         f"accept it: argparse exits 2 on stderr and the run reports nothing")
+
+
+class RouteImportTests(unittest.TestCase):
+    """`routes.py` is the one bay module this suite does not otherwise import.
+
+    Everything else here is exercised directly, so a typo in a module name or an `except`
+    clause naming an exception that does not exist would be caught. `routes.py` is only ever
+    reached by `api.py` -- which does not mount it yet -- so nothing would have caught it.
+    """
+
+    def test_routes_imports_on_the_serving_interpreter(self):
+        try:
+            from reinforce import routes         # noqa: F401
+        except ImportError as exc:               # fastapi is an OS package; absence is not a bug
+            raise unittest.SkipTest(f"fastapi unavailable on this interpreter: {exc}")
+        self.assertTrue(routes.router.routes, "the router carries no routes at all")
+
+    def test_the_exceptions_routes_catches_are_real(self):
+        """An `except jobs.Typo` is a NameError raised only on the failure path.
+
+        Which is to say: it would surface for the first time on the request that was already
+        going wrong, and turn a clean refusal into a 500.
+        """
+        try:
+            from reinforce import routes         # noqa: F401
+        except ImportError as exc:
+            raise unittest.SkipTest(f"fastapi unavailable on this interpreter: {exc}")
+        import ast
+        tree = ast.parse(pathlib.Path(__file__).with_name("routes.py").read_text())
+        checked = 0
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ExceptHandler) or node.type is None:
+                continue
+            for name in ([node.type] if not isinstance(node.type, ast.Tuple) else node.type.elts):
+                if isinstance(name, ast.Attribute) and isinstance(name.value, ast.Name):
+                    module = getattr(routes, name.value.id, None)
+                    if module is None:
+                        continue
+                    self.assertTrue(hasattr(module, name.attr),
+                                    f"routes.py catches {name.value.id}.{name.attr}, which does "
+                                    f"not exist -- a NameError on the failure path")
+                    checked += 1
+        self.assertTrue(checked, "no qualified except clauses were found to check")
+
+
 class ArithmeticTests(unittest.TestCase):
     """The VRAM model. Arithmetic is only trustworthy where it lands on something real."""
 
