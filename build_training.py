@@ -26,7 +26,7 @@ from __future__ import annotations
 import pathlib
 import re
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent
 SRC = ROOT / "MIT_AI_Training.html"
 DST = ROOT / "site" / "training.html"
 

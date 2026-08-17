@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
+ROOT = HERE
 MODELS = ROOT / "models"
 RUN = HERE / "run"
 GOVERNOR = HERE / "gpu-governor.sh"

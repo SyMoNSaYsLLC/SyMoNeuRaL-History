@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the playground proxy stanza into the live symoneural.com vhost.
 #
-#     sudo /home/google/MIT_AI_Training/MIT_AI_Training/demo/ops/install-apache.sh
+#     sudo /home/google/MIT_AI_Training/MIT_AI_Training/ops/install-apache.sh
 #
 # This touches a live TLS vhost, so it is written to be un-doable: the current config is
 # copied aside first, the new one is validated with `apache2ctl configtest` BEFORE any
@@ -48,5 +48,5 @@ systemctl reload apache2
 
 echo
 echo "done. /api now proxies to 127.0.0.1:8800."
-echo "the playground itself is started separately:  demo/playground.sh on"
+echo "the playground itself is started separately:  playground.sh on"
 echo "to roll back:  sudo cp $BACKUP $LIVE && sudo systemctl reload apache2"

@@ -1,20 +1,21 @@
-# ---- Model weights (40 GB) — fetched by demo/fetch-models.sh, never committed ----
+# ---- Model weights (40 GB) — fetched by fetch-models.sh, never committed ----
 models/
 
 # ---- Vendored third-party checkouts (each carries its own .git) ----
 cuda-samples/
-skills/                      # NVIDIA/skills
-demo/llama.cpp/
-demo/stable-diffusion.cpp/
+# NVIDIA/skills
+skills/
+llama.cpp/
+stable-diffusion.cpp/
 Nemotron-main/
 RavenCalcServer_Christmas_*/
 
 # ---- Virtualenvs ----
-demo/training/.venv/
+training/.venv/
 **/.venv/
 
 # ---- Runtime output: logs, screenshots, generated images ----
-demo/run/
+run/
 site/gen-*.png
 
 # ---- Vendored Swagger UI assets ----
@@ -30,7 +31,7 @@ __pycache__/
 # ---- Trained adapter weights (244 MB) — artifacts, not source ----
 *.safetensors
 *.gguf
-demo/training/adapter/tokenizer.json
+training/adapter/tokenizer.json
 
 # ---- Nested third-party checkouts (belt and braces: these carry their own .git) ----
 /skills

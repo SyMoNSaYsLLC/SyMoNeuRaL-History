@@ -20,7 +20,7 @@ stated here rather than referenced.
   expected to work through the queue in §6 — **five to six hours of real work is queued**.
 - **Do not wait for input.** Work the queue top to bottom. Leave a written record.
 - **The GPU is yours** — the user granted it explicitly, for training *and* for using the
-  fine-tuned SyMoNeuRaL model as a working tool. **Always through `demo/gpu-governor.sh`** (§7).
+  fine-tuned SyMoNeuRaL model as a working tool. **Always through `gpu-governor.sh`** (§7).
 - **Run subagents in parallel.** That is a standing instruction from the user, not a suggestion —
   fill compile and fine-tune wall-clock with independent work (§7, "Builds").
 
@@ -31,7 +31,7 @@ stated here rather than referenced.
 Everything the user has asked to *see* is gated behind a single command:
 
 ```bash
-sudo /home/google/MIT_AI_Training/MIT_AI_Training/demo/deploy.sh
+sudo /home/google/MIT_AI_Training/MIT_AI_Training/deploy.sh
 ```
 
 The webroot `/var/www/symoneural/` is `www-data`-owned and `sudo` needs a password.
@@ -58,19 +58,19 @@ error. This was tried and confirmed at 19:15 on 2026-08-16. Do not suggest the `
 
 ```bash
 # in a normal terminal, not in Claude Code:
-sudo /home/google/MIT_AI_Training/MIT_AI_Training/demo/deploy.sh
+sudo /home/google/MIT_AI_Training/MIT_AI_Training/deploy.sh
 ```
 
 Two optional follow-ups, only needed for boot-start and the live WebSocket — **the site and
 `/docs` work fully without them**, which was a deliberate rework:
 
 ```bash
-sudo .../demo/ops/install-service.sh    # systemd unit: boot-start + crash-restart
-sudo .../demo/ops/install-apache.sh     # adds /api/ws proxy + live /docs passthrough
+sudo .../ops/install-service.sh    # systemd unit: boot-start + crash-restart
+sudo .../ops/install-apache.sh     # adds /api/ws proxy + live /docs passthrough
 ```
 
 ### Gotcha in `deploy.sh` you must warn them about
-`demo/deploy.sh:45-52` pipes into `while read`, so `missing=1` is assigned **in a subshell and
+`deploy.sh:45-52` pipes into `while read`, so `missing=1` is assigned **in a subshell and
 discarded**. The script prints `MISSING <file>` lines but **can never exit non-zero on them**.
 Tell the user to read the output, not trust the exit code. (Fixing this is item 10 in the queue.)
 
@@ -135,15 +135,15 @@ identified — likely empty stock containers with fixed padding. Track it down t
 **Open UI request, not yet built:** the user wants the six folds to become **tabs or a
 dropdown** rather than a stack ("this looks funky it needs to be a dropdown or just be tabs for
 other pages"). The CSS compaction above is a stopgap, not the ask. Doing it properly means
-editing `demo/build_console.py` to emit one tabbed panel instead of six sections — and that
+editing `build_console.py` to emit one tabbed panel instead of six sections — and that
 generator **must stay idempotent** (it once nested folds inside folds when run twice).
 
 > **⚠ All of these are staged in `site/` and are NOT live.** They need one more
-> `sudo demo/deploy.sh`. Until that runs, the live site still has the 7px header and the
+> `sudo deploy.sh`. Until that runs, the live site still has the 7px header and the
 > screen-wasting fold stack. Files changed after the 19:11 deploy:
 > `symoneural.css`, `rack-detail.css`, `swagger-dark.css`, `index.html`.
 >
-> `demo/api.py` also changed (the model renames). The API was **restarted at 19:29** and
+> `api.py` also changed (the model renames). The API was **restarted at 19:29** and
 > verified: chat answers through the public URL at 82.7 tok/s with the adapter loaded, and the
 > rack reports the new names. No redeploy needed for that part — it is served, not staged.
 
@@ -180,7 +180,7 @@ cd /home/google/MIT_AI_Training/MIT_AI_Training && claude --dangerously-skip-per
   user's to run.
 - `pip install` into the **base interpreter** — pinned at exactly 7 packages (§7). The patterns
   match only the bare forms, so installing into an isolated venv **by its full path** —
-  `demo/training/.venv/bin/pip install X` — is allowed and is the intended route for the LoRA
+  `training/.venv/bin/pip install X` — is allowed and is the intended route for the LoRA
   work in queue item 8.
 
 **Log your night's work to a new `OVERNIGHT-LOG.md`, not into this file.** This document needs to
@@ -236,7 +236,7 @@ multi-GPU technique in NVIDIA's stack is marked not-applicable. It is published 
 81933  python3 api.py                        # FastAPI on 127.0.0.1:8800, answering
 81959  llama-server ... Qwen2.5-7B-Instruct-Q4_K_M.gguf -ngl 99 -c 8192 -cb -np 4
                        -md Qwen2.5-0.5B-Instruct-Q4_K_M.gguf -ngld 99 --spec-draft-n-max 2
-                       --lora demo/training/adapter/symoneural-lora.gguf
+                       --lora training/adapter/symoneural-lora.gguf
 GPU: 6075 MiB used of 16303 MiB
 governor: NO LOCK HELD
 ```
@@ -247,8 +247,8 @@ for a process lifetime instead of per-job was a real bug that locked the CLI out
 not reintroduce it.
 
 ### Engines — both built for `sm_120` (no stock prebuilt covers Blackwell)
-- `demo/llama.cpp/build/bin/` — `llama-server`, `llama-cli`, `llama-speculative`
-- `demo/stable-diffusion.cpp/build/bin/` — `sd-cli`, `sd-server`
+- `llama.cpp/build/bin/` — `llama-server`, `llama-cli`, `llama-speculative`
+- `stable-diffusion.cpp/build/bin/` — `sd-cli`, `sd-server`
 - Both configured with `-DCMAKE_CUDA_ARCHITECTURES=120`. GGML deliberately, **not torch** —
   that is what keeps the serving path free of a virtualenv.
 
@@ -259,7 +259,7 @@ not reintroduce it.
 | `models/llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf` | 8.99 GB | heavy tier, not currently served |
 | `models/llm/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf` | 398 MB | speculative draft model |
 | `models/image/flux1-schnell-q4_k.gguf` + `ae` + `clip_l` + `t5xxl-Q8_0` | 12.7 GB total | image |
-| `demo/training/adapter/symoneural-lora.gguf` | 80.7 MB | the fine-tune, served at runtime |
+| `training/adapter/symoneural-lora.gguf` | 80.7 MB | the fine-tune, served at runtime |
 
 ### Measured numbers — all reproduced on this box
 | what | value |
@@ -313,13 +313,13 @@ The user asked for this audit explicitly. Grouped by theme; chronological within
 | 1 | Footer `© SymonSays LLC · symonsayadmin@symoneural.com` | ✅ | every page |
 | 2 | "add stuff from the brand folder" | ✅ | 20 PNGs + `mark.svg` staged from `brand/` |
 | 3,4,5 | Highlight the business: custom AI stacks, anyone / any business / any hardware, **specializing in NVIDIA servers**, with creative catchy examples | ✅ | `#build` and `#examples` on the homepage |
-| 10 | Restore the manual as **SyMoNeuRaL Training**, not MIT | ✅ | `site/training.html`, 420 KB, 750 anchors, 0 MIT refs. Generated by `demo/build_training.py` from `MIT_AI_Training.md`. |
+| 10 | Restore the manual as **SyMoNeuRaL Training**, not MIT | ✅ | `site/training.html`, 420 KB, 750 anchors, 0 MIT refs. Generated by `build_training.py` from `MIT_AI_Training.md`. |
 | — | Purge "MIT AI Training" everywhere user-facing without blind-replacing (`limits`, `submit`, `emits` are false positives) | ✅ | whole-phrase and path matches only |
 
 ### The playground / four surfaces
 | # | Request | Status | Where |
 |---|---|---|---|
-| 6,7,8 | Live chat + image, real outputs, governor so they never run together, reminders about how small the GPU is | ✅ | `demo/api.py`, `demo/gpu-governor.sh` |
+| 6,7,8 | Live chat + image, real outputs, governor so they never run together, reminders about how small the GPU is | ✅ | `api.py`, `gpu-governor.sh` |
 | 9 | Fun nav tabs to reach the bots; parameter adjustments; generate the image **in the browser**; top quality, fastest possible, doesn't need to be huge | ✅ | `chat.html` / `image.html`; FLUX 768² @ 4 steps in 9.3–11.1 s |
 | 15 | **Models go in the `models/` folder** | ✅ | `models/llm/`, `models/image/` |
 | 16,18,19,20 | Add **RavenCalc** (SymPy AI calculator) and **symoneural_remix** (playlist DJ) → four surfaces | ✅ | `calc.html`, `remix.html`, `/api/calc`, `/api/remix` |
@@ -330,12 +330,12 @@ The user asked for this audit explicitly. Grouped by theme; chronological within
 ### FastAPI, Swagger, communication
 | # | Request | Status | Where |
 |---|---|---|---|
-| 23 | "we must switch to FastAPI" | ✅ | rewritten from stdlib `http.server`; old file kept at `demo/api.stdlib.py.bak` |
+| 23 | "we must switch to FastAPI" | ✅ | rewritten from stdlib `http.server`; old file kept at `api.stdlib.py.bak` |
 | 24,29,52,55 | **Swagger UI at symoneural.com/docs**, professional, not bland | ✅ *built*, ⬜ *live* | `site/docs/index.html` (5,232 B) + `site/openapi.json` (10,661 B, 5 paths). Made **static** so it needs no Apache change. **Blocked only on the deploy.** |
 | 25,26 | Professional GET/POST/etc; "use all possible transmissions to save bandwidth"; "clear communication uses less power than shitty comms" | ✅ | I pushed back on the literal reading — HTTP verbs don't save bytes. What does: **ETag/304, gzip, WS deltas.** All three implemented and measured (§4). |
 | 27,28 | Three-way **handshake** communication: frontend↔backend, agent↔agent, agent↔user | 🟡 | WS protocol done: `welcome → rack snapshot → patches addressed by unit id`. **Agent↔agent is the weak leg** — see next row. |
 | 31 | Agents use each other for expert abilities; observe each other when idle; *"know what the other is going to say before they say it and have the answer waiting"* | 🟡 | Only **RavenCalc anticipation** exists: `anticipate(prompt)` is started *before* `gpu.hold("chat")` so SymPy pre-computes on CPU while the GPU loads. **Cross-surface observation (chat↔image↔remix) is not built.** Queue item 6. |
-| 11 | Apache proxy config | ✅ *written* | `demo/ops/symoneural.conf` + `install-apache.sh`. Needs sudo. Not required for the static site or `/docs`. |
+| 11 | Apache proxy config | ✅ *written* | `ops/symoneural.conf` + `install-apache.sh`. Needs sudo. Not required for the static site or `/docs`. |
 
 ### The control-room UI
 | # | Request | Status | Where |
@@ -358,7 +358,7 @@ The user asked for this audit explicitly. Grouped by theme; chronological within
 | 45 | "Top 5 AI Model Optimization Techniques" | ✅ | quantization, speculative decoding, kernel fusion, fast loading, KV offload — all present with **our** measured numbers, including the bad ones |
 | 46 | Implement **NVFP4** | ❌ | Hardware supports it (Blackwell sm_120, `cuda_fp4.h` ships in CUDA 13.3) but **GGML has no FP4 path**. Would need TensorRT-LLM (drags torch into serving) or hand-written CUTLASS FP4 kernels. Marked **"not implemented"** on the site rather than quietly omitted. |
 | 47 | NVLink / NVLink Fusion | ❌ | Coordinates multiple GPUs. There is one GPU. Same for NCCL, NIXL, disaggregated serving, KV-aware routing, topology-aware scaling. |
-| 49 | **Review `cuda-programming-guide.pdf`, fix anything that disagrees with the manual** | 🟡 | Extracted to `demo/run/cuda/guide.txt`. **One real disagreement found and NOT yet fixed** — the occupancy bug, queue item 1. Verified *correct* by contrast: cc 12.0 max shared memory is 100 KB/SM, matching the site's `102,400 B per SM`. |
+| 49 | **Review `cuda-programming-guide.pdf`, fix anything that disagrees with the manual** | 🟡 | Extracted to `run/cuda/guide.txt`. **One real disagreement found and NOT yet fixed** — the occupancy bug, queue item 1. Verified *correct* by contrast: cc 12.0 max shared memory is 100 KB/SM, matching the site's `102,400 B per SM`. |
 | 50 | nicoboss **DeepSeek-R1-Distill-Qwen-32B-Uncensored**, "the models NVIDIA recommends" | ⬜ | **Never assessed.** Queue item 7. Rough arithmetic to start from: 32B at Q4_K_M ≈ 19–20 GB > 15.92 GiB; at IQ3_XXS ≈ 13 GB it *might* fit with almost no context headroom. Needs a real measurement, not a guess. |
 | 51 | Implement the **NVIDIA skills repo** tools for performance and max agents | ⬜ | Cloned at `skills/`, **337 SKILL.md files**, official + verified. ~15 match this stack. Queue item 2. |
 | 54 | Review and apply **Nemotron** for the multi-agent MoE setup | ⬜ | Cloned at `Nemotron-main/` (`src/`, `deploy/`, `research/`, `skills/`, `tests/`). Queue item 5. |
@@ -461,7 +461,7 @@ the single most useful thing this site could add, and it is all measured on one 
 grid = max(1, min(self.sm_count * 2, (n + block - 1) // block))
 ```
 
-The guide (≈line 36990 of `demo/run/cuda/guide.txt`) requires computing it:
+The guide (≈line 36990 of `run/cuda/guide.txt`) requires computing it:
 
 ```c
 cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, my_kernel, numThreads, 0);
@@ -509,10 +509,10 @@ say which ones you rejected and why, the same way `#stack` does on the site.
 
 ### 3. The 64/128 GB comparison — a real unmet request *(~1 h)* — user request #48
 The user asked for the 5070 Ti **beside a 64 or 128 GB NVIDIA server**. What exists
-(`demo/build_cost.py` → `#cost`) only covers the **48 GB rental class**. Grep confirms the
+(`build_cost.py` → `#cost`) only covers the **48 GB rental class**. Grep confirms the
 homepage names `48 GB` six times and `96 GB` once — **no 64 GB, no 128 GB, no H100/H200/HGX.**
 
-Build a new generator `demo/build_scale.py` (**new file — do not edit `build_cost.py`,
+Build a new generator `build_scale.py` (**new file — do not edit `build_cost.py`,
 another writer would clobber it**) producing a `#scale` section:
 
 | Hardware | VRAM | Bandwidth | Indicative price | Against this box |
@@ -573,10 +573,10 @@ is the arithmetic" is a deliverable, not a failure.
 ---
 
 ### 8. LoRA round two — **the designated fallback if everything above is done or blocked** *(~2 h)*
-The user asked specifically for this to fill remaining time. `demo/training/`:
+The user asked specifically for this to fill remaining time. `training/`:
 
 ```bash
-demo/gpu-governor.sh with train -- demo/training/.venv/bin/python demo/training/train_lora.py ...
+gpu-governor.sh with train -- training/.venv/bin/python training/train_lora.py ...
 ```
 
 Directions worth taking, in order of value:
@@ -585,14 +585,14 @@ Directions worth taking, in order of value:
    correctly says a 70B will not fit in 16 GB *with arithmetic*, cites 8,960 / 15.92 GiB / 752
    GB/s accurately, and stays in the SyMoNeuRaL admin-representative persona. **Score the current
    adapter before training anything.** Without a baseline, round two is guesswork.
-2. **Expand the corpus** beyond 327 examples — `demo/training/build_dataset.py` generates it from
+2. **Expand the corpus** beyond 327 examples — `training/build_dataset.py` generates it from
    `MIT_AI_Training.md` plus persona buckets. More hardware Q&A, more refusal patterns, more
    scenario coverage.
 3. **Sweep rank / alpha / epochs** and score each against the harness. Current run: 3 epochs,
    40.4 M trainable (0.53%), loss 2.51 → 1.25.
 
 **Hard constraints:**
-- Training has its **own venv** at `demo/training/.venv` (torch cu128 — Blackwell sm_120 needs
+- Training has its **own venv** at `training/.venv` (torch cu128 — Blackwell sm_120 needs
   it). Never install into the base interpreter.
 - `transformers` 5.x **dropped `warmup_ratio`** — use `warmup_steps`. Current code:
   `warmup_steps=max(3, int(0.05 * (len(ds) * args.epochs) / 8))`.
@@ -600,7 +600,7 @@ Directions worth taking, in order of value:
   genuinely active (it checks `pgrep -f '[t]rain_lora.py'`).
 - **Do not merge-and-requantize** unless the eval harness proves it doesn't regress. It did last
   time.
-- Keep the current adapter. Write new runs to `demo/training/runs/` and only swap what the API
+- Keep the current adapter. Write new runs to `training/runs/` and only swap what the API
   serves if the harness says it is better.
 
 ---
@@ -644,16 +644,16 @@ at the same time.** Generate first, stop chat, then train.
 - **`deploy.sh:45-52`** — the `MISSING` check pipes into `while read`, so `missing=1` is set in a
   subshell and lost. The script can never fail on a missing asset. Restructure with a
   process-substitution loop or `mapfile` so the exit status is real.
-- **Document generator ordering.** `demo/build_cost.py:130-133` hard-errors with
+- **Document generator ordering.** `build_cost.py:130-133` hard-errors with
   `stack marker not found -- run build_stack.py first`. `CLAUDE.md` lists the scripts but not
   this dependency. The correct order is:
   ```bash
-  python3 demo/build_pages.py      # playground pages
-  python3 demo/build_rack.py       # live rack   -> site/index.html
-  python3 demo/build_console.py    # control board + folds
-  python3 demo/build_stack.py      # NVIDIA stack map  (MUST precede build_cost)
-  python3 demo/build_cost.py       # cost comparison
-  python3 demo/build_training.py   # manual -> site/training.html
+  python3 build_pages.py      # playground pages
+  python3 build_rack.py       # live rack   -> site/index.html
+  python3 build_console.py    # control board + folds
+  python3 build_stack.py      # NVIDIA stack map  (MUST precede build_cost)
+  python3 build_cost.py       # cost comparison
+  python3 build_training.py   # manual -> site/training.html
   ```
   Add it to `CLAUDE.md` once verified.
 
@@ -666,7 +666,7 @@ Every one of these is here because breaking it cost real time. `CLAUDE.md` is th
 **GPU**
 - One RTX 5070 Ti, 15.92 GiB. Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB) **cannot
   coexist**.
-- Everything touching the GPU goes through `demo/gpu-governor.sh`, ideally
+- Everything touching the GPU goes through `gpu-governor.sh`, ideally
   `gpu-governor.sh with <surface> -- <cmd>`, which releases even on crash.
 - **Lock per job, never for a process lifetime.** Residency (weights loaded) and work (using the
   card) are separate things. Holding the lock while a model is merely resident locks out every
@@ -680,14 +680,14 @@ Every one of these is here because breaking it cost real time. `CLAUDE.md` is th
 - Image generation needs these argv flags or it OOMs at 768² (the VAE wants a 3.74 GB compute
   buffer while T5 holds 5.2 GB): `--backend te=cpu --vae-tiling --diffusion-fa`.
 - **Restarting the API** (you will do this after every `api.py` edit in queue item 0). Prefer
-  `demo/playground.sh off` then `on`, or `systemctl restart symoneural-api` once the unit is
+  `playground.sh off` then `on`, or `systemctl restart symoneural-api` once the unit is
   installed. If you must do it by hand, **let the API stop `llama-server` itself** and then wait
   for VRAM to drain before starting anything else:
   ```bash
   kill "$(pgrep -f '[a]pi\.py')"; sleep 3
   pkill -f '[l]lama-server'; sleep 2          # bracket pattern -- plain -f kills your own shell
   nvidia-smi --query-gpu=memory.used --format=csv,noheader   # wait for < 1500 MiB
-  cat demo/run/gpu.lock.d/holder 2>/dev/null || echo free    # confirm the lock is not stranded
+  cat run/gpu.lock.d/holder 2>/dev/null || echo free    # confirm the lock is not stranded
   ```
   I used exactly this sequence at 19:29 and it was clean (drained to 973 MiB, lock free), but be
   aware it is the pattern CLAUDE.md warns about: **killing a process returns the lock before CUDA
@@ -701,7 +701,7 @@ Every one of these is here because breaking it cost real time. `CLAUDE.md` is th
 - The serving API uses **only the system interpreter** — fastapi, uvicorn and sympy are already OS
   packages, so there is **no virtualenv in the serving path**. This is a design decision, not an
   oversight.
-- Training has its own venv at `demo/training/.venv`. Anything else that conflicts gets its own
+- Training has its own venv at `training/.venv`. Anything else that conflicts gets its own
   isolated venv.
 
 **Honesty — this is the product, not decoration**
@@ -744,30 +744,30 @@ cd /home/google/MIT_AI_Training/MIT_AI_Training
 
 # --- state ---
 curl -s http://127.0.0.1:8800/api/status | head -c 600     # is the API alive
-cat demo/run/gpu.lock.d/holder 2>/dev/null || echo free    # who holds the GPU
+cat run/gpu.lock.d/holder 2>/dev/null || echo free    # who holds the GPU
 nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv
-tail -40 demo/run/governor.log
-tail -40 demo/run/api.log
+tail -40 run/governor.log
+tail -40 run/api.log
 
 # --- the API ---
-demo/playground.sh on | off | status                        # off is the kill switch
+playground.sh on | off | status                        # off is the kill switch
 
 # --- rebuild the site (ORDER MATTERS — see queue item 10) ---
-python3 demo/build_pages.py && python3 demo/build_rack.py && \
-python3 demo/build_console.py && python3 demo/build_stack.py && \
-python3 demo/build_cost.py && python3 demo/build_training.py
+python3 build_pages.py && python3 build_rack.py && \
+python3 build_console.py && python3 build_stack.py && \
+python3 build_cost.py && python3 build_training.py
 
 # --- preview locally without deploying ---
 python3 -m http.server 8899 --directory site    # then curl 127.0.0.1:8899/docs/
 
 # --- models ---
-demo/fetch-models.sh                            # -> models/ (ungated, Apache-2.0 sources)
+fetch-models.sh                            # -> models/ (ungated, Apache-2.0 sources)
 
 # --- anything touching the GPU ---
-demo/gpu-governor.sh with <chat|image|train> -- <command>
+gpu-governor.sh with <chat|image|train> -- <command>
 
 # --- PUBLISH (user only, needs a password) ---
-sudo demo/deploy.sh
+sudo deploy.sh
 ```
 
 ---
@@ -777,7 +777,7 @@ sudo demo/deploy.sh
 > The site is complete and verified locally. It is **not live** — publishing needs one `sudo`
 > command that no agent can run:
 > ```
-> ! sudo /home/google/MIT_AI_Training/MIT_AI_Training/demo/deploy.sh
+> ! sudo /home/google/MIT_AI_Training/MIT_AI_Training/deploy.sh
 > ```
 > That single command publishes the rack, the control board, the cost comparison, the NVIDIA
 > stack map, the training manual and `/docs`. Read its `MISSING` output rather than trusting its

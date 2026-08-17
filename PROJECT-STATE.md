@@ -17,7 +17,7 @@ cannot be worked around — it has been attempted and fails with
 `sudo: a terminal is required to read the password`.
 
 ```bash
-sudo /home/google/MIT_AI_Training/MIT_AI_Training/demo/deploy.sh
+sudo /home/google/MIT_AI_Training/MIT_AI_Training/deploy.sh
 ```
 
 That single command publishes everything below, **including `/docs`**, which was reworked into
@@ -31,8 +31,8 @@ traces to this and nothing else.
 Optional second command — only needed for boot-start/crash-restart, not for the site to work:
 
 ```bash
-sudo .../demo/ops/install-service.sh     # systemd unit
-sudo .../demo/ops/install-apache.sh      # adds /api/ws + live /docs proxy (static /docs works without it)
+sudo .../ops/install-service.sh     # systemd unit
+sudo .../ops/install-apache.sh      # adds /api/ws + live /docs proxy (static /docs works without it)
 ```
 
 ---
@@ -52,15 +52,15 @@ Generators (all idempotent, all rerunnable):
 `build_training.py`. They rewrite `site/`, so **never run two in parallel**.
 
 ### Engines — built for `sm_120`
-- `demo/llama.cpp/build/bin/` — `llama-server`, `llama-cli`, `llama-speculative`
-- `demo/stable-diffusion.cpp/build/bin/` — `sd-cli`, `sd-server`
+- `llama.cpp/build/bin/` — `llama-server`, `llama-cli`, `llama-speculative`
+- `stable-diffusion.cpp/build/bin/` — `sd-cli`, `sd-server`
 
 ### Models — `models/`
 - `Qwen2.5-7B-Instruct-Q4_K_M.gguf` (4.68 GB) — served
 - `Qwen2.5-14B-Instruct-Q4_K_M.gguf` (8.99 GB) — heavy tier
 - `Qwen2.5-0.5B-Instruct-Q4_K_M.gguf` (398 MB) — speculative draft
 - `flux1-schnell-q4_k.gguf` + `ae` + `clip_l` + `t5xxl-Q8_0` (12.7 GB) — image
-- `demo/training/adapter/symoneural-lora.gguf` (80.7 MB) — the fine-tune
+- `training/adapter/symoneural-lora.gguf` (80.7 MB) — the fine-tune
 
 ### Measured numbers (all reproduced on this box)
 | what | value |

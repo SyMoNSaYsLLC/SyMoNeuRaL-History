@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pathlib
 
-SITE = pathlib.Path(__file__).resolve().parent.parent / "site"
+SITE = pathlib.Path(__file__).resolve().parent / "site"
 
 NAV = """    <nav>
       <a class="live" href="/chat.html"><s></s>Talk to the box</a>

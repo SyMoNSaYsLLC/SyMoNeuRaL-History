@@ -11,7 +11,7 @@ not spent watching a progress bar. Launch subagents in one message so they actua
 parallel. The GPU is available to agents that genuinely need it.
 
 Scope agents to files nobody else is writing. The real hazard here is the generator scripts:
-`demo/build_pages.py`, `build_rack.py`, `build_console.py` and `build_training.py` all rewrite
+`build_pages.py`, `build_rack.py`, `build_console.py` and `build_training.py` all rewrite
 files under `site/`, so two writers in that directory will clobber each other. Safe parallel
 tracks are read-only audits, brand-new standalone files, docs, and tests.
 
@@ -19,7 +19,7 @@ tracks are read-only audits, brand-new standalone files, docs, and tests.
 
 One RTX 5070 Ti, 15.92 GiB. Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB) cannot coexist.
 
-- Everything touching the GPU goes through `demo/gpu-governor.sh`, ideally as
+- Everything touching the GPU goes through `gpu-governor.sh`, ideally as
   `gpu-governor.sh with <surface> -- <cmd>`, which always releases even on crash.
 - **Hold the lock for a job, never for a process lifetime.** Residency (weights loaded) and
   work (using the card) are separate. Holding the lock while a model is merely resident and
@@ -40,7 +40,7 @@ conflicting `cuda-core`/`cuda-python` versions.
 
 - The serving API deliberately uses only the **system** interpreter: fastapi, uvicorn and sympy
   are already OS packages, so there is no virtualenv in the serving path.
-- Training has its own venv at `demo/training/.venv` (torch cu128 — Blackwell sm_120 needs it).
+- Training has its own venv at `training/.venv` (torch cu128 — Blackwell sm_120 needs it).
 - Anything else that conflicts gets its own isolated venv.
 
 ## Honesty rules for anything user-facing
@@ -59,13 +59,13 @@ These are the product, not decoration. The site's entire argument is that its nu
 ## Build and deploy
 
 ```bash
-demo/fetch-models.sh                 # weights -> models/ (ungated, Apache-2.0 sources)
-python3 demo/build_pages.py          # playground pages
-python3 demo/build_rack.py           # live rack -> site/index.html
-python3 demo/build_console.py        # control board + folds -> site/index.html
-python3 demo/build_training.py       # manual -> site/training.html
-demo/playground.sh on|off|status     # the live API (off is the kill switch)
-sudo demo/deploy.sh                  # site/ -> /var/www/symoneural (needs a password)
+./fetch-models.sh                 # weights -> models/ (ungated, Apache-2.0 sources)
+python3 build_pages.py          # playground pages
+python3 build_rack.py           # live rack -> site/index.html
+python3 build_console.py        # control board + folds -> site/index.html
+python3 build_training.py       # manual -> site/training.html
+./playground.sh on|off|status     # the live API (off is the kill switch)
+sudo ./deploy.sh                  # site/ -> /var/www/symoneural (needs a password)
 ```
 
 The generator scripts are idempotent and must stay that way — `build_console.py` once nested

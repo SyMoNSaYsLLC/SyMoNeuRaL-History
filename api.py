@@ -49,7 +49,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 HERE = pathlib.Path(__file__).resolve().parent
-ROOT = HERE.parent
+ROOT = HERE
 RUN = HERE / "run"
 RUN.mkdir(exist_ok=True)
 sys.path.insert(0, str(ROOT))

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the SyMoNeuRaL API as a system service.
 #
-#     sudo /home/google/MIT_AI_Training/MIT_AI_Training/demo/ops/install-service.sh
+#     sudo /home/google/MIT_AI_Training/MIT_AI_Training/ops/install-service.sh
 #
 # After this the API starts on boot, restarts on crash, and is managed with systemctl
 # rather than a shell script. It replaces playground.sh for anything production.
