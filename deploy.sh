@@ -29,14 +29,10 @@ fi
 # Top-level files.
 find "$SRC" -maxdepth 1 -type f -exec install -o www-data -g www-data -m 644 {} "$DST/" \;
 
-# /docs is the one subdirectory: a static Swagger UI page plus the schema snapshot. It is
-# served straight off disk rather than proxied, so the API reference works after a plain
-# deploy with no web server change -- and it keeps working when inference is switched off.
-if [ -d "$SRC/docs" ]; then
-  install -d -o www-data -g www-data -m 755 "$DST/docs"
-  find "$SRC/docs" -maxdepth 1 -type f -exec install -o www-data -g www-data -m 644 {} "$DST/docs/" \;
-  echo "deployed /docs (static swagger)"
-fi
+# There is deliberately no /docs case here any more. Caddy proxies /docs and /openapi.json
+# to FastAPI, which generates them, so a static copy in the webroot would be shadowed by the
+# proxy and would only ever go stale. It was also the last piece of routing living outside
+# the API, which is the thing this deployment is not supposed to do.
 echo "deployed to $DST"
 
 echo
@@ -50,8 +46,16 @@ echo "verifying every local asset reference resolves on disk:"
 # whole point of a verification step is that it can fail, so the loop reads from a process
 # substitution and the count survives.
 missing=0
+# Routes FastAPI serves through the proxy are not files and never will be. Checking them
+# with -f produced "MISSING docs" on a deploy where /docs was answering 200 from uvicorn --
+# a check that cries wolf is worse than no check, because the next real failure gets ignored.
+is_route() {
+  case "$1" in docs|docs/*|openapi.json|api|api/*) return 0;; *) return 1;; esac
+}
 while read -r ref; do
-  if [ -f "$DST/$ref" ]; then
+  if is_route "$ref"; then
+    printf '  route   %s (served by the API)\n' "$ref"
+  elif [ -f "$DST/$ref" ]; then
     printf '  ok      %s\n' "$ref"
   else
     printf '  MISSING %s\n' "$ref"; missing=$((missing + 1))

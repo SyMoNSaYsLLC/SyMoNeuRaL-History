@@ -13,56 +13,58 @@ conversation, so every number, path and decision you need is stated here.
 
 ## 0. Sixty-second version
 
-- The repo is now **a git repository** (it was not before). 12 commits, working tree clean,
+- The repo is now **a git repository** (it was not before). 18 commits, working tree clean,
   branch `main`, no remote. Every change below is committed with a reason in the message —
   `git log` is genuinely worth reading before you touch anything.
 - **`demo/` is gone.** Everything moved to the repo root. `demo/api.py` is now `api.py`,
   `demo/playground.sh` is now `symoneural.sh`. Old paths in your memory are wrong.
 - **Apache is retired; Caddy serves the site.** This is live and verified.
-- **The site is FOUR HOURS STALE on the public webroot.** Everything in §2 is built and
-  waiting on one `sudo` command the user must run. This is the single biggest thing to
-  tell them.
+- **The site is DEPLOYED and current** as of 2026-08-16 23:28. `deploy.sh` had been failing
+  for a different reason than everyone assumed — see §1. The API also runs under systemd now.
 - There is a **real browser test suite**: `node tests/frontend.mjs` — 9/9 passing. Run it
   after any frontend change. It catches things curl cannot.
 
 ---
 
-## 1. THE ONE BLOCKER
+## 1. The deploy blocker — resolved, and it was not the password
 
-```bash
-sudo /home/google/MIT_AI_Training/MIT_AI_Training/deploy.sh
+`sudo ./deploy.sh` failed for hours with:
+
+```
+no staged site at /home/google/MIT_AI_Training/site
 ```
 
-`/var/www/symoneural/` is `www-data`-owned and `sudo` needs a password. An agent shell has no
-TTY. `~/.claude/settings.local.json` also carries a hard `deny` on `Bash(sudo:*)`, and deny
-wins at every precedence level. **Do not waste cycles retrying it, and do not suggest the `!`
-prefix — that runs in the same non-TTY environment and fails identically.**
+The script computed its source as `dirname "$0"/..` — correct while it lived in `demo/`, one
+level too high after the flatten. **The password was never the problem; the path was.**
+`fetch-models.sh` carried the identical bug. Both fixed, and a sweep of every tracked shell
+script found no others (the two remaining `../` climbs are in correctly-nested scripts).
 
-**Measured staleness (checked 23:05):**
+**Lesson worth keeping:** when the Python `.parent` climbs were fixed after the flatten, the
+shell scripts were missed because the search was for Python idiom. If you move directories
+again, grep for `dirname` and `../` in `*.sh` as well.
 
-| | |
-|---|---|
-| live `/var/www/symoneural/index.html` | 46,155 bytes, **Aug 16 19:29** |
-| staged `site/index.html` | ~13 KB after the split, **Aug 16 22:5x** |
-| live page section order | `id="console"` then `id="rack"` — the **old** order |
-| live `console.js` | has the old decorative `.vent`, no `.ubus` |
+Two further fixes to `deploy.sh` in the same pass:
 
-Note the subtlety that confused the user for a while, and will confuse them again if you are
-not explicit: **unit names, states and GPU numbers come from `/api/status` and change the
-instant you edit `api.py` — no deploy needed. Section order, CSS and JS are static files and
-need the deploy.** So the live site shows the new unit name *and* the old layout at the same
-time. Say "live" vs "built, needs deploy" explicitly in every status you give.
+- Its verification loop piped into `while read`, so `missing=1` was set in a subshell and
+  discarded — it could print `MISSING` and still exit 0. It now counts and exits 1.
+- That check then cried wolf with `MISSING docs`, because `/docs` is a **route** served by
+  FastAPI through Caddy, not a file. It now recognises proxied routes. A check that reports a
+  false failure is worse than no check.
 
-### `deploy.sh` gotcha to warn them about
-`deploy.sh:45-52` pipes into `while read`, so `missing=1` is assigned in a subshell and
-discarded. It prints `MISSING <file>` lines but **can never exit non-zero on them**. Tell the
-user to read the output rather than trust the exit code. Fixing this is still on the list.
+The static Swagger copy that used to be deployed to `/var/www/symoneural/docs/` is gone from
+the deploy: Caddy proxies `/docs` to FastAPI, which generates it, so a disk copy is shadowed
+and only ever goes stale. It was also the last routing living outside the API.
+
+**Still true:** `sudo` is denied to agents and there is no TTY, so the user runs `deploy.sh`.
+It works now.
 
 ---
 
-## 2. Built and waiting on that deploy
+## 2. Shipped in this session — all of it is live
 
-All committed, all verified locally, none of it visible to the public yet.
+All committed and deployed. Verified against symoneural.com after the deploy at 23:28:
+`/`, `/documentation.html`, `/account.html`, `/docs` and `/api/status` all 200, the rack
+precedes the control board, and the band artwork loads.
 
 - **Homepage rebuilt as a lead-generation page.** Split hero ("Custom AI platforms that live
   in *your* building"), a full-bleed band of business objections around "why are you renting
@@ -212,8 +214,45 @@ to start.
 7. **`nx-master/`** as the server frontend reference.
 8. **Audit the other agent's CUDA work** against the cuda-samples layout, the Python tooling,
    the cpp libraries and `cuda-programming-guide.pdf` (at repo root).
-9. **Fix the `deploy.sh` subshell bug** (§1).
-10. **`sudo ops/install-service.sh`** — systemd boot-start + crash-restart. User's to run.
+9. **Containerise the serving stack with Podman + CDI.** Garrett asked for this explicitly
+   and his reasoning is sound: the whole project is NVIDIA-bound, so learning the container
+   path now is better than learning it under delivery pressure. He saved a reference at
+   `Support for Container Device Interface — NVIDIA Container Toolkit.mhtml`.
+
+   **Nothing is installed yet.** Available on this box: `nvidia-container-toolkit` 1.20.0-1,
+   `podman` 5.4.2, `docker.io` 26.1.5. Driver 610.57.04, RTX 5070 Ti.
+
+   **Recommend Podman over Docker here**, and say why rather than just doing it: rootless, so
+   no daemon runs as root on a box serving the public; CDI is the native device path in
+   toolkit 1.20 (exactly what his reference covers) rather than a legacy runtime hook; and
+   quadlet gives systemd units, which is the model he just adopted for the API.
+
+   Suggested first pass, in this order, and **verify each step before the next**:
+   ```bash
+   sudo apt-get install -y podman nvidia-container-toolkit
+   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+   nvidia-ctk cdi list                        # expect nvidia.com/gpu=0 and =all
+   podman run --rm --device nvidia.com/gpu=all \
+     docker.io/nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
+   ```
+   That last command is the whole milestone: if `nvidia-smi` prints the 5070 Ti from inside a
+   rootless container, CDI works and everything after it is ordinary packaging.
+
+   **Do not containerise the API as the first step.** The governor coordinates surfaces
+   through a filesystem lock in `run/` and through `nvidia-smi`; putting the API in a
+   container without deciding how that lock is shared will produce a confusing deadlock rather
+   than a clean failure. Get CDI proven first, then decide whether the container holds
+   everything (simplest, matches the one-tenant-at-a-time design) or whether the lock moves
+   to a shared volume.
+
+   **The real prize is the customer image, not this box.** `sm_120` + `cu128` on Blackwell is
+   fragile to reproduce; "here is the image" is a far stronger handover than "here is a script".
+   Note also that CUDA's EULA governs redistribution, so if a delivered image bakes CUDA in,
+   read that clause first — see `LICENSES.md` §6.
+
+10. **Fix the `deploy.sh` subshell bug** (§1).
+11. **`sudo ops/install-service.sh`** — DONE 2026-08-16 23:23; the unit is installed,
+    enabled and running. Manage with `systemctl {status,restart,stop} symoneural-api`.
 
 ---
 
