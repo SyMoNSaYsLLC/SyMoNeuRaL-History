@@ -573,3 +573,92 @@ The link/orphan crawler used here was a scratch probe and was not kept; it is ~6
 `fetch` over the eighteen-page list, and §6 item 1 is the only subtlety in writing another.
 Worth promoting into `tests/` if link rot becomes a recurring theme, in which case fold the
 orphan check in with it — the broken-link pass is silent about orphans by construction.
+
+---
+
+## 9. State at close, and what only Garrett can do
+
+Re-verified at 14:58 on 2026-08-17, after the tuner work landed.
+
+### Test sweep
+
+| Suite | Result |
+|---|---|
+| accounts, coder, cryptominer, gateway, guide, licensing, project, ravencalc | **OK** |
+| asicminer | OK (3 skipped) |
+| `node tests/frontend.mjs` — local `:8800` | **26/26** |
+| `node tests/frontend.mjs https://symoneural.com` | **26/26** |
+| tuner | 1 failure — see below |
+| sigils | 1 failure, 1 error — another session's live work |
+| reinforce | 1 failure, 6 errors — both explained below |
+
+**None of the three failures is a regression from this audit**, and each was checked rather than
+assumed:
+
+- **tuner** — `test_the_wait_covers_a_realistically_paced_stream`, the stale
+  `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1` assertion described in §7. It is red *in this branch
+  only*, because reverting `e0eb087` reverted the fix for it along with everything else. The
+  tuner's own session fixed it independently in the main checkout. It goes green when that work
+  is committed and merged; nothing needs doing here.
+- **sigils** — `test_despill_pulls_the_field_colour_out_of_the_edge` and
+  `test_a_whole_sticker_end_to_end_without_a_gpu`. The sticker surface is under active
+  development by another session. This branch contains no commit touching `backend/apps/sigils`.
+- **reinforce** — the six errors are a discovery artifact, not tests: `unittest discover` imports
+  `bench/`, `symoneural/` and `tests/`, which `import cupy`, which is not installed. The one real
+  failure is `test_preflight_refuses_the_corpus_as_a_dataset`, and it is worth reading carefully
+  because of what it looks like.
+
+### The corpus guard is intact — the failing test says otherwise and is wrong
+
+`test_preflight_refuses_the_corpus_as_a_dataset` asserts `reason == "dataset_protected"` and gets
+`"unknown_model"`. That reads like the protection on `training/corpus.jsonl` — the artefact
+`CLAUDE.md` says must never leave this box — has been removed. **It has not.** Verified directly
+rather than reasoned about:
+
+```
+dataset_guard.admit('training/corpus.jsonl')     -> Refused(code='protected')
+dataset_guard.admit('training/build_dataset.py') -> Refused(code='protected')
+registry.catalogue()                             -> []      <- no weights on this box
+```
+
+`jobs.preflight()` checks the model at `jobs.py:390` and the dataset at `:428`. With no model
+weights fetched, the model check short-circuits first and the dataset check is never reached — so
+the test fails on an **environment** difference, not a missing guard. `jobs.start()` additionally
+calls `dataset_guard.admit()` a second time at `:465` under the comment *"admitted again; the
+guard is not optional"*, so there is no path that reads the corpus even if preflight were skipped
+entirely. The test would be more honest asserting against the guard directly, or skipping when
+`registry.catalogue()` is empty, the way the GGUF test above it already skips.
+
+### The three things an agent cannot do
+
+1. **Merge this branch.** `worktree-online-apps-audit` carries the RavenCalc fix, the
+   documentation corrections, the reverted tuner commit and its revert (kept in history
+   deliberately — see §7), and the NVENC measurements.
+2. **Commit the tuner session's work.** As of writing, the Tuner+Guide merge, `acodec`, the
+   `isTypeSupported` codec check, the hls.js path fix and the sticky codec panel exist only as
+   **uncommitted working-tree state in the shared checkout**, alongside many other sessions'
+   uncommitted changes. It is the most valuable tuner work done today and currently the least
+   durable.
+3. **`sudo systemctl restart symoneural-api`.** Two fixes are inert until this happens, and both
+   were confirmed still broken live at 14:58:
+
+   ```
+   POST /api/ravencalc {"expression": "factorial(99999)"}
+     127.0.0.1:8800      HTTP 500
+     symoneural.com      HTTP 500
+   ```
+
+   With the branch's fix loaded the same request raises `RavenCalcError`, which the handler at
+   `api.py:1900` turns into a **400 naming the reason** — *"the exact answer is too wide for this
+   engine to print"* — while `factorial(20)` still returns its exact answer. The rack also still
+   reports 12 units rather than the merged 11 for the same reason.
+
+### Still to build: the transcode
+
+Designed and measured in §7, not implemented. Deliberately not started on this branch: it must be
+built on top of the tuner session's rewritten `sessions.py`, which is not committed yet, and
+building it on this branch's older base would guarantee a conflict in exactly the file that was
+just rewritten. Two constraints carried forward from that session — detect-then-respawn is
+unavoidable, and `_spawn`'s *"it never quietly re-encodes, because the GPU belongs to inference"*
+must be rewritten with the engine-separation measurement as its justification rather than quietly
+contradicted.
