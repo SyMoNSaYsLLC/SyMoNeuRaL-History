@@ -101,8 +101,8 @@ try {
   // whole band makes. At 38-59px it is unreadable, and `.band-art` had pointer-events:none,
   // which silently disabled every descendant: the hover caption never appeared either.
   const lb = await page.evaluate(async () => {
-    const a = document.querySelector('.band a.art');
-    if (!a) return { ok: false, why: 'no .band a.art' };
+    const a = document.querySelector('a.gart, a.art');
+    if (!a) return { ok: false, why: 'no clickable render on the front page' };
     if (getComputedStyle(a).pointerEvents === 'none') return { ok: false, why: 'pointer-events:none' };
     a.click();
     await new Promise(r => setTimeout(r, 300));
@@ -141,15 +141,28 @@ try {
   // renders collapsed into a vertical column in narrow gutters, which is what a visitor
   // actually saw; it now lives on /build.html where there is room. If .sky ever reappears
   // on the front page, or the row ever stops being a row, this fails.
-  const bandShape = await page.evaluate(() => {
-    const cells = [...document.querySelectorAll('.band .bcell')];
-    const tops = new Set(cells.map(c => Math.round(c.getBoundingClientRect().top)));
-    return { n: cells.length, rows: tops.size, sky: !!document.querySelector('.sky') };
+  // The front page opened with a hero, then a 930px band restating the argument, and the
+  // rack -- the machine reading its own sensors while you watch -- began ~1,300px down.
+  // The requirement is pitch, hero and rack all reachable on a first look at 100% zoom.
+  // This asserts the shape that delivers it rather than a pixel count, which would break
+  // on any copy edit: pitch and hero on one row, four renders in the gutters costing no
+  // vertical space, and the rack starting inside one viewport of the top.
+  const fold = await page.evaluate(() => {
+    const box = s => { const e = document.querySelector(s); return e && e.getBoundingClientRect(); };
+    const hero = box('.mh-hero'), pitch = box('.mh-pitch'), rack = box('.rack');
+    if (!hero || !pitch || !rack) return { why: 'masthead or rack missing' };
+    return {
+      sideBySide: Math.abs(hero.top - pitch.top) < hero.height,   // same row, not stacked
+      rackTop: Math.round(rack.top + window.scrollY),
+      vh: window.innerHeight,
+      arts: document.querySelectorAll('.gart').length,
+      sky: !!document.querySelector('.sky'),
+    };
   });
-  record('the band is four renders side by side',
-         bandShape.n === 4 && bandShape.rows === 1 && !bandShape.sky,
-         `${bandShape.n} cells on ${bandShape.rows} row(s)` +
-         (bandShape.sky ? ', but .sky is still on the front page' : ''));
+  record('pitch, hero and rack fit one look',
+         fold.sideBySide && fold.arts === 4 && !fold.sky && fold.rackTop < fold.vh,
+         fold.why || `rack at ${fold.rackTop}px of ${fold.vh}px, ${fold.arts} gutter renders` +
+         (fold.sky ? ', but .sky is still on the front page' : ''));
 
   record('the constellation moved to the order page',
          buildTxt.includes('class="sky"') && (buildTxt.match(/class="art"/g) || []).length >= 19,

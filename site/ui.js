@@ -58,7 +58,7 @@
  */
 (function () {
   'use strict';
-  var links = [].slice.call(document.querySelectorAll('a.art'));
+  var links = [].slice.call(document.querySelectorAll('a.art, a.gart'));
   if (!links.length) return;
 
   var box, img, cap, meta, opener;

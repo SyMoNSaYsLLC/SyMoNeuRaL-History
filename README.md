@@ -71,8 +71,9 @@ bin/symoneural          the CLI -- one command over the whole stack
 
 tools/                  the site generators, all idempotent
   build_pages.py        chat/image/calc/remix pages   -> site/
-  build_rack.py         the live rack                 -> site/index.html
-  build_band.py         four questions, four renders  -> site/index.html
+  _art.py               shared markup for a render (not a generator)
+  build_masthead.py     pitch + hero side by side     -> site/index.html
+  build_rack.py         the live rack, two renders    -> site/index.html
   build_sky.py          the 19-render constellation   -> site/build.html
   build_console.py      the control board             -> site/index.html
   build_cost.py         Owned vs Rented               -> site/documentation.html

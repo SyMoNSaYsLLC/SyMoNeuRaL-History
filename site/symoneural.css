@@ -791,70 +791,118 @@
   .hero.split h1{max-width:none}
 }
 
-/* ---- the homepage band: four questions, four renders, in a row ----
-   This was a scattered constellation of nineteen renders at 38-59px with SVG lines drawn
-   to each question. It is a good object and it now lives on /build.html, which has the
-   room for it -- see the .sky rules further down. On the front page it had two problems
-   no amount of tuning fixed: at 50px the watermark burned into each render is unreadable,
-   and the watermark is the claim; and absolute positioning in narrow gutters piled the
-   images into a vertical column.
+/* ---- the masthead: pitch and hero side by side, renders in the gutters ----
+   The front page used to open with a hero, then a 930px-tall band restating the argument,
+   and only then the rack -- the machine reading its own sensors while you watch, which is
+   the entire point of the page and was starting ~1,300px down. The requirement is that the
+   pitch, the hero and the rack are all visible on a first look at 100% zoom, and the only
+   way to get there is to stop stacking full-width sections.
 
-   A grid solves both. Four cells, each one render over the question it answers, ~230px
-   instead of ~50px, reflowing to two columns and then one. Nothing here can stack up. */
-.band{
-  position:relative; overflow:hidden; background:#070908;
-  border-top:1px solid var(--line); border-bottom:1px solid var(--line);
-  padding:84px 20px 72px; margin:0;
-}
-.band::before{
-  content:""; position:absolute; inset:0; pointer-events:none;
-  background:radial-gradient(58% 46% at 50% 30%, rgba(46,224,138,.06), transparent 72%);
-}
+   Four columns. The two outer ones are the gutters, which at any viewport above ~1280px
+   were empty: the readable centre column is 1120px inside a 1900px screen. A render sits in
+   each, so the images cost no vertical space at all instead of a full screen in a
+   four-across row. Two more do the same either side of the rack.
 
-.band-mid{position:relative; max-width:660px; margin:0 auto; text-align:center; z-index:3}
-.band-mid h2{
-  margin:0; font:600 clamp(25px,3.1vw,37px)/1.2 ui-serif,Georgia,"Times New Roman",serif;
+   `h1` is first in the document and placed on the right by grid-area, rather than writing
+   an `h2` above the page's `h1` just to get the visual order. */
+.masthead{position:relative; overflow:hidden; padding:32px 0 26px}
+.masthead::before{
+  content:""; position:absolute; inset:-40% 32% auto -20%; height:640px;
+  background:radial-gradient(closest-side, rgba(46,224,138,.13), transparent 72%);
+  pointer-events:none;
+}
+.mh{
+  position:relative; display:grid; align-items:center; gap:30px 34px;
+  grid-template-columns:214px minmax(0,1fr) minmax(0,1fr) 214px;
+  grid-template-areas:"a1 pitch hero a2";
+  max-width:1580px; margin:0 auto; padding:0 28px;
+}
+.mh-hero{grid-area:hero}
+.mh-pitch{grid-area:pitch}
+.mh > .gart:nth-of-type(1){grid-area:a1}
+.mh > .gart:nth-of-type(2){grid-area:a2}
+
+.mh-hero h1{
+  margin:11px 0 0; font-weight:760; letter-spacing:-.032em; color:var(--fg);
+  font-size:clamp(31px,3.1vw,47px); line-height:1.06;
+}
+.mh-hero h1 i{font-style:normal; color:var(--accent)}
+.mh-body{margin:17px 0 0; color:var(--dim); font-size:15.5px; line-height:1.6; max-width:52ch}
+.mh-hero .tiny{margin:11px 0 0; color:var(--faint); font-size:13.5px; font-style:italic}
+.mh-hero .actions{margin-top:20px}
+
+/* The pitch is deliberately quieter than the hero -- serif, one shade down, a ghost
+   button. Two solid call-to-action pills side by side read as two competing offers. */
+.mh-pitch h2{
+  margin:0; font:600 clamp(21px,2.05vw,29px)/1.2 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.015em; color:var(--fg);
 }
-.band-lede{margin:18px 0 0; color:var(--dim); font-size:15.5px; line-height:1.66}
-.band-lede b{color:var(--accent); font-weight:600}
-.band-mid .cta{margin-top:24px}
+.mh-lede{margin:15px 0 0; color:var(--dim); font-size:14.5px; line-height:1.62; max-width:48ch}
+.mh-lede b{color:var(--accent); font-weight:600}
+.mh-pitch .cta{margin-top:18px}
+.mh-foot{margin:18px 0 0; color:var(--faint); font-size:12px; line-height:1.55; max-width:46ch}
+.mh-foot b{color:var(--dim); font-weight:600}
 
-.band-row{
-  position:relative; z-index:2; display:grid; grid-template-columns:repeat(4,1fr);
-  gap:28px; max-width:var(--max); margin:54px auto 0; align-items:start;
-}
-.bcell{display:flex; flex-direction:column; align-items:center; text-align:center}
-.band .art{
-  display:block; width:100%; text-decoration:none; cursor:zoom-in;
+/* ---- a render in a page gutter ----
+   Every one links to its own full-size PNG. That is load-bearing rather than a nicety: the
+   watermark strip printed into each file names the model, the quantisation, 768x768, the
+   step count, the seed and the seconds it took on this card, and at gutter width that strip
+   is about four pixels tall. The claim is only checkable at full size, so the affordance is
+   spelled out on hover instead of being left to a cursor change. */
+.gart{
+  /* Capped, and centred in whatever column it lands in. Without the cap the two renders
+     below the 1300px breakpoint each take a full 1fr -- 520px measured at a 1100px
+     viewport, which is larger than they ever were in the gutter they were sized for. */
+  display:block; width:100%; max-width:268px; margin-inline:auto;
+  text-decoration:none; cursor:zoom-in;
   transform:rotate(var(--rot,0deg)); transform-origin:center;
-  opacity:.86; transition:opacity .2s ease, transform .2s ease;
+  transition:transform .2s ease;
 }
-.band .art:hover{opacity:1; transform:rotate(0deg) scale(1.02)}
-.band .art:focus-visible{outline:2px solid var(--accent); outline-offset:4px; opacity:1}
-.band .art img{
-  display:block; width:100%; height:auto; border-radius:7px;
-  border:1px solid rgba(46,224,138,.15);
-  box-shadow:0 10px 30px rgba(0,0,0,.62);
+.gart:hover{transform:rotate(0deg)}
+.gart:focus-visible{outline:2px solid var(--accent); outline-offset:5px}
+.gwrap{display:block; position:relative; border-radius:9px; overflow:hidden;
+  border:1px solid rgba(46,224,138,.16); box-shadow:0 12px 34px rgba(0,0,0,.66)}
+.gwrap img{display:block; width:100%; height:auto}
+.gzoom{
+  position:absolute; inset:auto 0 0 0; padding:9px 10px;
+  background:linear-gradient(0deg, rgba(6,9,7,.94), rgba(6,9,7,0));
+  color:var(--accent); text-align:center; letter-spacing:.02em;
+  font:600 10.5px/1.3 ui-monospace,Menlo,Consolas,monospace;
+  opacity:0; transition:opacity .18s ease;
 }
-.band .q{
-  margin:18px 0 0; color:#a3b8ab;
-  font:400 clamp(15px,1.25vw,18px)/1.36 ui-serif,Georgia,"Times New Roman",serif;
+.gart:hover .gzoom,.gart:focus-visible .gzoom{opacity:1}
+.gq{
+  display:block; margin-top:13px; text-align:center; color:#a3b8ab;
+  font:400 clamp(13.5px,1.02vw,15.5px)/1.34 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.01em;
 }
-.band-foot{
-  position:relative; z-index:2;
-  margin:44px auto 0; max-width:62ch; text-align:center;
-  color:var(--faint); font-size:12.5px; line-height:1.6;
-}
-.band-foot b{color:var(--dim); font-weight:600}
 
-@media (max-width:900px){
-  .band{padding:56px 18px 48px}
-  .band-row{grid-template-columns:repeat(2,1fr); gap:24px; margin-top:40px}
+/* ---- the rack, with a render either side ---- */
+.rackrow{
+  display:grid; align-items:center; gap:38px;
+  grid-template-columns:236px minmax(0,1fr) 236px;
+  max-width:1580px; margin:18px auto 0; padding:0 28px;
 }
-@media (max-width:520px){
-  .band-row{grid-template-columns:1fr; gap:30px}
+
+/* Below this the gutters are gone -- the centre column needs the width more than the
+   renders do -- so both pairs drop under their section as a two-across row rather than
+   being squeezed to postage stamps. */
+@media (max-width:1300px){
+  .mh{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas:"hero pitch" "a1 a2";
+    gap:34px; max-width:var(--max);
+  }
+  .rackrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr); max-width:var(--max); gap:26px}
+  .rackrow .rack{grid-column:1 / -1; order:-1; margin-bottom:8px}
+  /* Smaller once they are stacked under a section rather than beside it: here they cost
+     vertical space, and vertical space is the whole reason this layout exists. */
+  .gart{max-width:206px}
+}
+@media (max-width:820px){
+  .masthead{padding:30px 0 28px}
+  .mh{grid-template-columns:minmax(0,1fr); grid-template-areas:"hero" "pitch" "a1" "a2"; gap:28px}
+  .rackrow{grid-template-columns:minmax(0,1fr)}
 }
 
 /* ---- order: the ask, and what happens after it ---- */
