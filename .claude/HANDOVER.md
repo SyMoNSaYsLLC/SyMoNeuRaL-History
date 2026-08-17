@@ -490,6 +490,65 @@ Anything in the test suite that asserts on the rack or control board must now `o
 first — a hidden element has no box, which is exactly how `pitch, hero and rack fit one
 look` went vacuous (it required `rack.top < innerHeight`; a hidden element reports 0).
 
+#### `tools/build_split.py` — one page per section (eleventh generator)
+
+`/overview`, `/livestack`, `/controlboard`, `/receipts`. Each page is `index.html` **with
+the other sections deleted** — subtraction, not reassembly, so head/header/footer/scripts
+and every cache-bust stamp match the front page by construction. **`index.html` is not
+modified**: the other generators find their work by BEGIN/END markers, and moving a section
+out from under them makes the next run append a second copy.
+
+Routes are in `backend/api.py`, declared **before** the `StaticFiles` mount — a route added
+after a mount at `/` is unreachable. `ops/Caddyfile` is untouched and stays that way.
+
+**These fix the gate cliff, not the scrolling.** A page holding one section has exactly the
+same vertical budget as a panel holding one. What removed the scrolling was folding plus
+density (below). Do not describe the split as the thing that made it fit.
+
+Watch the section-removal pattern: `build_console.py` emits
+`<section id="console" style="padding-top:34px">`, so a regex expecting `id="console">`
+silently removed nothing and welded a control board onto all four pages. The removal is
+asserted (`n == 1`) rather than trusted.
+
+#### What actually made the sections fit
+
+In order, and only the second hides anything:
+
+1. **Geometry.** A unit's name and attribution were stacked; side by side they are one line.
+   Nothing hidden — deliberately, because that line carries `built on Qwen2.5-7B-Instruct`,
+   an Apache-2.0 condition, and geometry buying the space keeps the licence obligation out
+   from behind a click.
+2. **Folding.** Per-unit detail and per-module explanations collapse behind real
+   `<button aria-pressed>` controls, remembered in `localStorage`, **shown only inside the
+   one-screen layout** — on a scrolling page there is nothing to save and hiding would be
+   pure loss. The text stays intact in the DOM. The control board's provenance tag
+   (measured / vendor / projected) never folds.
+3. **Density.** Spacing only. The rack's height floor turned out to be **the 27px power
+   glyph plus padding, not its text** — which is why an earlier padding-only trim moved
+   nothing at all.
+
+The fold handlers bind to `#rack` / `#console`, never to `#units`: `renderRack()` rewrites
+`#units` on every status push, so a class toggled on a descendant is undone by the next
+update.
+
+Measured, content against panel:
+
+| Viewport | Result |
+|---|---|
+| 1920×1080 | all four fit |
+| 1855×745 (Garrett's window) | **all four fit**, as tabs and as pages |
+| 1440×900 | all four fit |
+| 1301×740 | three fit; Live stack over by 76px |
+| 390×844 | nothing fits and nothing can — the rack alone is 2,700px |
+
+**Mobile cannot reach zero scroll and should not be promised it.** The gate is off below
+1301px, so phones get the ordinary scrolling page with every section visible.
+
+Two changes that look like wins and are not, both left in the CSS with their numbers:
+a two-column rack (units 76px → 178px → 403px, because a unit row is a *horizontal*
+layout) and gridding the heading `.wrap` (control board 1,043px → 3,553px, because
+`#console` keeps its whole contents in one `.wrap`).
+
 **`html.ns #hero:not([hidden])` — do not simplify that selector.** `hidden` works by
 applying `display:none` from the *browser's* stylesheet, so any author rule that sets
 `display` beats it. Written bare, the rule meant the masthead could never hide: every tab
