@@ -172,6 +172,55 @@ the same hour. Rules that follow from that, and they are not optional:
 Merges have worked so far: the tuner session's `ac3`/`aac` fixture cases and this session's
 `emptylive` case coexist and `node tests/tuner_failpaths.mjs` is **27/27** with both in.
 
+### 1c. THE MERGE — nine branches, four bases, and one file everybody edited (14:59)
+
+`git branch` shows **nine `worktree-*` branches**, one per fleet session, forked from **four
+different base commits** (`595835d`, `2f285a5`, `8e835cb`, `e38f463`). Nobody merging one of them
+can see this list, so it is recorded here. Measured with `git merge-tree --write-tree --name-only
+main <branch>`, which trial-merges without touching the working tree — re-run it, do not trust
+the table's age:
+
+| Branch | Base | Merges into `main` |
+|---|---|---|
+| `worktree-project-page` | `e38f463` | **clean** |
+| `worktree-site-typography-tlc` | `2f285a5` | **clean** (and it rewrites 12 `site/*.html`) |
+| `worktree-docs-accuracy` | `2f285a5` | **clean** |
+| `worktree-online-apps-audit` | `8e835cb` | **clean** |
+| `worktree-stickers` | `8e835cb` | empty — 0 commits |
+| `worktree-miner-online` | `e38f463` | conflicts in `.claude/HANDOVER.md` only |
+| `worktree-gateway-online` | `595835d` | 5: `apps/gateway/__init__.py`, `site/gateway.html`, `tests/frontend.mjs`, `tools/build_pages.py`, a spec |
+| `worktree-coder-online` | `595835d` | 8, including `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py`, `tests/frontend.mjs` |
+| `worktree-reinforce-rl` | `595835d` | 10 — `backend/api.py` and **every file in `backend/apps/reinforce/`** |
+
+**Merge in that order — clean first.** Each merge changes `main` and can turn a clean branch
+dirty, so the four that cost nothing should land before the four that cost something.
+
+Three things will save the person doing it real time:
+
+- **A conflict in `site/*.html` is not a conflict.** Eleven of those pages are generator output.
+  Resolve by taking either side, then re-running the generator and committing what it emits —
+  `site/gateway.html` conflicting while `tools/build_pages.py` also conflicts means there is
+  exactly one real conflict, in the generator. Hand-merging the HTML produces a page that no
+  generator will reproduce, and the next build silently reverts it.
+- **`.claude/HANDOVER.md` conflicts are append-vs-append.** Keep both sides. That is the whole
+  resolution, and it is why `worktree-miner-online` is listed as conflicting at all.
+- **`backend/api.py` is the one file with a real merge.** Four branches edit it: coder, miner and
+  reinforce add units or mounts, and the miner session has already merged the two miner rows into
+  one `Unit(id="miner")` carrying `sub: list[SubUnit]` with `gpuminer`/`asicminer` one level down.
+  **Anything that looks up a unit by id must search the top level and then `sub`** — the site
+  deploys before the API restarts, so both shapes are live at once for a while. `ast.parse`
+  after every resolution.
+
+**The sharpest hazard is Reinforce, which exists in two places at once.** `main`'s working copy
+carries an uncommitted `/api/train` mount in `backend/api.py`, an uncommitted
+`tools/build_pages.py`, and untracked `site/reinforce.html`, `site/reinforce.js`,
+`tools/build_reinforce.py` — a training-bay surface. Separately, `worktree-reinforce-rl` rewrites
+the whole of `backend/apps/reinforce/` (it adds `rewards.py` and `rollout.py`, so it is
+reinforcement learning, not the LoRA bay) and conflicts with all ten of those files. **Do not
+merge that branch before someone has committed or discarded the working-copy work**, or one of
+the two bodies of work will be silently overwritten. Whoever owns them should say which is which
+before either lands.
+
 ### 2. Tuner guide + EPG — **DONE 2026-08-17 ~14:45**, on disk, live site pending a restart
 
 His words: *"update the damn tuner guide with epg and not that terrible tiny select and deselect
