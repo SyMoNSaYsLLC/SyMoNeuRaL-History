@@ -437,11 +437,12 @@ def status() -> dict:
         "slot": "1U",
         "state": st,
         "bus": "cpu",
-        # There is no site/project.html. `apps/coder` points at the documentation page for
-        # exactly this reason, and `scripts/deploy.sh`'s reference check can fail the build
-        # on a link to a page that is not there. Change this to "/project.html" in the same
-        # commit that adds the page, not before.
-        "href": "/documentation.html",
+        # `site/project.html` now exists -- `tools/build_project.py` generates it -- so the
+        # tile links to the surface instead of to the documentation page. That page and this
+        # line changed in one commit, which is the order this comment used to ask for:
+        # `scripts/deploy.sh`'s reference check fails the build on a link to a page that is
+        # not there, and a rack tile pointing at a 404 is a dishonest pixel.
+        "href": "/project.html",
         "spec": "SQLite · FTS5 · no weights",
         # Deliberately the same words as RavenCalc, because it is deliberately the same
         # design decision: a CPU surface that is always available precisely because it

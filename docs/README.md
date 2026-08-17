@@ -1,8 +1,21 @@
-# MIT AI Training — documentation
+# SyMoNeuRaL — documentation
 
-The consolidated manual (`../MIT_AI_Training.md`, ~8,400 lines) remains the
-canonical single file. This directory is a modular view of the same content,
-sliced so each concern can be read on its own.
+The manual (`symoneural-manual.md`, ~8,400 lines) remains the canonical single
+file. This directory is a modular view of the same content, sliced so each
+concern can be read on its own.
+
+> **Naming, since it is confusing on first read.** The manual's own `<h1>` still
+> says "MIT AI Training — Consolidated Manual" and that is deliberate, not an
+> oversight: `tools/build_training.py` matches that exact phrase to rebrand the
+> document into `site/training.html`, so renaming the heading would silently
+> break the purge and put the old name on the live page. The generator asserts
+> that nothing remains after it runs, and the live page carries zero occurrences.
+> Anything user-facing is already clean; this heading is build input.
+
+> **This is not the only copy of files 01 through 05.** `backend/apps/reinforce/docs/`
+> holds a second set, because the CUDA engine ships with its own documentation.
+> The two overlap on twenty files and differ only in that header line. If you are
+> editing one, check whether the other needs the same change.
 
 ## Contents
 

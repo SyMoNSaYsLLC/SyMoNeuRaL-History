@@ -245,7 +245,12 @@ try {
   const broken = [];
   for (const pg of ['', 'chat.html', 'image.html', 'ravencalc.html', 'remix.html',
                     'miner.html', 'gateway.html', 'tuner.html', 'build.html',
-                    'documentation.html', 'training.html', 'account.html']) {
+                    'documentation.html', 'training.html', 'account.html',
+                    // The watch page is ~700 lines of inline JS and the most recent thing here,
+                    // so it is the likeliest to arrive broken. This visits it COLD -- no handoff
+                    // in localStorage -- which is the branch a visitor who types the URL gets,
+                    // and the one no other test covers.
+                    'tuner-watch.html']) {
     const probe = await ctx.newPage();
     const errs = [];
     probe.on('pageerror', e => errs.push(`${pg || '/'}: ${e.message}`));
@@ -254,7 +259,7 @@ try {
     broken.push(...errs);
   }
   record('no page throws a script error', broken.length === 0,
-         broken.length ? broken.join(' | ').slice(0, 160) : 'all 12 pages clean');
+         broken.length ? broken.join(' | ').slice(0, 160) : 'all 13 pages clean');
 
   // ---- the front page folds, and the panel it folds into is readable ------
   // THE PREVIOUS VERSION OF THIS ASSERTION PASSED WHILE THE PAGE WAS BROKEN. It checked

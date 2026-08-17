@@ -94,10 +94,13 @@ from apps.guide import routes as guide_routes  # noqa: E402  -- question -> chan
 from apps.accounts import routes as accounts_routes  # noqa: E402  -- signup,
 # login and sessions. Imported as `routes` rather than the package so the package's
 # many bare names (verify, enabled, status) cannot shadow anything in this module.
-from apps import reinforce  # noqa: E402  -- the training bay, see apps/reinforce/TRAINING_BAY.md.
-# Bound to the package for the reason above: it exports `enabled` and `status` too. Importing
-# it does NOT turn training on -- the surface is shut unless SYM_REINFORCE_ENABLED=1 and
-# SYM_REINFORCE_TOKEN are both set, and every route answers 503 until they are.
+from apps import reinforce  # noqa: E402  -- the training bay. Bound to the package so its
+# bare `status`/`enabled` cannot shadow this module's own. Importing it is cheap and safe
+# whether or not the surface is switched on: `apps/reinforce/__init__.py` defines
+# `enabled()` BEFORE it imports `.routes`, and every route calls it and answers 503 when
+# both SYM_REINFORCE_ENABLED and SYM_REINFORCE_TOKEN are not set. Mounting an off surface
+# is not the same as enabling it. What it now mounts does preference and reinforcement
+# tuning as well as supervised -- see `apps/reinforce/TRAINING_BAY.md`.
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
@@ -1444,23 +1447,35 @@ def build_status() -> Status:
             # by a wide margin and wrapped to FIVE lines in the compact GPU panel beside
             # every prompt box, which is what made that stack look out of proportion.
             #
-            # NOTE FOR WHOEVER READS THIS NEXT: `backend/apps/reinforce/` already exists and
-            # is the CUDA engine. Two different things now answer to "Reinforce". That is
-            # deliberate on Garrett's part -- he wants the training bay built ON the
-            # reinforce engine (see docs/specs/qlora-upgrade.md).
+            # NOTE FOR WHOEVER READS THIS NEXT: `backend/apps/reinforce/` holds two things
+            # that answer to "Reinforce" -- the CUDA engine (the `symoneural/` subpackage,
+            # with its own FastAPI app on port 8000, which must NOT be reused here) and the
+            # training bay built on it. An agent told to "look at Reinforce" will land on
+            # the engine first. That is deliberate on Garrett's part; see
+            # docs/specs/qlora-upgrade.md, which is a spec and not a description of state.
             #
-            # Half of that has landed: the bay's HTTP surface is mounted at `/api/train`
-            # above, and it does supervised, preference and reinforcement tuning. This unit
-            # is deliberately NOT wired to it yet. It is built from `CHAT_ADAPTER.exists()`
-            # and points at `/training.html`, which is the manual, not the bay -- and the
-            # bay's own page is not in `site/` on this branch, so repointing `href` from
-            # here would produce a dead link on the rack. Whoever lands that page owns this
-            # unit. Until then an agent told to "look at Reinforce" still finds the CUDA
-            # engine first.
+            # The href now points at the bay rather than at the manual. `site/reinforce.html`
+            # is written by `tools/build_reinforce.py`, which wires up the `page.html` and
+            # `page.js` that the bay's author left in `apps/reinforce/` with nothing
+            # referencing them. THIS MEANS THE PAGE MUST BE DEPLOYED BEFORE THE API IS
+            # RESTARTED: `sudo scripts/deploy.sh --prune` first, then
+            # `sudo systemctl restart symoneural-api`. Reversed, the rack advertises a page
+            # the webroot does not have yet and every visitor who clicks the unit gets a 404.
+            # `deploy.sh`'s reference check will not catch that -- it greps the deployed HTML
+            # for src=/href=, and a rack href arrives as JSON from /api/status, so it is
+            # never in the markup to be checked. The ordering is the only protection.
+            #
+            # `state` is still read from CHAT_ADAPTER.exists() and NOT from
+            # `reinforce.status()`, deliberately. The two assert different true things: this
+            # unit says an adapter is loaded, and the reinforce app's own status says whether
+            # its HTTP surface will accept work. Splatting one over the other would flip a
+            # unit that reads `ready` to `offline` the moment the env vars are unset, which
+            # is not what a visitor is being told here. The merge is available and is a
+            # separate decision.
             Unit(id="train", label="SyMoNeuRaL Reinforce", slot="2U",
                  state="busy" if holder == "train" else
                        ("ready" if CHAT_ADAPTER.exists() else "offline"),
-                 bus="gpu", href="/training.html",
+                 bus="gpu", href="/reinforce.html",
                  spec="SymonChat persona adapter · 4-bit low-rank",
                  detail="fine-tune in progress — serving surfaces queue" if holder == "train"
                         else ("adapter loaded · for model/adapter tuning"
@@ -2079,11 +2094,23 @@ async def gpuminer_control(request: Request, body: MinerBody) -> dict:
 # is unreachable. Prefix matches the Backstage shape the backend is heading towards
 # (§5 item 13) -- a surface answers at /api/<id>.
 app.include_router(tuner.router, prefix="/api/tuner", tags=["tuner"])
-app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
 app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
 app.include_router(guide_routes.router, prefix="/api/guide", tags=["guide"])
 app.include_router(project.router, prefix="/api/project", tags=["project"])
+# `/api/train`, not `/api/reinforce`: the router's own first line names this prefix, `page.js`
+# hard-codes it, and the rack unit has been `train` since before either existed. The docstring
+# in apps/reinforce/routes.py said "Mounted at /api/train by backend/api.py" from the day it was
+# written -- it simply was not true until this line, so every route in that package answered 404
+# rather than the 503 it was designed to give. A 404 reads as "this was never built"; the 503
+# names the two switches that turn it on, which is the difference between a missing surface and
+# a configured one.
+#
+# No `ops/Caddyfile` change is needed for this, and that is worth stating because a new *section*
+# path does need one. Caddy delegates the whole subtree with `handle /api/*`, so FastAPI decides
+# what exists under it. Only a new top-level path -- the /overview /livestack /controlboard
+# /receipts class -- has to be added there, and that has bitten before.
+app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
 
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a

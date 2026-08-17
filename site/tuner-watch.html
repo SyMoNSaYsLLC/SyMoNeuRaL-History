@@ -563,6 +563,13 @@ a.wb{text-decoration:none; display:inline-block}
           return;
         }
         sid = j.id || null;
+        // Rewrite the handoff record now that there IS a session id. `remember` above the
+        // fetch stores the channel with `sid: ''` -- deliberately, so a reload during the
+        // seconds a tune takes still knows what to open. Without this second call that empty
+        // id is all a reload ever sees after a channel change made on this page: it would
+        // cold-tune with no `release`, holding one slot of a two-slot box on a stream nobody
+        // is watching until the reaper gets to it, and the new tune can be refused meanwhile.
+        remember(c);
         var warn = codecWarning(j);
         // DUPLICATED FROM TUNER_JS ON PURPOSE. `live` plus at least one segment actually
         // named by the playlist. The playlist file exists before it lists anything, so

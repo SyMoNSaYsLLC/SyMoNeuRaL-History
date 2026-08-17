@@ -143,6 +143,25 @@ ok('an ordinary h264 + AAC stream is never called undecodable',
                  && !/cannot decode/i.test(aacPanel.body)),
    aacPanel && aacPanel.head);
 
+// ---- which player actually got the stream ---------------------------------------------
+// THE ONE ASSERTION THAT WOULD HAVE CAUGHT THE BIGGEST BUG IN THIS PAGE, and it is one line
+// because the stats panel already prints the answer. `play()` used to ask the <video> first:
+//
+//   if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = src; ... return; }
+//   if (window.Hls && window.Hls.isSupported()) { ... }
+//
+// On Chrome `canPlayType` returns the string `'maybe'` -- truthy -- so the first branch always
+// won and the whole hls.js block below it was dead code that had never once run here. Chrome's
+// native HLS then declines to play mpeg-ts and reports nothing, which is the black rectangle.
+// Everything else this file tests passed throughout, because a page that hands the stream to
+// the wrong player still renders its channel list, its notes and its failure panels correctly.
+// `#ps-eng` is the discriminator: it read "the browser's own HLS" while broken and "hls.js
+// 1.7.0" once fixed. `statsStart` ticks it once synchronously inside `play()`, so it is
+// populated whether or not the <details> is open.
+const eng = await page.$eval('#ps-eng', el => el.textContent.trim()).catch(() => '');
+ok('the stream is handed to hls.js, not to the browser’s own HLS',
+   /hls\.js/.test(eng), eng || '(#ps-eng absent -- play() never started the panel)');
+
 // ---- case 4b: "live", and the playlist is still empty ---------------------------------
 // The last shape of the blank screen. ffmpeg writes the .m3u8 header before it has cut a
 // single segment, so `state` flips to "live" while there is nothing to fetch; hls.js gets a

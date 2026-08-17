@@ -1,6 +1,6 @@
 # Playbook 02 — Transformer Anatomy & Profiling
 
-> Part of the [symoneural_reinforce documentation set](README.md). Sliced from the consolidated manual at `../MIT_AI_Training.md`, which remains the canonical single file.
+> Part of the [SyMoNeuRaL documentation set](../README.md). Sliced from the consolidated manual at `../symoneural-manual.md`, which remains the canonical single file.
 
 [< Playbook 01 — Hardware & the Math of Inference](playbook-01.md)
 
