@@ -58,12 +58,15 @@ conversation, so every number, path and decision you need is stated here.
 - **The queue in §5 was rewritten** at the end of that session. Read §5, not §5b — the
   latter is the original list kept only for reference and much of it is done.
 - **The training bay now does preference and reinforcement tuning, on branch
-  `worktree-reinforce-rl`, and the whole bay is UNTRACKED on `main`.** If you look for
-  `backend/apps/reinforce/` in a fresh checkout of `main` you will not find the tuning
-  application — `git status` shows it as `??`. §2h has the shape; its own doc is
+  `worktree-reinforce-rl`.** The **supervised** bay is on `main` and is mounted and reachable
+  (`170692e` committed it, `8770676` wired it up and gave it `site/reinforce.html`); an earlier
+  revision of this line said the whole bay was `??` on `main`, which stopped being true when
+  those landed. What is still branch-only is the RL half — DPO and GRPO, `rewards.py`,
+  `rollout.py` — and that branch has merged `main` into itself twice, so it is current and
+  conflict-free. §2h has the shape; its own doc is
   `backend/apps/reinforce/TRAINING_BAY.md`, **not** the `README.md` beside it, which belongs to
-  the unrelated CUDA engine sharing that directory. Nothing there is deployed and no RL run has
-  ever executed on this box.
+  the unrelated CUDA engine sharing that directory. **No RL run has ever executed on this box**,
+  so every preference and reinforcement figure is arithmetic and labelled `projected`.
 
 ## 0b. First moves
 
@@ -198,7 +201,7 @@ the table's age:
 | `worktree-miner-online` | `e38f463` | conflicts in `.claude/HANDOVER.md` only |
 | `worktree-gateway-online` | `595835d` | 5: `apps/gateway/__init__.py`, `site/gateway.html`, `tests/frontend.mjs`, `tools/build_pages.py`, a spec |
 | `worktree-coder-online` | `595835d` | 8, including `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py`, `tests/frontend.mjs` |
-| `worktree-reinforce-rl` | `595835d` | 10 — `backend/api.py` and **every file in `backend/apps/reinforce/`** |
+| `worktree-reinforce-rl` | `595835d`, now merged up to `f257af8` | **0 — it merged `main` in twice (`dd9107d`, `c9dba85`) and resolved all ten.** Was 10: `backend/api.py` plus every file in `backend/apps/reinforce/` |
 
 **Merge in that order — clean first.** Each merge changes `main` and can turn a clean branch
 dirty, so the four that cost nothing should land before the four that cost something.
@@ -219,30 +222,53 @@ Three things will save the person doing it real time:
   deploys before the API restarts, so both shapes are live at once for a while. `ast.parse`
   after every resolution.
 
-**Merging `worktree-reinforce-rl`'s `backend/api.py` wholesale reverts four surfaces.** That
-branch forked at `595835d`, so its copy of the file carries **two** `include_router` calls —
-`tuner` and the new `reinforce` — where `main` has five. Verified here, not taken on trust:
-`git show worktree-reinforce-rl:backend/api.py | grep -c include_router` prints 2. Take the
-import line and the `include_router` line by hand; accepting that side of the conflict silently
-un-mounts accounts, gateway, guide and project. The mount itself is right and is `23f96b3`.
+**RESOLVED 16:09 — the training-bay page has an owner, and Reinforce no longer exists in two
+places.** Both warnings below are kept because the reasoning still applies to the next collision
+of this shape, but neither is live any more.
 
-**Who wrote the training bay page is unknown, and that matters for who to ask.** An earlier
-revision of §1b credited `tools/build_reinforce.py` and `site/reinforce.html` to the reinforce
-session. It has checked and denies them: they are absent from its branch, and it never created
-them. They appeared in `main`'s working copy at 14:49 alongside an uncommitted `/api/train`
-mount and an uncommitted `tools/build_pages.py`, and all of it is **still untracked or
-uncommitted**. So the bay page has no owner on record — do not assume the reinforce session
-will commit it, and do not delete it assuming it is a stray.
+The unowned files are committed: `8770676` *"Reinforce goes online: the training bay its author
+left unwired"* is the working-copy work — the `/api/train` mount, `tools/build_reinforce.py`,
+`site/reinforce.html` and `site/reinforce.js` — landed on `main` by the session that wrote them.
+So nothing is untracked and nobody needs to be asked which body of work to keep. **The two were
+complements, not rivals**: that session wired the surface and built the page, this one built the
+engine behind it. The predicted overwrite never had to happen.
 
-**The sharpest hazard is Reinforce, which exists in two places at once.** `main`'s working copy
-carries an uncommitted `/api/train` mount in `backend/api.py`, an uncommitted
-`tools/build_pages.py`, and untracked `site/reinforce.html`, `site/reinforce.js`,
-`tools/build_reinforce.py` — a training-bay surface. Separately, `worktree-reinforce-rl` rewrites
-the whole of `backend/apps/reinforce/` (it adds `rewards.py` and `rollout.py`, so it is
-reinforcement learning, not the LoRA bay) and conflicts with all ten of those files. **Do not
-merge that branch before someone has committed or discarded the working-copy work**, or one of
-the two bodies of work will be silently overwritten. Whoever owns them should say which is which
-before either lands.
+`worktree-reinforce-rl` has since **merged `main` into itself twice** (`dd9107d`, `c9dba85`) and
+all ten conflicts are resolved on that branch, so whoever lands it resolves nothing. What the
+two merges actually found, which is the part worth carrying forward:
+
+- **Nine of the ten conflicts were add/add and not disagreements at all.** `main` committed its
+  own supervised bay at `170692e`; the branch added the same paths as new files, so git had no
+  common ancestor and called every line a conflict. `git log --oneline main -- <file>` returned
+  exactly `170692e` for all nine, so `main`'s copies *were* the branch's baseline. Cheap check,
+  and it turns a frightening ten-file conflict into one real one.
+- **The duplicate mount did not produce a conflict marker.** Both sessions added
+  `include_router(reinforce.router, prefix="/api/train")`, in different places in the file, so
+  git kept **both** and merged clean. FastAPI accepts that silently — it registers all seven
+  routes twice and doubles them in the OpenAPI schema, and the surface still answers. **Count the
+  mounts after any `api.py` merge**: `grep -c include_router backend/api.py` should be 6, and
+  `grep -c reinforce.router` should be 1. That count is the only thing that catches it.
+- **A generator merged from one side and its input from the other is an untested pair.**
+  `tools/build_reinforce.py` came from `main`, written against the supervised-only `page.html`;
+  the fragment came from the branch. Its unwrap of `<section><div class="wrap">` has to carry
+  `id="reinforce"` through, and every selector in that fragment's sheet is `#reinforce .rf-*`, so
+  losing the id renders the panel **unstyled with all its text intact** — content assertions pass
+  and no JS error fires. Nothing asserted this; `8770676` verified it once by hand. There are now
+  four standing assertions at the end of `apps/reinforce/test_page.mjs` that load the *deployed*
+  `site/reinforce.html` and read a computed colour (`.rf-lab-measured` → `rgb(127,215,164)`),
+  proven against a negative control: dropping the id fails exactly those two and nothing else.
+
+**Merging `worktree-reinforce-rl`'s `backend/api.py` wholesale reverts four surfaces.** Kept as
+the general lesson, though the branch's own copy is now current: it forked at `595835d` with
+**two** `include_router` calls where `main` had five, so accepting that side silently un-mounted
+accounts, gateway, guide and project. Take the import and the mount by hand; `ast.parse` after.
+
+**What is left on that branch is not a conflict, it is a moving target.** `main` advanced eight
+commits during each of the two merges — eleven sessions land continuously — so `main` is never an
+ancestor of it for long, and chasing that from a worktree cannot terminate. The branch is green
+against `main` as of `f257af8`: 743 tests across all thirteen app suites, 50/50 and 28/28 in real
+Chrome, the `/api/train` gate re-probed shut/open/half through the merged `api.py`. Land it from
+the main checkout, which is the only place a merge *into* `main` can be driven.
 
 ### 2. Tuner guide + EPG — **DONE 2026-08-17 ~14:45**, on disk, live site pending a restart
 
@@ -1003,13 +1029,20 @@ unrelated things share the `reinforce` name and this has already confused an age
 
 ### Where the work is, and the thing that will bite you first
 
-**The entire training bay is UNTRACKED in the main checkout.** `git status` shows
-`backend/apps/reinforce/` as `??`. That meant the worktree started with none of it, and ten
-files had to be copied in by hand before anything could run. If you branch off `main` expecting
-the bay to be there, it will not be.
+**That was true when this was written and is not any more.** The line here said the entire bay
+was `??` in the main checkout, which is why the worktree started with none of it and ten files
+had to be copied in by hand before anything could run. `170692e` then committed the supervised
+bay to `main` and `8770676` mounted it, so a fresh branch off `main` now *does* get the bay —
+the supervised one.
 
-The work sits on **`worktree-reinforce-rl`**, as new files, committed. There is still no remote,
-so nothing has left the box.
+The work sits on **`worktree-reinforce-rl`**, committed, and that branch has merged `main` into
+itself twice (`dd9107d`, `c9dba85`), so it is current as of `f257af8` and lands without
+conflicts. There is still no remote, so nothing has left the box.
+
+**Nine of its ten conflicts were add/add, i.e. not disagreements**: `main` committed the same
+paths at `170692e` while the branch added them as new files, so git had no common ancestor and
+called every line a conflict even though `main`'s copies were the branch's own baseline. §1c
+records how that was checked and what the one real conflict in `api.py` turned out to be.
 
 Two symlinks were made inside the worktree so the suite exercises real arithmetic instead of
 skipping 20 tests: `backend/models` → the main checkout's, and `training/.venv` → the main
@@ -1105,7 +1138,9 @@ files have to agree and disagreement is silent, the agreement is a test, not a c
 ```bash
 python3 backend/apps/reinforce/test_reinforce.py   # 124 passed, 0 skipped (6 skip without
                                                    # training/.venv -- they read real trl)
-node    backend/apps/reinforce/test_page.mjs       # 46/46, real Chrome
+node    backend/apps/reinforce/test_page.mjs       # 50/50, real Chrome. The last four load the
+                                                  # DEPLOYED site/reinforce.html, so run
+                                                  # tools/build_reinforce.py first or they fail.
 ```
 
 `test_page.mjs` is new and follows §4's rule — it reads computed styles rather than reasoning

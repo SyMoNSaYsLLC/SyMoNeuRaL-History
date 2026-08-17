@@ -524,6 +524,57 @@ async function main() {
   record('the panel raised no JavaScript errors', consoleErrors.length === 0,
          consoleErrors.slice(0, 2).join(' | '));
 
+  // ---- 18. the DEPLOYED page, not the fragment above.
+  //
+  // Everything to this point builds its own document around `page.html`. That is the right
+  // way to test the panel's behaviour and it cannot see the one thing `tools/build_reinforce.py`
+  // can break: that generator unwraps the fragment's `<section><div class="wrap">` because the
+  // site shell already opens both, and it has to carry `id="reinforce"` through the unwrap.
+  // Every selector in the fragment's stylesheet is written `#reinforce .rf-*`, so losing the id
+  // renders the whole panel UNSTYLED rather than broken -- it still has all its text, so a
+  // content assertion passes and a human skimming a screenshot might not notice either.
+  //
+  // The generator was written against the supervised-only fragment and this branch replaced it,
+  // so "it worked once, by hand, on the old page" is the only evidence that existed. Read a
+  // computed colour instead: `.rf-lab-measured` is green only if the scoped sheet resolved.
+  const DEPLOYED = join(REPO, 'site/reinforce.html');
+  if (existsSync(DEPLOYED)) {
+    const deployErrors = [];
+    const dp = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    dp.on('pageerror', (e) => deployErrors.push(String(e)));
+    // The real page pulls /reinforce.js and the live API; neither is up here, and neither is
+    // what this assertion is about. Serve the script and let the API calls fail -- the
+    // stylesheet is inline in the markup and resolves with no network at all.
+    await dp.route('**/reinforce.js', (r) =>
+      r.fulfill({ contentType: 'application/javascript', body: SCRIPT }));
+    await dp.route('**/api/train/**', (r) => r.fulfill({ status: 503, json: { detail: 'off' } }));
+    await dp.route('**/deployed/**', (r) => r.fulfill({
+      contentType: 'text/html', body: readFileSync(DEPLOYED, 'utf8') }));
+    await dp.goto('http://127.0.0.1:9/deployed/reinforce.html', { waitUntil: 'load' });
+
+    const scoped = await dp.evaluate(() => {
+      const root = document.getElementById('reinforce');
+      const lab = document.querySelector('#reinforce .rf-lab-measured');
+      return {
+        hasRoot: !!root,
+        // A nested .wrap doubles the page's side padding; the unwrap exists to prevent it.
+        nestedWrap: !!root?.closest('.wrap') && !!root?.querySelector('.wrap'),
+        labColour: lab ? getComputedStyle(lab).color : null,
+      };
+    });
+    record('the deployed page keeps id="reinforce" through the unwrap', scoped.hasRoot);
+    record('the deployed page resolves its #reinforce-scoped stylesheet',
+           scoped.labColour !== null && scoped.labColour !== 'rgb(232, 232, 232)',
+           `.rf-lab-measured computes to ${scoped.labColour}`);
+    record('the unwrap did not leave a .wrap nested inside a .wrap', !scoped.nestedWrap);
+    record('the deployed page raised no JavaScript errors', deployErrors.length === 0,
+           deployErrors.slice(0, 2).join(' | '));
+    await dp.close();
+  } else {
+    record('the deployed page keeps id="reinforce" through the unwrap', false,
+           'site/reinforce.html is absent -- run tools/build_reinforce.py');
+  }
+
   await browser.close();
 
   const failed = results.filter((r) => !r.ok);

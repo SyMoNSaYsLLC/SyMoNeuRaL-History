@@ -194,10 +194,20 @@ traceback can carry a training example in it.
 ## Running it
 
 ```bash
-# The suites. 124 python assertions, 46 in a real browser. Six of the 124 read trl's real
+# The suites. 124 python assertions, 50 in a real browser. Six of the 124 read trl's real
 # dataclasses out of `training/.venv` in a subprocess and SKIP if that venv is absent -- so
 # "124 passed, 0 skipped" is a claim about a box that has it.
 python3 backend/apps/reinforce/test_reinforce.py
+
+# The last FOUR of the 50 load the deployed `site/reinforce.html` rather than the `page.html`
+# fragment, so generate it first or they fail on a file that is merely absent. They exist
+# because `tools/build_reinforce.py` unwraps the fragment's `<section><div class="wrap">` and
+# has to carry `id="reinforce"` through: every selector in the fragment's sheet is
+# `#reinforce .rf-*`, so losing the id renders the panel UNSTYLED with all its text intact.
+# No content assertion and no JS-error check can see that, which is why one reads a computed
+# colour -- `.rf-lab-measured` must be rgb(127,215,164). Confirmed against a negative control:
+# dropping the id fails exactly those two assertions and leaves the other 48 passing.
+python3 tools/build_reinforce.py
 node    backend/apps/reinforce/test_page.mjs
 
 # The surface is off unless BOTH are set. A never-evicted GPU route open to the world is a
