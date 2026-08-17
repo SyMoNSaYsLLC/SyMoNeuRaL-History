@@ -182,14 +182,91 @@ def check(pkg: pathlib.Path, bitmain_pub: pathlib.Path | None = None) -> dict:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def check_sd(pkg: pathlib.Path) -> dict:
+    """Pre-flight an SD-card recovery package against its own `readme.factory` manifest.
+
+    A different format entirely from the browser path: a zip, per-file 256-byte (RSA-2048)
+    signatures rather than one 512-byte chain, and no runme.sh. `readme.factory` looks like
+    documentation and is actually a `sha256sum` manifest, which makes it checkable.
+
+    Worth checking every time, because an SD image is what you reach for when a rig is
+    *already* bricked. The S19j package in references/ fails five of its own nine hashes.
+    """
+    import zipfile
+    out = {"package": pkg.name, "kind": "sd-card", "files": [], "manifest": None,
+           "ok": [], "failed": [], "unlisted": [], "would_pass": None, "error": None}
+    if not pkg.is_file():
+        out["error"] = f"no such file: {pkg}"
+        return out
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="fwcheck-sd-"))
+    try:
+        try:
+            with zipfile.ZipFile(pkg) as z:
+                bad = z.testzip()
+                if bad:
+                    out["error"] = f"archive is corrupt at {bad}"
+                    return out
+                for n in z.namelist():
+                    if (tmp / n).resolve().is_relative_to(tmp.resolve()):
+                        z.extract(n, tmp)
+                out["files"] = sorted(z.namelist())
+        except zipfile.BadZipFile as e:
+            out["error"] = f"not a readable zip: {e}"
+            return out
+
+        man = tmp / "readme.factory"
+        if not man.is_file():
+            out["error"] = "no readme.factory manifest in this package"
+            return out
+        out["manifest"] = "readme.factory"
+
+        import hashlib
+        listed = set()
+        for line in man.read_text().splitlines():
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            want, name = parts[0], parts[1].strip().lstrip("./")
+            listed.add(name)
+            f = tmp / name
+            if not f.is_file():
+                out["failed"].append({"file": name, "why": "listed but not in the archive"})
+                continue
+            got = hashlib.sha256(f.read_bytes()).hexdigest()
+            (out["ok"] if got == want else out["failed"]).append(
+                {"file": name} if got == want
+                else {"file": name, "want": want, "got": got})
+        out["unlisted"] = sorted(
+            n for n in out["files"]
+            if n not in listed and not n.endswith("/") and n != "readme.factory")
+        out["would_pass"] = not out["failed"]
+        return out
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Pre-flight a Bitmain firmware package.")
     ap.add_argument("package", type=pathlib.Path)
     ap.add_argument("--bitmain-pub", type=pathlib.Path, default=None,
                     help="Bitmain public key, to evaluate runme.sh step 3 as well")
+    ap.add_argument("--sd", action="store_true",
+                    help="treat this as an SD-card recovery zip, checked against readme.factory")
     a = ap.parse_args()
-    print(json.dumps(check(a.package, a.bitmain_pub), indent=2))
+    # Guess by extension when not told, so the common case needs no flag -- but the flag
+    # wins, because a mis-detected format silently checks the wrong thing.
+    sd = a.sd or (not a.sd and pkg_is_zip(a.package))
+    print(json.dumps(check_sd(a.package) if sd else check(a.package, a.bitmain_pub), indent=2))
     return 0
+
+
+def pkg_is_zip(p: pathlib.Path) -> bool:
+    try:
+        with p.open("rb") as f:
+            return f.read(2) == b"PK"
+    except OSError:
+        return False
 
 
 if __name__ == "__main__":
