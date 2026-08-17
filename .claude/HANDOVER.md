@@ -918,6 +918,44 @@ units. Against a throwaway `uvicorn api:app` with the change loaded it is 28/28.
 - 165 empty `/tmp/tuner-run-*` directories: contents are cleaned on reap, the directory itself
   is not. Harmless today, unbounded over time.
 
+### A review pass after the above, and three things it caught (~19:10)
+
+The work above was already committed in `4b23f85` when a review found three gaps. All three are
+now fixed and each was confirmed by *breaking it again and watching the check go red* — a fix
+whose test passes both with and without it is not a test.
+
+1. **The biggest bug had no assertion.** `canPlayType` returning `'maybe'` made the whole hls.js
+   block dead code, and nothing in the suite would have caught a revert. The discriminator was
+   already on screen: the statistics panel's `#ps-eng` reads *"the browser's own HLS"* when
+   broken and *"hls.js 1.7.0"* when not. One line in `tuner_failpaths.mjs` (now 28), and the
+   control confirms it: restoring the old branch order takes the suite to 27/28 with exactly
+   that assertion failing and every other one still green — which is the whole point, because
+   a page that hands the stream to the wrong player still renders its lists, notes and failure
+   panels perfectly.
+2. **`site/tuner-watch.html` had no committed coverage at all** — 61 KB and ~700 lines of inline
+   JS, guarded by nothing after the throwaway script that drove it was gone. It is now in
+   `frontend.mjs`'s `pageerror` loop (13 pages, not 12), which exercises the **cold** path — no
+   handoff in localStorage, the branch a visitor who types the URL gets. `node --check` would
+   not have covered this; it catches parse errors, not the runtime throw.
+3. **A comment claimed something the code did not do.** `tune()` called `remember(c)` *before*
+   the fetch resolved, when `sid` is still `null`, and nothing rewrote it on success — only
+   `adopt()` did. So after any channel change made on the watch page, the stored record read
+   `sid: ""`, and a reload cold-tuned instead of adopting: one slot of a two-slot box held on a
+   stream nobody was watching until the reaper got to it, with the new tune refusable meanwhile.
+   Fixed with a second `remember(c)` after `sid = j.id`, keeping the early call, which is
+   deliberate — it is what lets a reload *during* a tune still know what to open. Measured
+   against the scripted provider: the record now carries `sid: "S1"`, and with the second call
+   removed it is `sid: ""` again.
+
+**And a build-order trap that nearly shipped, now written into `.claude/CLAUDE.md`.** Running
+`build_pages.py` **strips every `?v=` cache-bust stamp off the pages it writes**, because the
+generators emit plain hrefs and `tools/build_cachebust.py` stamps them afterwards. Seven pages
+came up modified in `git status` and the diff read like a harmless hash refresh; it was the
+opposite — committing there would have shipped HTML whose CSS and JS are cacheable for a week
+with no way to invalidate them, which is the exact failure that made the stamper exist. The
+tell is a page you never touched showing as modified. **Regenerate, then stamp, then re-read
+`git status`.**
+
 ## 2g. Two open design questions Garrett raised (NOT decided, NOT built)
 
 **1. A no-scroll front page.** His words: *"i really like the no scroll sites maybe we could
