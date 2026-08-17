@@ -4,7 +4,14 @@
     --line: #28302b;
     --fg: #f2f6f3;
     --dim: #a8b3ac;
-    --faint: #77837b;
+    /* --faint was #77837b, which measured 4.83:1 against --bg. That passes AA for body text
+       by 0.33 of a point -- and then this token is used on 68 declarations, almost all of
+       them at --t6/--t7, i.e. 10.5-11.5px captions, unit detail lines and provenance tags.
+       AA's 4.5:1 threshold assumes ~16px; at 10.5px a ratio that close to the line is a
+       caption people skip rather than read. #8d9a92 measures 6.52:1, which is the same
+       increase applied to the whole family of small text at once. Garrett asked for
+       "colors that make it easier to read"; this is that, in one token. */
+    --faint: #8d9a92;
     --accent: #2ee08a;
     --accent-ink: #06170f;
     --amber: #ffab3d;
@@ -114,6 +121,44 @@
      the header keeps the wordmark and the one action; the full index is the card grid on
      the front page and the footer. */
   @media (max-width:780px){ nav a:not(.cta){display:none} }
+
+  /* THE BAND JUST ABOVE THAT BREAKPOINT WAS BROKEN, and it is live on the site today.
+     The note above sizes the 780px cutoff from "five links plus the CTA". The four prompt
+     surfaces and the operator pages carry SIX plus the CTA -- they add "Live stack" -- so the
+     breakpoint was calibrated against the shorter of the site's two navs and the longer one
+     overflowed the moment the links became visible. Measured on the unmodified production
+     stylesheet, /chat.html, how far the furthest nav item sticks out past `header .bar`'s own
+     right edge:
+
+       781px  66px past      800px  47px past      820px  27px past      860px  clear
+
+     and across that whole band the wordmark is squeezed from 138px to 108px, because flex
+     shrinks `.logo` before it gives up on the nav. It reproduces on chat, image, ravencalc,
+     remix, tuner, miner, gateway and sigils -- every page with the six-link nav -- and not on
+     overview/livestack/controlboard/receipts, which have five.
+
+     Tightening the gap is the fix rather than hiding a link: six gaps at 24px are 144px of
+     the 634px the nav occupies, so the space is in the spacing, not in the words. 12px across
+     the band recovers 72px, which clears the worst case (66px) with room. CLAUDE.md permits
+     folding and forbids dropping, and this drops nothing at all -- every link stays clickable
+     at every width in the band. `.logo` is pinned with `flex:0 0 auto` so the wordmark stops
+     paying for the nav's overflow; it is the site's name and should be the last thing to
+     shrink, not the first.
+
+     Tightening alone was not quite enough and the second half matters. At 12px the worst case
+     went 66px past to 24px past -- better, still broken. So the nav is also allowed to WRAP in
+     this band, with the bar's fixed 66px height becoming a 66px minimum. A flex row with the
+     default `nowrap` has nowhere to put an item that does not fit, so it spills outside the
+     container and over the page; given `flex-wrap:wrap` the same overflow becomes a second
+     row and the header grows by one line to hold it. That is folding, which is allowed, in
+     place of spilling, which is a bug. Safe here specifically because the one-screen gate is
+     `min-width:1301px` -- no page in this band is in no-scroll mode, so a header one row
+     taller cannot eat a panel's height budget. */
+  @media (min-width:781px) and (max-width:900px){
+    header nav{gap:10px 12px; flex-wrap:wrap; justify-content:flex-end}
+    header .logo{flex:0 0 auto}
+    header .bar{height:auto; min-height:66px; padding:9px 0}
+  }
 
   /* ---------- hero ---------- */
   .hero{padding:80px 0 64px; position:relative; overflow:hidden}
@@ -937,12 +982,24 @@
    It wraps -- no ellipsis anywhere on this site, and this line carries the model
    attribution that Apache-2.0 requires be kept. */
 .gprov{
-  display:block; margin-top:9px; text-align:center; color:#7d8d84;
+  display:block; margin-top:9px; text-align:center; color:var(--dim);
   font:400 var(--t7)/1.45 ui-monospace,Menlo,Consolas,monospace;
   letter-spacing:.005em; overflow-wrap:break-word;
 }
+/* Garrett, 2026-08-17: "'What if your data never left the building' does not have much
+   contrast to the background."
+
+   He is right, and the cause is not the ratio. Measured, this line was 9.09:1 against
+   `--bg` -- comfortably past AA. What was wrong is RELATIVE prominence: it is one of the two
+   rhetorical hooks the masthead is built around, and it was set two shades below the `--fg`
+   headline 40px above it, so the eye filed it as a caption belonging to the picture rather
+   than as a line of the argument. `--fg` (17.51:1) is what that is for.
+
+   These two rules also held the only raw hexes in the file (#a3b8ab on .gq, #7d8d84 on
+   .gprov) -- untokenised colour is the same maintenance problem as untokenised type, and
+   #7d8d84 measured 5.47:1 at 10.5px mono, the weakest real text on the site. */
 .gq{
-  display:block; margin-top:10px; text-align:center; color:#a3b8ab;
+  display:block; margin-top:10px; text-align:center; color:var(--fg);
   font:400 clamp(var(--t6),1.02vw,var(--t4))/1.34 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.01em;
 }
@@ -2280,28 +2337,6 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
        already chosen and measured for the tuner surface, and using a second one here
        would mean two "wide" widths on one site. */
     --max: min(1800px, calc(100vw - 96px));
-
-    /* Growth is linear from 1600px to 2560px and lands at exactly 1.25x. Each
-       coefficient is token * 0.25 / 960, so all seven reach full size together --
-       a shared `vw` coefficient would have each token start growing at a different
-       width and quietly change the ratios between them, which is the one property of
-       a type scale worth protecting. */
-    --t1: clamp(40px,   calc(40px   + (100vw - 1600px) * 0.01042), 50px);
-    --t2: clamp(28px,   calc(28px   + (100vw - 1600px) * 0.00729), 35px);
-    --t3: clamp(20px,   calc(20px   + (100vw - 1600px) * 0.00521), 25px);
-    --t4: clamp(14.5px, calc(14.5px + (100vw - 1600px) * 0.00378), 18.125px);
-    --t5: clamp(12.5px, calc(12.5px + (100vw - 1600px) * 0.00326), 15.625px);
-    --t6: clamp(11.5px, calc(11.5px + (100vw - 1600px) * 0.00299), 14.375px);
-    --t7: clamp(10.5px, calc(10.5px + (100vw - 1600px) * 0.00273), 13.125px);
-  }
-
-  /* The footer wordmark carries `font-size:14.5px` as an INLINE style in eighteen HTML
-     files, so on these pages it would be the one piece of text that did not grow --
-     next to a footer line that did. `!important` is the only thing that beats an inline
-     style, and this is the case the note beside the type scale predicted. */
-  body:has(#hero) footer .logo b, body:has(#rack) footer .logo b,
-  body:has(#console) footer .logo b, body:has(#more) footer .logo b{
-    font-size:var(--t4) !important;
   }
 
   /* NO RULE FOR `.gart` HERE, and that is a finding rather than an omission. The 268px
@@ -2309,6 +2344,83 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
      at 2560 and at 1920, so a later rule is already sizing them. A clamp added here that
      looked like a generous increase over 268px actually CUT them to 350px at 2560 and
      302px at 1920. Measure the element before "raising" a cap you have only read. */
+}
+
+/* ==================================================================================
+   THE FLUID SCALE IS THE WHOLE SITE'S NOW, NOT FOUR PAGES'
+   ==================================================================================
+   Added 2026-08-17, second pass. Garrett: "just making the text bigger ... we are not
+   using our space wisely", and then "match what you do in overview across the site".
+
+   The block above used to carry the seven clamps, scoped by
+   `body:has(#hero), body:has(#rack), body:has(#console), body:has(#more)`. That scope is
+   why he asked again. Measured before this change, the share of the window each page's ink
+   actually covered:
+
+     /overview     44% at 1440x900   59% at 1990x970   46% at 2560x1440
+     /build.html   43% at 1440x900   39% at 1990x970   27% at 2560x1440
+     /livestack    75%               70%               53%
+     /controlboard 69%               71%               86%
+
+   So the emptiest pages on the site were the masthead and the constellation, and
+   `documentation`, `training`, `chat`, `build`, `tuner` and `account` were outside the
+   selector entirely -- they rendered 12.5px body text at 2560px wide, at every width, the
+   exact complaint the first pass was written to fix. Four pages got the treatment; twelve
+   did not. Hence: the clamps move to `:root`.
+
+   WHY THE ORIGINAL SCOPE WAS THERE, and why dropping it is safe now. The note it carried
+   argued a sitewide scale would grow the CSS's seven tokens and leave ~90 raw px sizes in
+   `site/*.html` behind at their old value -- "not bigger, inconsistent". That count is real
+   (59 `font-size:Npx` plus ~30 inside `font:` shorthands, audited this pass) but it does not
+   support the conclusion: those declarations are *already* stranded on the four pages that
+   had the scale, so the inconsistency existed either way and was simply invisible on twelve
+   pages that had no growth at all. Leaving twelve pages fixed to avoid a mismatch on four is
+   the worse trade. The stranded sizes are a separate, real cleanup, recorded in HANDOVER.
+
+   THE ANCHOR MOVED 1600px -> 1360px AND THE CEILING 1.25x -> 1.5x, and the ceiling is the
+   number Garrett was actually asking about. The first version of this block used 1440px and
+   1.35x, which at his 1990px window moved body text from 15.97px to 16.99px. He asked a third
+   time -- "we really need the site enlarged" -- and he was right: a 6% change is not an
+   enlargement, it is a rounding error you need a probe to see. At 1.5x from 1360px that same
+   window renders body at 15.78px against a 12.5px base, lead paragraphs at 18.3px and the
+   masthead headline at 50.5px. That is visible from a chair, which was the whole request.
+
+   WHAT IS DELIBERATELY NOT CHANGED is the base seven at ~line 45, for two reasons:
+   §2f of HANDOVER records Garrett putting this site beside ESPN (13-14px body) and claude.ai
+   (13px sidebar) and asking for it SMALLER, which is where today's 12.5/14.5px base came
+   from. That calibration was made at laptop widths and is left standing; this block spends
+   room a window actually has rather than re-litigating a decision from two sessions ago.
+
+   And the anchor is the floor that protects the tight gate. `tests/frontend.mjs` asserts
+   `scrollHeight <= clientHeight` on each section at 1301x740, and at that size the live rack
+   has 37px of headroom -- 550px of ink in a 587px panel, the least anywhere on the site.
+   Raising the base would spend headroom that does not exist there. 1301 < 1360, so every token
+   is pinned at its clamp minimum and that viewport renders byte-identically to before this
+   block existed. Nothing below 1360px moves at all.
+
+   Each coefficient is `token * 0.5 / 1200` so all seven reach full size together at the same
+   width -- a shared `vw` coefficient would have each token start growing at a different point
+   and quietly change the ratios between them, which is the one property of a type scale worth
+   protecting. */
+@media (min-width:1360px){
+  :root{
+    --t1: clamp(40px,   calc(40px   + (100vw - 1360px) * 0.01667), 60px);
+    --t2: clamp(28px,   calc(28px   + (100vw - 1360px) * 0.01167), 42px);
+    --t3: clamp(20px,   calc(20px   + (100vw - 1360px) * 0.00833), 30px);
+    --t4: clamp(14.5px, calc(14.5px + (100vw - 1360px) * 0.00604), 21.75px);
+    --t5: clamp(12.5px, calc(12.5px + (100vw - 1360px) * 0.00521), 18.75px);
+    --t6: clamp(11.5px, calc(11.5px + (100vw - 1360px) * 0.00479), 17.25px);
+    --t7: clamp(10.5px, calc(10.5px + (100vw - 1360px) * 0.00438), 15.75px);
+  }
+
+  /* The header and footer wordmarks carry `font-size:14.5px` as an INLINE style in eighteen
+     HTML files, so without this they are the one piece of text on the page that does not
+     grow, sitting next to a nav and a footer line that do. `!important` is the only thing
+     that beats an inline style, and this is exactly the case the note beside the type scale
+     predicted. It was scoped to the four `:has()` pages before; the scale is sitewide now,
+     so this is too, and it covers the header as well as the footer -- the header wordmark
+     had the same inline style and the same problem, and was simply missed. */
+  header .logo b, footer .logo b{font-size:var(--t4) !important}
 }
 
 /* The two sections the type scale above does not fit on a WIDE BUT SHORT window: the
@@ -2329,11 +2441,57 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
    one of the four viewports `tests/frontend.mjs` asserts the one-screen fit at, and it
    measured clean with the fluid type, so the cutoff has to sit above it without landing on
    it. Values below are copied from the base scale at ~line 45; if that changes, this
-   changes with it. */
-@media (min-width:1601px) and (max-height:999px){
+   changes with it.
+
+   THE WIDTH GATE FOLLOWED THE SCALE DOWN, 1601px -> 1440px, and it had to. This reset is the
+   only thing keeping the two densest sections inside the one-screen gate on a short window,
+   and the scale above now starts growing at 1440px. Left at 1601px it would have opened a
+   161px-wide band -- 1440px to 1600px, which is where a great many laptops sit -- in which
+   the rack and the board grew with nothing to catch them. Two nearly-equal gates in one file
+   is how this layout ends up with a band neither rule covers, and that has happened here
+   before; the two numbers are deliberately the same number. */
+@media (min-width:1360px) and (max-height:999px){
   html.ns #console, html.ns #rack{
     --t1:40px; --t2:28px; --t3:20px; --t4:14.5px; --t5:12.5px; --t6:11.5px; --t7:10.5px;
   }
+}
+
+/* ==================================================================================
+   THE TWO MASTHEAD HEADLINES NOW SHARE A LINE
+   ==================================================================================
+   Added 2026-08-17. Garrett: "Make it look as symmetrical as possible."
+
+   The renders were not the asymmetry, and that is worth writing down because they are the
+   obvious suspect. Measured, `.mh > .gart` #1 and #2 are the same size to the pixel and their
+   tops AND bottoms align exactly at 1301x740, 1440x900, 1855x745, 1990x970 and 2560x1440.
+   Nothing to fix there.
+
+   The text columns were. `.mh` is `align-items:center`, and `.mh-hero` (398-430px tall) and
+   `.mh-pitch` (286-345px) hold different amounts of content, so each was centred in the row
+   INDEPENDENTLY and the shorter one floated down. Measured gap between the two column tops:
+
+     1301x740  56px     1440x900  54px     1855x745  47px
+     1990x970  59px     2560x1440 28px
+
+   which put "Your AI bill is a rent cheque." 6-27px below "Custom AI platforms that live in
+   your building." -- two headlines side by side, neither on the other's line. That reads as
+   sloppy at every width and it is the thing the eye catches.
+
+   The remaining offset after top-aligning the columns is the hero's eyebrow, which the pitch
+   does not have: `.eyebrow` is `var(--t6)` at the inherited 1.65 line-height, and its 11px
+   bottom margin collapses with `h1`'s 11px top margin to 11px. So the hero's headline sits
+   exactly `--t6 * 1.65 + 11px` below its column top, and the pitch pays that back as padding.
+   Expressed in the token rather than as a pixel constant, so it stays correct as the fluid
+   scale above grows `--t6` -- a hardcoded 33px would be right only at 1990px wide.
+
+   The renders keep `align-self:center`: they are the tallest items in the row and centring
+   them is what balances the spread. Gated at min-width:821px because below that the grid is
+   one column (`grid-template-areas:"hero" "pitch" "a1" "a2"`), every item is its own row,
+   there is nothing to align to, and the padding would just be a stray gap. */
+@media (min-width:821px){
+  .mh{align-items:start}
+  .mh > .gart{align-self:center}
+  .mh-pitch{padding-top:calc(var(--t6) * 1.65 + 11px)}
 }
 
 /* ==================================================================================

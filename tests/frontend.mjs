@@ -171,6 +171,45 @@ try {
          spill.join('; ') || 'clean');
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  // ---- the header holds its nav in the tablet band --------------------------
+  // Why this exists, and why the 390px check above could never have caught it. That one
+  // runs on /index.html, whose nav is five links plus the CTA; the four prompt surfaces and
+  // the operator pages carry SIX plus the CTA -- they add "Live stack". The hide rule at
+  // symoneural.css:123 is `max-width:780px`, and it was sized against the FIVE-link nav, so
+  // at 781px the longer nav became visible and immediately overflowed: measured 66px past
+  // `header .bar`'s right edge at 781px, 47px at 800px, 27px at 820px, clear only at 860px,
+  // with the wordmark squeezed 138px -> 108px across the whole band because flex shrinks
+  // `.logo` before it gives up on the nav. It was live on the site.
+  //
+  // Asserting on the six-link nav, at 781px because that is one pixel inside the hide rule
+  // and therefore the worst case by construction. Two separate things are checked: that no
+  // nav item extends past the bar, and that the wordmark keeps its natural width -- the
+  // second is what tells you the nav is being given room rather than taking it from the
+  // brand.
+  for (const bandW of [781, 800, 860]) {
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: bandW, height: 900 });
+    await probe.goto(new URL('/chat.html', BASE).href, { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(250);
+    const band = await probe.evaluate(() => {
+      const bar = document.querySelector('header .bar');
+      const nav = document.querySelector('header nav');
+      const logo = document.querySelector('header .logo');
+      const barR = bar.getBoundingClientRect().right;
+      const items = [...nav.children].filter(e => e.getBoundingClientRect().width > 0);
+      const past = Math.max(0, ...items.map(e => Math.round(e.getBoundingClientRect().right - barR)));
+      return { past, links: items.length, logoW: Math.round(logo.getBoundingClientRect().width),
+               spillX: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+    });
+    await probe.close();
+    // 130px is the wordmark's natural width at this size (measured 138px); anything much
+    // under it means flex has started eating the brand to pay for the nav.
+    record(`the header holds a six-link nav at ${bandW}px`,
+           band.past === 0 && band.spillX === 0 && band.links >= 7 && band.logoW >= 130,
+           `${band.links} items, ${band.past}px past the bar, logo ${band.logoW}px, page spill ${band.spillX}`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   // The gutter renders live in the masthead, which is the `hero` panel. Open it -- the
   // three assertions below all reach for `a.gart`, and a hidden element has no box.
   await openTab(page, 'hero');
@@ -702,6 +741,51 @@ try {
              .filter(u => !/\?v=[0-9a-f]{6,}$/.test(u)));
   record('every local asset is cache-busted', unstamped.length === 0,
          unstamped.join(', ') || 'all stamped');
+
+  // ---- the fleet table states its assumption, and loses nothing -------------
+  // Two separate risks, both worth a permanent guard.
+  //
+  // The honesty one first: every money column in that table is projected off an occupancy
+  // assumption, and docs/specs/symon-ml-review.md §5 exists because a pitch once quoted
+  // "~$5,800/month" whose arithmetic only closed at 59.9% occupancy that the document never
+  // stated. The generator prints the rate into the caption from a named constant. If someone
+  // later edits the copy and drops it, the table silently becomes the thing that review
+  // criticised -- so assert the caption still carries a percentage.
+  //
+  // The layout one second: it is a 7-column table, and the fluid scale takes cells to
+  // 18.75px at 2560px. CLAUDE.md forbids truncation outright -- the rack was cutting an
+  // Apache-2.0 attribution down to "...7B-Ins..." -- so check at the widest viewport that no
+  // cell is clipping and that the page itself never scrolls sideways. `.tw` scrolling
+  // internally is fine and expected; the body scrolling is not.
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  await page.goto(BASE + '/documentation.html', { waitUntil: 'networkidle' });
+  const fleet = await page.evaluate(() => {
+    const tws = [...document.querySelectorAll('#cost .tw')];
+    if (!tws.length) return { missing: true };
+    const t = tws[tws.length - 1].querySelector('table');
+    const clipped = [...t.querySelectorAll('th,td,span')].filter(e => {
+      const s = getComputedStyle(e);
+      return s.textOverflow === 'ellipsis' ||
+             (s.whiteSpace === 'nowrap' && e.scrollWidth > e.clientWidth + 1);
+    }).map(e => e.textContent.trim().slice(0, 40));
+    return {
+      caption: (t.querySelector('caption') || {}).textContent?.trim() || '',
+      cols: t.querySelectorAll('thead th').length,
+      rows: t.querySelectorAll('tbody tr').length,
+      clipped,
+      bodyScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  record('the fleet table states its occupancy assumption',
+         !fleet.missing && /\d+\s*%/.test(fleet.caption),
+         fleet.missing ? 'no table found in #cost' : fleet.caption);
+  record('the fleet table loses no text at 2560px',
+         !fleet.missing && fleet.clipped.length === 0 && !fleet.bodyScrolls,
+         fleet.missing ? 'no table' :
+           `${fleet.cols} cols x ${fleet.rows} rows, ` +
+           (fleet.clipped.length ? `CLIPPED: ${fleet.clipped.join(' | ')}` : 'nothing clipped') +
+           `, body h-scroll ${fleet.bodyScrolls}`);
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   // ---- calc ----------------------------------------------------------------
   await page.goto(BASE + '/ravencalc.html', { waitUntil: 'networkidle' });

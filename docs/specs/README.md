@@ -14,12 +14,16 @@ work that would be expensive to redo, and scratch directories do not survive the
 `docs/` is not deployed — `scripts/deploy.sh` publishes `site/` only — so nothing here
 reaches a visitor.
 
+**This table lists fewer files than the directory now holds.** Later sessions added specs without
+indexing them here; treat an unlisted file as unreviewed by this README rather than as absent.
+
 | File | What it is | Status |
 |---|---|---|
 | `image-spec.md` | Restyle brief for `/image.html` (HANDOVER §5 item 1) | proposed, not implemented |
 | `chat-spec.md` | Restyle brief for `/chat.html` (§5 item 2), modelled on the llama.cpp web UI | proposed, not implemented |
-| `css-audit.md` | Collision audit of `site/symoneural.css`, plus a reserved-name list | findings; one live bug unfixed |
+| `css-audit.md` | Collision audit of `site/symoneural.css`, plus a reserved-name list | findings; **the `.card` bug it reported is fixed** — see below |
 | `cuda-audit.md` | Audit of the CUDA engine (§5 item 8) | findings; nothing fixed |
+| `online-apps-audit.md` | Test pass over all twelve rack units, 2026-08-17 | findings; **one defect found and fixed** |
 | `symon-ml-review.md` | Review of the SyMoN_ML blueprint and the TRON licensing PoC | review; nothing implemented |
 | `miner-preemption.md` | The GPU miner yield protocol — why a live miner is never evicted, and the mechanism that would change it | **specified, deliberately not implemented — read its §7 first** |
 | `voice-spec.md` | SyMoNeuRaL Voice (§5 item 12) — the ASR half **measured** on the CPU build already on disk, which settles the governor question; TTS unmeasured and says why | proposed, nothing built |
@@ -29,10 +33,15 @@ reaches a visitor.
 Three claims from these reports were checked directly rather than taken on trust, because a
 report is not evidence:
 
-- **`.card` is defined twice** — `site/symoneural.css:118` and `:955`. The later rule was
-  written for the homepage receipts grid and should have been `.cards .card`; it is winning
-  on eleven unrelated `.card` elements in `documentation.html`. This is a **live bug** and a
-  fourth instance of the collision class already documented in CLAUDE.md.
+- **`.card` was defined twice** — `site/symoneural.css:118` and `:955`. The later rule was
+  written for the homepage receipts grid and should have been `.cards .card`; it was winning
+  on eleven unrelated `.card` elements in `documentation.html`. A fourth instance of the
+  collision class documented in CLAUDE.md. **Fixed, and no longer a live bug** — re-verified
+  2026-08-17: the file now carries exactly one definition, `.cards .card` at `:1027`, in both
+  `HEAD` and the working tree, and the browser suite asserts it against production
+  (`a .card outside the receipts grid keeps its own styling — 11 general cards, display:block
+  padding:22px`). This line said "live bug" for a day after it stopped being one, which is the
+  drift this directory's own preamble warns about.
 - **The CUDA engine is not where the brief said it was.** There is no `symoneural_reinforce/`;
   it is `backend/apps/reinforce/`, moved in `9b5da84`, and it is 35 Python files with no
   `.cu` and no CMake — it compiles through NVRTC at runtime. HANDOVER §10's layout block
