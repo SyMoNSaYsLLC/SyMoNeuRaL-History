@@ -160,6 +160,19 @@ come from generic class names colliding across components: `.bar` (collapsed the
 (a section rule outranking `.mod .sub`, rendering a footnote larger than the sentence above it).
 Render the page and measure.
 
+## `run/` is runtime state, not logs
+
+`run/` holds `gpu.lock.d` — the GPU mutex — alongside `api.pid`, the resident marker and the
+logs. **Do not rename it `logs/`.** `/run` and `/var/run` are the Unix convention for exactly
+this (pidfiles, locks, sockets) and the name is load-bearing: call the directory `logs` and
+sooner or later someone logrotates it or clears it out, which deletes the lock directory while
+a surface is holding the card. The logs happen to live there; the lock is the point.
+
+Renders do **not** live there, and no longer live in `site/` either. They are API output,
+written to `backend/output/` and served by `GET /api/gen/<name>`. They were in `site/` until
+the backend restructure, which meant `deploy.sh` copied every one into the public webroot —
+19 unreferenced PNGs were sitting there — even though nothing links to them.
+
 ## Serving architecture
 
 **FastAPI does all the routing. The web server terminates TLS and hands back static files.**

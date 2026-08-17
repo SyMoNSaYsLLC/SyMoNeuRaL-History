@@ -10,7 +10,7 @@ training/.venv/
 
 # ---- Runtime output: logs, screenshots, generated images ----
 run/
-site/gen-*.png
+backend/output/
 
 # ---- Vendored Swagger UI assets ----
 site/swagger-ui-bundle.js
