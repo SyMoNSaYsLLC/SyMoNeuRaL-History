@@ -1,13 +1,12 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-17 07:30. Written for a fresh agent with zero prior context.**
+**Last updated 2026-08-17 08:30. Written for a fresh agent with zero prior context.**
 
-> **If you read nothing else:** nothing is broken, nothing is blocked, but **production is
-> probably behind the repo.** A finished, tested, committed batch of frontend work was
-> waiting on Garrett's deploy when the last session ended. Run `node tests/frontend.mjs`
-> (expect **25/25** local) and `node tests/frontend.mjs https://symoneural.com` — if the
-> second is lower, that is the pending deploy, not a fault. Read `git log`, then §5. The
-> one thing you cannot do yourself is deploy — see §0b.
+> **If you read nothing else:** nothing is broken, nothing is blocked, and **nothing is
+> waiting on a deploy** — the repo and production agree. Run `node tests/frontend.mjs` and
+> `node tests/frontend.mjs https://symoneural.com`; both should say **26/26**. If they
+> disagree, production is behind and only Garrett can fix that — see §0b. Read `git log`,
+> then §5.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
 conversation, so every number, path and decision you need is stated here.
@@ -20,13 +19,14 @@ conversation, so every number, path and decision you need is stated here.
 
 ## 0. Sixty-second version
 
-- **Nothing is broken and nothing is blocked**, but check the deploy state before you
-  trust production: the suite is **25/25 locally**, and production matches only after
-  `sudo systemctl restart symoneural-api && sudo scripts/deploy.sh --prune`. The restart is
-  not optional right now — `/overview`, `/livestack`, `/controlboard` and `/receipts` are
-  routes in `backend/api.py`, so deploying without restarting serves those pages at their
-  `.html` names and 404s the clean URLs. The suite generates a real image on the real card
-  mid-run, so it is a genuine end-to-end check.
+- **Nothing is broken, nothing is blocked, nothing is pending.** **26/26 locally and
+  26/26 against the public site**, verified 2026-08-17 08:30. The suite generates a real
+  image on the real card mid-run, so it is a genuine end-to-end check.
+- **Three deploy commands exist and they are not interchangeable.** `site/` content needs
+  `sudo scripts/deploy.sh --prune`; `backend/api.py` needs
+  `sudo systemctl restart symoneural-api`; `ops/Caddyfile` needs
+  `sudo ./scripts/install-caddy.sh`. Work out which a change requires and say so — several
+  rounds were lost to running the right command for the wrong file.
 - The repo is at `/home/google/Symoneural`, branch `main`, no remote. **Every commit
   states its reason**; `git log` is genuinely worth twenty minutes before you touch
   anything. Several entries below will otherwise look arbitrary.
@@ -42,18 +42,24 @@ conversation, so every number, path and decision you need is stated here.
   mining control, operator-gated, offline), `tuner` (IPTV, ready) and `gateway` (TRON
   licensing, designed-not-deployed). §2c has the shape; §2d the dev fee; §2e firmware and
   the QEMU emulator.
-- **The front page is four sections, each with its own URL** — `/overview`, `/livestack`,
-  `/controlboard`, `/receipts` — and also a tabbed one-screen `index.html`. Eleven
-  generators now. §3.0 explains the layout and, more usefully, the four ways its tests
-  lied. Read that before touching it.
+- **`/` redirects (302) to `/overview`.** The front page is four sections, each at its own
+  URL — `/overview`, `/livestack`, `/controlboard`, `/receipts`. The tabbed one-screen
+  `index.html` still exists and still answers at `/index.html`; it is the page
+  `tools/build_split.py` reads to build the other four, so it cannot simply stop being
+  generated. **Whether to retire it is an open question — see §5.** Eleven generators now.
+  §3.0 explains the layout and, more usefully, the four ways its tests lied.
+- **Every section fits one screen with no internal scroll**, at every viewport the gate
+  allows, 1301x740 through 2560x1440. Below 1301px wide the gate is off and the page
+  scrolls normally with everything visible. **Mobile cannot reach zero scroll** — at 390px
+  the rack alone is 2,700px — and should not be promised it.
 - **The queue in §5 was rewritten** at the end of that session. Read §5, not §5b — the
   latter is the original list kept only for reference and much of it is done.
 
 ## 0b. First moves
 
 ```bash
-node tests/frontend.mjs                 # 25/25 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 25/25 ONCE THE PENDING DEPLOY LANDS
+node tests/frontend.mjs                 # 26/26 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 26/26 -- these should agree
 git log --oneline -25
 ```
 
@@ -70,7 +76,7 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
-## 1. State of the machine, verified 2026-08-17 07:30
+## 1. State of the machine, verified 2026-08-17 08:30
 
 | Thing | State |
 |---|---|
@@ -79,12 +85,14 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 | `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
 | `symoneural-api.service` | active, restarted 01:03, PID 170388 |
 | Caddy | serving, TLS auto-renew |
-| `tests/frontend.mjs` | **25/25 local.** Production matches only after the pending deploy |
+| `tests/frontend.mjs` | **26/26 local, 26/26 production** |
+| `https://symoneural.com/` | **302 -> /overview** |
+| `https://www.symoneural.com/` | 200, its own Let's Encrypt cert (Caddy issues per name, so the apex cert's SAN list is apex-only — that is correct, not a fault) |
 | Rack units | **8** — chat, image, remix, ravencalc, train, asicminer, tuner, gateway |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **11**, all idempotent, hash-verified across two runs |
-| `/overview` `/livestack` `/controlboard` `/receipts` | Built and routed in `backend/api.py`; **need the API restart** before they answer |
-| Pending deploy | Section URLs, rack + control board folds, chat rebuild, type scale, `/api/chat` multi-turn, composer and tuner fixes |
+| `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
+| Pending deploy | **none** |
 | Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
 
 ## 2. Shipped 2026-08-17 (all of it is live)
@@ -576,6 +584,32 @@ panel is open no other panel occupies vertical space. If you add a layout assert
 **verify it fails when you reintroduce the bug** — that check is cheap and has caught a
 vacuous assertion every time it has been run.
 
+### 3.0c Routing: Caddy decides BEFORE FastAPI ever sees the request
+
+`.claude/CLAUDE.md` says "FastAPI does all the routing." That is true of what a URL
+*returns*, and false about which URLs reach the API at all. `ops/Caddyfile` serves
+everything from disk except the paths it explicitly delegates:
+
+    /api/*   /docs*   /openapi.json   /   /overview   /livestack   /controlboard   /receipts
+
+**Anything not on that list never reaches FastAPI.** The section pages shipped 404ing for
+exactly this reason: the routes existed in `backend/api.py`, `127.0.0.1:8800/overview`
+returned 200, and Caddy answered the public request from the webroot without asking. `/` is
+on the list only so the redirect route can run; `path /` is an exact match and does not
+affect anything else.
+
+Adding a fifth section means touching **four** places: `tools/build_split.py`,
+`backend/api.py`, `ops/Caddyfile`, and `is_route()` in `scripts/deploy.sh` (which otherwise
+reports `MISSING livestack`, because pages link `/livestack` while the file is
+`livestack.html` — only the extensionless form is exempted, so a genuinely missing
+`livestack.html` is still caught).
+
+**A local test run cannot catch a mistake in that list.** Against `127.0.0.1:8800` the API
+answers directly and the Caddyfile is not exercised at all. `tests/frontend.mjs` passed
+25/25 locally while all four URLs were dead in production. Run it against
+`https://symoneural.com` after any routing change, and note that
+`scripts/install-caddy.sh` now checks all four plus the redirect.
+
 ### 3.0b `scripts/deploy.sh` — three fixes, all worth understanding
 
 1. **It publishes web assets only.** It used to `find -maxdepth 1 -type f` and install
@@ -591,6 +625,29 @@ vacuous assertion every time it has been run.
    referencing a file that lived only there was reported `ok` and then deleted by the prune
    in the same run — passing on a state that no longer existed when the script exited.
 
+
+### 3.0d Five verification steps have failed on healthy input. Read this before writing one.
+
+In two days, all five of these printed FAILED or MISSING while the system was correct:
+
+1. `deploy.sh`'s reference counter, incremented inside a piped `while read` — a subshell,
+   so the count was discarded and the script exited 0 while printing MISSING lines.
+2. `deploy.sh`'s reference check calling `/overview` and friends MISSING — they are routes,
+   correctly not files.
+3. `install-caddy.sh` asserting 200 on `http://` — Caddy's automatic HTTP→HTTPS redirect
+   returns 308, and the check did not follow redirects, so it could never have gone green.
+4. The same script asserting 200 on `https://symoneural.com/` after `/` became a 302.
+5. Its preflight reporting `api DOWN` immediately after a successful
+   `systemctl restart symoneural-api` — systemd returns before uvicorn binds the port. That
+   branch offers a five-second abort, so it invited the operator to cancel a healthy
+   deploy. It retries for ten seconds now.
+
+Every one encoded an assumption about the deployment that later stopped being true, and
+every one shouted. The damage is cumulative: a check that cries wolf trains the reader to
+skip the whole block, and then the real failure goes through.
+
+**If you touch a verification step, run it against the real system and confirm it passes on
+known-good input — not only that it fails on known-bad.** Both halves, every time.
 
 ### 3.1 `demo/` was flattened into the repo root
 Three things broke silently and are fixed; if you move anything again, check the same three:
@@ -703,16 +760,16 @@ because they are the cheapest real work available.
 
    Not `/tmp` this time. That is what lost it.
 
-0b. **Live stack still scrolls below ~1366px wide.** Every other section fits at every
-   in-gate viewport; the rack overflows by 49-77px between 1301 and 1366 because the rack
-   column narrows enough for unit names to wrap. Not a regression and not hidden from
-   anyone — recorded because rounding it off is how the last four rounds of this went. §3.0
-   has the measurements.
+0b. **The tabbed `index.html` is no longer linked from anywhere.** `/` redirects to
+   `/overview`, so the one-screen tabbed page is reachable only by typing `/index.html`. It
+   is not dead code — `tools/build_split.py` reads it to produce the other four pages, and
+   `tools/build_tabs.py` still maintains it — but it is now a build artifact that also
+   happens to be a working page, which is an odd thing to keep maintaining. **Decide with
+   Garrett:** keep it as-is, or retire `build_tabs.py` and let `build_split.py` read an
+   untabbed `index.html`. Do not quietly delete it; four assertions still address it.
 
-0c. **`/` still serves the tabbed front page, not `/overview`.** Both exist and both work.
-   Whether the root should redirect is a product decision Garrett has not made, so nothing
-   assumes it. If he says yes it is one route in `backend/api.py`, declared before the
-   StaticFiles mount like the other four.
+   (Live stack's overflow below 1366px, which used to be item 0b, is **fixed** — see §3.0.
+   The cause was the chassis strip wrapping to two lines, not the units.)
 
 1. **The SyMoN_ML DRM fails open, and that is the most serious item here.**
    `auth_daemon.py` in the blueprint calls `_check_local_sandbox_state()` as a *fallback*
