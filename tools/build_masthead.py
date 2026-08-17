@@ -47,7 +47,11 @@ RIGHT = _art.gutter(
     "Who owns your model when<br>the invoice stops?", 1.5)
 
 BLOCK = f"""{BEGIN}
-<div class="masthead">
+<!-- id="hero" is the handle tools/build_tabs.py needs to treat the masthead as the first
+     panel of the one-screen layout. Without it the tab strip has nothing to hide, the
+     masthead stays stacked above the panels and squeezes them to a slit. Keep them in
+     step: build_tabs.py asserts this id is here rather than silently producing that slit. -->
+<div class="masthead" id="hero">
   <div class="mh">
     <div class="mh-hero">
       <p class="eyebrow">SyMoNeuRaL Local Infrastructure</p>

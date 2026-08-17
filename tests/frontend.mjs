@@ -35,9 +35,22 @@ const failed = [];
 page.on('response', r => { if (r.status() >= 400) failed.push(`${r.status()} ${r.url()}`); });
 page.on('pageerror', e => failed.push(`jserror: ${e.message}`));
 
+// The front page shows one panel at a time above the gate in symoneural.css, and the panel
+// it opens on is the masthead. Anything asserting on the rack or the control board has to
+// open that tab first -- exactly as a visitor does. Below the gate every section is already
+// visible and the click is a no-op, so this is safe to call unconditionally.
+const openTab = async (p, id) => {
+  await p.evaluate(i => {
+    const b = document.querySelector(`.ns-tab[data-panel="${i}"]`);
+    if (b) b.click();
+  }, id);
+  await p.waitForTimeout(150);
+};
+
 try {
   // ---- rack ----------------------------------------------------------------
   await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+  await openTab(page, 'rack');
   await page.waitForSelector('.unit', { timeout: 15000 });
   const units = await page.$$eval('.unit', els => els.map(e => ({
     name: e.querySelector('.uname b')?.textContent?.trim(),
@@ -99,6 +112,10 @@ try {
   record('nothing spills past the right edge at 390px', spill.length === 0,
          spill.join('; ') || 'clean');
   await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // The gutter renders live in the masthead, which is the `hero` panel. Open it -- the
+  // three assertions below all reach for `a.gart`, and a hidden element has no box.
+  await openTab(page, 'hero');
 
   // ---- the renders open large enough to read their watermark ---------------
   // Each render carries a watermark naming the model, seed and wall-clock -- the claim the
@@ -202,32 +219,53 @@ try {
   record('no page throws a script error', broken.length === 0,
          broken.length ? broken.join(' | ').slice(0, 160) : 'all 12 pages clean');
 
-  // ---- the front page is one screen, and loses nothing to get there -------
-  // Two properties, and the second is the one that matters. At a large viewport the page
-  // must not scroll. Below the gate it must scroll AND show every section -- because the
-  // whole justification for tabbing is that nothing is dropped, only folded, and a phone
-  // visitor who silently lost two thirds of the page would make that false.
-  const ns = { big: null, small: null };
-  for (const [w, h, key] of [[1440, 900, 'big'], [1440, 700, 'small']]) {
+  // ---- the front page folds, and the panel it folds into is readable ------
+  // THE PREVIOUS VERSION OF THIS ASSERTION PASSED WHILE THE PAGE WAS BROKEN. It checked
+  // that the document does not scroll and that no section was dropped. Both were true, and
+  // the layout still shipped with the rack rendered into a 330px window at 1440x900 and a
+  // 48px one at 1280x800 -- the scrollbar had simply moved inside the panel, which is worse
+  // than scrolling, not better. "The document does not scroll" is not the property a
+  // visitor experiences.
+  //
+  // So the panel height is now the assertion, as a share of the viewport. A floor of 45%
+  // is what separates "a pane that scrolls a bit", which is what claude.ai and ESPN do,
+  // from a slit. The viewports are picked at the GATE BOUNDARIES, because that is where a
+  // layout gate breaks: 1301x740 is one pixel inside it and 1300x900 one pixel outside,
+  // and 1280x800 is the exact case that shipped broken.
+  const PANELS = ['hero', 'rack', 'console', 'more'];
+  const ns = {};
+  for (const [w, h, key] of [[1440, 900, 'in'], [1301, 740, 'corner'],
+                             [1300, 900, 'out'], [1280, 800, 'slit']]) {
     const probe = await ctx.newPage();
     await probe.setViewportSize({ width: w, height: h });
     await probe.goto(BASE, { waitUntil: 'networkidle' });
     await probe.waitForTimeout(250);
-    ns[key] = await probe.evaluate(() => {
-      const d = document.documentElement;
-      return {
-        scrolls: d.scrollHeight > d.clientHeight + 1,
-        visible: ['rack', 'console', 'more'].filter(i => {
-          const e = document.getElementById(i); return e && !e.hidden; }),
-      };
-    });
+    ns[key] = await probe.evaluate(async (ids) => {
+      const d = document.documentElement, out = { worst: 101, worstId: null };
+      for (const i of ids) {                       // measure each panel while IT is the open one
+        const b = document.querySelector(`.ns-tab[data-panel="${i}"]`);
+        if (b) b.click();
+        await new Promise(r => setTimeout(r, 120));
+        const e = document.getElementById(i);
+        if (!e) continue;
+        const share = Math.round(100 * e.clientHeight / innerHeight);
+        if (share < out.worst) { out.worst = share; out.worstId = i; }
+      }
+      out.ns = d.classList.contains('ns');
+      out.scrolls = d.scrollHeight > d.clientHeight + 1;
+      out.visible = ids.filter(i => {
+        const e = document.getElementById(i); return e && !e.hidden; }).length;
+      return out;
+    }, PANELS);
     await probe.close();
   }
-  record('the front page is one screen, and folds rather than drops',
-         ns.big.scrolls === false && ns.big.visible.length === 1
-           && ns.small.scrolls === true && ns.small.visible.length === 3,
-         `1440x900 scrolls=${ns.big.scrolls} showing [${ns.big.visible}]; `
-         + `1440x700 scrolls=${ns.small.scrolls} showing [${ns.small.visible}]`);
+  const folded = k => ns[k].ns && !ns[k].scrolls && ns[k].visible === 1 && ns[k].worst >= 45;
+  const plain = k => !ns[k].ns && ns[k].scrolls && ns[k].visible === PANELS.length;
+  record('the front page folds into a panel big enough to read',
+         folded('in') && folded('corner') && plain('out') && plain('slit'),
+         Object.entries(ns).map(([k, v]) =>
+           `${k}: ns=${v.ns} scroll=${v.scrolls} shown=${v.visible} min panel ${v.worst}% (${v.worstId})`
+         ).join(' | '));
 
   // ---- the GPU panel beside a prompt carries a real reading ---------------
   // The rule this exists for: no decorative indicators. A panel that renders its layout but
@@ -343,24 +381,40 @@ try {
   // rack -- the machine reading its own sensors while you watch -- began ~1,300px down.
   // The requirement is pitch, hero and rack all reachable on a first look at 100% zoom.
   // This asserts the shape that delivers it rather than a pixel count, which would break
-  // on any copy edit: pitch and hero on one row, four renders in the gutters costing no
-  // vertical space, and the rack starting inside one viewport of the top.
+  // on any copy edit: pitch and hero on one row, and four renders in the gutters costing
+  // no vertical space.
+  //
+  // The old version also required `rack.top < innerHeight`. THAT CLAUSE HAD GONE VACUOUS:
+  // once the rack became a tab panel it is hidden on load, and a hidden element reports
+  // top 0, so the check passed for free and would have kept passing had the rack been
+  // deleted outright. "Within one viewport" is not the property any more -- "one click
+  // away, and the click works without scrolling the page" is. So it is measured that way,
+  // and the guard is that the rack must have a real box AFTER its tab is opened.
   const fold = await page.evaluate(() => {
     const box = s => { const e = document.querySelector(s); return e && e.getBoundingClientRect(); };
-    const hero = box('.mh-hero'), pitch = box('.mh-pitch'), rack = box('.rack');
-    if (!hero || !pitch || !rack) return { why: 'masthead or rack missing' };
+    const hero = box('.mh-hero'), pitch = box('.mh-pitch');
+    if (!hero || !pitch) return { why: 'masthead missing' };
     return {
       sideBySide: Math.abs(hero.top - pitch.top) < hero.height,   // same row, not stacked
-      rackTop: Math.round(rack.top + window.scrollY),
-      vh: window.innerHeight,
       arts: document.querySelectorAll('.gart').length,
       sky: !!document.querySelector('.sky'),
     };
   });
+  await openTab(page, 'rack');
+  const reach = await page.evaluate(() => {
+    const r = document.querySelector('.rack');
+    const d = document.documentElement;
+    return { h: r ? Math.round(r.getBoundingClientRect().height) : 0,
+             top: r ? Math.round(r.getBoundingClientRect().top) : -1,
+             vh: innerHeight, pageScrolled: d.scrollTop > 1 };
+  });
+  await openTab(page, 'hero');
   record('pitch, hero and rack fit one look',
-         fold.sideBySide && fold.arts === 4 && !fold.sky && fold.rackTop < fold.vh,
-         fold.why || `rack at ${fold.rackTop}px of ${fold.vh}px, ${fold.arts} gutter renders` +
-         (fold.sky ? ', but .sky is still on the front page' : ''));
+         fold.sideBySide && fold.arts === 4 && !fold.sky
+           && reach.h > 200 && reach.top < reach.vh && !reach.pageScrolled,
+         fold.why || `${fold.arts} gutter renders; one click opens a ${reach.h}px rack at `
+         + `${reach.top}px of ${reach.vh}px without scrolling the page`
+         + (fold.sky ? ', but .sky is still on the front page' : ''));
 
   record('the constellation moved to the order page',
          buildTxt.includes('class="sky"') && (buildTxt.match(/class="art"/g) || []).length >= 19,

@@ -1616,24 +1616,59 @@
   margin-left:auto; color:var(--faint); font-size:11px; line-height:1.5;
   max-width:44ch; text-align:right;
 }
+/* Four tabs plus the note are 396px wide on a 390px phone, which pushed the whole document
+   6px past the right edge. They WRAP rather than scroll or truncate: a horizontally
+   scrolling tab bar hides its last tab behind an edge with nothing to say so, and
+   truncating is the ellipsis rule this stylesheet has none of. Two short rows costs
+   ~30px and keeps every label whole. */
+@media (max-width:900px){
+  .ns-tabwrap{flex-wrap:wrap; padding-top:4px; padding-bottom:8px}
+  .ns-tab{padding:9px 12px}
+  .ns-tabnote{margin-left:0; text-align:left; max-width:none; flex:1 1 100%}
+}
 
-/* The one-screen layout. Gated on BOTH dimensions, and that gate is doing real work:
-   - at 390px the front page is 9,161px tall; ten screens do not become one, and pretending
-     otherwise hides things a phone visitor will never find.
-   - browser zoom shrinks the effective viewport, so at 200% this query stops matching and
-     the page goes back to scrolling on its own -- which is exactly what someone who has
-     zoomed in needs. A no-scroll layout that survives zoom by clipping is a bug.
-   Below the gate, nothing here applies and the page behaves as it always did. */
-@media (min-width:1100px) and (min-height:780px){
+/* The one-screen layout. Gated on BOTH dimensions, and that gate is doing real work.
+
+   THE MIN-WIDTH IS TIED TO THE MASTHEAD STACKING POINT ABOVE. `.mh` restacks at
+   `max-width:1300px` from one row into two, which took the masthead from 414px tall at
+   1440 to 727px at 1280. The first version of this gate opened at 1100px -- inside that
+   band -- so windows between ~1100 and ~1300 switched no-scroll on at the exact width the
+   masthead was tallest, and the rack panel came out 48px tall with 1,289px in it. Reading
+   the rack through a 48px window is worse than scrolling. The gate now opens ABOVE the
+   stacking point, so this only applies to a layout that is not mid-reflow. Move the 1300px
+   above and you must move the 1301px here, and the copy in tools/build_tabs.py.
+
+   min-height:740px takes in 768px-tall laptops, which the old 780px floor excluded into a
+   3,438px scroll. Browser zoom shrinks the effective viewport, so at high zoom this stops
+   matching and the page goes back to scrolling on its own -- which is what someone who has
+   zoomed in needs. A no-scroll layout that survives zoom by clipping is a bug.
+
+   Below the gate, nothing here applies and the page behaves as it always did -- at 390px
+   the front page is 9,161px tall, and pretending ten screens are one hides things a phone
+   visitor will never find. */
+@media (min-width:1301px) and (min-height:740px){
   html.ns, html.ns body{height:100%; overflow:hidden}
   html.ns body{display:flex; flex-direction:column}
-  html.ns header,html.ns .masthead,html.ns .ns-tabs,html.ns footer{flex:0 0 auto}
-  /* The panel is the only thing that scrolls. min-height:0 is load-bearing: without it a
-     flex child refuses to shrink below its content and the page scrolls after all. */
-  html.ns #rack,html.ns #console,html.ns #more{
+  html.ns header,html.ns .ns-tabs,html.ns footer{flex:0 0 auto}
+  /* The active panel is the only thing that scrolls, and #hero is one of them -- the
+     masthead is a panel now, not a band stacked above them. min-height:0 is load-bearing:
+     without it a flex child refuses to shrink below its content and the page scrolls after
+     all. */
+  html.ns #hero,html.ns #rack,html.ns #console,html.ns #more{
     flex:1 1 auto; min-height:0; overflow-y:auto; border-top:0;
   }
-  html.ns .masthead{padding-top:22px; padding-bottom:14px}
+  /* The masthead centres itself in the panel when it is shorter than the space, so the
+     landing view does not sit against the tab strip with a gap underneath.
+
+     `overflow-y:auto` on #hero interacts with `.masthead::before`, which is absolutely
+     positioned at top:-40% with height:640px, so it reaches past the bottom edge once the
+     masthead is shorter than 640/1.4 = 457px. Above it was merely clipped by the base
+     `overflow:hidden`; here it would be a real scrollbar on a decorative gradient. In-gate
+     the panel is at least 740 - 156 = 584px tall, which clears it by 127px. THAT MARGIN IS
+     WHAT THE min-height FLOOR BUYS -- drop the gate below ~615px tall and the glow starts
+     scrolling the hero. */
+  html.ns #hero{display:flex; flex-direction:column; justify-content:center;
+    padding-top:18px; padding-bottom:18px}
   html.ns footer{padding:10px 0}
   html.ns .foot{font-size:11.5px}
 }
