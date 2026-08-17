@@ -47,6 +47,7 @@ import pathlib
 HERE = pathlib.Path(__file__).resolve().parent
 VENV_PY = HERE / ".venv" / "bin" / "python"
 PROBE = HERE / "probe.py"
+SCAN = HERE / "scan.py"
 
 PROBE_TIMEOUT = 30.0        # probe.py already caps each rig at 8s; this bounds the whole run
 
@@ -103,6 +104,38 @@ async def probe(hosts: list[str] | None = None) -> dict:
         return json.loads(out.decode())
     except json.JSONDecodeError as e:
         return {"rigs": [], "error": f"probe printed non-JSON: {e}"}
+
+
+async def discover(cidr: str) -> dict:
+    """Find rigs on a private network. Operator-gated, and refuses public ranges.
+
+    The refusal lives in `scan.py` rather than here, so it applies however the scanner is
+    invoked -- the CLI and this wrapper cannot drift apart into one being safe and the other
+    not. This adds the second gate: the surface has to be switched on at all.
+    """
+    if not enabled():
+        return {"rigs": [], "error": "surface disabled — set SYM_ASIC_ENABLED=1 and "
+                                     "SYM_ASIC_TOKEN"}
+    if not (VENV_PY.is_file() and SCAN.is_file()):
+        return {"rigs": [], "error": "asicminer venv not installed"}
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(VENV_PY), str(SCAN), cidr,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        # A /20 at 0.6s per host with 256 in flight is roughly ten seconds; allow slack
+        # for a slow network without letting a scan pin a worker indefinitely.
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+    except asyncio.TimeoutError:
+        return {"rigs": [], "error": "scan exceeded 120s"}
+    except Exception as e:
+        return {"rigs": [], "error": f"{e.__class__.__name__}: {e}"}
+    if proc.returncode != 0:
+        return {"rigs": [], "error": f"scan exited {proc.returncode}: {err.decode()[:200]}"}
+    try:
+        return json.loads(out.decode())
+    except json.JSONDecodeError as e:
+        return {"rigs": [], "error": f"scan printed non-JSON: {e}"}
 
 
 async def selftest() -> dict:
