@@ -146,3 +146,58 @@ recommended for Antminer above, and reachable today without touching firmware.
 earlier in this work and have since been removed. `docs/antminer-firmware-upgrade.md` and
 `.claude/HANDOVER.md` §5 both cite them. pyasic is unaffected: it was installed from PyPI
 into the app's own venv, not from the reference tree.
+
+---
+
+## How Braiins gets paid, and what it costs us
+
+Found in the API rather than inferred: `proto/bos/v1/license.proto` and `units.proto`.
+
+**The dev fee is a licence field, expressed in basis points.**
+
+```proto
+message ValidLicense {
+  LicenseType type = 1;          // STANDARD | CUSTOM
+  string contract_name = 2;
+  uint32 time_to_restricted = 3;
+  bos.v1.BasesPoints dev_fee = 4;
+}
+
+// units.proto
+message BasesPoints {
+  // A basis point is one hundredth of 1 percentage point.
+  // For example: 1bps = 0.01%, 250bps = 2.5%
+  uint32 bsp = 1;
+}
+```
+
+Three things follow, and each matters commercially:
+
+- **The fee is per-contract, not hardcoded.** It arrives inside the licence, which is why
+  `LicenseType` distinguishes `STANDARD` from `CUSTOM` — large fleets negotiate a rate. Their
+  own worked example in `units.proto` is `250bps = 2.5%`. Do not quote that as *the* rate:
+  it is a comment illustrating the unit, not a published price. Read the real number off a
+  rig with `GetLicenseState`.
+- **Activation is a contract key**, applied over the API:
+  `ApplyContractKey(contract_key, keep_existing)`. So licensing is an operator action the
+  control plane can perform, not something baked into an image.
+- **Enforcement degrades rather than blocks.** Both `NoneLicense` and `ValidLicense` carry
+  `time_to_restricted`, and there are distinct `Limited` and `Expired` states. An unlicensed
+  or lapsed miner becomes *restricted* after a countdown; it does not simply stop.
+
+### What this means for SyMoNeuRaL Miner
+
+**If customers run BOS+, they pay Braiins a per-rig fee we neither control nor receive.**
+That is the true cost of not writing hashboard drivers, and it is almost certainly worth
+paying — but it should be a decision made with the number in front of you, not a surprise
+discovered after pricing.
+
+It also argues *for* the control-plane strategy rather than against it. Competing with the
+engine means reproducing years of driver and autotune work to escape a fee measured in single
+-digit percent. Charging for the fleet layer — policy, telemetry, pre-flight, rollout across
+hundreds of rigs — is a separate line item on top, and it is the part Braiins does not sell.
+
+**One feature falls straight out of this**, and it fits the site's argument exactly: the
+panel can read `GetLicenseState` per rig and **show the operator the dev fee they are
+actually paying**, alongside contract name and time-to-restricted. That is a real reading off
+real hardware — measured, not quoted — and nobody else puts it on the screen.

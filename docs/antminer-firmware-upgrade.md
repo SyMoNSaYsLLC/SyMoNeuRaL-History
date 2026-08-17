@@ -251,3 +251,6 @@ gitignored wholesale — `/references` is a single rule in `.gitignore` and zero
 have ever been tracked. They are proprietary Bitmain, MicroBT and Braiins binaries. **Never
 copy one into `site/`, never serve one from an endpoint, and never commit one.** The control
 panel talks to rigs over their network API; it does not distribute firmware.
+
+
+> **Stale paths:** `references/CGMiner-master/` and `references/Pete/` were cited during this work and have since been removed from the tree. pyasic is unaffected — it is installed from PyPI into `backend/apps/asicminer/.venv`.
