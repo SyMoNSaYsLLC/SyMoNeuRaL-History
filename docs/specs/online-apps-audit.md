@@ -322,7 +322,109 @@ system and needs its own evidence.** Both halves, every time — that it goes re
 
 ---
 
-## 7. Reproducing this pass
+## 7. The tuner video failure — measured, not yet solved
+
+Reported during this pass: *"you video isnt working"*, then *"ive noticed most the issues are with
+the adult live tv"*. **The tuner is another session's file and none of it was edited here.** What
+follows is measurement handed to that session.
+
+### The pipeline is sound; the failure is channel-specific
+
+A working channel, probed by fetching every segment the playlist advertises and running `ffprobe`
+on one:
+
+```
+AMC (WEST)   6/6 segments served, ~1.1 MB each
+             h264 High 1280x720  +  aac LC 48 kHz stereo      segment_s 2.002
+```
+
+A failing channel, from `/api/tuner/state` while it was live:
+
+```
+STARS EXCLUSIVE: LENA PAUL   state live · vcodec h264 · 87.0 MB in over 5 min · segments 6
+                             segment_s 6.54          <- the one number that differs
+browser:                     0 frames decoded, player at 0:00, and NO error banner
+```
+
+So data flows, the session is healthy, and the video codec is the one codec every browser plays.
+
+### The prime suspect is audio, and it is unpublished
+
+`sessions.py` parses `acodec` and its own comment says it is *"parsed but not published … three
+lines cheaper to have ready than to add later"*. `public()` publishes `vcodec` only, and
+`build_pages.py`'s `UNPLAYABLE` map is video-only — `{hevc, h265, av1, mpeg2video, vc1}`.
+
+An AC-3 / E-AC-3 / MP2 / DTS soundtrack on an h264 stream reproduces every observable: server
+indicators all green, `vcodec` reassuringly `h264`, hls.js unable to append the source buffer,
+zero frames decoded, and **a page with nothing to warn about because it never sees the audio
+codec**. That is this repo's recurring shape — a diagnosis that exists, is correct, and is
+unreachable on the one axis that was left unpublished.
+
+**Not confirmed**, and the reason is worth recording: a session is reaped 12 s after the tab goes
+idle and its temporary directory goes with it, so a probe arriving later finds nothing. One
+`ffprobe` on a segment from a failing channel held open ~30 s settles it.
+
+### GPU transcode — approved, and the hardware says it need not take the lock
+
+Garrett was given the trade-off explicitly and chose full GPU transcode over audio-only-on-CPU.
+Capability is **measured present**, with nothing to build:
+
+```
+encode   h264_nvenc  hevc_nvenc  av1_nvenc
+decode   h264_cuvid  hevc_cuvid  mpeg2_cuvid  vc1_cuvid  vp9_cuvid
+```
+
+The decode list is the useful half — `hevc_cuvid`, `mpeg2_cuvid` and `vc1_cuvid` are precisely the
+codecs the page's `UNPLAYABLE` map exists to apologise for.
+
+**The architectural finding: NVENC and NVDEC are dedicated ASIC blocks, not CUDA compute.**
+Measured while the `image` surface held the governor lock with the GPU at 67% compute
+utilisation, `nvidia-smi` reported **encoder 0%, decoder 0%**. Those units are idle and
+independent of what the governor arbitrates. A transcoding tuner therefore needs a **VRAM budget**
+(a few hundred MB per 1080p stream), not exclusive possession of the card — so the "a stream holds
+its lease for its whole lifetime" objection, which is real for the miner, probably does not apply
+here. Taking the exclusive lock for a transcode would serialise video behind model inference for
+no hardware reason, which is the opposite of why "the tuner never takes the lock" was right.
+
+It does still falsify the page's *"Tuner does not use the GPU"*. The honest replacement is that it
+uses the **video engine**, not the compute the models share — which is both true and a better
+claim.
+
+**No throughput number was taken, deliberately.** The card was busy with another session's image
+work throughout, and a contended measurement is a contaminated one. The clean run, to be labelled
+`measured` and taken before anything is promised on a page:
+
+```bash
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda -c:v hevc_cuvid -i <sample.ts> \
+       -c:v h264_nvenc -preset p4 -b:v 6M -c:a aac -f null -
+nvidia-smi --query-gpu=memory.used,utilization.encoder,utilization.decoder --format=csv -l 1
+```
+
+Report it as **x-realtime and MB of VRAM per stream**; that settles the concurrency ceiling.
+
+### yuki-iptv and VLC — references to read, not code to port
+
+Asked for during this pass. Both were checked, because the answer changes the design:
+
+| Reference | Licence | How it plays video |
+|---|---|---|
+| `references/IPTV/yuki-iptv/` | **GPLv3** (Astroncia / yuki-chan-nya) | **libmpv** — 186 mpv references in `yuki-copy.py` |
+| `references/IPTV/vlc-master/` | **GPLv2** | already rejected, HANDOVER §2c-bis and `LICENSES.md` |
+
+They play everything because they are **native players with a complete codec set** — mpv decodes
+HEVC, AC-3, MPEG-2 without asking. A browser cannot copy that, so there is no code to port; and
+porting it into `site/` would be the copyleft problem the VLC decision already turned down. What
+transfers is the approach, and it is the same conclusion as the transcode work: stop assuming the
+browser can decode the stream, detect what arrived, and convert the rest.
+
+### One housekeeping leak
+
+**165 empty `/tmp/tuner-run-*` directories.** Segment contents are cleaned when a session is
+reaped; the directory itself is not. Harmless today, unbounded over time.
+
+---
+
+## 8. Reproducing this pass
 
 ```bash
 # backend, all eleven suites
