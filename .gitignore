@@ -61,3 +61,13 @@ docs/archive/site-snapshot-*/
 *.key
 !contrib/**/*.key
 backend/apps/licensing/contract-signing.key
+
+# ---- Agent scratch, not source ----
+# .claude/claudesessioninterrupted is a 271 KB dump of one interrupted session's transcript,
+# written by the harness. HANDOVER.md is the state document by house rule ("do not create a
+# second state document"); a raw transcript beside it is a second one that nobody maintains.
+.claude/claudesessioninterrupted
+
+# q.json is a scratch request body left at the repo root from hand-testing the tuner's guide
+# endpoint. Nothing reads it -- a grep across the tree finds no reference.
+/q.json
