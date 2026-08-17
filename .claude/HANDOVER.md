@@ -198,6 +198,48 @@ The emulator starts **by package id, never by a caller-supplied path**.
   `/api/tuner/xtream/channels`. Its `tn-` CSS had also never been written, so the form
   rendered as raw HTML.
 
+## 2c-bis. The Tuner became a real player (last thing built, 2026-08-17 ~06:00)
+
+**Not yet deployed at the time of writing — needs `sudo scripts/deploy.sh --prune`.**
+
+- **Playback is `hls.js`**, vendored at `site/hls.js` (384 KB light build, Apache-2.0, licence
+  at `site/hls-LICENSE.txt`). Chrome and Firefox will not play an `.m3u8` natively; Safari
+  will, and the page uses the native path there.
+- **VLC was rejected, and this is recorded so nobody retries it.** `references/IPTV/vlc-master/`
+  is **GPLv2** and its only web path is `extras/package/wasm-emscripten` — an hours-long build
+  producing a GPL WASM blob that would then be part of what we distribute in `site/`, making
+  the site GPL-encumbered. See `LICENSES.md`.
+- **Browsing is built from the playlist**: kind chips (Live TV / Movies / Series) and group
+  chips, counted from the loaded channels, not a fixed list.
+- **The model turns a question into a filter and never sees the playlist.** One call to the
+  card, not one per channel.
+
+### The lesson worth keeping from that last piece
+
+Asking this 7B for a **JSON object** made it loop. Measured: it emitted
+`{"match":["premier league","nfl","nba","mlb","f1","nfl","nba",…` until it hit the token cap,
+so the object never closed, nothing parsed, and the fallback would have fired on **every**
+request while the feature appeared to work. Asking for **one line of comma-separated
+keywords** it answers cleanly every time.
+
+**Pick the output format the model can finish.** A small model is far better at a flat list
+than at nested structure, and a feature whose happy path never executes is worse than one
+that is honestly absent — it looks fine until someone measures it.
+
+### Prompt boxes
+
+Chat, image, ravencalc and remix were 46px and one line. Now **80px and 16px**, with the chat
+textarea's auto-grow cap raised 150 → 260 to match its new floor.
+
+### Still open on this surface
+
+- The Xtream client has **never been exercised against a live panel beyond channel listing**.
+  Tuning a real stream end to end is untested.
+- **The full form path cannot be tested locally**: the SSRF guard correctly rejects loopback,
+  so you cannot self-serve a playlist from this box to drive it. Test against a real playlist.
+- hls.js is the **light** build: no subtitles, no alternate audio.
+- Series episodes list without URLs; AES-encrypted HLS is refused rather than decrypted.
+
 ## 2d. The dev fee — `backend/apps/licensing/`
 
 Garrett set the standard rate at **2.5% (250 bps)**, matching Braiins' headline. Modelled on
