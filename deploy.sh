@@ -28,7 +28,7 @@ find "$SRC" -maxdepth 1 -type f -exec install -o www-data -g www-data -m 644 {} 
 
 # /docs is the one subdirectory: a static Swagger UI page plus the schema snapshot. It is
 # served straight off disk rather than proxied, so the API reference works after a plain
-# deploy with no Apache change -- and it keeps working when inference is switched off.
+# deploy with no web server change -- and it keeps working when inference is switched off.
 if [ -d "$SRC/docs" ]; then
   install -d -o www-data -g www-data -m 755 "$DST/docs"
   find "$SRC/docs" -maxdepth 1 -type f -exec install -o www-data -g www-data -m 644 {} "$DST/docs/" \;

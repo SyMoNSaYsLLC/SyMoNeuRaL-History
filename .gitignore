@@ -51,3 +51,6 @@ training/adapter/tokenizer.json
 /Pete
 /*.pdf
 __MACOSX/
+
+# Vendored design reference for the image page restyle
+/stable-diffusion-webui-master

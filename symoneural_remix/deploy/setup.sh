@@ -132,7 +132,7 @@ fi
 
 step "7. Things this script cannot do for you"
 cat <<'EOF'
-  * TLS termination in front of this app (Apache / Cloudflare). Non-negotiable:
+  * TLS termination in front of this app (Caddy / Cloudflare). Non-negotiable:
     OAuth codes and bearer tokens ride these requests.
   * Register the HTTPS redirect URI in the Spotify dashboard, verbatim.
   * Clear the Spotify commercial-terms gate — see docs/LICENSING.md. It is a

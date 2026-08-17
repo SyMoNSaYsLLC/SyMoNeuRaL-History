@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Move symoneural.com from Apache to Caddy.
+# Install or repair the web server for symoneural.com.
 #
 #   sudo /home/google/MIT_AI_Training/MIT_AI_Training/ops/install-caddy.sh
 #
-# This takes the site down for a few seconds between stopping Apache and Caddy having a
-# certificate. It is written to be reversible: Apache is disabled, not removed, and the
-# last section of this file is the exact rollback.
+# NOTE: this already ran on this box on 2026-08-16. Caddy is serving symoneural.com and
+# apache2 is disabled. This script is kept because it is idempotent and is what you would
+# run to rebuild the serving layer on this machine or stand it up on a new one -- not
+# because a migration is pending.
+#
+# It is safe to re-run: it validates the config before stopping anything, so a bad config
+# leaves whatever is currently serving in place.
 #
 # What it does NOT do: touch /var/www/symoneural. Deploying the site is still deploy.sh.
 set -euo pipefail
@@ -66,11 +70,17 @@ fi
 echo "  Caddyfile validates"
 
 # --- cut over ----------------------------------------------------------------
-say "Stopping Apache"
-# Disabled, not purged -- the rollback at the bottom of this file depends on it.
-systemctl stop apache2 || true
-systemctl disable apache2 || true
-echo "  apache2 stopped and disabled (not removed)"
+say "Freeing ports 80/443"
+# apache2 held them until the 2026-08-16 migration. Disabled rather than purged, so the
+# rollback at the bottom of this file still works; on a machine that never had it, these
+# are no-ops.
+if systemctl list-unit-files apache2.service >/dev/null 2>&1; then
+  systemctl stop apache2 2>/dev/null || true
+  systemctl disable apache2 2>/dev/null || true
+  echo "  apache2 stopped and disabled (still installed, not removed)"
+else
+  echo "  apache2 not present -- nothing to stop"
+fi
 
 say "Starting Caddy"
 systemctl enable caddy
@@ -125,7 +135,8 @@ else
 Something failed. Logs:
     journalctl -u caddy -n 60 --no-pager
 
-To go back to Apache:
+To go back to Apache (still installed, but its vhost was removed from this repo --
+recover it with: git log --diff-filter=D --  ops/symoneural.conf):
     sudo systemctl stop caddy && sudo systemctl disable caddy
     sudo systemctl enable apache2 && sudo systemctl start apache2
 ROLLBACK

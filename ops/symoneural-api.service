@@ -5,9 +5,9 @@ Documentation=https://symoneural.com/docs
 # so the first request after a reboot does not pay driver-load latency.
 After=network-online.target nvidia-persistenced.service
 Wants=network-online.target
-# Apache proxies /api, /docs and /openapi.json to us. It can start without us -- the static
+# Caddy proxies /api, /docs and /openapi.json to us. It can start without us -- the static
 # site must serve whether or not inference is up -- so this is a soft ordering only.
-Before=apache2.service
+Before=caddy.service
 
 [Service]
 Type=exec

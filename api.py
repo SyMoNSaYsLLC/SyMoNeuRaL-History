@@ -9,7 +9,7 @@ Four surfaces, and they are not alike:
     POST /api/remix   GPU indirectly -- a client of the chat surface, not its own tenant.
     GET  /api/status  Per-unit state for the rack display on the home page.
 
-Binds loopback only; Apache reverse-proxies to it. Nothing here opens a port to the GPU
+Binds loopback only; Caddy reverse-proxies to it. Nothing here opens a port to the GPU
 and nothing here trusts the client.
 
 **Every bound is enforced on this side.** The browser sends suggestions -- steps, size,
@@ -258,7 +258,7 @@ _limiters = {
 
 
 def client_key(request: Request) -> str:
-    """Apache sits in front, so the real client is in the forwarded header."""
+    """Caddy sits in front, so the real client is in the forwarded header."""
     fwd = request.headers.get("x-forwarded-for", "")
     return fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
 
@@ -928,7 +928,7 @@ app = FastAPI(
     title="SyMoNeuRaL API",
     version="1.0",
     lifespan=lifespan,
-    # Served through Apache at symoneural.com; the assets are local, see /docs below.
+    # Served through Caddy at symoneural.com; the assets are local, see /docs below.
     docs_url=None, redoc_url=None,
     openapi_url="/openapi.json",
     description=(
@@ -1466,7 +1466,7 @@ async def gen(name: str) -> FileResponse:
     """Serve a render produced by `POST /api/image`.
 
     Renders used to be handed back as `/<file>`, a path in the deployed webroot. But the
-    API writes them into the staging directory, and Apache serves the webroot -- so every
+    API writes them into the staging directory, and the web server serves the webroot -- so every
     image generated on the live site 404'd until somebody ran a deploy, which needs a
     password no process here has. Serving them from `/api` instead means they are visible
     the instant they exist, on the same proxied path as every other surface.
@@ -1558,7 +1558,7 @@ async def remix(body: RemixRequest,
 # ---------------------------------------------------------------------------
 # Static site, mounted last so it never shadows an API route.
 #
-# In production Apache serves site/ from the webroot and only proxies /api, so
+# In production Caddy serves site/ from the webroot and only proxies /api, so
 # this mount is not on the public path. It exists so the box can serve the whole
 # thing from one origin -- which is the only way to exercise the real frontend:
 # console.js opens a WebSocket at /api/ws and falls back to polling /api/status,

@@ -55,7 +55,7 @@ honest gaps follow. No code was changed to produce this.
    is 0600 but unencrypted. A stranger's refresh tokens sitting in plaintext on
    disk is a real liability at multi-tenant scale.
 8. **Transport is plaintext HTTP.** Bearer tokens and OAuth codes must ride
-   TLS. Must sit behind the gateway/Apache/Cloudflare with HTTPS enforced;
+   TLS. Must sit behind the gateway/Caddy/Cloudflare with HTTPS enforced;
    document it as a hard requirement, not an option.
 9. **Thin observability.** Only `/health` + the journal. No metrics, no
    per-user audit log, no error aggregation — you won't know why a paying
