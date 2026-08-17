@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the playground pages into site/.
+"""Generate the surface pages into site/.
 
 Four pages that differ only in their middle. Generating them from one shell means the
 header, banner, nav and footer cannot drift apart, which is the failure mode when five
@@ -43,8 +43,8 @@ SHELL = """<!doctype html>
 <div class="status">
   <div class="wrap">
     <b><s></s>Under Construction</b>
-    <span>Active infrastructure development in progress. This playground runs on one
-    consumer GPU &mdash; be kind to it.</span>
+    <span>Active infrastructure development in progress. Every surface on this site runs
+    live on one consumer GPU in production &mdash; be kind to it.</span>
   </div>
 </div>
 
@@ -226,7 +226,7 @@ form.addEventListener('submit', async e => {
       const b = await r.json().catch(() => ({}));
       throw new Error(b.error || ('HTTP ' + r.status));
     }
-    // The stream is the demo: tokens land as the card produces them.
+    // The stream is the point: tokens land as the card produces them.
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = '', out = '';
     for (;;) {
@@ -242,7 +242,7 @@ form.addEventListener('submit', async e => {
           log.scrollTop = log.scrollHeight; }
         if (ev.assist) {
           // RavenCalc got there first. Show its exact result above the model's answer --
-          // the point of the demo is that the algebra was computed, not predicted.
+          // the point is that the algebra was computed, not predicted.
           const a = ev.assist, c = a.check || {};
           const box = document.createElement('div');
           box.className = 'assist';
@@ -560,7 +560,7 @@ form.addEventListener('submit', async e => {
 
 
 def main() -> int:
-    print("building playground pages:")
+    print("building surface pages:")
     page("chat.html",
          title="SyMoNeuRaL Chat — talk to the box",
          desc="A 7B running locally on an RTX 5070 Ti. Nothing leaves the machine.",

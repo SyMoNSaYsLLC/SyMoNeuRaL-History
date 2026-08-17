@@ -42,7 +42,7 @@ try {
          units.every(u => ['GPU', 'CPU', '--'].includes(u.bus)),
          units.map(u => `${u.name}=${u.bus}`).join(', '));
   record('train unit is renamed',
-         units.some(u => u.name === 'SyMoNeuRaL Chat Model Tuner'));
+         units.some(u => u.name === 'SyMoNeuRaL Quantized Low-Rank Adaptation Tool'));
 
   // the rack must lead the page now
   const order = await page.evaluate(() => {

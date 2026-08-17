@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# The public playground: on, off, and what it did.
+# Production service control: on, off, and what it did.
 #
-# The demo is open and free, which means the important command here is `off`. It stops the
-# API, stops whatever holds the GPU, and releases the governor -- after which symoneural.com
-# still serves every static page, just without the live surfaces. Nothing about turning it
-# off is a rollback or a redeploy.
+# The surfaces are open and free, which means the important command here is `off`. It stops
+# the API, stops whatever holds the GPU, and releases the governor -- after which
+# symoneural.com still serves every static page, just without the live surfaces. Nothing
+# about turning it off is a rollback or a redeploy.
 #
-#   playground.sh on          start the API (loopback; Apache proxies /api to it)
-#   playground.sh off         stop everything, free the card
-#   playground.sh status      is it up, what is resident, what is queued
-#   playground.sh log         recent requests
-#   playground.sh off-at 07:00   turn it off automatically at a wall-clock time
+# For boot-start and crash-restart, install the systemd unit instead:
+#   sudo ops/install-service.sh
+#
+#   symoneural.sh on          start the API (loopback; Caddy proxies /api to it)
+#   symoneural.sh off         stop everything, free the card
+#   symoneural.sh status      is it up, what is resident, what is queued
+#   symoneural.sh log         recent requests
+#   symoneural.sh off-at 07:00   turn it off automatically at a wall-clock time
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -27,8 +30,8 @@ case "${1:-status}" in
     echo $! > "$PIDFILE"
     sleep 2
     if running; then
-      echo "playground up on 127.0.0.1:$PORT (pid $(cat "$PIDFILE"))"
-      echo "remember: 'playground.sh off' ends it whenever you like."
+      echo "symoneural api up on 127.0.0.1:$PORT (pid $(cat "$PIDFILE"))"
+      echo "remember: 'symoneural.sh off' ends it whenever you like."
     else
       echo "failed to start -- see $RUN/api.out" >&2; exit 1
     fi
@@ -44,7 +47,7 @@ case "${1:-status}" in
     # Only our own surfaces -- a fine-tune holding the card is not ours to end.
     "$HERE/gpu-governor.sh" release chat >/dev/null 2>&1
     "$HERE/gpu-governor.sh" release image >/dev/null 2>&1
-    echo "playground off. static pages unaffected; the card is free."
+    echo "surfaces off. static pages unaffected; the card is free."
     ;;
 
   status)
@@ -63,7 +66,7 @@ case "${1:-status}" in
     # No at(1) dependency -- a detached sleep is enough and leaves an obvious process.
     secs=$(( $(date -d "$at" +%s) - $(date +%s) ))
     [ "$secs" -lt 0 ] && secs=$(( secs + 86400 ))
-    setsid bash -c "sleep $secs; '$HERE/playground.sh' off" >/dev/null 2>&1 &
+    setsid bash -c "sleep $secs; '$HERE/symoneural.sh' off" >/dev/null 2>&1 &
     echo "will turn off at $at (in $((secs / 60)) minutes)"
     ;;
 

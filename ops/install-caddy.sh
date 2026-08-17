@@ -93,12 +93,28 @@ check "http:// redirects"     "http://$DOMAIN/"              200
 
 # The reason for the migration: /api/ws must upgrade rather than fall back to polling.
 say "WebSocket upgrade"
-ws="$(curl -fsS -o /dev/null -w '%{http_code}' -m 10 \
+# Two traps here, both of which produce a convincing false failure:
+#   1. `Upgrade:` is an HTTP/1.1 mechanism. It does not exist in HTTP/2, and curl
+#      negotiates h2 with Caddy by default -- so the header arrives as meaningless
+#      metadata, FastAPI sees a plain GET on a websocket-only route, and returns 404.
+#      Browsers are unaffected: a page loaded over h2 still opens a separate HTTP/1.1
+#      connection for the handshake. Hence --http1.1.
+#   2. A *successful* upgrade leaves the socket open and streaming, so curl exits 28
+#      on timeout no matter how well it worked. Read the status line out of the headers
+#      rather than trusting curl's exit code.
+wshdr="$(mktemp)"
+curl -sS --http1.1 -o /dev/null -D "$wshdr" -m 6 \
       -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
       -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-      "https://$DOMAIN/api/ws" 2>/dev/null || echo 000)"
-if [ "$ws" = "101" ]; then echo "  ok    /api/ws upgraded (101)"
-else echo "  FAIL  /api/ws returned $ws, wanted 101 -- the rack will fall back to polling"; fail=1; fi
+      "https://$DOMAIN/api/ws" >/dev/null 2>&1 || true
+if grep -qi '^HTTP/1.1 101' "$wshdr" && grep -qi '^Sec-Websocket-Accept:' "$wshdr"; then
+  echo "  ok    /api/ws upgraded (101 Switching Protocols)"
+else
+  echo "  FAIL  /api/ws did not upgrade -- the rack will fall back to polling"
+  sed 's/^/        /' "$wshdr" | head -6
+  fail=1
+fi
+rm -f "$wshdr"
 
 if [ "$fail" -eq 0 ]; then
   say "Done. Caddy is serving $DOMAIN and FastAPI is doing all the routing."

@@ -43,7 +43,7 @@ sudo .../ops/install-apache.sh      # adds /api/ws + live /docs proxy (static /d
 | page | contents |
 |---|---|
 | `index.html` | control board, live rack, NVIDIA stack map, cost comparison, 6 folded detail sections |
-| `chat.html` `image.html` `calc.html` `remix.html` | the four playground surfaces |
+| `chat.html` `image.html` `calc.html` `remix.html` | the four API surfaces |
 | `training.html` | the manual, rebranded, 750 anchors, 0 MIT references |
 | `docs/index.html` | **static** branded Swagger UI + `openapi.json` snapshot |
 

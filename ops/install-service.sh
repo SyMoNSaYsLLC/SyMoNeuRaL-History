@@ -4,7 +4,7 @@
 #     sudo /home/google/MIT_AI_Training/MIT_AI_Training/ops/install-service.sh
 #
 # After this the API starts on boot, restarts on crash, and is managed with systemctl
-# rather than a shell script. It replaces playground.sh for anything production.
+# rather than a shell script. It replaces symoneural.sh for anything production (that script stays for manual control).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

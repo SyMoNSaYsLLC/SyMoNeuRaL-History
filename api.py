@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SyMoNeuRaL playground API -- FastAPI over one consumer GPU.
+"""SyMoNeuRaL production API -- FastAPI over one consumer GPU.
 
 Four surfaces, and they are not alike:
 
@@ -932,7 +932,7 @@ app = FastAPI(
     docs_url=None, redoc_url=None,
     openapi_url="/openapi.json",
     description=(
-        "The live playground behind [symoneural.com](https://symoneural.com) — four "
+        "The production API behind [symoneural.com](https://symoneural.com) — four "
         "surfaces on one RTX 5070 Ti.\n\n"
         "**Chat**, **Image** and **Remix** all want the same GPU, and the chat and image "
         "weight sets do not both fit in 15.92 GiB. So exactly one holds the card at a time "
@@ -1124,13 +1124,13 @@ def build_status() -> Status:
             # The adapter bay. Idle most of the time, but when a fine-tune is running it
             # owns the card outright and every serving surface waits behind it -- so it
             # belongs on the rack rather than being invisible infrastructure.
-            Unit(id="train", label="SyMoNeuRaL Chat Model Tuner", slot="2U",
+            Unit(id="train", label="SyMoNeuRaL Quantized Low-Rank Adaptation Tool", slot="2U",
                  state="busy" if holder == "train" else
                        ("ready" if CHAT_ADAPTER.exists() else "offline"),
                  bus="gpu", href="/training.html",
                  spec="SymonChat persona adapter · QLoRA",
                  detail="fine-tune in progress — serving surfaces queue" if holder == "train"
-                        else ("adapter loaded · trained on this card"
+                        else ("adapter loaded · for model/adapter tuning"
                               if CHAT_ADAPTER.exists() else "no adapter built")),
         ],
         gpu=GpuState(
@@ -1413,7 +1413,7 @@ async def image(body: ImageRequest,
     """
     if DENY.search(body.prompt):
         log.warning("denied image prompt: %r", body.prompt[:200])
-        raise HTTPException(400, "That prompt is outside what this public demo will render.")
+        raise HTTPException(400, "That prompt is outside what this public surface will render.")
     if any(not p.exists() for p in FLUX.values()) or not SD_CLI.exists():
         raise HTTPException(503, "Image surface is still warming up.")
 

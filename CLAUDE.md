@@ -1,6 +1,6 @@
 # SyMoNeuRaL — working agreements
 
-Repo for symoneural.com: the public site, the live playground behind it, the CUDA engine, and
+Repo for symoneural.com: the public site, the live API behind it, the CUDA engine, and
 the engineering manual the site's numbers come from.
 
 ## Parallelise builds
@@ -60,11 +60,11 @@ These are the product, not decoration. The site's entire argument is that its nu
 
 ```bash
 ./fetch-models.sh                 # weights -> models/ (ungated, Apache-2.0 sources)
-python3 build_pages.py          # playground pages
+python3 build_pages.py          # surface pages
 python3 build_rack.py           # live rack -> site/index.html
 python3 build_console.py        # control board + folds -> site/index.html
 python3 build_training.py       # manual -> site/training.html
-./playground.sh on|off|status     # the live API (off is the kill switch)
+./symoneural.sh on|off|status     # the live API (off is the kill switch)
 sudo ./deploy.sh                  # site/ -> /var/www/symoneural (needs a password)
 ```
 
