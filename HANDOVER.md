@@ -219,8 +219,19 @@ to start.
    path now is better than learning it under delivery pressure. He saved a reference at
    `Support for Container Device Interface — NVIDIA Container Toolkit.mhtml`.
 
-   **Nothing is installed yet.** Available on this box: `nvidia-container-toolkit` 1.20.0-1,
-   `podman` 5.4.2, `docker.io` 26.1.5. Driver 610.57.04, RTX 5070 Ti.
+   **DONE 2026-08-16 23:35 — CDI works.** `podman`, `nvidia-container-toolkit` 1.20.0 and
+   `libnvidia-container` are installed. `/etc/cdi/nvidia.yaml` generated (CDI spec 0.7.0,
+   3 devices: `nvidia.com/gpu=0`, `=GPU-15e0078a-...`, `=all`), and
+   `nvidia-cdi-refresh.service`/`.path` are enabled so the spec regenerates on driver
+   updates. Verified end to end: `nvidia-smi` printed the RTX 5070 Ti from inside a
+   **rootless** container on the first attempt. Driver 610.57.04, CUDA UMD 13.3.
+
+   ```bash
+   podman run --rm --device nvidia.com/gpu=all \
+     docker.io/nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi     # known good
+   ```
+
+   **What is left is the hard half:** deciding how a containerised API shares the GPU lock.
 
    **Recommend Podman over Docker here**, and say why rather than just doing it: rootless, so
    no daemon runs as root on a box serving the public; CDI is the native device path in
@@ -238,12 +249,30 @@ to start.
    That last command is the whole milestone: if `nvidia-smi` prints the 5070 Ti from inside a
    rootless container, CDI works and everything after it is ordinary packaging.
 
-   **Do not containerise the API as the first step.** The governor coordinates surfaces
-   through a filesystem lock in `run/` and through `nvidia-smi`; putting the API in a
-   container without deciding how that lock is shared will produce a confusing deadlock rather
-   than a clean failure. Get CDI proven first, then decide whether the container holds
-   everything (simplest, matches the one-tenant-at-a-time design) or whether the lock moves
-   to a shared volume.
+   **The GPU lock is the whole problem, and the failure mode is not what you would guess.**
+   `gpu-governor.sh` is a **mkdir lock**: `run/gpu.lock.d`. `mkdir` is atomic, so the first
+   process to create that directory wins and everyone else spins until it is removed. That
+   directory *is* the mutex — there is nothing else.
+
+   A container has its own filesystem. Run the API in one without bind-mounting `run/` and it
+   creates `/app/run/gpu.lock.d` **inside the container**, which is a different directory from
+   the host's. The host CLI mkdirs the host lock and succeeds. The container mkdirs its own
+   lock and also succeeds. Both believe they own the card, both load weights, and ~12 GB of
+   models hit a 16 GB card.
+
+   The result is **not** a deadlock — a deadlock would be safe, because everything would stop
+   and you would notice. What you get is a silent OOM at step 0 that looks like a CUDA problem,
+   and you can lose hours in the wrong layer. (An earlier version of this note said "deadlock".
+   That was wrong and worth correcting, because it points the debugging in the wrong direction.)
+
+   The fix is one flag once you get there — bind-mount the run directory so both sides see the
+   same lock:
+   ```bash
+   -v /home/google/MIT_AI_Training/MIT_AI_Training/run:/app/run
+   ```
+   Simplest correct design is one container holding every GPU surface, which matches the
+   one-tenant-at-a-time architecture anyway. If surfaces are ever split across containers, the
+   lock directory must be a shared volume every one of them mounts.
 
    **The real prize is the customer image, not this box.** `sm_120` + `cu128` on Blackwell is
    fragile to reproduce; "here is the image" is a far stronger handover than "here is a script".
