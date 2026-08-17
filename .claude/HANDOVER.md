@@ -173,69 +173,58 @@ the same hour. Rules that follow from that, and they are not optional:
 Merges have worked so far: the tuner session's `ac3`/`aac` fixture cases and this session's
 `emptylive` case coexist and `node tests/tuner_failpaths.mjs` is **27/27** with both in.
 
-### 1c. THE MERGE — nine branches, four bases, and one file everybody edited (14:59)
+### 1c. THE MERGE — four clean branches are IN. Four remain. (2026-08-17 15:4x)
 
-`git branch` shows **nine `worktree-*` branches**, one per fleet session, forked from **four
-different base commits** (`595835d`, `2f285a5`, `8e835cb`, `e38f463`). Nobody merging one of them
-can see this list, so it is recorded here. Measured with `git merge-tree --write-tree --name-only
-main <branch>`, which trial-merges without touching the working tree — re-run it, do not trust
-the table's age:
+Garrett's instruction was "merge the four clean branches first". Done, as `5662390`:
 
-| Branch | Base | Merges into `main` |
-|---|---|---|
-| `worktree-project-page` | `e38f463` | **clean** |
-| `worktree-site-typography-tlc` | `2f285a5` | **clean** (and it rewrites 12 `site/*.html`) |
-| `worktree-docs-accuracy` | `2f285a5` | **clean** |
-| `worktree-online-apps-audit` | `8e835cb` | **clean** |
-| `worktree-stickers` | `8e835cb` | empty — 0 commits |
-| `worktree-miner-online` | `e38f463` | conflicts in `.claude/HANDOVER.md` only |
-| `worktree-gateway-online` | `595835d` | 5: `apps/gateway/__init__.py`, `site/gateway.html`, `tests/frontend.mjs`, `tools/build_pages.py`, a spec |
-| `worktree-coder-online` | `595835d` | 8, including `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py`, `tests/frontend.mjs` |
-| `worktree-reinforce-rl` | `595835d` | 10 — `backend/api.py` and **every file in `backend/apps/reinforce/`** |
+| Branch | What arrived |
+|---|---|
+| `worktree-docs-accuracy` | 22 files — nineteen dead pointers in `docs/`, README counts |
+| `worktree-project-page` | `site/project.html`, `tools/build_project.py`, `tests/project.mjs` |
+| `worktree-site-typography-tlc` | type and spacing across 18 pages, `symoneural.css`, `build_cost.py` |
+| `worktree-online-apps-audit` | the audit document, ravencalc fixes, two probe scripts |
 
-**Merge in that order — clean first.** Each merge changes `main` and can turn a clean branch
-dirty, so the four that cost nothing should land before the four that cost something.
+`worktree-miner-online` landed separately (its own session merged it) and is now 0 ahead.
+**Verified on the merged tree:** `api.py` parses, **696 backend tests pass**, 940 links across
+21 pages resolve, 108 render checks (9 pages × 6 viewports) show zero overflow and zero
+ellipsis violations.
 
-Three things will save the person doing it real time:
+**What remains, re-measured after the merge — the numbers moved, so re-measure again:**
 
-- **A conflict in `site/*.html` is not a conflict.** Eleven of those pages are generator output.
-  Resolve by taking either side, then re-running the generator and committing what it emits —
-  `site/gateway.html` conflicting while `tools/build_pages.py` also conflicts means there is
-  exactly one real conflict, in the generator. Hand-merging the HTML produces a page that no
-  generator will reproduce, and the next build silently reverts it.
-- **`.claude/HANDOVER.md` conflicts are append-vs-append.** Keep both sides. That is the whole
-  resolution, and it is why `worktree-miner-online` is listed as conflicting at all.
-- **`backend/api.py` is the one file with a real merge.** Four branches edit it: coder, miner and
-  reinforce add units or mounts, and the miner session has already merged the two miner rows into
-  one `Unit(id="miner")` carrying `sub: list[SubUnit]` with `gpuminer`/`asicminer` one level down.
-  **Anything that looks up a unit by id must search the top level and then `sub`** — the site
-  deploys before the API restarts, so both shapes are live at once for a while. `ast.parse`
-  after every resolution.
+| Branch | Conflicts with `main` now |
+|---|---|
+| `worktree-reinforce-rl` | **1** — `site/reinforce.html`. Was 10. |
+| `worktree-stickers` | 3 — `backend/api.py`, `apps/sigils/test_sigils.py`, `site/sigils.html` |
+| `worktree-coder-online` | 8 — incl. `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py` |
+| `worktree-gateway-online` | 7 — incl. `apps/gateway/__init__.py`, `site/gateway.html`, `build_pages.py` |
 
-**Merging `worktree-reinforce-rl`'s `backend/api.py` wholesale reverts four surfaces.** That
-branch forked at `595835d`, so its copy of the file carries **two** `include_router` calls —
-`tuner` and the new `reinforce` — where `main` has five. Verified here, not taken on trust:
-`git show worktree-reinforce-rl:backend/api.py | grep -c include_router` prints 2. Take the
-import line and the `include_router` line by hand; accepting that side of the conflict silently
-un-mounts accounts, gateway, guide and project. The mount itself is right and is `23f96b3`.
+Reinforce collapsing from 10 conflicts to 1 is the whole argument for merging in this order:
+the session that owned it committed its working-copy work (`8770676`) while these ran, so nine
+of its ten conflicts dissolved on their own. **The remaining one is the real question and is
+still open — two different `site/reinforce.html` files exist, the LoRA training bay on `main`
+and whatever `worktree-reinforce-rl` carries. Somebody has to say which surface Reinforce is
+before that lands.**
 
-**Who wrote the training bay page is unknown, and that matters for who to ask.** An earlier
-revision of §1b credited `tools/build_reinforce.py` and `site/reinforce.html` to the reinforce
-session. It has checked and denies them: they are absent from its branch, and it never created
-them. They appeared in `main`'s working copy at 14:49 alongside an uncommitted `/api/train`
-mount and an uncommitted `tools/build_pages.py`, and all of it is **still untracked or
-uncommitted**. So the bay page has no owner on record — do not assume the reinforce session
-will commit it, and do not delete it assuming it is a stray.
+#### Three things learned doing it, that the next merger will otherwise re-learn
 
-**The sharpest hazard is Reinforce, which exists in two places at once.** `main`'s working copy
-carries an uncommitted `/api/train` mount in `backend/api.py`, an uncommitted
-`tools/build_pages.py`, and untracked `site/reinforce.html`, `site/reinforce.js`,
-`tools/build_reinforce.py` — a training-bay surface. Separately, `worktree-reinforce-rl` rewrites
-the whole of `backend/apps/reinforce/` (it adds `rewards.py` and `rollout.py`, so it is
-reinforcement learning, not the LoRA bay) and conflicts with all ten of those files. **Do not
-merge that branch before someone has committed or discarded the working-copy work**, or one of
-the two bodies of work will be silently overwritten. Whoever owns them should say which is which
-before either lands.
+- **Merge in a temp worktree, never in `main`'s working copy.** `git worktree add
+  /home/google/symoneural-merge -b <branch> main`. At the time of these merges `main`'s index
+  held another session's *staged* reinforce work, and a merge commit made here would have
+  swallowed it into a commit that had nothing to do with it. With eleven sessions live, assume
+  the index is dirty and not yours.
+- **Seventeen of eighteen conflicts in the catch-up merge were `?v=<hash>`.**
+  `tools/build_cachebust.py` stamps a content hash into 284 asset links across 21 pages, so any
+  two branches that both touch `site/symoneural.css` conflict on *every page that references
+  it*. That is the generator working. Resolve **hunk-wise and then re-run the generator** —
+  `git checkout --theirs` replaces the whole *file* and would have discarded the typography
+  merge that auto-merged cleanly elsewhere in those same files. Re-running is also the only
+  thing that makes the hashes *correct* rather than merely conflict-free; it is idempotent, so
+  check by running it twice and diffing.
+- **A conflict can be two sessions fixing the same bug from opposite ends.** The one real
+  conflict in the audit merge was `test_tuner.py`: that branch *deleted* the stale
+  `assertLess(TUNE_WAIT_SECONDS, IDLE_TIMEOUT + 1)` and wrote the docstring explaining why the
+  coupling was wrong, while `main` had already *replaced* it with a test of the actual mechanism.
+  git cannot know a deletion and a replacement are one intent. Both were kept.
 
 ### 2. Tuner guide + EPG — **DONE 2026-08-17 ~14:45**, on disk, live site pending a restart
 
