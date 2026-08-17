@@ -51,6 +51,7 @@ async function panel() {
     head: (await page.$eval('#tnfailh', el => el.textContent)).trim(),
     body: (await page.$eval('#tnfailp', el => el.innerText)).replace(/\s+/g, ' ').trim(),
     now: (await page.$eval('#tnnow', el => el.textContent)).trim(),
+    tech: (await page.$eval('#tnfailc', el => el.textContent)).replace(/\s+/g, ' ').trim(),
     visible: await page.$eval('#tnfail', el => el.getBoundingClientRect().height > 20),
   };
 }
@@ -102,6 +103,45 @@ await page.waitForSelector('#tnfail:not([hidden])', { timeout: 10000 });
 p = await panel();
 ok('an undecodable codec is named outright', p && /H\.265/.test(p.head), p && p.head);
 ok('and it says nothing here has failed', p && /nothing here has failed/.test(p.body), p && p.body);
+
+// ---- case 4a: the audio codec is the one that kills it -------------------------------
+// THE BUG THIS EXISTS FOR, reported as "most the issues are with the adult live tv".
+// h264 video with a Dolby Digital soundtrack: Chrome's MSE refuses the audio and therefore
+// refuses the whole segment, so the picture is black while `vcodec` reads a reassuring
+// `h264` and every byte counter on the box climbs. Measured on a real channel of the
+// owner's: live, h264, 87 MB pulled over five minutes, ZERO frames decoded, and the page
+// said nothing at all -- because `sessions.public()` published `vcodec` and withheld
+// `acodec`, and the page's codec table was video-only. Both are fixed; this is the guard.
+await loadChannels();
+await setCase('ac3');
+await page.click('li.playable');
+await page.waitForSelector('#tnfail:not([hidden])', { timeout: 10000 });
+p = await panel();
+ok('an undecodable AUDIO codec is named, on a video codec that is fine',
+   p && /Dolby Digital/.test(p.head) && !/H\.26/.test(p.head), p && p.head);
+ok('and the panel says the sound is why the picture is black',
+   p && /sound/.test(p.body) && /whole stream/.test(p.body), p && p.body);
+ok('the technical line reports BOTH codecs',
+   p && /video: h264/.test(p.tech) && /audio: ac3/.test(p.tech), p && p.tech);
+
+// The control, and the more important half: a codec this browser CAN decode must never be
+// warned about. A warning that fires on a working stream teaches the visitor to ignore the
+// one that does not.
+//
+// The assertion is "no panel NAMES A CODEC", not "no panel at all", and the difference is
+// the fixture being honest about what it is: this provider serves a manifest and no segment
+// data, so hls.js does fail to fetch and the page does say "Playback stopped -- the player
+// could not fetch the next part of the stream". That report is TRUE here, and asserting it
+// away would mean asserting that the page stays quiet about a stream that really did stop.
+await loadChannels();
+await setCase('aac');
+await page.click('li.playable');
+await page.waitForTimeout(2500);
+const aacPanel = await panel();
+ok('an ordinary h264 + AAC stream is never called undecodable',
+   !aacPanel || (!/Dolby|AAC|H\.26|cannot decode/i.test(aacPanel.head)
+                 && !/cannot decode/i.test(aacPanel.body)),
+   aacPanel && aacPanel.head);
 
 // ---- case 4b: "live", and the playlist is still empty ---------------------------------
 // The last shape of the blank screen. ffmpeg writes the .m3u8 header before it has cut a

@@ -463,32 +463,54 @@ def status() -> dict:
     inside `api.py`'s import graph and outside the scope this module was built in. The keys
     match `Unit`'s fields so the wiring engineer can splat it into `Unit(**tuner.status())`.
 
+    **This unit is the Tuner and the Guide together.** Garrett: "symon guide and symon tuner
+    should be migrated together", then "you need to migrate tuner and guide to be 1". The rack
+    carried two units whose `href` was the same page, which is a rack disagreeing with itself.
+    Guide's own author had argued for exactly this fold on architecture -- it owns no weights
+    and no hardware -- and was overruled only because Garrett had named it separately; he has
+    now decided the other way, so the two facts finally agree.
+
+    Nothing about the guide half is dropped in the fold, because both halves make a real and
+    different claim about the hardware, and the detail line has to carry both:
+
+      * the tuner half is I/O -- ffmpeg copying bytes, a bounded number of slots;
+      * the guide half is **stdlib matching on the CPU that never takes the GPU lock**, which
+        is why it answers while chat holds the card. That is the same claim RavenCalc makes and
+        it is worth as much here.
+
     The state is a reading, not a decoration:
-      * `offline` when ffmpeg is absent -- the surface genuinely cannot work;
+      * `offline` when ffmpeg is absent -- the streaming half genuinely cannot work;
       * `busy` when a session holds a slot;
       * `ready` otherwise, meaning the box can accept a source.
     It is never `ready` on the strength of the module merely being importable, and the detail
     line says outright that the box holds no channels of its own, because it does not.
+
+    Note what `offline` now means and does not mean: without ffmpeg the guide half still works
+    perfectly -- it needs nothing but the standard library -- so the offline detail names the
+    part that is missing rather than implying the whole surface is dead.
     """
     active = len(MANAGER.list())
+    # Said in every state, because it is the claim a visitor cannot check by looking: the
+    # filtering and the guide grid do not queue behind whatever holds the card.
+    guide_note = "guide filtering on the CPU, never takes the GPU lock"
     if not FFMPEG:
         state_ = "offline"
-        detail = "ffmpeg not installed"
+        detail = f"ffmpeg not installed — no streaming · {guide_note}"
     elif active:
         state_ = "busy"
         detail = (f"{active}/{MAX_SESSIONS} slots streaming · "
-                  f"stream copy, no GPU · no channels stored on this box")
+                  f"stream copy, no GPU · {guide_note} · no channels stored on this box")
     else:
         state_ = "ready"
-        detail = (f"0/{MAX_SESSIONS} slots in use · "
+        detail = (f"0/{MAX_SESSIONS} slots in use · {guide_note} · "
                   f"visitor supplies the playlist; none is stored here")
     return {
         "id": "tuner",
-        "label": "SyMoNeuRaL Tuner",
+        "label": "SyMoNeuRaL Tuner & Guide",
         "slot": "1U",
         "state": state_,
         "bus": "cpu",
         "href": "/tuner.html",
-        "spec": "ffmpeg stream copy → HLS",
+        "spec": "ffmpeg stream copy → HLS · question → channel filter",
         "detail": detail,
     }

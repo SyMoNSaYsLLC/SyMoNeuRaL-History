@@ -1460,14 +1460,42 @@ class TestCodecReporting(unittest.TestCase):
         import json
         self.assertNotIn(SENTINEL_PASS, json.dumps(s.public()))
 
-    def test_public_document_carries_the_codec(self):
+    def test_public_document_carries_both_codecs(self):
+        """Video AND audio. The audio half is the one that was missing and it cost a real bug.
+
+        This assertion used to be `assertNotIn("acodec", ...)`, on the reasoning that an unused
+        field is a field nobody is checking. That was wrong, and a measured failure is why: a
+        channel reported `state: live`, `vcodec: h264`, 87 MB pulled from the provider over five
+        minutes and every indicator on the box green, while the browser decoded ZERO frames --
+        because MSE refuses the whole segment when it will not take the AUDIO track, and Chrome
+        will not take AC-3. The page could only see `vcodec`, so it had nothing to say and the
+        visitor got a black rectangle with no explanation.
+        """
         s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
                              scrub=Scrubber(), policy=Policy())
         self.assertIn("vcodec", s.public())
         self.assertEqual(s.public()["vcodec"], "")
-        # `acodec` is parsed but deliberately unpublished -- an unused field is a field nobody
-        # is checking. If it is ever published, this line is the reminder to say so.
-        self.assertNotIn("acodec", s.public())
+        self.assertIn("acodec", s.public())
+        self.assertEqual(s.public()["acodec"], "")
+
+    def test_a_hostile_audio_codec_cannot_reach_the_public_document(self):
+        """Same allow-list property as `vcodec`, now that `acodec` is published too.
+
+        ffmpeg's stderr can quote its input, so the token is matched against `AUDIO_CODECS` and
+        anything unrecognised becomes "". Publishing a field that carried ffmpeg's text verbatim
+        would have handed a hostile stream a channel into the document the browser is given.
+        """
+        line = f"[info]   Stream #0:1: Audio: {SENTINEL_PASS} (LC), 48000 Hz, stereo"
+        self.assertEqual(sessions._match_audio_codec(line), "")
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())
+        s.acodec = sessions._match_audio_codec(line)
+        import json
+        self.assertNotIn(SENTINEL_PASS, json.dumps(s.public()))
+
+    def test_a_real_audio_codec_is_reported(self):
+        line = "[info]   Stream #0:1: Audio: ac3 (AC-3 / 0x332D4341), 48000 Hz, 5.1, fltp"
+        self.assertEqual(sessions._match_audio_codec(line), "ac3")
 
     @needs_ffmpeg
     def test_hevc_is_reported_while_everything_else_looks_healthy(self):

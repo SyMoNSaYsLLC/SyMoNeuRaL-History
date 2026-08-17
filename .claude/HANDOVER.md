@@ -188,9 +188,15 @@ near-fullscreen with PiP and guide settings.
   lighter default and gives now/next on the row.
 - The category chips are what he means by "tiny select and deselect". Replace with a real grid:
   time across, channels down, now/next in the cell.
-- `/tuner/watch` is a **new route**, so `ops/Caddyfile` must delegate it — Caddy only forwards
-  `/api/* /docs* /openapi.json / /overview /livestack /controlboard /receipts`. A new top-level
-  path silently 404s until `sudo ./scripts/install-caddy.sh` runs. This has bitten before.
+- ~~`/tuner/watch` is a new route, so `ops/Caddyfile` must delegate it.~~ **Moot, and checked:
+  no Caddy change is needed and no `sudo ./scripts/install-caddy.sh` is owed.** The warning was
+  right about the mechanism and wrong about what got built: the watch surface shipped as
+  `site/tuner-watch.html`, a static file, and `grep` finds no `/tuner/watch` route in
+  `backend/api.py`. Caddy's `@sections` matcher is still exactly `/ /overview /livestack
+  /controlboard /receipts`, and `handle { file_server }` serves any new `.html` off the webroot
+  with no config at all. Same for `site/reinforce.html`. The rule that remains true, and it is
+  the one to carry forward: only a new top-level *section* path costs four files
+  (`ops/Caddyfile`, `tools/build_split.py`, `backend/api.py`, `tests/frontend.mjs`).
 - Guide AI: `backend/apps/guide/` exists with 50 tests. Location-aware means asking, not
   geolocating — do not add IP geolocation to a box whose whole argument is that it measures
   rather than infers.

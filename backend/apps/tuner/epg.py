@@ -298,17 +298,20 @@ def xmltv_epg(creds: XtreamCreds, policy: Policy = Policy(),
             if not chan or (wanted is not None and chan not in wanted):
                 elem.clear()
                 continue
-            bucket = out.setdefault(chan, [])
-            if max_per_channel and len(bucket) >= max_per_channel:
+            if max_per_channel and len(out.get(chan, ())) >= max_per_channel:
                 skipped_by_cap += 1
                 elem.clear()
                 continue
             p = _row(_xmltv_epoch(elem.get("start")), _xmltv_epoch(elem.get("stop")),
                      _text(elem, "title"), _text(elem, "desc"))
             if p is None:
+                # No bucket is created for a channel until one of its rows is usable. A
+                # `{"a.tv": []}` in the result would claim "this channel has a guide and it is
+                # empty", which is not what happened -- what happened is that every row it sent
+                # was undateable, and `dropped_no_clock` is where that gets said.
                 dropped += 1
             else:
-                bucket.append(p)
+                out.setdefault(chan, []).append(p)
             elem.clear()
     except ET.ParseError as exc:
         # A truncated document is common: a panel that times out mid-write still returns 200

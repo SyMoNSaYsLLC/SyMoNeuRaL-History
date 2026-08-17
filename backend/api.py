@@ -1501,15 +1501,26 @@ def build_status() -> Status:
                  state=gateway_state, bus="net", href="/gateway.html",
                  spec="TRON TVM · USDT (TRC-20) licensing",
                  detail=gateway_detail),
-            # Guide turns a sentence into a channel filter. Its author argued it should be
-            # folded into the Tuner rather than stand as a unit, and on architecture alone
-            # that is right -- it owns no weights and no hardware. It is here anyway,
-            # because Garrett named it in the live stack, and because a surface that
-            # answers on the CPU while the card is busy is exactly the kind of claim that
-            # has to be visible to be believed. It reports `ready` on the strength of
-            # working, not of importing: the local pass genuinely needs nothing but stdlib,
-            # and its detail line says outright that the model half is borrowed.
-            Unit(**guide_routes.status()),
+            # GUIDE IS NOT A UNIT ANY MORE -- it is folded into the Tuner above, and this
+            # comment is the record of why rather than a leftover.
+            #
+            # Garrett: "symon guide and symon tuner should be migrated together", then "you
+            # need to migrate tuner and guide to be 1". The two units had the SAME `href`
+            # (/tuner.html), so the rack was showing one page twice and disagreeing with
+            # itself about how many things this box runs.
+            #
+            # The reversal is the interesting part: Guide's own author argued for exactly
+            # this fold on architecture -- it owns no weights and no hardware -- and was
+            # overruled only because Garrett had named it separately in the live stack. He
+            # has now decided the other way, so the code and the intent finally agree.
+            #
+            # Nothing is dropped. `apps.guide` is untouched, `/api/guide/*` still serves the
+            # page's filter, and the claim that made Guide worth showing -- that it answers
+            # on the CPU while the card is busy, never taking the GPU lock -- is now in the
+            # Tuner unit's own detail line. See `apps/tuner/routes.py::status()`.
+            #
+            # The rack is therefore ELEVEN units, not twelve. `tests/frontend.mjs` guards
+            # the invariant behind that count and was updated in the same commit.
             # The shared workspace. Like Coder it has no page yet, so it links to the
             # documentation rather than to a 404; unlike Coder it DOES carry a route,
             # because it stores nothing executable -- it is SQLite and text.
