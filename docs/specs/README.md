@@ -3,8 +3,11 @@
 **None of these is authoritative for what the project currently is.** `.claude/HANDOVER.md`
 is the one state document and `.claude/CLAUDE.md` is the one rulebook; that separation exists
 because three files once all claimed to describe current state and agents kept acting on the
-stale one. These four are *inputs* — findings and recommendations produced on 2026-08-17 by
-four agents working in parallel. Read them as arguments to evaluate, not as decisions taken.
+stale one. Most of these are *inputs* — findings and recommendations produced on 2026-08-17 by
+agents working in parallel. Read them as arguments to evaluate, not as decisions taken.
+`miner-preemption.md` is the exception in kind: it is not a proposal awaiting a decision, it
+records a decision already taken — the yield protocol is specified so that the three files
+citing it resolve, and its §7 argues for leaving it unbuilt.
 
 They live here rather than in a scratch directory because each represents real measurement
 work that would be expensive to redo, and scratch directories do not survive the session.
@@ -21,6 +24,8 @@ indexing them here; treat an unlisted file as unreviewed by this README rather t
 | `css-audit.md` | Collision audit of `site/symoneural.css`, plus a reserved-name list | findings; **the `.card` bug it reported is fixed** — see below |
 | `cuda-audit.md` | Audit of the CUDA engine (§5 item 8) | findings; nothing fixed |
 | `online-apps-audit.md` | Test pass over all twelve rack units, 2026-08-17 | findings; **one defect found and fixed** |
+| `symon-ml-review.md` | Review of the SyMoN_ML blueprint and the TRON licensing PoC | review; nothing implemented |
+| `miner-preemption.md` | The GPU miner yield protocol — why a live miner is never evicted, and the mechanism that would change it | **specified, deliberately not implemented — read its §7 first** |
 
 ## What is worth acting on, and what was verified independently
 

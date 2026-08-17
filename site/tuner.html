@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Tuner — your playlist, your credentials</title>
 <meta name="description" content="IPTV over ffmpeg stream copy. Credentials stay in your browser.">
-<link rel="stylesheet" href="/symoneural.css?v=64fa65d71e">
+<link rel="stylesheet" href="/symoneural.css?v=69f47587b6">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -785,7 +785,7 @@ async function api(path, payload) {
   return body;
 }
 </script>
-<script src="/console.js?v=9bd84a9bf7" defer></script>
+<script src="/console.js?v=dc30eb9bd5" defer></script>
 <script src="/ui.js?v=f86c53da5d" defer></script>
 <script src="/hls.js?v=f12ee0acc4"></script>
 <script>
@@ -810,6 +810,12 @@ async function api(path, payload) {
   var nowEl = document.getElementById('tnnow');
 
   var mode = 'm3u', all = [], hay = [], view = [], hls = null;
+  // Which player got the stream, recorded when the choice is made rather than inferred from
+  // `hls` being non-null -- see the same variable on tuner-watch.html for the measurement.
+  // Inferring it means the panel starts claiming "the browser's own HLS" the moment the
+  // instance is destroyed, which is exactly when somebody is reading the panel to find out
+  // why the picture stopped.
+  var engine = '';
   var cat = 'live', favs = {}, sel = {}, groupRows = [], filterState = null;
   var carried = [], carriedBy = {}, carriedMaxG = 0, carriedMaxN = 0;
   var PAGE = 300, shown = PAGE;
@@ -1807,6 +1813,7 @@ async function api(path, payload) {
       return;
     }
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      engine = 'the browser\u2019s own HLS';
       video.src = src; safePlay(); watch(c); return;
     }
     showFail('This browser cannot play HLS.',
@@ -1834,6 +1841,7 @@ async function api(path, payload) {
     // `segment_s` comes from the session's own `#EXTINF`, so the buffer targets below are
     // derived from what this stream actually produces rather than from what we asked for.
     var segS = (j && j.segment_s) || 2;
+    engine = 'hls.js ' + (window.Hls.version || '');
     hls = new window.Hls({
       lowLatencyMode: false,          // LL-HLS needs partial segments; ffmpeg is not making any
       liveSyncDurationCount: 1,       // was the default 3 -- this is the 31s -> 2.5s change
@@ -2389,8 +2397,7 @@ async function api(path, payload) {
     put('ps-buf', buf === null ? '-' : buf.toFixed(1) + ' s');
     put('ps-drop', q ? String(q.droppedVideoFrames) : '-');
     put('ps-dec', q ? String(q.totalVideoFrames) : '-');
-    put('ps-eng', hls ? 'hls.js ' + (window.Hls && window.Hls.version ? window.Hls.version : '')
-                      : 'the browser\u2019s own HLS');
+    put('ps-eng', engine || '-');
 
     if (hls) {
       // `currentLevel` is **-1 while the level is being chosen automatically**, which is the
