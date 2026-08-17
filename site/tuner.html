@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Tuner — your playlist, your credentials</title>
 <meta name="description" content="IPTV over ffmpeg stream copy. Credentials stay in your browser.">
-<link rel="stylesheet" href="/symoneural.css?v=733f90f388">
+<link rel="stylesheet" href="/symoneural.css?v=e51d825a45">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -48,6 +48,7 @@
         <div class="head" id="tnhead"><s></s>SyMoNeuRaL Tuner
           <span class="grow" id="tnstate">idle</span></div>
         <div class="body" id="tnbody">
+
           <form class="tn-load" id="tnform">
             <div class="tn-tabs">
               <button type="button" class="tn-tab on" data-mode="m3u">M3U playlist</button>
@@ -69,9 +70,31 @@
             </div>
             <button class="cta" id="tn-go" type="submit">Load channels</button>
           </form>
+
+          <!-- player: hidden until something is tuned, because an empty <video> with
+               controls is a piece of furniture that does nothing -->
+          <div class="tn-player" id="tnplayer" hidden>
+            <video id="tnvideo" controls playsinline></video>
+            <p class="tn-now" id="tnnow"></p>
+          </div>
+
           <p class="tn-note" id="tnnote">Your playlist is yours. It is held in this
             browser&rsquo;s localStorage, sent per request, and never stored on this
             machine.</p>
+
+          <!-- browse: kind, then group, then an optional model-assisted filter -->
+          <div class="tn-browse" id="tnbrowse" hidden>
+            <div class="tn-kinds" id="tnkinds"></div>
+            <div class="tn-ask">
+              <input id="tnask" type="text" autocomplete="off"
+                     placeholder="Ask for what you want &mdash; &ldquo;90s action movies&rdquo;, &ldquo;motorsport&rdquo;">
+              <button type="button" class="tn-askgo" id="tnaskgo">Ask</button>
+              <button type="button" class="tn-askclear" id="tnaskclear" hidden>clear</button>
+            </div>
+            <p class="tn-askwhy" id="tnaskwhy"></p>
+            <div class="tn-groups" id="tngroups"></div>
+          </div>
+
           <ul class="tn-list" id="tnlist"></ul>
         </div>
       </div>
@@ -80,25 +103,36 @@
         <div class="callout">
           <h3>Where your credentials go</h3>
           <p><b>Nowhere.</b> They stay in this browser&rsquo;s localStorage and travel with
-            each request. The server holds them only for the life of a stream and keeps
-            them out of process arguments and error text. Nothing is written to disk.</p>
+            each request. The server holds them only for the life of a stream and keeps them
+            out of process arguments and error text. Nothing is written to disk.</p>
         </div>
         <div class="callout">
           <h3>How the stream is handled</h3>
           <p>ffmpeg copies the stream rather than re-encoding it, so it costs muxing and
-            network rather than compute &mdash; this surface never queues behind the GPU.
-            The upstream socket is opened in Python against a pinned, validated address and
-            the bytes are piped in; <b>ffmpeg is never handed a URL</b>, so it cannot make
-            its own DNS lookup or follow its own redirect.</p>
+            network rather than compute &mdash; this surface never queues behind the GPU. The
+            upstream socket is opened in Python against a pinned, validated address and the
+            bytes are piped in; <b>ffmpeg is never handed a URL</b>, so it cannot make its own
+            DNS lookup or follow its own redirect.</p>
+          <p>Playback is <b>hls.js</b> (Apache-2.0, vendored at <code>/hls.js</code>), because
+            Chrome and Firefox will not play an <code>.m3u8</code> natively.</p>
+        </div>
+        <div class="callout">
+          <h3>What the model actually does here</h3>
+          <p>It reads <b>your question</b>, not your playlist. The prompt becomes a filter
+            &mdash; terms to match, terms to exclude, which kind &mdash; and that filter is
+            applied to the list already in this browser. One request to the card, not one per
+            channel.</p>
+          <p>Feeding thousands of channel names through a 7B would be slow, would hold the GPU
+            lock while it ran, and would be worse at it than a substring match. If the model
+            is busy or its answer will not parse, the box falls back to searching your words
+            directly and says so.</p>
         </div>
         <div class="callout">
           <h3>Known gaps, stated rather than hidden</h3>
-          <p>Playback needs <code>hls.js</code>, which is <b>not vendored here yet</b>:
-            Chrome and Firefox cannot play an <code>.m3u8</code> natively, so channels list
-            and stream, but in-page playback currently works only in Safari. The Xtream
-            client is written to the protocol and <b>has never been tested against a live
-            panel</b>. Series episodes list without URLs rather than with guessed ones, and
-            AES-encrypted HLS is refused rather than decrypted.</p>
+          <p>The vendored hls.js is the <b>light</b> build: no subtitle or alternate-audio
+            rendering. The Xtream client has <b>never been tested against a live panel</b>
+            beyond channel listing. Series episodes list without URLs rather than with guessed
+            ones, and AES-encrypted HLS is refused rather than decrypted.</p>
         </div>
       </aside>
     </div>
@@ -160,13 +194,18 @@ async function api(path, payload) {
 </script>
 <script src="/console.js?v=ee2d468781" defer></script>
 <script src="/ui.js?v=f86c53da5d" defer></script>
+<script src="/hls.js?v=f12ee0acc4"></script>
 <script>
 (function () {
   'use strict';
   var K = 'symoneural.tuner';
   var form = document.getElementById('tnform'), list = document.getElementById('tnlist');
   var note = document.getElementById('tnnote'), st = document.getElementById('tnstate');
-  var mode = 'm3u';
+  var browse = document.getElementById('tnbrowse'), groupsEl = document.getElementById('tngroups');
+  var kindsEl = document.getElementById('tnkinds'), askWhy = document.getElementById('tnaskwhy');
+  var player = document.getElementById('tnplayer'), video = document.getElementById('tnvideo');
+  var nowEl = document.getElementById('tnnow');
+  var mode = 'm3u', all = [], view = [], kind = '', group = '', hls = null, aiFilter = null;
 
   document.querySelectorAll('.tn-tab').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -178,7 +217,6 @@ async function api(path, payload) {
     });
   });
 
-  // Restore whatever this browser last used. This is the only place it is kept.
   try {
     var saved = JSON.parse(localStorage.getItem(K) || 'null');
     if (saved) {
@@ -187,12 +225,11 @@ async function api(path, payload) {
       ['url', 'host', 'user', 'pass'].forEach(function (f) {
         if (saved[f]) document.getElementById('tn-' + f).value = saved[f]; });
     }
-  } catch (e) { /* corrupt entry -- ignore and start clean */ }
+  } catch (e) { /* corrupt entry -- start clean */ }
 
   function creds() {
     if (mode === 'm3u') return {mode: 'm3u', url: document.getElementById('tn-url').value.trim()};
-    return {mode: 'xtream',
-            host: document.getElementById('tn-host').value.trim(),
+    return {mode: 'xtream', host: document.getElementById('tn-host').value.trim(),
             user: document.getElementById('tn-user').value,
             pass: document.getElementById('tn-pass').value};
   }
@@ -201,38 +238,216 @@ async function api(path, payload) {
     e.preventDefault();
     var c = creds();
     try { localStorage.setItem(K, JSON.stringify(c)); } catch (e2) { /* private mode */ }
-    st.textContent = 'loading'; list.innerHTML = ''; note.textContent = 'Fetching…';
-
-    // Two different endpoints, not one. Posting to a path the router does not serve
-    // falls through to the static mount at "/", which answers 405 Method Not Allowed --
-    // a confusing way to be told the URL is wrong.
+    st.textContent = 'loading'; list.innerHTML = ''; browse.hidden = true;
+    note.textContent = 'Fetching\u2026';
     var url  = c.mode === 'm3u' ? '/api/tuner/playlist' : '/api/tuner/xtream/channels';
     var body = c.mode === 'm3u' ? {url: c.url}
-             : {server: c.host, username: c.user, password: c.pass, kinds: ['live']};
-    fetch(url, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body)
-    }).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+             : {server: c.host, username: c.user, password: c.pass,
+                kinds: ['live', 'movie', 'series']};
+    fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)})
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
       .then(function (res) {
         if (!res.ok) throw new Error(res.j.error || res.j.detail || 'load failed');
-        var ch = res.j.channels || [];
-        st.textContent = ch.length ? ch.length + ' channels' : 'empty';
+        all = res.j.channels || [];
+        st.textContent = all.length ? all.length + ' channels' : 'empty';
         var notes = (res.j.notes || []).join(' ');
-        note.textContent = (ch.length ? 'Loaded from your playlist. Nothing was stored here.'
-                                      : 'That playlist parsed but contained no channels.')
-                           + (notes ? '  ' + notes : '');
-        list.innerHTML = ch.slice(0, 400).map(function (c2) {
-          return '<li><b></b><span></span></li>'; }).join('');
-        list.querySelectorAll('li').forEach(function (li, i) {
-          li.querySelector('b').textContent = ch[i].name || '(unnamed)';
-          li.querySelector('span').textContent = ch[i].group || '';
-        });
+        note.textContent = (all.length
+            ? 'Loaded from your playlist. Nothing was stored here.'
+            : 'That playlist parsed but contained no channels.') + (notes ? '  ' + notes : '');
+        kind = ''; group = ''; aiFilter = null; askWhy.textContent = '';
+        document.getElementById('tnaskclear').hidden = true;
+        if (all.length) { browse.hidden = false; renderKinds(); apply(); }
       })
-      .catch(function (err) {
-        st.textContent = 'failed';
-        note.textContent = String(err.message || err);
-      });
+      .catch(function (err) { st.textContent = 'failed'; note.textContent = String(err.message || err); });
   });
+
+  // ---- browsing: kinds and groups come from the playlist itself, not a fixed list
+  function renderKinds() {
+    var counts = {};
+    all.forEach(function (c) { var k = c.kind || 'live'; counts[k] = (counts[k] || 0) + 1; });
+    var kinds = Object.keys(counts).sort();
+    kindsEl.innerHTML = '';
+    mkChip(kindsEl, 'Everything', all.length, kind === '', function () { kind = ''; group = ''; renderKinds(); apply(); });
+    kinds.forEach(function (k) {
+      var label = k === 'movie' ? 'Movies' : k === 'series' ? 'Series'
+                : k === 'live' ? 'Live TV' : k;
+      mkChip(kindsEl, label, counts[k], kind === k, function () {
+        kind = k; group = ''; renderKinds(); apply(); });
+    });
+  }
+
+  function mkChip(host, label, n, on, fn) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'tn-chip' + (on ? ' on' : '');
+    var s1 = document.createElement('b'); s1.textContent = label;
+    var s2 = document.createElement('i'); s2.textContent = n;
+    b.appendChild(s1); b.appendChild(s2);
+    b.addEventListener('click', fn); host.appendChild(b);
+  }
+
+  function inKind(c) { return !kind || (c.kind || 'live') === kind; }
+
+  function renderGroups() {
+    var counts = {};
+    all.filter(inKind).forEach(function (c) {
+      var g = c.group || '(no group)'; counts[g] = (counts[g] || 0) + 1; });
+    var names = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
+    groupsEl.innerHTML = '';
+    if (names.length < 2) return;
+    mkChip(groupsEl, 'All groups', all.filter(inKind).length, group === '', function () {
+      group = ''; renderGroups(); apply(); });
+    names.slice(0, 40).forEach(function (g) {
+      mkChip(groupsEl, g, counts[g], group === g, function () {
+        group = g; renderGroups(); apply(); });
+    });
+  }
+
+  function apply() {
+    renderGroups();
+    view = all.filter(function (c) {
+      if (!inKind(c)) return false;
+      if (group && (c.group || '(no group)') !== group) return false;
+      if (aiFilter) {
+        var hay = ((c.name || '') + ' ' + (c.group || '')).toLowerCase();
+        if (aiFilter.match.length &&
+            !aiFilter.match.some(function (t) { return hay.indexOf(t) >= 0; })) return false;
+        if (aiFilter.exclude.some(function (t) { return hay.indexOf(t) >= 0; })) return false;
+      }
+      return true;
+    });
+    renderList();
+  }
+
+  function renderList() {
+    list.innerHTML = '';
+    view.slice(0, 500).forEach(function (c) {
+      var li = document.createElement('li');
+      var b = document.createElement('b'); b.textContent = c.name || '(unnamed)';
+      var sp = document.createElement('span'); sp.textContent = c.group || '';
+      li.appendChild(b); li.appendChild(sp);
+      if (c.url) {
+        li.className = 'playable';
+        li.addEventListener('click', function () { tune(c); });
+      } else {
+        var no = document.createElement('em'); no.textContent = 'no stream url';
+        li.appendChild(no);
+      }
+      list.appendChild(li);
+    });
+    if (view.length > 500) {
+      var li = document.createElement('li');
+      li.className = 'tn-more';
+      li.textContent = 'showing 500 of ' + view.length + ' \u2014 narrow it with a group or a question';
+      list.appendChild(li);
+    }
+  }
+
+  // ---- playback
+  function tune(c) {
+    nowEl.textContent = 'opening ' + (c.name || '') + '\u2026';
+    player.hidden = false;
+    var creds_ = creds();
+    fetch('/api/tuner/tune', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: c.url, label: c.name || '',
+                            username: creds_.user || '', password: creds_.pass || ''})
+    }).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.j.detail || res.j.error || 'could not tune');
+        var src = '/api/tuner/' + res.j.playlist;
+        nowEl.textContent = (c.name || '') + '  \u00b7  ' + res.j.state;
+        play(src);
+      })
+      .catch(function (e) { nowEl.textContent = 'could not tune: ' + (e.message || e); });
+  }
+
+  function play(src) {
+    if (hls) { hls.destroy(); hls = null; }
+    // Safari plays HLS natively; Chrome and Firefox need hls.js, which is why it is vendored.
+    if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = src; video.play(); return; }
+    if (!window.Hls || !window.Hls.isSupported()) {
+      nowEl.textContent = 'this browser cannot play HLS and hls.js did not load';
+      return;
+    }
+    hls = new window.Hls({lowLatencyMode: false});
+    hls.loadSource(src); hls.attachMedia(video);
+    hls.on(window.Hls.Events.MANIFEST_PARSED, function () { video.play(); });
+    hls.on(window.Hls.Events.ERROR, function (_e, d) {
+      if (d && d.fatal) nowEl.textContent = 'playback error: ' + d.type + ' / ' + d.details;
+    });
+  }
+
+  // ---- the model turns a question into a filter. It never sees the playlist.
+  var askBox = document.getElementById('tnask');
+  document.getElementById('tnaskgo').addEventListener('click', ask);
+  askBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') ask(); });
+  document.getElementById('tnaskclear').addEventListener('click', function () {
+    aiFilter = null; askBox.value = ''; askWhy.textContent = '';
+    this.hidden = true; apply();
+  });
+
+  function plainFilter(q) {
+    // Honest fallback: the user's own words, matched directly. Used when the model is busy
+    // or returns something that will not parse, and always said out loud.
+    var terms = q.toLowerCase().split(/[^a-z0-9]+/).filter(function (t) { return t.length > 2; });
+    return {match: terms, exclude: [], why: 'matched your words directly'};
+  }
+
+  function ask() {
+    var q = askBox.value.trim();
+    if (!q) return;
+    askWhy.textContent = 'asking the model\u2026';
+    // A FLAT KEYWORD LIST, not JSON. Asking this 7B for a JSON object at temperature 0.2
+    // makes it loop -- measured: it emitted {"match":["premier league","nfl","nba","mlb",
+    // "f1","nfl","nba",... until it hit the token cap, so the object never closed and
+    // nothing parsed. One line of comma-separated words it completes cleanly every time.
+    // Small models are far better at a flat list than at nested structure; picking the
+    // format the model can actually finish is the difference between this working and the
+    // fallback firing on every request.
+    var prompt = 'List the words to search for in a TV channel list to find: ' + q
+      + '
+
+Rules: reply with ONE line, at most 8 lowercase keywords, comma separated. '
+      + 'No sentences, no repeats, no explanation.
+
+Keywords:';
+    fetch('/api/chat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: prompt, temperature: 0.1, max_tokens: 64})
+    }).then(function (r) {
+      if (!r.ok) throw new Error('chat ' + r.status);
+      return r.text();
+    }).then(function (txt) {
+      var out = '';
+      txt.split('
+').forEach(function (line) {
+        if (line.indexOf('data:') !== 0) return;
+        try { var j = JSON.parse(line.slice(5)); if (j.delta) out += j.delta; } catch (e) {}
+      });
+      var first = out.trim().split('
+').filter(function (l) { return l.trim(); })[0] || '';
+      var terms = first.split(',').map(function (t) {
+        return t.trim().toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9 ]+$/g, '');
+      }).filter(function (t) { return t.length > 1 && t.length < 24; }).slice(0, 12);
+      if (!terms.length) throw new Error('no usable keywords');
+      aiFilter = {match: terms, exclude: [],
+                  why: 'the model read your question and searched for: ' + terms.join(', ')};
+      finishAsk();
+    }).catch(function (e) {
+      aiFilter = plainFilter(q);
+      aiFilter.why = 'the model could not be used (' + (e.message || e) + '), so this '
+                   + 'matched your words directly';
+      finishAsk();
+    });
+  }
+
+  function finishAsk() {
+    document.getElementById('tnaskclear').hidden = false;
+    apply();
+    askWhy.textContent = aiFilter.why + '  \u2014  ' + view.length + ' of ' + all.length
+                       + ' channels';
+  }
 })();
 </script>
 </body>

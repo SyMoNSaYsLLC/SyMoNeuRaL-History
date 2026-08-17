@@ -238,11 +238,17 @@
 
   /* composer */
   .composer{display:flex; gap:10px; padding:14px 16px; border-top:1px solid var(--line); background:var(--panel2)}
+  /* Roomier than it was. These were 46px and one line high across chat, image, ravencalc
+     and remix -- fine for "hi", cramped for the paragraph-long prompts these surfaces
+     actually get, and an image prompt is usually a paragraph. 80px shows three lines
+     without scrolling, and the chat textarea still auto-grows from here. */
   .composer textarea, .composer input[type=text]{
     flex:1; resize:none; background:var(--bg); color:var(--fg);
-    border:1px solid var(--line); border-radius:10px; padding:11px 14px;
-    font:15px/1.5 ui-sans-serif,system-ui,sans-serif; min-height:46px; max-height:150px;
+    border:1px solid var(--line); border-radius:11px; padding:14px 16px;
+    font:16px/1.55 ui-sans-serif,system-ui,sans-serif; min-height:80px; max-height:260px;
   }
+  /* The button should not stretch to the full height of a tall box. */
+  .composer .cta{align-self:flex-end}
   .composer textarea:focus, .composer input:focus{outline:none; border-color:var(--accent)}
 
   /* controls panel */
@@ -1338,4 +1344,64 @@
 .tn-list span{
   flex:0 1 auto; text-align:right; color:var(--faint);
   font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:anywhere;
+}
+
+/* ---- Tuner: player, browsing, model-assisted filter -------------------------
+   `tn-` prefixed, grepped against both stylesheets first. */
+.tn-player{margin:18px 0 0}
+.tn-player video{
+  width:100%; max-height:60vh; background:#000; border-radius:10px;
+  border:1px solid var(--line); display:block;
+}
+.tn-now{
+  margin:9px 0 0; color:var(--dim);
+  font:12.5px/1.6 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+}
+
+.tn-browse{margin-top:18px}
+.tn-kinds,.tn-groups{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px}
+.tn-groups{max-height:132px; overflow-y:auto}
+.tn-chip{
+  display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+  padding:6px 11px; border:1px solid var(--line); border-radius:999px;
+  background:var(--panel2); color:var(--dim); font:12.5px/1 inherit;
+  transition:color .14s ease, border-color .14s ease;
+}
+.tn-chip:hover{color:var(--fg)}
+.tn-chip.on{color:var(--accent); border-color:rgba(46,224,138,.45); background:var(--panel)}
+.tn-chip b{font-weight:600}
+.tn-chip i{
+  font-style:normal; color:var(--faint);
+  font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+}
+
+.tn-ask{display:flex; gap:8px; margin:14px 0 0}
+.tn-ask input{
+  flex:1 1 auto; min-width:0; padding:10px 13px; background:var(--bg); color:var(--fg);
+  border:1px solid var(--line); border-radius:9px; font:13.5px/1.4 inherit;
+}
+.tn-ask input:focus{outline:none; border-color:rgba(46,224,138,.5)}
+.tn-askgo,.tn-askclear{
+  padding:0 16px; cursor:pointer; border-radius:9px; font:600 13px/1 inherit;
+  border:1px solid rgba(46,224,138,.45); background:var(--panel); color:var(--accent);
+}
+.tn-askclear{border-color:var(--line); color:var(--dim)}
+.tn-askgo:hover{background:var(--panel2)}
+/* Says which route produced the filter -- the model, or the fallback. Wraps: it is the
+   explanation, and truncating an explanation defeats it. */
+.tn-askwhy{
+  margin:10px 0 0; color:var(--faint);
+  font:11.5px/1.6 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+}
+.tn-askwhy:empty{display:none}
+
+.tn-list li.playable{cursor:pointer}
+.tn-list li.playable:hover b{color:var(--accent)}
+.tn-list li em{
+  flex:0 0 auto; color:var(--faint); font-style:normal;
+  font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+}
+.tn-more{
+  display:block; color:var(--faint); text-align:center;
+  font:11.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
 }

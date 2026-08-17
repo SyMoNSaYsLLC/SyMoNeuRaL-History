@@ -40,6 +40,22 @@ Version identified by SHA-256 match against `swagger-ui-dist@5.17.14`, not by gu
 - The bundle embeds **core-js** (MIT) and **normalize.css v7.0.0** (MIT); both are covered by
   the shipped NOTICE.
 
+### hls.js — Apache-2.0
+`site/hls.js` (384 KB, the **light** build) and `site/hls-LICENSE.txt`, served on `/tuner.html`.
+
+- Fetched from `cdn.jsdelivr.net/npm/hls.js@1/dist/hls.light.min.js`; the licence text is the
+  project's own `LICENSE` from `video-dev/hls.js`.
+- **Verified by reading the file, not the metadata.** GitHub's API reports `NOASSERTION` for
+  this repo, which is not a licence — the `LICENSE` file itself is plainly Apache-2.0,
+  copyright 2017 Dailymotion.
+- Needed because Chrome and Firefox will not play an `.m3u8` natively. Safari will, and the
+  page uses the native path there.
+
+**VLC was considered and rejected.** `references/IPTV/vlc-master/` is **GPLv2**, and the only
+web path is `extras/package/wasm-emscripten` — an hours-long build producing a GPL-licensed
+WASM blob that would then be part of what we distribute in `site/`, making the site itself
+GPL-encumbered. hls.js does the same job in 384 KB under a permissive licence.
+
 ### Our own site assets — proprietary
 `symoneural.css`, `rack-detail.css`, `swagger-dark.css`, `console.js`, `ui.js`, the generated
 HTML, and the `art-*.png` renders. © SymonSays LLC. All rights reserved.
