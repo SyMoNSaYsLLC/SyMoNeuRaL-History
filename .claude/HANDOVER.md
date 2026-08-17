@@ -442,6 +442,54 @@ The fix was to stop stacking:
 
 **`tools/build_band.py` is deleted.** If you find a reference to it, it is stale.
 
+#### The one-screen layout on top of all that — `tools/build_tabs.py`, the tenth generator
+
+Garrett asked for a no-scroll front page. The page is 3,358px at 1440×900 and 9,161px at
+390px, so trimming was never on the table; `.claude/CLAUDE.md` says fold, so it folds into
+four tabs: **Overview (the masthead), Live stack, Control board, Receipts.**
+
+**Read this before touching the gate.** The first version shipped broken and the test suite
+passed anyway, which is the more useful half of the story:
+
+- The gate was `min-width:1100px`. `.mh` restacks at `max-width:1300px` from one row into
+  two, which takes the masthead from 414px tall at 1440 to **727px at 1280**. So the gate
+  opened *inside* the reflow band, and every window from ~1100 to ~1300 turned the
+  no-scroll layout on at the exact width the masthead was tallest. The rack panel came out
+  **48px tall with 1,289px in it**. The gate now opens at **1301px, above the stacking
+  point**. Those two numbers in two different files are now load-bearing on each other and
+  both say so — this is `.claude/CLAUDE.md`'s "two copies of a breakpoint drift" with the
+  copies in different languages.
+- The masthead is now the **first panel**, not chrome above the panels. That is what took
+  panels from 330px to 522–744px at 1440×900. Hiding the pitch column instead would have
+  been a *drop*; making it a panel is a fold, and it is still the default tab, so it is
+  still what a visitor lands on.
+
+**What it does NOT claim.** The chrome is one screen — header 67 + strip 44 + footer 45 =
+156px, and the panel gets the rest. **Panels still scroll internally**, and no amount of
+work closes that: the rack is ~1,009px of content (heading 134, rackrow 762, footnote 38 —
+there is no padding to reclaim) against 744px of panel at 1440×900. Removing that scroll
+means folding the rack's own cards into `<details>`, which is a redesign of the flagship
+section and nobody has asked for it. **Do not tell Garrett the panels do not scroll.** He
+has raised the scrollbar twice and the second time it was because a previous agent — me —
+reported "one screen" from a test that measured the document instead of the panel.
+
+The assertion is now `the front page folds into a panel big enough to read`. It measures
+the **active panel's height as a share of the viewport** (floor 45%) at the gate
+boundaries — 1301×740 one pixel in, 1300×900 one pixel out, 1280×800 the case that shipped
+broken. The old assertion checked "the document does not scroll" and "no section was
+dropped", both of which were true of a page rendering the rack into a 48px slit.
+
+Two smaller things that live here: below the gate the tabs hide nothing, so they are
+**jump navigation** rather than a highlight that changes nothing; and `.masthead::before`
+is a 640px gradient at `top:-40%` that overflows any hero shorter than 457px, which was
+harmless under `overflow:hidden` and becomes a real scrollbar on a decorative gradient
+under the panel's `overflow-y:auto`. The `min-height:740px` floor clears it by 127px.
+**Lower that floor below ~615px and the hero starts scrolling on a gradient.**
+
+Anything in the test suite that asserts on the rack or control board must now `openTab()`
+first — a hidden element has no box, which is exactly how `pitch, hero and rack fit one
+look` went vacuous (it required `rack.top < innerHeight`; a hidden element reports 0).
+
 ### 3.0b `scripts/deploy.sh` — three fixes, all worth understanding
 
 1. **It publishes web assets only.** It used to `find -maxdepth 1 -type f` and install
@@ -594,6 +642,58 @@ because they are the cheapest real work available.
 11. **Split `api.py` by concern** and **compose the backend as plugins** — the original items
     12 and 13, still the right shape, and now with three more surfaces arguing for it. Adding
     a unit still means editing the Unit list, a generator and the routes.
+
+12. **SyMoNeuRaL Voice — text-to-speech, speech-to-text, and speech-to-speech, wired into
+    SyMoNeuRaL Chat.** Asked for by Garrett 2026-08-17. Nothing is built; this is a spec
+    task first.
+
+    **The constraint that decides the whole design is VRAM, not model choice.** One RTX
+    5070 Ti, 15.92 GiB, and chat (~5 GB) plus image (~7 GB) already cannot coexist — that
+    is why the governor exists. Speech-to-speech is *two* extra models resident at once
+    (an ASR and a TTS) wrapped around a chat turn that is itself holding ~5 GB. Work out
+    which of these it is before writing a line:
+
+    - **CPU inference for both ends.** `whisper.cpp` and Piper both run on CPU at usable
+      speed for short utterances, take the GPU lock never, and can therefore overlap a
+      chat generation instead of queuing behind it. This is the same reasoning that keeps
+      RavenCalc off the lock, and RavenCalc is the precedent to copy.
+    - **A third governor surface.** Honest, but it means a spoken turn is
+      ASR → *evict* → chat → *evict* → TTS, with the governor's 1.5 GB VRAM drain wait
+      between each. Measure that round trip before promising anyone a conversation.
+
+    Whichever way it goes, **the latency is the product** — a voice surface that takes
+    eleven seconds to answer is a demo, not a feature — so measure it early and label it
+    `measured` like everything else. Note also that the chat model is text-only:
+    speech-to-speech here means ASR → the existing text model → TTS, not an audio-native
+    model, and the page must not imply otherwise.
+
+    Two things already in the repo that this must not break: the browser needs a secure
+    context for microphone access, which Caddy's TLS already provides but `127.0.0.1:8800`
+    also counts as, so it is testable locally; and `/api/chat` streams SSE with a `history`
+    array, so a voice turn should reuse that route rather than growing a second chat path.
+
+13. **SyMoNeuRaL Stickers.** Asked for by Garrett 2026-08-17, alongside item 12. Explicitly
+    *sticker-only*, in the sense the iPhone sticker drawer means it: small, one subject,
+    hard-edged, **transparent background**, no scene.
+
+    Scope it honestly before building a new surface: this is much closer to a constrained
+    prompt-and-post-process variant of **SyMoNeuRaL Image** than a new agent. The same
+    FLUX.1-schnell weights, a fixed prompt suffix, a smaller canvas, and then the part that
+    is actually new — **background removal and an alpha channel**, which FLUX does not give
+    you. That is the real work item, it is a segmentation step, and it decides whether this
+    needs its own model resident (another GPU tenant) or a CPU post-process.
+
+    Output is PNG with alpha, which means `tools/build_gallery.py`'s watermark bar must
+    **not** be applied — a sticker with a caption strip burned into it is not a sticker.
+    Renders still go to `backend/output/` and come back as `/api/gen/<name>`; see §3.3.
+
+    **Both 12 and 13 are for an iPhone app Garrett intends to build against this server.**
+    That is a real constraint on the API design and it lands before the UI work: the routes
+    have to be usable by something that is not this site — no session-shaped assumptions, a
+    stable JSON contract, and a clear answer on authentication, because `/api/chat` is
+    currently open to whatever can reach the origin. The ASIC surface's
+    `SYM_ASIC_ENABLED` + `SYM_ASIC_TOKEN` gate in `backend/apps/asicminer/__init__.py` is
+    the pattern already in this repo for a route that must not be world-callable.
 
 ### Blocked on hardware, not on work
 
