@@ -1205,3 +1205,87 @@
 }
 .lb-close:hover{color:var(--fg); border-color:var(--accent)}
 .lb-close:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ---- SyMoNeuRaL Miner stack controller -------------------------------------
+   Every name here is `mn-` prefixed and was grepped against both stylesheets before
+   being used: zero prior definitions. That check is not ceremony -- `.bar`, `.live`,
+   `#console .sub` and `.card` have each been defined twice in this file, and every
+   time the second definition silently ate the first. */
+.mn-steps{
+  display:flex; gap:8px; list-style:none; margin:0 0 20px; padding:0;
+  font:600 11.5px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--faint);
+}
+.mn-steps li{display:flex; align-items:center; gap:7px; padding:7px 12px;
+  border:1px solid var(--line); border-radius:999px; transition:color .16s, border-color .16s}
+.mn-steps li b{
+  display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px;
+  border-radius:50%; background:var(--panel2); color:var(--faint); font-size:10.5px;
+}
+.mn-steps li.on{color:var(--accent); border-color:rgba(46,224,138,.42)}
+.mn-steps li.on b{background:var(--accent); color:#06120c}
+
+.mn-pane{display:none}
+.mn-pane.on{display:block}
+.mn-q{margin:0 0 14px; color:var(--fg); font-size:15.5px; font-weight:600}
+
+.mn-choices{display:grid; grid-template-columns:repeat(2,1fr); gap:12px}
+@media (max-width:620px){ .mn-choices{grid-template-columns:1fr} }
+.mn-choice{
+  display:flex; flex-direction:column; gap:7px; text-align:left; cursor:pointer;
+  padding:16px 16px 15px; border:1px solid var(--line); border-radius:12px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel)); color:inherit;
+  font:inherit; transition:border-color .16s ease, transform .16s ease;
+}
+.mn-choice:hover{border-color:rgba(46,224,138,.45); transform:translateY(-2px)}
+.mn-choice:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.mn-choice b{color:var(--fg); font-size:15px; font-weight:640}
+.mn-choice span{color:var(--dim); font-size:13px; line-height:1.55}
+
+.mn-models{display:grid; grid-template-columns:repeat(2,1fr); gap:10px}
+@media (max-width:620px){ .mn-models{grid-template-columns:1fr} }
+.mn-model{
+  display:grid; grid-template-columns:auto 1fr; gap:3px 9px; align-items:center;
+  text-align:left; cursor:pointer; padding:12px 14px; font:inherit; color:inherit;
+  border:1px solid var(--line); border-radius:10px; background:var(--panel);
+  transition:border-color .16s ease;
+}
+.mn-model b{color:var(--fg); font-size:14.5px; font-weight:640}
+/* The note wraps rather than truncating. It carries the reason a model is unavailable,
+   which is the whole point of showing it -- an ellipsis here would be data loss. */
+.mn-model span{
+  grid-column:2; color:var(--faint); font-size:11.5px; line-height:1.5;
+  overflow-wrap:break-word;
+}
+.mn-model:not(:disabled):hover{border-color:rgba(46,224,138,.45)}
+.mn-model:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.mn-model.sel{border-color:var(--accent)}
+.mn-model:disabled{cursor:not-allowed; opacity:.55}
+
+/* Not decorative: green means the firmware is here AND has been booted, amber means it is
+   here and does not boot, grey means we do not have it. Three real states. */
+.mn-dot{
+  display:inline-block; width:8px; height:8px; border-radius:50%; grid-row:1; grid-column:1;
+  background:#4b5751;
+}
+.mn-dot.ok{background:var(--accent); box-shadow:0 0 0 3px rgba(46,224,138,.16)}
+.mn-dot.part{background:var(--amber); box-shadow:0 0 0 3px rgba(255,171,61,.16)}
+.mn-legend{
+  margin:16px 0 0; color:var(--faint);
+  font:11.5px/1.7 ui-monospace,Menlo,Consolas,monospace;
+}
+.mn-legend .mn-dot{margin:0 5px 0 14px; vertical-align:middle}
+.mn-legend .mn-dot:first-child{margin-left:0}
+
+.mn-back{
+  margin-top:18px; padding:0; border:0; background:none; cursor:pointer;
+  color:var(--dim); font:13px/1 inherit;
+}
+.mn-back:hover{color:var(--accent)}
+.mn-note{
+  margin:18px 0 0; padding:12px 14px; border-radius:9px;
+  border:1px solid var(--line); background:var(--panel2);
+  color:var(--dim); font:12.5px/1.65 ui-monospace,Menlo,Consolas,monospace;
+  overflow-wrap:break-word;
+}
+.mn-note:empty{display:none}

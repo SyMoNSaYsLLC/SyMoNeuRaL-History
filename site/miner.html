@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Miner — Antminer and MicroBT, read honestly</title>
 <meta name="description" content="An operator surface for ASIC mining rigs. Offline until real hardware answers.">
-<link rel="stylesheet" href="/symoneural.css?v=8d3f93df0e">
+<link rel="stylesheet" href="/symoneural.css?v=59d265e803">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -45,39 +45,82 @@
   <div class="wrap">
     <div class="pgwrap">
       <div class="stage">
-        <div class="head" id="mnhead"><s></s>SyMoNeuRaL Miner
+        <div class="head" id="mnhead"><s></s>SyMoNeuRaL Miner &mdash; stack controller
           <span class="grow" id="mnstate">reading&hellip;</span></div>
         <div class="body" id="mnbody">
-          <p class="mn-empty" id="mnempty">Reading the surface state from
-            <code>/api/status</code>&hellip;</p>
-          <table class="mn-rigs" id="mnrigs" hidden>
-            <thead><tr><th>Rig</th><th>Model</th><th>Hashrate</th><th>Temp</th>
-              <th>Power</th></tr></thead>
-            <tbody></tbody>
-          </table>
+
+          <ol class="mn-steps" id="mn-steps">
+            <li class="on" data-step="1"><b>1</b> Source</li>
+            <li data-step="2"><b>2</b> Vendor</li>
+            <li data-step="3"><b>3</b> Model</li>
+          </ol>
+
+          <section class="mn-pane on" id="mn-p1">
+            <p class="mn-q">Where should the controller look for rigs?</p>
+            <div class="mn-choices">
+              <button type="button" class="mn-choice" data-src="scan">
+                <b>IP scanner</b>
+                <span>Sweep a private range for anything answering on the miner API port,
+                  then identify it. Real hardware only.</span>
+              </button>
+              <button type="button" class="mn-choice" data-src="emu">
+                <b>Emulator</b>
+                <span>Boot real vendor firmware under QEMU and drive that instead. For
+                  working on the flash path without risking a rig.</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="mn-pane" id="mn-p2">
+            <p class="mn-q">Which vendor?</p>
+            <div class="mn-choices">
+              <button type="button" class="mn-choice" data-vendor="antminer">
+                <b>Antminer</b><span>Bitmain &middot; Xilinx Zynq control board</span>
+              </button>
+              <button type="button" class="mn-choice" data-vendor="microbt">
+                <b>MicroBT</b><span>Whatsminer</span>
+              </button>
+            </div>
+            <button type="button" class="mn-back" data-to="1">&larr; back</button>
+          </section>
+
+          <section class="mn-pane" id="mn-p3">
+            <p class="mn-q">Which model?</p>
+            <div class="mn-models" id="mn-models"></div>
+            <p class="mn-legend">
+              <i class="mn-dot ok"></i> boots, verified
+              <i class="mn-dot part"></i> firmware present, does not boot yet
+              <i class="mn-dot no"></i> no firmware on this machine
+            </p>
+            <button type="button" class="mn-back" data-to="2">&larr; back</button>
+          </section>
+
+          <p class="mn-note" id="mnnote"></p>
         </div>
       </div>
 
       <aside class="side">
         <div class="callout">
-          <h3>What this reads</h3>
-          <p>Antminer rigs over the bmminer JSON-RPC API and MicroBT/Whatsminer over
-            btminer, using <b>pyasic 0.75.0</b>. Both are polled over the network, so this
-            surface never touches the GPU lock and is never evicted to serve a page.</p>
+          <h3>What the emulator is and is not</h3>
+          <p>QEMU runs the control board&rsquo;s ARM cores. It does <b>not</b> emulate the
+            FPGA fabric or the links to the hashboards &mdash; those are the part that is not
+            there. So the firmware&rsquo;s web UI and its upgrade path run, and <b>bmminer
+            does not</b>: with the miner&rsquo;s own init the firmware finds no hashboards
+            and reboot-loops, which is correct behaviour and useless as a target.</p>
+          <p>It is a good way to work on <b>flashing</b> without risking a rig. It is
+            <b>not</b> a substitute for hardware when testing telemetry.</p>
         </div>
         <div class="callout">
-          <h3>Why it says offline</h3>
-          <p>There is no mining hardware attached to this machine. Rather than draw a
-            dashboard of invented numbers, the unit reports <b>offline</b> and every reading
-            stays empty until a rig answers. Any figure this page ever shows is
-            <b>measured</b> off real hardware.</p>
+          <h3>Why models are greyed out</h3>
+          <p>A model is listed as available only if its firmware is actually on this machine
+            and has been booted. Nothing is listed on the strength of the hardware existing
+            &mdash; the same rule the rack follows.</p>
         </div>
         <div class="callout">
           <h3>Operator surface</h3>
-          <p>This is a tool for hardware on the operator's own network — your rig is on your
-            LAN and this server cannot reach it. It is disabled unless
-            <code>SYM_ASIC_ENABLED</code> and <code>SYM_ASIC_TOKEN</code> are both set, so a
-            misconfiguration fails closed.</p>
+          <p>Scanning and emulation are disabled unless <code>SYM_ASIC_ENABLED</code> and
+            <code>SYM_ASIC_TOKEN</code> are set. The scanner refuses any range that is not
+            private, so it cannot be aimed at the internet from this host.</p>
         </div>
       </aside>
     </div>
@@ -142,33 +185,107 @@ async function api(path, payload) {
 <script>
 (function () {
   'use strict';
-  // Reads the same /api/status the rack reads -- one source of truth, so this page and the
-  // unit on the home page can never disagree about whether a rig is answering.
-  var stateEl = document.getElementById('mnstate');
-  var empty = document.getElementById('mnempty');
-  var table = document.getElementById('mnrigs');
+  // `have` is what this machine can ACTUALLY do, not a guess. "ok" = firmware is in
+  // references/ and has been booted under QEMU to a shell; "part" = firmware present but
+  // does not boot yet; "no" = no firmware here. Listing a model because the hardware exists
+  // would be the same lie as a decorative status light.
+  var CATALOG = {
+    antminer: [
+      {id: 'S17 Pro', have: 'ok',   note: 'Zynq-7007 — boots to a shell, lighttpd runs'},
+      {id: 'S17+',    have: 'ok',   note: 'same package generation as the S17 Pro'},
+      {id: 'T17',     have: 'ok',   note: 'same package generation as the S17 Pro'},
+      {id: 'S9',      have: 'part', note: 'JFFS2 rootfs unpacks; the older kernel gives no console under QEMU yet'},
+      {id: 'S19j',    have: 'part', note: 'SD recovery image only, and it fails its own SHA-256 manifest'},
+      {id: 'S17',     have: 'no',   note: 'only the unsigned MD package is here, with no fw.tar.gz'},
+      {id: 'T9',      have: 'no',   note: 'unsigned dual-variant package; the c5 half is an Altera Cyclone V'},
+      {id: 'S19',     have: 'no',   note: 'no firmware on this machine'},
+      {id: 'S19 Pro', have: 'no',   note: 'no firmware on this machine'},
+      {id: 'S21',     have: 'no',   note: 'no firmware on this machine'}
+    ],
+    microbt: [
+      {id: 'M30 series', have: 'no', note: 'the .bin here is a 4,983-byte HTML page, not firmware'},
+      {id: 'M50 series', have: 'no', note: 'the .bin here is 0 bytes'},
+      {id: 'M20 series', have: 'no', note: 'no firmware on this machine'},
+      {id: 'M60 series', have: 'no', note: 'no firmware on this machine'}
+    ]
+  };
 
-  function render(unit) {
-    if (!unit) {
-      stateEl.textContent = 'not present';
-      empty.textContent = 'The miner surface is not present in this API build.';
-      return;
+  var state = {src: null, vendor: null, model: null};
+  var note = document.getElementById('mnnote');
+  var stEl = document.getElementById('mnstate');
+
+  function show(n) {
+    for (var i = 1; i <= 3; i++) {
+      var pane = document.getElementById('mn-p' + i);
+      if (pane) pane.classList.toggle('on', i === n);
     }
-    stateEl.textContent = unit.state;
-    // No rig rows are ever synthesised. The detail line is the API's own words.
-    empty.textContent = unit.detail;
-    table.hidden = true;
+    document.querySelectorAll('.mn-steps li').forEach(function (li) {
+      li.classList.toggle('on', Number(li.dataset.step) <= n);
+    });
+  }
+
+  document.querySelectorAll('[data-src]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.src = b.dataset.src;
+      if (state.src === 'scan') {
+        note.textContent = 'The IP scanner needs the surface switched on and a private '
+          + 'range to sweep. It refuses any range that is not private, so it cannot be '
+          + 'aimed at the internet from this host.';
+        show(1);
+        return;
+      }
+      note.textContent = '';
+      show(2);
+    });
+  });
+
+  document.querySelectorAll('[data-vendor]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.vendor = b.dataset.vendor;
+      renderModels();
+      show(3);
+    });
+  });
+
+  document.querySelectorAll('.mn-back').forEach(function (b) {
+    b.addEventListener('click', function () { show(Number(b.dataset.to)); });
+  });
+
+  function renderModels() {
+    var host = document.getElementById('mn-models');
+    host.innerHTML = '';
+    (CATALOG[state.vendor] || []).forEach(function (m) {
+      var el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'mn-model ' + m.have;
+      el.disabled = (m.have === 'no');
+      var d = document.createElement('i'); d.className = 'mn-dot ' + m.have;
+      var b = document.createElement('b'); b.textContent = m.id;
+      var sp = document.createElement('span'); sp.textContent = m.note;
+      el.appendChild(d); el.appendChild(b); el.appendChild(sp);
+      el.addEventListener('click', function () {
+        state.model = m.id;
+        host.querySelectorAll('.mn-model').forEach(function (x) {
+          x.classList.remove('sel');
+        });
+        el.classList.add('sel');
+        note.textContent = m.have === 'ok'
+          ? m.id + ' selected. Start it with  scripts/qemu-antminer.sh <package> --shell '
+            + '--serve  — the guest web UI lands on http://127.0.0.1:8080'
+          : m.id + ' cannot be emulated here: ' + m.note + '.';
+      });
+      host.appendChild(el);
+    });
   }
 
   fetch('/api/status', {headers: {'Accept': 'application/json'}})
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (s) {
-      render(s && (s.units || []).filter(function (u) { return u.id === 'asicminer'; })[0]);
+      var u = s && (s.units || []).filter(function (x) { return x.id === 'asicminer'; })[0];
+      stEl.textContent = u ? u.state : 'not present';
+      if (u && u.state === 'offline') note.textContent = u.detail;
     })
-    .catch(function () {
-      stateEl.textContent = 'unreachable';
-      empty.textContent = 'Could not reach /api/status.';
-    });
+    .catch(function () { stEl.textContent = 'unreachable'; });
 })();
 </script>
 </body>
