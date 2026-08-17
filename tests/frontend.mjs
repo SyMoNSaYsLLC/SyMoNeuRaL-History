@@ -553,6 +553,52 @@ try {
          split.every(s => s.status === 200 && s.has && s.present.length === 1 && s.fits),
          split.map(s => `${s.slug}=${s.status} [${s.present}] ${s.content}/${s.panel}`).join('  '));
 
+  // ---- the dense sections scale too, and still fit ------------------------
+  // Garrett, on a 1080p monitor: "i notice diffrence in control board and receipts but not
+  // live stack and overview." He was right about Live stack. The rack and the board sit
+  // behind a `max-height` gate that reset all seven type tokens to their base sizes on a
+  // short window, so on ~970px of content height those two sections got NONE of the site's
+  // enlargement -- measured, 25% of Live stack's text elements changed size and 19% of the
+  // board's, against 100% everywhere else. A flat pin was too blunt: 1.20x is the measured
+  // ceiling that still fits (1.30x overflows by 2px at 1855x745 and 20px at 1990x970).
+  //
+  // Two properties, and BOTH are needed -- either alone is satisfied by the bug. That the
+  // type grew is what Garrett asked for; that it still fits one screen is what he asked for
+  // earlier and must not be traded away to get it. 1990x970 is the viewport that exposed
+  // this, so it is the one asserted, and it is NOT covered by the split check above.
+  const dense = [];
+  for (const [slug, id] of [['livestack', 'rack'], ['controlboard', 'console']]) {
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: 1990, height: 970 });
+    await probe.goto(new URL('/' + slug, BASE).href, { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(1200);   // these sections take live readings and grow at load
+    const m = await probe.evaluate((k) => {
+      const e = document.getElementById(k);
+      if (!e) return { missing: true };
+      // getComputedStyle hands back a custom property as its raw `clamp(...)` TEXT -- it does
+      // not resolve it, so parseFloat gives NaN. Make the browser resolve it by asking for the
+      // computed font-size of a throwaway element that inherits the section's tokens.
+      const resolve = (tok) => {
+        const s = document.createElement('span');
+        s.style.cssText = `position:absolute;visibility:hidden;font-size:var(${tok})`;
+        e.appendChild(s);
+        const px = parseFloat(getComputedStyle(s).fontSize);
+        s.remove();
+        return Math.round(px * 100) / 100;
+      };
+      const t3 = resolve('--t3'), t7 = resolve('--t7');
+      return { missing: false, t3, t7,
+               fits: e.scrollHeight <= e.clientHeight + 1,
+               over: e.scrollHeight - e.clientHeight };
+    }, id);
+    dense.push({ slug, ...m });
+    await probe.close();
+  }
+  // Bases are 20px (--t3) and 10.5px (--t7); above them means the section is scaling at all.
+  record('the rack and the board scale with the site and still fit one screen',
+         dense.every(d => !d.missing && d.t3 > 20.5 && d.t7 > 10.8 && d.fits),
+         dense.map(d => `${d.slug}@1990x970 --t3=${d.t3}px --t7=${d.t7}px over=${d.over}px`).join('  '));
+
   // ---- the GPU panel beside a prompt carries a real reading ---------------
   // The rule this exists for: no decorative indicators. A panel that renders its layout but
   // never receives data is exactly the fake gauge the site argues against, and it looks

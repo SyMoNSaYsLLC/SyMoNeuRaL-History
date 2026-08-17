@@ -2432,16 +2432,36 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
    2560x745, 34px at 2400x745, 22px at 2300x745. The masthead and the receipts grid fit at
    every one of those sizes and are deliberately not listed here.
 
-   So the board alone keeps the fixed sizes when the window is short. The tokens are reset
-   on `#console` rather than on `body`, which matters on `/index.html`: that page holds all
-   four sections at once, so a `body:has(#console)` reset there would quietly shrink the
-   masthead and the rack too. Inheritance stops this at the section boundary.
+   So these two sections get a SHALLOWER scale when the window is short -- not the fixed
+   sizes they used to get. The tokens are set on `#console` rather than on `body`, which
+   matters on `/index.html`: that page holds all four sections at once, so a
+   `body:has(#console)` rule there would quietly resize the masthead and the receipts grid
+   too. Inheritance stops this at the section boundary.
 
-   The height gate is 1000px, not 970px, and the 30px of slack is deliberate: 1990x970 is
-   one of the four viewports `tests/frontend.mjs` asserts the one-screen fit at, and it
-   measured clean with the fluid type, so the cutoff has to sit above it without landing on
-   it. Values below are copied from the base scale at ~line 45; if that changes, this
-   changes with it.
+   1.20x IS THE MEASURED CEILING, and it is why this is a shallower scale rather than a flat
+   pin. A flat pin was the first attempt and it cost more than it needed to: Garrett reported
+   the live stack and the control board as the two pages where he could see no change at all,
+   on a 1080p monitor -- ~970px of content height, which this gate catches. Overflow of the
+   section past one screen, measured three times per cell at 1.5s settle because these
+   sections take live readings and are still growing at load:
+
+       multiplier          1.00 (pin)   1.10   1.20   1.30   1.50 (full)
+       #rack   1855x745         0         0      0      2px    31px
+       #console 1990x970        0         0      0     20px    85px
+       both, 1301x740           0         0      0      0       0
+
+   1.20x is clean everywhere; 1.30x is where the one-screen requirement starts to break. The
+   earlier note here claimed 1990x970 "measured clean with the fluid type" -- that holds for
+   the rack, which overflows 0px at full scale, but not for the board, which overflows 85px.
+   One section's measurement was generalised to both. Hence per-section numbers above.
+
+   An earlier probe of this reported fitting at 850px and overflowing at 900px, which is
+   impossible for a layout property and was the tell that it was measuring a page that had
+   not finished settling. Do not re-derive these figures without the repeat and the wait.
+
+   Ratios are preserved: every coefficient is `(max - base) / 1200`, so all seven reach full
+   size together at 2560px, the same anchor the base scale uses. Bases are copied from the
+   base scale at ~line 45; if that changes, this changes with it.
 
    THE WIDTH GATE FOLLOWED THE SCALE DOWN, 1601px -> 1440px, and it had to. This reset is the
    only thing keeping the two densest sections inside the one-screen gate on a short window,
@@ -2452,7 +2472,13 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
    before; the two numbers are deliberately the same number. */
 @media (min-width:1360px) and (max-height:999px){
   html.ns #console, html.ns #rack{
-    --t1:40px; --t2:28px; --t3:20px; --t4:14.5px; --t5:12.5px; --t6:11.5px; --t7:10.5px;
+    --t1: clamp(40px,   calc(40px   + (100vw - 1360px) * 0.006667), 48px);
+    --t2: clamp(28px,   calc(28px   + (100vw - 1360px) * 0.004667), 33.6px);
+    --t3: clamp(20px,   calc(20px   + (100vw - 1360px) * 0.003333), 24px);
+    --t4: clamp(14.5px, calc(14.5px + (100vw - 1360px) * 0.002417), 17.4px);
+    --t5: clamp(12.5px, calc(12.5px + (100vw - 1360px) * 0.002083), 15px);
+    --t6: clamp(11.5px, calc(11.5px + (100vw - 1360px) * 0.001917), 13.8px);
+    --t7: clamp(10.5px, calc(10.5px + (100vw - 1360px) * 0.001750), 12.6px);
   }
 }
 
