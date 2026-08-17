@@ -126,7 +126,18 @@
     }
   }
 
-  function render() { renderRack(); renderConsole(); }
+  function render() {
+    renderRack();
+    renderConsole();
+    // One reader more, not one data path more. A page that needs a field this file does not
+    // render -- the miner card wants the `gpuminer` unit's own state and detail -- listens
+    // for this instead of opening a second poller. That matters beyond tidiness: everything
+    // in here stops while the tab is hidden, on purpose, because it hits a real GPU on
+    // somebody's desk, and a page-local setInterval would quietly break that promise.
+    try {
+      document.dispatchEvent(new CustomEvent('sym:status', {detail: state}));
+    } catch (e) { /* no CustomEvent constructor: the rack above still rendered */ }
+  }
 
   // Keep the original wording so the queue banner can be undone rather than being a
   // one-way replacement.

@@ -206,6 +206,99 @@ try {
   });
   record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
 
+  // ---- the miner page reads both of its units -----------------------------
+  // TWO rack units point at /miner.html -- `asicminer` and `gpuminer` -- and for a while
+  // the page only spoke about the first, so the surface that actually hashes on this box
+  // had no page at all.
+  //
+  // These assertions are on VALUES, not markup, because a card that renders perfectly and
+  // receives nothing is indistinguishable from a working one in a screenshot. Each was
+  // watched going red before being kept, against a copy of the site with the bug put back:
+  // cutting both status paths turns the first two red on `chip="not present"`; removing the
+  // shared GPU panel's VRAM row turns the third red on `vram=""` while the temperature
+  // beside it still reads; and writing a plausible `53.01 MH/s` into a gated row -- the
+  // dishonest-gauge case this whole site argues against -- turns the fourth red.
+  {
+    const probe = await ctx.newPage();
+    const perrs = [];
+    probe.on('pageerror', e => perrs.push(e.message));
+    await probe.goto(BASE + '/miner.html', { waitUntil: 'networkidle' });
+    // Wait for a reading to arrive, not for a timeout to expire.
+    await probe.waitForFunction(
+      () => !/^reading/.test(document.getElementById('mg-detail')?.textContent || 'reading'),
+      { timeout: 20000 }).catch(() => {});
+
+    const mg = await probe.evaluate(async () => {
+      const t = id => (document.getElementById(id)?.textContent || '').trim();
+      // The same public endpoint the page reads, so the assertion compares the DOM against
+      // the API rather than against a string written into this test.
+      const api = await fetch('/api/status').then(r => r.json()).catch(() => null);
+      const u = api && (api.units || []).find(x => x.id === 'gpuminer');
+      return {
+        unit: t('mg-unit'), detail: t('mg-detail'), chip: t('mgstate'),
+        dot: document.getElementById('mgdot')?.className || '',
+        apiState: u && u.state, apiDetail: u && u.detail,
+        tel: ['mg-hr', 'mg-pool', 'mg-lock', 'mg-up'].map(t),
+        vram: t('m-vram'), temp: t('m-temp'), holder: t('m-holder'),
+        asicChip: t('mnstate'),
+        gpuHead: t('mghead'), asicHead: t('mnhead'),
+      };
+    });
+
+    const STATES = ['ready', 'busy', 'queued', 'offline'];
+    record('the miner page shows the gpuminer unit\'s own reading',
+           !!mg.apiState && mg.chip === mg.apiState && mg.detail === mg.apiDetail &&
+           mg.unit.includes('gpuminer') && STATES.includes(mg.apiState) &&
+           mg.detail.length > 0,
+           `chip="${mg.chip}" api="${mg.apiState}" detail="${mg.detail.slice(0, 70)}"`);
+    // The dot is not decoration: green only when the surface is usable, amber while it holds
+    // or waits for the card, grey when it is offline.
+    const wantDot = (mg.apiState === 'busy' || mg.apiState === 'queued') ? 'busy'
+                  : (mg.apiState === 'ready' ? 'on' : '');
+    record('the miner card\'s LED tracks the unit state', mg.dot === wantDot,
+           `state ${mg.apiState} -> class "${mg.dot}" (want "${wantDot}")`);
+    // The shared GPU panel, on a page that has no prompt. It arrives through console.js's
+    // existing socket, so this also proves the page did not grow a second data path.
+    record('the miner page\'s GPU panel carries live card readings',
+           /\d/.test(mg.vram) && /\d/.test(mg.temp) && mg.holder.length > 0,
+           `vram="${mg.vram}" temp="${mg.temp}" holding="${mg.holder}"`);
+    // Withheld, not faked. Every gated row must say a token is missing rather than show a
+    // number, and it must not show a stale one either.
+    record('operator telemetry is withheld rather than faked',
+           mg.tel.every(v => /token required/.test(v)), mg.tel.join(' | '));
+    // One page, two units, two different pieces of hardware. If a future edit merges them,
+    // one of the two states has to become a lie -- the GPU miner is configured here and the
+    // ASIC panel has no hardware attached.
+    record('the miner page keeps its GPU and ASIC units distinct',
+           /Miner GPU/.test(mg.gpuHead) && /ASIC/.test(mg.asicHead) &&
+           STATES.includes(mg.asicChip) && perrs.length === 0,
+           `gpu chip "${mg.chip}", asic chip "${mg.asicChip}"` +
+           (perrs.length ? `, JS ERROR: ${perrs[0]}` : ''));
+
+    // Nothing on this page may be clipped, and it must not scroll sideways on a phone. The
+    // readings and the reason a reading is absent are the content; an ellipsis on either is
+    // data loss with extra steps.
+    await probe.setViewportSize({ width: 390, height: 900 });
+    await probe.waitForTimeout(250);
+    const clip = await probe.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('.mg-facts dd, .mg-facts dt, .mg-warn, .mg-lede')
+        .forEach(e => {
+          const cs = getComputedStyle(e);
+          if (cs.textOverflow === 'ellipsis') bad.push(`ellipsis on ${e.id || e.className}`);
+          if (e.scrollWidth > e.clientWidth + 1)
+            bad.push(`${e.id || e.className} clipped ${e.scrollWidth}>${e.clientWidth}`);
+        });
+      const vw = document.documentElement.clientWidth;
+      if (document.documentElement.scrollWidth > vw + 1)
+        bad.push(`page scrolls to ${document.documentElement.scrollWidth} at ${vw}`);
+      return bad;
+    });
+    record('the miner page clips nothing at 390px', clip.length === 0,
+           clip.join('; ') || 'clean');
+    await probe.close();
+  }
+
   // ---- no page throws a script error ------------------------------------
   // This exists because a generator shipped BROKEN JAVASCRIPT to production and the suite
   // passed 22/22 anyway. tuner.html's script had an unterminated string literal -- a `\\n`

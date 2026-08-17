@@ -166,12 +166,49 @@ Garrett asked for this directly. Everything must be a real reading, house rule: 
 bitrate, audio tracks, buffer length, dropped frames, measured throughput — all available from
 hls.js. `segment_s` and `segments` are already published on the session for this purpose.
 
-### 4. Five surfaces to bring online — NOT STARTED
+### 4. Five surfaces to bring online — 1 of 5 DONE (Miner)
 
 In his order: **Reinforce** as a real tuning/training studio (its own red test is recorded in §1
-and the alpha/rank question is his to answer), **Miner** online, **Coder** online, **Gateway**
+and the alpha/rank question is his to answer), **~~Miner~~ DONE**, **Coder** online, **Gateway**
 online, **Project** online ("this is like cowork"). All five already have rack units and
 backend apps; "online" means a working page and route, not a new surface.
+
+#### Miner — DONE on disk 2026-08-17 ~15:00, branch `worktree-miner-online`, NOT deployed
+
+The gap was not the ASIC page: it was that the `gpuminer` rack unit — the surface that actually
+hashes — linked to a page that only talked about Antminer rigs. `/miner.html` now carries **both**
+units, kept visibly distinct (`#mg-stage` GPU, `#mn-stage` ASIC; separate routes, separate
+tokens, and the page says so).
+
+- **Public rows** come from `/api/status` via the same `unit_state()` the rack uses, so the page
+  and the home page cannot disagree. **Numeric telemetry stays behind `SYM_MINER_TOKEN`** and
+  reads `token required` rather than showing a number — withheld, never faked.
+- **No second poller.** `site/console.js`'s single `render()` now dispatches a `sym:status`
+  event; the miner page listens. Its deliberate quiet-while-hidden behaviour is preserved.
+- **Two-click arm on Start**, re-labelled inline — *not* `window.confirm`, because a modal dialog
+  blocks every subsequent event in the page.
+- **Verified live on the card, twice**, through `POST /api/gpuminer/control` — the button's own
+  route. The page showed `52.32 MH/s · measured, reported by the miner binary (4s ago)`; after
+  stop, no `kawpowminer`, 876 MiB / 19.4 W, and the queued `image` tenant took the lock. Runs 3–4
+  are in `backend/apps/cryptominer/README.md`; steady state is now **52.3 – 53.2 MH/s across four
+  runs** and the ~0.9 MH/s spread has **no established cause**.
+- **Tests:** `tests/frontend.mjs` **32/32** — six new value-based miner assertions, each watched
+  go red against a copy with the status wiring cut, the panel's VRAM row deleted, and a fabricated
+  `53.01 MH/s` written into a gated row (27/32). Backend 106 passed.
+- **`docs/specs/miner-preemption.md` now exists** — it was cited twice here, once in the
+  cryptominer README and once in the module docstring while missing. It specifies the yield
+  protocol; its §7 says why it is still **not** implemented: it changes the hot path of the only
+  arbitrator of the only contended resource on this box.
+- **`backend/api.py` deliberately untouched**, so this needs **only** `sudo scripts/deploy.sh
+  --prune` — no API restart, and no Caddyfile change (`/miner.html` is a static file Caddy
+  already serves, not a new top-level route).
+- **Two decisions are Garrett's, and neither was guessed:** whether `SYM_MINER_CMD` should point
+  at a real pool and wallet (it is `-U -M 500000` today — a benchmark that earns nothing and says
+  so on the page), and whether the miner should ever be left holding the card on a box that also
+  serves chat and image, given it is **not preemptible** (§5 item 8).
+- **Contention to know about:** at 15:00 the shared checkout had ~2,000 uncommitted lines of
+  *someone else's* work in `tools/build_pages.py`. My commit is rebased onto `e38f463` and does
+  not touch theirs, but whoever lands second in that file resolves the conflict.
 
 ### 5. Site-wide, and he repeated it twice
 
