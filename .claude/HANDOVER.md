@@ -852,6 +852,7 @@ python3 tools/build_cost.py        # Owned vs Rented                     -> site
 python3 tools/build_stack.py       # Inference Architecture              -> site/documentation.html
 python3 tools/build_training.py    # the manual                          -> site/training.html
 python3 tools/build_sky.py         # the 19-render constellation         -> site/build.html
+python3 tools/build_tabs.py        # one-screen front page, tab strip    -> site/index.html
 python3 tools/build_cachebust.py   # <-- ALWAYS LAST. stamps ?v=<hash> on every local asset
 ```
 `tools/build_gallery.py` is separate, and which flag you use decides whether it touches the
@@ -875,7 +876,7 @@ place that should compute a render's dimensions: `_art.dims()` reads the PNG's I
 **Always run every generator twice and diff before committing.** One line does it:
 ```bash
 md5sum site/*.html site/*.css site/*.js > /tmp/a
-for g in pages masthead rack console cost stack training sky cachebust; do python3 tools/build_$g.py >/dev/null; done
+for g in pages masthead rack console cost stack training sky tabs cachebust; do python3 tools/build_$g.py >/dev/null; done
 md5sum site/*.html site/*.css site/*.js > /tmp/b && diff /tmp/a /tmp/b && echo IDEMPOTENT
 ```
 

@@ -202,6 +202,33 @@ try {
   record('no page throws a script error', broken.length === 0,
          broken.length ? broken.join(' | ').slice(0, 160) : 'all 12 pages clean');
 
+  // ---- the front page is one screen, and loses nothing to get there -------
+  // Two properties, and the second is the one that matters. At a large viewport the page
+  // must not scroll. Below the gate it must scroll AND show every section -- because the
+  // whole justification for tabbing is that nothing is dropped, only folded, and a phone
+  // visitor who silently lost two thirds of the page would make that false.
+  const ns = { big: null, small: null };
+  for (const [w, h, key] of [[1440, 900, 'big'], [1440, 700, 'small']]) {
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: w, height: h });
+    await probe.goto(BASE, { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(250);
+    ns[key] = await probe.evaluate(() => {
+      const d = document.documentElement;
+      return {
+        scrolls: d.scrollHeight > d.clientHeight + 1,
+        visible: ['rack', 'console', 'more'].filter(i => {
+          const e = document.getElementById(i); return e && !e.hidden; }),
+      };
+    });
+    await probe.close();
+  }
+  record('the front page is one screen, and folds rather than drops',
+         ns.big.scrolls === false && ns.big.visible.length === 1
+           && ns.small.scrolls === true && ns.small.visible.length === 3,
+         `1440x900 scrolls=${ns.big.scrolls} showing [${ns.big.visible}]; `
+         + `1440x700 scrolls=${ns.small.scrolls} showing [${ns.small.visible}]`);
+
   // ---- the GPU panel beside a prompt carries a real reading ---------------
   // The rule this exists for: no decorative indicators. A panel that renders its layout but
   // never receives data is exactly the fake gauge the site argues against, and it looks

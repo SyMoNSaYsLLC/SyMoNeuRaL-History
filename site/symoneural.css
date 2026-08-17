@@ -1597,3 +1597,43 @@
   .cu-hist{max-height:150px}
   .cu-main{padding-left:0}
 }
+
+/* ---- one-screen front page ------------------------------------------------
+   `ns-` prefixed, grepped against both stylesheets first. The tab strip itself is always
+   visible; the NO-SCROLL behaviour is gated below. */
+.ns-tabs{border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+  background:var(--panel2)}
+.ns-tabwrap{display:flex; align-items:center; gap:4px; padding-top:0; padding-bottom:0}
+.ns-tab{
+  cursor:pointer; padding:13px 16px; border:0; background:none; color:var(--dim);
+  font:600 12.5px/1 inherit; border-bottom:2px solid transparent; margin-bottom:-1px;
+  transition:color .14s ease, border-color .14s ease;
+}
+.ns-tab:hover{color:var(--fg)}
+.ns-tab.on{color:var(--accent); border-bottom-color:var(--accent)}
+.ns-tab:focus-visible{outline:2px solid var(--accent); outline-offset:-3px}
+.ns-tabnote{
+  margin-left:auto; color:var(--faint); font-size:11px; line-height:1.5;
+  max-width:44ch; text-align:right;
+}
+
+/* The one-screen layout. Gated on BOTH dimensions, and that gate is doing real work:
+   - at 390px the front page is 9,161px tall; ten screens do not become one, and pretending
+     otherwise hides things a phone visitor will never find.
+   - browser zoom shrinks the effective viewport, so at 200% this query stops matching and
+     the page goes back to scrolling on its own -- which is exactly what someone who has
+     zoomed in needs. A no-scroll layout that survives zoom by clipping is a bug.
+   Below the gate, nothing here applies and the page behaves as it always did. */
+@media (min-width:1100px) and (min-height:780px){
+  html.ns, html.ns body{height:100%; overflow:hidden}
+  html.ns body{display:flex; flex-direction:column}
+  html.ns header,html.ns .masthead,html.ns .ns-tabs,html.ns footer{flex:0 0 auto}
+  /* The panel is the only thing that scrolls. min-height:0 is load-bearing: without it a
+     flex child refuses to shrink below its content and the page scrolls after all. */
+  html.ns #rack,html.ns #console,html.ns #more{
+    flex:1 1 auto; min-height:0; overflow-y:auto; border-top:0;
+  }
+  html.ns .masthead{padding-top:22px; padding-bottom:14px}
+  html.ns footer{padding:10px 0}
+  html.ns .foot{font-size:11.5px}
+}

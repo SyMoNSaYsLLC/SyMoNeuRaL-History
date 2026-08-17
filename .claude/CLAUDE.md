@@ -127,6 +127,7 @@ python3 tools/build_console.py     # control board           -> site/index.html
 python3 tools/build_cost.py        # Owned vs Rented         -> site/documentation.html
 python3 tools/build_stack.py       # Inference Architecture  -> site/documentation.html
 python3 tools/build_training.py    # manual                  -> site/training.html
+python3 tools/build_tabs.py        # one-screen front page   -> site/index.html
 python3 tools/build_gallery.py     # homepage art (uses GPU) -> site/art-*.png
 python3 tools/build_gallery.py --restamp   # redraw the watermark bar only -- NO GPU
 ./scripts/symoneural.sh on|off|status   # the live API (off is the kill switch)
