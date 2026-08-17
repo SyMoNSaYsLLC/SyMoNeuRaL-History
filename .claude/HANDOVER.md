@@ -490,6 +490,20 @@ Anything in the test suite that asserts on the rack or control board must now `o
 first — a hidden element has no box, which is exactly how `pitch, hero and rack fit one
 look` went vacuous (it required `rack.top < innerHeight`; a hidden element reports 0).
 
+**`html.ns #hero:not([hidden])` — do not simplify that selector.** `hidden` works by
+applying `display:none` from the *browser's* stylesheet, so any author rule that sets
+`display` beats it. Written bare, the rule meant the masthead could never hide: every tab
+rendered the hero above it and the page had two scrollbars. It reached production. The
+other three panels were fine only because nothing sets `display` on them.
+
+**The recurring failure in this layout is testing a proxy instead of the render.** Three
+times now: the document's scroll height instead of the panel's; `rack.top` on an element
+that was hidden; and `element.hidden`, the *attribute*, on an element the browser was
+painting. The suite now reads `getComputedStyle(...).display` and asserts that while any
+panel is open no other panel occupies vertical space. If you add a layout assertion here,
+**verify it fails when you reintroduce the bug** — that check is cheap and has caught a
+vacuous assertion every time it has been run.
+
 ### 3.0b `scripts/deploy.sh` — three fixes, all worth understanding
 
 1. **It publishes web assets only.** It used to `find -maxdepth 1 -type f` and install
