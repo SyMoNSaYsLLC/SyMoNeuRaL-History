@@ -291,6 +291,35 @@ try {
            + (v.ghosts ? ` GHOSTS: ${v.ghosts}` : '')
          ).join(' | '));
 
+  // ---- one page per section, at its own URL -------------------------------
+  // tools/build_split.py writes these and backend/api.py routes them. Three properties,
+  // and the third is the one that would rot silently: each page must carry ONLY its own
+  // section (a stale generator run leaves a control board welded to every page -- that
+  // happened, because `<section id="console" style=...>` did not match a pattern expecting
+  // `">`), the clean URL must actually be served, and the section must fit its viewport
+  // with no internal scroll at the size Garrett actually uses.
+  const SPLIT = [['overview', 'hero'], ['livestack', 'rack'],
+                 ['controlboard', 'console'], ['receipts', 'more']];
+  const split = [];
+  for (const [slug, keep] of SPLIT) {
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: 1855, height: 745 });
+    const resp = await probe.goto(new URL('/' + slug, BASE).href, { waitUntil: 'networkidle' });
+    const m = await probe.evaluate((k) => {
+      const ids = ['hero', 'rack', 'console', 'more'];
+      const present = ids.filter(i => document.getElementById(i));
+      const e = document.getElementById(k);
+      return { present, has: !!e,
+               fits: e ? e.scrollHeight <= e.clientHeight + 1 : false,
+               content: e ? e.scrollHeight : 0, panel: e ? e.clientHeight : 0 };
+    }, keep);
+    split.push({ slug, status: resp ? resp.status() : 0, ...m });
+    await probe.close();
+  }
+  record('each section has its own URL, carrying only itself, fitting one screen',
+         split.every(s => s.status === 200 && s.has && s.present.length === 1 && s.fits),
+         split.map(s => `${s.slug}=${s.status} [${s.present}] ${s.content}/${s.panel}`).join('  '));
+
   // ---- the GPU panel beside a prompt carries a real reading ---------------
   // The rule this exists for: no decorative indicators. A panel that renders its layout but
   // never receives data is exactly the fake gauge the site argues against, and it looks

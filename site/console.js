@@ -291,5 +291,25 @@
     });
   }
 
+  // The control board's fold, same contract as the rack's. Its own key and its own class
+  // so the two remember independently -- someone reading the rack in detail is not
+  // necessarily reading nineteen module explanations too.
+  var cnBtn = el('cn-fold'), cnSec = document.getElementById('console');
+  if (cnBtn && cnSec) {
+    var setCn = function (open) {
+      cnSec.classList.toggle('cn-open', open);
+      cnBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      cnBtn.textContent = open ? 'Hide what each reading means'
+                               : 'Show what each reading means';
+      try { localStorage.setItem('symoneural.console.detail', open ? '1' : '0'); } catch (e) {}
+    };
+    var cnSaved = '0';
+    try { cnSaved = localStorage.getItem('symoneural.console.detail') || '0'; } catch (e) {}
+    setCn(cnSaved === '1');
+    cnBtn.addEventListener('click', function () {
+      setCn(!cnSec.classList.contains('cn-open'));
+    });
+  }
+
   if (el('units') || el('m-vram')) connect();
 })();

@@ -91,9 +91,15 @@ CONSOLE = f"""{BEGIN}
       <span class="key meas"><s></s>Measured here</span>
       <span class="key proj"><s></s>Projected</span>
       <span class="sp" id="con-link">socket: connecting&hellip;</span>
+      <!-- The fold control for the one-screen layout, same contract as the rack's: a real
+           button with aria-pressed, hidden below the gate where nothing needs saving. Each
+           module's two explanation lines are what it collapses; the reading and its
+           provenance tag never move. -->
+      <button type="button" class="rk-fold cn-fold" id="cn-fold" aria-pressed="false"
+              aria-controls="console-mods">Show what each reading means</button>
     </div>
 
-    <div class="console">
+    <div class="console" id="console-mods">
       {module("live", "VRAM free", "&mdash;", "", "of 15.92 GiB", "m-vram", "m-vrambar", plain="Room left on the card for models right now")}
       {module("live", "Power draw", "&mdash;", "", "300 W limit", "m-pwr", "m-pwrbar", plain="What the card is pulling from the wall")}
       {module("live", "Die temp", "&mdash;", "", "250-330 W range", "m-temp", plain="How hot the chip is running")}

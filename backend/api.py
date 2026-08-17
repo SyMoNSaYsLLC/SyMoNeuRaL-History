@@ -1758,6 +1758,38 @@ async def asic_emulator(request: Request, body: EmuBody) -> dict:
 # (§5 item 13) -- a surface answers at /api/<id>.
 app.include_router(tuner.router, prefix="/api/tuner", tags=["tuner"])
 
+# ---- clean URLs for the four front-page sections ---------------------------
+# tools/build_split.py writes one page per section. These give them addresses without a
+# `.html`, which is what makes them shareable. It is done HERE because FastAPI does all
+# the routing -- ops/Caddyfile has no rewrites and must not grow any.
+#
+# Declared BEFORE the StaticFiles mount below. That mount matches everything at "/", so a
+# route added after it is unreachable; this is the same ordering rule the routers above
+# depend on. The .html files stay reachable too -- these are an addition, not a redirect.
+SECTION_PAGES = {
+    "overview": "overview.html",
+    "livestack": "livestack.html",
+    "controlboard": "controlboard.html",
+    "receipts": "receipts.html",
+}
+
+
+def _section_route(filename: str):
+    async def page() -> FileResponse:
+        f = SITE / filename
+        if not f.is_file():
+            # Never guess: this file only exists if build_split.py has run. A 404 naming
+            # the generator is more useful than a blank page.
+            raise HTTPException(status_code=404,
+                                detail=f"{filename} has not been generated; "
+                                       "run python3 tools/build_split.py")
+        return FileResponse(f, media_type="text/html")
+    return page
+
+
+for _slug, _file in SECTION_PAGES.items():
+    app.get(f"/{_slug}", include_in_schema=False)(_section_route(_file))
+
 if SITE.is_dir():
     app.mount("/", StaticFiles(directory=str(SITE), html=True), name="site")
 
