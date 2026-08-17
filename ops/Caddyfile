@@ -42,6 +42,27 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# The four front-page sections at their own addresses. These are FastAPI routes, not
+	# files on disk, so without this block `file_server` below looks for a file called
+	# "overview", does not find one, and returns 404 without ever asking the API. That is
+	# exactly what happened when they were first deployed.
+	#
+	# This is a DELEGATION, not a rewrite or an alias -- the same shape as /docs* above.
+	# The URL is not being mapped to a different resource here; this only says which
+	# process owns the path. The rule in .claude/CLAUDE.md is that no routing DECISION is
+	# made in this file, and none is: backend/api.py decides what /livestack returns.
+	#
+	# The cost is that the path list now lives in two files. Adding a fifth section means
+	# editing this block as well as tools/build_split.py and backend/api.py. The assertion
+	# `each section has its own URL` in tests/frontend.mjs hits all four and requires 200,
+	# so running the suite against production catches the omission immediately -- run it
+	# there after any change here, because against localhost the API answers directly and
+	# this block is not exercised at all.
+	@sections path /overview /livestack /controlboard /receipts
+	handle @sections {
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# Anything else is a static file.
 	handle {
 		file_server
