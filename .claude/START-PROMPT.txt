@@ -6,14 +6,25 @@ for someone with zero prior context and every path, number and decision you need
 Then read /home/google/Symoneural/.claude/CLAUDE.md, which holds the rules, and skim
 `git log` (every commit states its reason; several design choices look arbitrary without it).
 
-Nothing is broken and nothing is blocked. Before you change anything, confirm that for
-yourself:
+FIRST, CHECK WHETHER I HAVE DEPLOYED. A large batch of frontend work is finished, tested
+and committed but was waiting on me when the last session ended — the four section URLs,
+the rack and control board folds, the chat rebuild and the type scale. Until I have run the
+restart and deploy, production is behind the repo and the two test runs below will NOT
+agree. That is expected, not a fault:
 
     cd /home/google/Symoneural
-    node tests/frontend.mjs                          # expect 17/17
-    node tests/frontend.mjs https://symoneural.com   # expect 17/17
+    node tests/frontend.mjs                          # expect 25/25
+    node tests/frontend.mjs https://symoneural.com   # 25/25 only once I have deployed
 
-Four things to know before your first edit:
+If production is behind, say so and give me the command rather than working around it:
+
+    sudo systemctl restart symoneural-api && sudo scripts/deploy.sh --prune
+
+The restart is not optional at the moment — /overview, /livestack, /controlboard and
+/receipts are routes in backend/api.py, so a deploy without a restart serves the pages
+at their .html names and 404s the clean URLs.
+
+Five things to know before your first edit:
 
 1. I do the deploys. Editing backend/api.py changes the API as soon as the service
    restarts, but anything under site/ does not reach a visitor until I run
@@ -21,7 +32,8 @@ Four things to know before your first edit:
    that it needs deploying and give me the command — do not describe it as live.
 
 2. Run every generator twice and diff before committing, and run
-   tools/build_cachebust.py LAST. HANDOVER §6 has the one-liner for both.
+   tools/build_cachebust.py LAST. There are ELEVEN generators now. HANDOVER §6 has the
+   one-liner for both.
 
 3. One GPU, 15.92 GiB, one tenant at a time via a mkdir lock at run/gpu.lock.d.
    Everything that touches the card goes through scripts/gpu-governor.sh and names its
@@ -31,6 +43,16 @@ Four things to know before your first edit:
    site, what is built but waiting on my deploy, and what is repo-only. I lose track
    across rapid-fire requests and I will interrupt you mid-task.
 
-Start with HANDOVER §5 item 0 — there is one open question about the image watermarks that
-needs my answer before anyone acts on it. Ask me that, then propose an order for the rest
-of §5 and wait for me to confirm before you begin.
+5. MEASURE THE RENDERED PAGE, NOT A PROXY FOR IT. Four layout assertions in this repo have
+   passed while the page was visibly broken, every one of them because it measured
+   something adjacent to what a visitor sees: the document's scroll height instead of the
+   panel's, an element's top while it was hidden, and `element.hidden` on an element Chrome
+   was painting. Read `getComputedStyle` and real box heights, and when you add a layout
+   assertion, put the bug back and confirm it fails. That check is cheap and has caught a
+   useless assertion every single time it has been run. HANDOVER §3.0 has the details.
+
+Where to start: ask me what I want next rather than assuming. If I have nothing specific,
+the open items are in HANDOVER §5 — the highest-stakes one is that the licensing DRM fails
+open, and the cheapest is regenerating the contract signing key, whose private half was
+lost with /tmp and which currently leaves a committed public key that can verify contracts
+nobody can sign. Neither is urgent; no contracts have been issued.

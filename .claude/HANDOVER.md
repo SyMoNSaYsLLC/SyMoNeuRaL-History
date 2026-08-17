@@ -1,10 +1,13 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-17 01:40. Written for a fresh agent with zero prior context.**
+**Last updated 2026-08-17 07:30. Written for a fresh agent with zero prior context.**
 
-> **If you read nothing else:** nothing is broken, nothing is blocked. Run
-> `node tests/frontend.mjs https://symoneural.com` (expect 21/21), read `git log`, then
-> pick up §5. The one thing you cannot do yourself is deploy — see §0b.
+> **If you read nothing else:** nothing is broken, nothing is blocked, but **production is
+> probably behind the repo.** A finished, tested, committed batch of frontend work was
+> waiting on Garrett's deploy when the last session ended. Run `node tests/frontend.mjs`
+> (expect **25/25** local) and `node tests/frontend.mjs https://symoneural.com` — if the
+> second is lower, that is the pending deploy, not a fault. Read `git log`, then §5. The
+> one thing you cannot do yourself is deploy — see §0b.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
 conversation, so every number, path and decision you need is stated here.
@@ -17,9 +20,13 @@ conversation, so every number, path and decision you need is stated here.
 
 ## 0. Sixty-second version
 
-- **Nothing is broken and nothing is blocked.** The site is deployed, the API is current,
-  and `node tests/frontend.mjs https://symoneural.com` passes **21/21 against the public
-  site** — including generating a real image on the real card mid-test.
+- **Nothing is broken and nothing is blocked**, but check the deploy state before you
+  trust production: the suite is **25/25 locally**, and production matches only after
+  `sudo systemctl restart symoneural-api && sudo scripts/deploy.sh --prune`. The restart is
+  not optional right now — `/overview`, `/livestack`, `/controlboard` and `/receipts` are
+  routes in `backend/api.py`, so deploying without restarting serves those pages at their
+  `.html` names and 404s the clean URLs. The suite generates a real image on the real card
+  mid-run, so it is a genuine end-to-end check.
 - The repo is at `/home/google/Symoneural`, branch `main`, no remote. **Every commit
   states its reason**; `git log` is genuinely worth twenty minutes before you touch
   anything. Several entries below will otherwise look arbitrary.
@@ -35,14 +42,18 @@ conversation, so every number, path and decision you need is stated here.
   mining control, operator-gated, offline), `tuner` (IPTV, ready) and `gateway` (TRON
   licensing, designed-not-deployed). §2c has the shape; §2d the dev fee; §2e firmware and
   the QEMU emulator.
+- **The front page is four sections, each with its own URL** — `/overview`, `/livestack`,
+  `/controlboard`, `/receipts` — and also a tabbed one-screen `index.html`. Eleven
+  generators now. §3.0 explains the layout and, more usefully, the four ways its tests
+  lied. Read that before touching it.
 - **The queue in §5 was rewritten** at the end of that session. Read §5, not §5b — the
   latter is the original list kept only for reference and much of it is done.
 
 ## 0b. First moves
 
 ```bash
-node tests/frontend.mjs                 # 21/21 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 21/21 against production
+node tests/frontend.mjs                 # 25/25 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 25/25 ONCE THE PENDING DEPLOY LANDS
 git log --oneline -25
 ```
 
@@ -59,7 +70,7 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
-## 1. State of the machine, verified 2026-08-17 05:35
+## 1. State of the machine, verified 2026-08-17 07:30
 
 | Thing | State |
 |---|---|
@@ -68,10 +79,12 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 | `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
 | `symoneural-api.service` | active, restarted 01:03, PID 170388 |
 | Caddy | serving, TLS auto-renew |
-| `tests/frontend.mjs` | **21/21 local, 21/21 production** |
+| `tests/frontend.mjs` | **25/25 local.** Production matches only after the pending deploy |
 | Rack units | **8** — chat, image, remix, ravencalc, train, asicminer, tuner, gateway |
 | Webroot orphans | 0 (35 pruned across two deploys) |
-| Generators | 9, all idempotent, hash-verified across two runs |
+| Generators | **11**, all idempotent, hash-verified across two runs |
+| `/overview` `/livestack` `/controlboard` `/receipts` | Built and routed in `backend/api.py`; **need the API restart** before they answer |
+| Pending deploy | Section URLs, rack + control board folds, chat rebuild, type scale, `/api/chat` multi-turn, composer and tuner fixes |
 | Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
 
 ## 2. Shipped 2026-08-17 (all of it is live)
@@ -676,6 +689,31 @@ cascade.** The tooling for that is in §6.
 These were each found by audit and verified, and none is fixed. They are listed first
 because they are the cheapest real work available.
 
+0. **The contract signing key's private half is gone, and the committed public half is an
+   orphan.** `backend/apps/licensing/contract-signing.pub` is tracked; the matching private
+   key lived in `/tmp` and did not survive. Checked, so nobody re-checks: `/tmp/t.key` is a
+   *different* test key and does not match. Right now the repo can verify contracts that
+   nobody can sign. **Harmless — no contracts have ever been issued** — and it stays
+   harmless only until someone tries to issue one. Regenerating creates the company's
+   signing key, so it is Garrett's call, not an agent's:
+
+   ```bash
+   python3 backend/apps/licensing/issue.py keygen --out ~/symoneural-signing
+   ```
+
+   Not `/tmp` this time. That is what lost it.
+
+0b. **Live stack still scrolls below ~1366px wide.** Every other section fits at every
+   in-gate viewport; the rack overflows by 49-77px between 1301 and 1366 because the rack
+   column narrows enough for unit names to wrap. Not a regression and not hidden from
+   anyone — recorded because rounding it off is how the last four rounds of this went. §3.0
+   has the measurements.
+
+0c. **`/` still serves the tabbed front page, not `/overview`.** Both exist and both work.
+   Whether the root should redirect is a product decision Garrett has not made, so nothing
+   assumes it. If he says yes it is one route in `backend/api.py`, declared before the
+   StaticFiles mount like the other four.
+
 1. **The SyMoN_ML DRM fails open, and that is the most serious item here.**
    `auth_daemon.py` in the blueprint calls `_check_local_sandbox_state()` as a *fallback*
    when the TRON lookup does not match, and that function is `return True` unconditionally.
@@ -1015,7 +1053,7 @@ broken** — this is a queue of new work, not a repair list.
 ./scripts/symoneural.sh off         # stops everything, frees the card
 ```
 
-### The build chain — nine generators, and the order matters at the end
+### The build chain — eleven generators, and the order matters at both ends
 ```bash
 python3 tools/build_pages.py       # chat/image/ravencalc/remix surfaces -> site/*.html
 python3 tools/build_masthead.py    # pitch + hero side by side           -> site/index.html
@@ -1026,8 +1064,15 @@ python3 tools/build_stack.py       # Inference Architecture              -> site
 python3 tools/build_training.py    # the manual                          -> site/training.html
 python3 tools/build_sky.py         # the 19-render constellation         -> site/build.html
 python3 tools/build_tabs.py        # one-screen front page, tab strip    -> site/index.html
+python3 tools/build_split.py       # one page per section  -> site/{overview,livestack,
+                                   #   controlboard,receipts}.html  (READS index.html;
+                                   #   must run after everything that writes into it)
 python3 tools/build_cachebust.py   # <-- ALWAYS LAST. stamps ?v=<hash> on every local asset
 ```
+Two ordering constraints, not one. `build_split.py` **reads** the assembled `index.html`
+and writes four pages from it, so anything that edits `index.html` must run before it or
+those pages ship stale. And `build_cachebust.py` stays last, now stamping 16 pages rather
+than 12 — if that count drops, a generator has stopped emitting something.
 `tools/build_gallery.py` is separate, and which flag you use decides whether it touches the
 card at all:
 
