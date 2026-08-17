@@ -1240,8 +1240,17 @@ GATEWAY_BODY = """    <div class="pgwrap">
             <li><b>Energy.</b> TRON meters execution as Bandwidth and Energy rather than a
               gas auction. Renting Energy moves the execution cost off the end user.</li>
             <li><b>Settlement.</b> The daemon broadcasts the validation state and the
-              payment; DPoS confirmation unlocks the compiled workspace.</li>
+              payment. Once DPoS confirms it, the settlement is read back off the chain and
+              checked field by field &mdash; payer, token, amount, workspace &mdash; and a
+              short-lived entitlement is issued for the workspace it covers.</li>
           </ol>
+          <p class="gw-note">One thing this is not: <b>a copy-protection scheme.</b> A
+            blockchain is public, so a key published to it is published to everyone, and any
+            arrangement that actually withholds one puts a server we run in the loop &mdash;
+            which makes that server the authority and the chain a payment rail. So we call it
+            a payment rail. Settlement is final, auditable and needs no card processor; that
+            is the whole of the claim, and it is worth having. The encryption at rest is
+            real and is not load-bearing against a determined licensee.</p>
         </div>
       </div>
 
@@ -1271,9 +1280,15 @@ GATEWAY_BODY = """    <div class="pgwrap">
         <div class="callout">
           <h3>What is, and is not, on this box</h3>
           <p>There is <b>no wallet, no private key and no signing code</b> in the process
-            serving this page, and there is no off-chain daemon. Reading a public chain needs
-            none of them: the calls this box makes are unauthenticated, and it cannot build,
-            sign or broadcast a transaction &mdash; its own test suite asserts that.</p>
+            serving this page. Reading a public chain needs none of them: the calls this box
+            makes are unauthenticated, and it cannot build, sign or broadcast a transaction
+            &mdash; its own test suite asserts that.</p>
+          <p>The licensing logic is split along the same line. <b>Checking</b> a licence needs
+            only public information, so it runs here: reading the settlement off the chain,
+            confirming the payer, the token, the amount and the workspace all match, and
+            verifying an entitlement against a public key. <b>Issuing</b> one needs a private
+            key, so it does not run here and cannot. A break-in on this box could read
+            licences and could not mint one.</p>
           <p>Signing lives on the operator&rsquo;s own machine. Whether a contract is deployed,
             and what is at that address, is <b>not claimed on this page</b> &mdash; it is read
             from the chain and reported in the status line above, so this page cannot come to

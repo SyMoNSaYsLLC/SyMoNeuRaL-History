@@ -20,7 +20,7 @@
 // Run at the `istanbul` hardfork to match `build.mjs`'s `evmVersion`, so the code under test
 // is the code that will be deployed rather than a re-compilation at friendlier settings.
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -262,6 +262,33 @@ check('pausing does not revoke a licence already paid for', BigInt(bytesToHex(st
 await call(licenceAddr, DEPLOYER, enc('setPaused(bool)', 0n));
 r = await redeem({ nonce: 10n });
 check('unpausing restores redemption', r.ok, r.reason);
+
+// ------------------------------------------------- a fixture for the Python decoding side
+//
+// `licensing/verify.py` decodes this exact return shape, and its own tests build the fake
+// node response with OUR encoder -- so a wrong belief about the layout would agree with
+// itself and pass. Write out what the EVM actually returned and let Python decode that
+// instead. bytes32 is left-aligned while every other word is right-aligned, which is the
+// specific thing a self-consistent test cannot catch.
+const rec = await call(licenceAddr, DEPLOYER, enc('licenceByNonce(uint256)', 1n));
+check('licenceByNonce returns six words for a settled licence', rec.ok && rec.ret.length === 192,
+      `${rec.ret.length} bytes`);
+
+const fixture = {
+  note: 'Emitted by ops/gateway/test_contracts.mjs from a real EVM run. Do not hand-edit.',
+  signature: 'licenceByNonce(uint256)',
+  nonce: 1,
+  raw: bytesToHex(rec.ret).replace(/^0x/, ''),
+  expect: {
+    payer_hex: bytesToHex(buyer.bytes).replace(/^0x/, ''),
+    token_hex: bytesToHex(tokenAddr.bytes).replace(/^0x/, ''),
+    amount: FEE.toString(),
+    workspace_hex: bytesToHex(WORKSPACE).replace(/^0x/, ''),
+  },
+};
+writeFileSync(new URL('./artifacts/licence-record.json', import.meta.url),
+              JSON.stringify(fixture, null, 2) + '\n');
+console.log('\nwrote artifacts/licence-record.json for the Python decoder tests');
 
 // -------------------------------------------------------------------------------- the verdict
 const bad = results.filter(x => !x.ok).length;

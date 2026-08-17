@@ -26,6 +26,7 @@ import os
 import pathlib
 import re
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -196,8 +197,17 @@ class TestAbi(unittest.TestCase):
         self.assertEqual(abi.decode_params(["uint256", "string"], data), [7, "SyMoNeuRaL"])
 
     def test_refusals(self):
+        # `bytes32` and `uint64` used to be refused here and are now supported: the licence
+        # record returns both, so `licensing/verify.py` needs them. The refusal that matters
+        # is still that an UNKNOWN type raises rather than being guessed at.
         with self.assertRaises(abi.AbiError):
-            abi.encode_params(["bytes32"], [b"\x00" * 32])
+            abi.encode_params(["uint128"], [1])
+        with self.assertRaises(abi.AbiError):
+            abi.decode_params(["bytes16"], "00" * 32)
+        with self.assertRaises(abi.AbiError):
+            abi.encode_params(["bytes32"], [b"\x00" * 31])       # wrong length, not 32
+        with self.assertRaises(abi.AbiError):
+            abi.encode_params(["uint64"], [1 << 64])             # out of range
         with self.assertRaises(abi.AbiError):
             abi.encode_params(["uint256"], [-1])
         with self.assertRaises(abi.AbiError):
@@ -441,12 +451,81 @@ class TestUnitState(unittest.TestCase):
         self.assertIn("70,152,715", detail)
 
     def test_present_contract_is_measured_and_still_says_why_it_is_offline(self):
+        """A deployed contract is not a working licensing service. This is THE test.
+
+        §4 of the completion spec names "the contract is there, so report ready" as the
+        wrong commit that this surface invites. A present contract, a reachable node and a
+        clean reading must still be `offline` while no licence has ever settled.
+        """
         with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
             state, detail = gateway.unit_state(reading_for())
         self.assertEqual(state, "offline")
         self.assertIn("measured", detail)
         self.assertIn("deployed", detail)
-        self.assertIn("daemon is not built", detail)
+        self.assertIn("no licence has ever cleared", detail)
+
+    def test_a_broken_clearance_store_can_never_light_the_led(self):
+        """`_cleared` is the only route to `ready`, so every failure in it must mean offline."""
+        for boom in (OSError("permission denied"), ValueError("corrupt"),
+                     ImportError("no licensing package"), RuntimeError("boom")):
+            with mock.patch.object(gateway, "_cleared", side_effect=boom):
+                with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                         SYM_GATEWAY_CONTRACT=USDT):
+                    try:
+                        state, _ = gateway.unit_state(reading_for())
+                    except Exception as e:                      # noqa: BLE001
+                        self.fail(f"unit_state raised {type(e).__name__} instead of offline: {e}")
+            self.assertEqual(state, "offline", f"{type(boom).__name__} produced {state}")
+
+    def test_ready_requires_a_settlement_against_this_exact_contract(self):
+        """A clearance recorded for another network or address is not evidence about this one."""
+        rec = types.SimpleNamespace(nonce=42, at_block=70_152_800)
+
+        # The store is asked for (network, contract) and answers None when they do not match;
+        # that filtering is store.latest's job and is tested in apps/licensing. Here we only
+        # assert unit_state honours a None as "not ready".
+        with mock.patch.object(gateway, "_cleared", return_value=None):
+            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                     SYM_GATEWAY_CONTRACT=USDT):
+                state, _ = gateway.unit_state(reading_for())
+        self.assertEqual(state, "offline")
+
+        with mock.patch.object(gateway, "_cleared", return_value=rec):
+            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                     SYM_GATEWAY_CONTRACT=USDT):
+                state, detail = gateway.unit_state(reading_for())
+        self.assertEqual(state, "ready")
+        self.assertIn("Licence #42", detail)
+        self.assertIn("70,152,800", detail)
+
+    def test_ready_is_unreachable_without_a_present_contract(self):
+        """Even with a settlement on record, a missing or unverified contract stays offline."""
+        rec = types.SimpleNamespace(nonce=1, at_block=1)
+        with mock.patch.object(gateway, "_cleared", return_value=rec):
+            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                     SYM_GATEWAY_CONTRACT=USDT):
+                for reading in (None,
+                                reading_for(contract_present=False, contract_name=None,
+                                            abi_functions=None),
+                                reading_for(contract_present=None),
+                                reading_for(error="HTTP 429")):
+                    state, _ = gateway.unit_state(reading)
+                    self.assertEqual(state, "offline", f"{reading} produced {state}")
+
+    def test_the_only_states_this_surface_can_emit_are_known_to_the_frontend(self):
+        """`site/console.js:47` lights the LED for anything that is not literally `offline`."""
+        seen = set()
+        rec = types.SimpleNamespace(nonce=1, at_block=1)
+        for cleared in (None, rec):
+            with mock.patch.object(gateway, "_cleared", return_value=cleared):
+                for kw in ({}, {"error": "boom"}, {"contract_present": False},
+                           {"contract_present": None}):
+                    with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                             SYM_GATEWAY_CONTRACT=USDT):
+                        seen.add(gateway.unit_state(reading_for(**kw))[0])
+                    with env():
+                        seen.add(gateway.unit_state(None)[0])
+        self.assertTrue(seen <= {"ready", "offline"}, f"unexpected state(s): {seen}")
 
     def test_every_detail_line_names_the_network_once_one_is_chosen(self):
         """A gateway that does not say which chain it is on is one misconfiguration away
