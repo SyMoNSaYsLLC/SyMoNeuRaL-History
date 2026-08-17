@@ -279,7 +279,23 @@ path (the `/overview /livestack /controlboard /receipts` class) costs four files
   `(href|src)=` regex matches the tail of `data-src`), and `documentation.html#hardware` is a
   file *plus* an anchor, so both halves need checking — that second one is what found the break.
 - **Fix grammar, capitalisation, and sentences that do not make sense.** Sweep, do not
-  blind-replace — most `MIT` matches in this corpus are ordinary words.
+  blind-replace — most `MIT` matches in this corpus are ordinary words. **Partly done, and the
+  rest is deliberately deferred — read this before re-running it.**
+  - Fixed: both `/api/accounts/status` notes, which were lower-case fragments rendered verbatim
+    as a sentence on `/account.html` and read like a log line that had escaped onto the page
+    (`b5f4e4f`).
+  - A mechanical pass over all 20 pages (prose inside `<p>/<li>/<h*>/<dd>/<summary>`, looking for
+    lower-case sentence starts, doubled words, its/it's, and the product name misspelled) threw
+    **321 hits and not one real defect**. They are artefacts of the extractor, and both causes
+    are worth knowing before someone runs the same idea again: the bulk are `build.html`'s image
+    *prompts*, which are lower-case on purpose and are quoted input rather than prose, and the
+    rest are HTML entities — stripping `&mdash;` to a space turns "net of its own electricity —
+    12 to 41 days" into a sentence that looks broken and is not. **Regex will not find this
+    class of bug here. It needs reading.**
+  - Deferred on purpose: `site/miner.html`, `gateway.html`, `project.html`, `reinforce.html` and
+    the tuner pages are being rewritten by their own sessions *right now* (§1b). Proof-reading a
+    page that is mid-rewrite means proof-reading text that will not exist in an hour. Do this
+    sweep when the fleet has landed, and do it by reading the rendered pages.
 - **`SYM_ASIC_ENABLED=1` is confusing on the QEMU Antminer emulators.** His words. **DONE in
   three of four places**, and the confusion was worth naming precisely: the two variables gate
   the **HTTP API only**. `scripts/qemu-antminer.sh` needs neither, and no emulator can ever
