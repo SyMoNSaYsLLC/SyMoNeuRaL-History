@@ -116,6 +116,35 @@ files in `references/Projects_Crypto/Antminer/Whatsminer/` are failed downloads 
 Real Whatsminer firmware is tens of megabytes. Nothing here can be extracted, verified or
 flashed. Re-download from MicroBT's own portal before any MicroBT firmware work.
 
+### Update: real firmware obtained, and it is encrypted
+
+`Whatsminer-all-20260416.14` (41 MB, M3x/M5x/M6x) is now in `references/Projects_Crypto/`.
+Opening it settles the emulator question for MicroBT, and the answer is no.
+
+The container header is readable: magic `0xae640a3f`, a declared payload size, a header
+length of 6,812 bytes, and the **control board type as ASCII** — `h616`. Everything after
+the header measures **7.999 bits/byte of entropy** across the whole 41 MB, which is
+indistinguishable from random. Scanning for gzip, squashfs, UBI, JFFS2, ext, xz and cramfs
+magic finds only coincidental byte pairs with no valid structure behind them — precisely what
+random data produces.
+
+**So the payload is encrypted, and that is a category difference from Bitmain.** An Antminer
+package is a plain signed tarball: `tar` opens it, and its `runme.sh`, version gate and NAND
+offsets can all be read before flashing. A Whatsminer image cannot be opened at all without
+MicroBT's key. There is therefore no `runme.sh` pre-flight to reproduce, **and no emulation
+is possible** — you cannot extract a kernel from ciphertext.
+
+Two further nails in the emulator idea, independent of the encryption: the board is `h616`,
+an Allwinner SoC, and `qemu-system-arm` has machines only for Allwinner **H3, A10 and R40**.
+The one Whatsminer image on a SoC QEMU can model is the H3-based `bt1000` build for the
+M1/M2/M3 — hardware from 2016.
+
+`fwcheck.py --microbt` validates what can be validated: the magic, the size consistency and
+the declared board. That last one is the mistake worth catching, since MicroBT ships one
+`.bin` covering several models but only for the board named in its header. It also cleanly
+rejects the five fake `.bin` files described above — the 138-byte one reports magic
+`0x6d74683c`, which is ASCII `<htm`.
+
 **The good news is that MicroBT does not need any of it.** Whatsminer exposes the **btminer
 API** on TCP 4028 — JSON over a socket, with read-only status unauthenticated and privileged
 commands (reboot, power mode, pool change) sent as AES-encrypted tokens. `pyasic` already

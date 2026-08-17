@@ -315,3 +315,79 @@ def pkg_is_zip(p: pathlib.Path) -> bool:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ---------------------------------------------------------------- MicroBT / Whatsminer
+
+MICROBT_MAGIC = 0xAE640A3F      # little-endian, first four bytes
+
+
+def check_microbt(pkg: pathlib.Path) -> dict:
+    """Validate what can be validated about a Whatsminer .bin.
+
+    Which is the container header and nothing else, because **the payload is encrypted**.
+    Measured on Whatsminer-all-20260416.14: entropy is 7.999 bits/byte from the first byte
+    after the header to the end of a 41 MB file -- indistinguishable from random. Scanning
+    for gzip/squashfs/UBI/JFFS2/ext/xz/cramfs magic finds only coincidental byte pairs with
+    no valid structure behind them, which is exactly what random data produces.
+
+    That is a real difference from Bitmain, not a gap in this tool. An Antminer package is a
+    plain signed tarball that `tar` opens, so its runme.sh, version gate and NAND writes can
+    all be read before flashing. A Whatsminer image cannot be opened at all without MicroBT's
+    key, so there is no equivalent of the runme.sh pre-flight, and no way to emulate it --
+    you cannot extract a kernel from ciphertext.
+
+    What the header does carry, in the clear, is the **control board type** as ASCII. That is
+    worth checking: flashing an image built for one board to another is the mistake this can
+    actually catch.
+    """
+    import struct
+    out = {"package": pkg.name, "kind": "microbt", "magic_ok": None, "board": None,
+           "declared_payload": None, "header_bytes": None, "size_consistent": None,
+           "payload_encrypted": None, "would_pass": None, "notes": [], "error": None}
+    if not pkg.is_file():
+        out["error"] = f"no such file: {pkg}"
+        return out
+    size = pkg.stat().st_size
+    with pkg.open("rb") as fh:
+        head = fh.read(0x40)
+        if len(head) < 0x40:
+            out["error"] = "file is too short to hold a header"
+            return out
+        magic = struct.unpack("<I", head[0:4])[0]
+        out["magic_ok"] = (magic == MICROBT_MAGIC)
+        if not out["magic_ok"]:
+            out.update(would_pass=False,
+                       error=f"magic 0x{magic:08x}, expected 0x{MICROBT_MAGIC:08x} -- "
+                             "not a Whatsminer image (a failed download saved as .bin "
+                             "usually starts with '<' or is empty)")
+            return out
+        out["board"] = head[0x28:0x38].split(b"\x00")[0].decode("ascii", "replace") or None
+        out["declared_payload"] = struct.unpack("<I", head[0x10:0x14])[0]
+        out["header_bytes"] = struct.unpack("<I", head[0x38:0x3c])[0]
+        out["size_consistent"] = (out["declared_payload"] + out["header_bytes"] == size)
+
+        # Entropy of one block well inside the payload. Encrypted is the expected answer;
+        # anything much below 7.9 would mean this image is NOT like the one measured, which
+        # is worth knowing rather than assuming.
+        import collections, math
+        fh.seek(min(out["header_bytes"] + 1_000_000, max(0, size - 262144)))
+        blk = fh.read(262144)
+        if blk:
+            c = collections.Counter(blk); n = len(blk)
+            e = -sum((v / n) * math.log2(v / n) for v in c.values())
+            out["payload_encrypted"] = e > 7.9
+            out["notes"].append(f"payload entropy {e:.3f} bits/byte"
+                                + (" -- encrypted or compressed, cannot be opened"
+                                   if e > 7.9 else " -- NOT opaque, worth a closer look"))
+
+    if not out["size_consistent"]:
+        out["notes"].append(
+            f"declared payload {out['declared_payload']:,} + header {out['header_bytes']:,} "
+            f"!= file {size:,}; the image is truncated or padded")
+    out["notes"].append(
+        f"board is '{out['board']}'. Flashing this to a different control board is the "
+        "failure this check exists for -- MicroBT ships one .bin covering several models, "
+        "but only for the board named here.")
+    out["would_pass"] = bool(out["magic_ok"] and out["size_consistent"])
+    return out
