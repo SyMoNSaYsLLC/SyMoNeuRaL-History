@@ -128,6 +128,7 @@ python3 tools/build_cost.py        # Owned vs Rented         -> site/documentati
 python3 tools/build_stack.py       # Inference Architecture  -> site/documentation.html
 python3 tools/build_training.py    # manual                  -> site/training.html
 python3 tools/build_gallery.py     # homepage art (uses GPU) -> site/art-*.png
+python3 tools/build_gallery.py --restamp   # redraw the watermark bar only -- NO GPU
 ./scripts/symoneural.sh on|off|status   # the live API (off is the kill switch)
 sudo ./scripts/deploy.sh                # site/ -> /var/www/symoneural (needs a password)
 ```
@@ -138,14 +139,20 @@ The BEGIN/END marker strings are the contract: change a marker in a generator an
 change it in the HTML in the same commit, or the generator stops finding its block and appends
 a second one.
 
-`scripts/deploy.sh` pipes into `while read`, so its `missing=1` is set in a subshell and discarded — it
-prints `MISSING <file>` but can never exit non-zero on it. Read the output, do not trust the
-exit code.
+`scripts/deploy.sh`'s reference check **can** fail the build — the loop reads from a process
+substitution, so `missing` survives into the exit test. It used to pipe into `while read`,
+which put the counter in a subshell and threw it away; that was fixed in `aa424d3` and
+verified by running the block against a fake webroot with one missing reference. Earlier
+revisions of this file said the bug was still live. It is not.
+
+The general lesson stands and is what to carry forward: **a counter incremented inside a
+piped `while read` is discarded.** The orphan-scan loop above it is still in a subshell, and
+that is fine, because it only writes to stdout and sets nothing its caller reads.
 
 ## Test in a real browser, not with curl
 
 ```bash
-node tests/frontend.mjs      # 17/17; system Chrome via Playwright, nothing to download
+node tests/frontend.mjs      # 18/18; system Chrome via Playwright, nothing to download
 ```
 
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries a

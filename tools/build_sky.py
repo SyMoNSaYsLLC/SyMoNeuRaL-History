@@ -30,6 +30,10 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import _art  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
@@ -122,9 +126,12 @@ def build() -> str:
                 d = json.loads(meta.read_text())
                 prompt, seed, secs = d.get("prompt", ""), d.get("seed", ""), d.get("seconds", "")
             esc = prompt.replace('"', "&quot;")
+            # The model and step count used to be typed in here rather than read from the
+            # sidecar, so this caption could disagree with the watermark on the image it
+            # captions. Both now come from _art.provenance().
             cap = (f'<figcaption><q>{prompt}</q>'
-                   f'<span>FLUX.1-schnell &middot; 4 steps &middot; seed {seed} &middot; {secs}s '
-                   f'on an RTX&nbsp;5070&nbsp;Ti</span></figcaption>') if prompt else ""
+                   f'<span>{_art.provenance(src)}</span></figcaption>') if prompt else ""
+            iw, ih = _art.dims(src)
             arts.append(
                 f'    <a class="art" href="/art-{src}.png" '
                 f'style="left:{x}%;top:{y}%;width:{w}px;transform:rotate({rot}deg);'
@@ -132,7 +139,7 @@ def build() -> str:
                 f'title="{esc}" data-prompt="{esc}" data-seed="{seed}" data-secs="{secs}" '
                 f'aria-label="Open the full render: {esc}">'
                 f'<img src="/art-{src}.png" alt="{ALT.get(slug, "Rendered by SyMoNeuRaL Image")}, '
-                f'rendered by SyMoNeuRaL Image" loading="lazy" width="768" height="802">'
+                f'rendered by SyMoNeuRaL Image" loading="lazy" width="{iw}" height="{ih}">'
                 f'{cap}</a>'
             )
             # from the question anchor to the centre of the render

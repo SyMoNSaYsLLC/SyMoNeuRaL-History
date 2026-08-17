@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL — AI Documentation &amp; Architecture Specs</title>
 <meta name="description" content="Technical resource detailing local hardware performance, quantized model execution and hardware constraints for the SyMoNeuRaL local inference infrastructure.">
-<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
-<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
-<link rel="icon" href="/favicon-128.png" sizes="128x128" type="image/png">
-<link rel="icon" href="/mark.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
+<link rel="icon" href="/favicon-128.png?v=413cdc430b" sizes="128x128" type="image/png">
+<link rel="icon" href="/mark.svg?v=f7ec78156e" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0823a86bfe">
 <meta property="og:title" content="SyMoNeuRaL — AI Documentation &amp; Architecture Specs">
 <meta property="og:description" content="Local hardware performance, quantized model execution and hardware constraints. Every figure measured.">
 <meta property="og:image" content="/mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0e100f">
-<link rel="stylesheet" href="/symoneural.css?v=b56305bfed">
+<link rel="stylesheet" href="/symoneural.css?v=74692800ef">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 </head>
 <body>
@@ -24,7 +24,7 @@
 <header>
   <div class="wrap bar">
     <a class="logo" href="/">
-      <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <img src="/mark-64.png?v=ded4e8a102" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
       <b>SyMoNeu<i>RaL</i></b>
     </a>
     <nav>
@@ -73,21 +73,23 @@
       </p>
     </div>
 
-    <a class="gart" href="/art-fast.png" title="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-prompt="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-seed="1195" data-secs="11.32" aria-label="Open the full render, watermark and all: long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" style="--rot:-1.5deg">
+    <a class="gart" href="/art-fast.png?v=153f708e54" title="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-prompt="long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" data-seed="1195" data-secs="11.32" aria-label="Open the full render, watermark and all: long exposure light trails flowing through a dark data centre aisle, emerald and teal streaks, abstract, minimal" style="--rot:-1.5deg">
       <span class="gwrap">
-        <img src="/art-fast.png" alt="Long-exposure light trails down a dark data centre aisle, rendered by SyMoNeuRaL Image"
-             loading="lazy" width="768" height="802">
+        <img src="/art-fast.png?v=153f708e54" alt="Long-exposure light trails down a dark data centre aisle, rendered by SyMoNeuRaL Image"
+             loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">What if your data never<br>left the building?</span>
+      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 1195 &middot; 11.32s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
-    <a class="gart" href="/art-yours.png" title="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-prompt="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-seed="6730" data-secs="11.17" aria-label="Open the full render, watermark and all: a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" style="--rot:1.5deg">
+    <a class="gart" href="/art-yours.png?v=7d50ce5d98" title="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-prompt="a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" data-seed="6730" data-secs="11.17" aria-label="Open the full render, watermark and all: a hand holding a small labelled hard drive over a dark desk, shallow depth of field, green rim light, documentary photography" style="--rot:1.5deg">
       <span class="gwrap">
-        <img src="/art-yours.png" alt="A hand holding a small labelled hard drive over a dark desk, rendered by SyMoNeuRaL Image"
-             loading="lazy" width="768" height="802">
+        <img src="/art-yours.png?v=7d50ce5d98" alt="A hand holding a small labelled hard drive over a dark desk, rendered by SyMoNeuRaL Image"
+             loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Who owns your model when<br>the invoice stops?</span>
+      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 6730 &middot; 11.17s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
   </div>
 </div>
@@ -97,7 +99,7 @@
 <!-- ===== RACK:BEGIN (generated by build_rack.py) ===== -->
 <section id="rack">
   <div class="wrap">
-    <p class="shead"><img src="/terminal-64.png" alt="" width="22" height="22">Live Stack</p>
+    <p class="shead"><img src="/terminal-64.png?v=439ec988d7" alt="" width="22" height="22">Live Stack</p>
     <h2>The rack, as it is right now</h2>
     <p class="sub">
       Five surfaces on one workstation, pushed live over one socket. If a unit says busy,
@@ -107,13 +109,14 @@
   </div>
 
   <div class="rackrow">
-    <a class="gart" href="/art-cost.png" title="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-prompt="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-seed="8841" data-secs="11.2" aria-label="Open the full render, watermark and all: a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" style="--rot:-1.5deg">
+    <a class="gart" href="/art-cost.png?v=190696ab66" title="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-prompt="a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" data-seed="8841" data-secs="11.2" aria-label="Open the full render, watermark and all: a single graphics card resting on a workbench beside a coffee cup, macro shot, dark background, green circuit traces catching the light" style="--rot:-1.5deg">
       <span class="gwrap">
-        <img src="/art-cost.png" alt="A single graphics card resting on a workbench, rendered by SyMoNeuRaL Image"
-             loading="lazy" width="768" height="802">
+        <img src="/art-cost.png?v=190696ab66" alt="A single graphics card resting on a workbench, rendered by SyMoNeuRaL Image"
+             loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Do you actually need<br>a data centre?</span>
+      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 8841 &middot; 11.2s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
 
     <div class="rack">
@@ -152,13 +155,14 @@
       </div>
     </div>
 
-    <a class="gart" href="/art-build.png" title="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-prompt="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-seed="3364" data-secs="11.23" aria-label="Open the full render, watermark and all: an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" style="--rot:1.5deg">
+    <a class="gart" href="/art-build.png?v=4bbc63f525" title="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-prompt="an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" data-seed="3364" data-secs="11.23" aria-label="Open the full render, watermark and all: an engineer's desk covered in cables, a multimeter and an open server chassis, top down, dark tones, green accents" style="--rot:1.5deg">
       <span class="gwrap">
-        <img src="/art-build.png" alt="An engineer's desk with an open server chassis and a multimeter, rendered by SyMoNeuRaL Image"
-             loading="lazy" width="768" height="802">
+        <img src="/art-build.png?v=4bbc63f525" alt="An engineer's desk with an open server chassis and a multimeter, rendered by SyMoNeuRaL Image"
+             loading="lazy" width="768" height="848">
         <span class="gzoom">Click to read the watermark</span>
       </span>
       <span class="gq">Does it actually know how<br>your business works?</span>
+      <span class="gprov">FLUX.1-schnell q4_k &middot; 768&times;768 &middot; 4 steps &middot; seed 3364 &middot; 11.23s on an RTX&nbsp;5070&nbsp;Ti</span>
     </a>
   </div>
 
@@ -177,7 +181,7 @@
 <!-- ===== CONSOLE:BEGIN (generated by build_console.py) ===== -->
 <section id="console" style="padding-top:34px">
   <div class="wrap">
-    <p class="shead"><img src="/terminal-64.png" alt="" width="22" height="22">Control Board</p>
+    <p class="shead"><img src="/terminal-64.png?v=439ec988d7" alt="" width="22" height="22">Control Board</p>
     <h2>Everything this machine is, on one screen</h2>
     <p class="sub">
       Live sensors, measured benchmarks and projections &mdash; labelled as such. The detail
@@ -233,7 +237,7 @@
 <!-- ===================== EVERYTHING ELSE ===================== -->
 <section id="more">
   <div class="wrap">
-    <p class="shead"><img src="/coin-64.png" alt="" width="22" height="22">The receipts</p>
+    <p class="shead"><img src="/coin-64.png?v=27970e95e4" alt="" width="22" height="22">The receipts</p>
     <h2>We built SyMoNeuRaL to prove a point.</h2>
     <p class="sub">
       Everything the front page claims is written up somewhere, with the measurement that
@@ -297,7 +301,7 @@
 <footer>
   <div class="wrap foot">
     <a class="logo" href="/" style="text-decoration:none; display:flex; align-items:center; gap:10px">
-      <img src="/mark-32.png" alt="" width="22" height="22">
+      <img src="/mark-32.png?v=fc9400dc9f" alt="" width="22" height="22">
       <b style="font-size:14.5px; color:var(--fg)">SyMoNeu<i style="font-style:normal; color:var(--accent)">RaL</i></b>
     </a>
     <span>© SymonSays LLC · <a href="mailto:symonsayadmin@symoneural.com" style="color:var(--dim); text-decoration:none">symonsayadmin@symoneural.com</a></span>

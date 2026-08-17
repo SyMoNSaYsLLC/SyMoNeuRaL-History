@@ -846,9 +846,11 @@
 /* ---- a render in a page gutter ----
    Every one links to its own full-size PNG. That is load-bearing rather than a nicety: the
    watermark strip printed into each file names the model, the quantisation, 768x768, the
-   step count, the seed and the seconds it took on this card, and at gutter width that strip
-   is about four pixels tall. The claim is only checkable at full size, so the affordance is
-   spelled out on hover instead of being left to a cursor change. */
+   step count, the seed and the seconds it took on this card. That strip is now two rows of
+   20px rather than one of 12px, but at gutter width it is still only a few pixels tall --
+   a burned-in caption cannot win against a 3.5x downscale. So the same facts are also
+   printed as text in .gprov below, and the link to the full-size file stays, with the
+   affordance spelled out on hover rather than left to a cursor change. */
 .gart{
   /* Capped, and centred in whatever column it lands in. Without the cap the two renders
      below the 1300px breakpoint each take a full 1fr -- 520px measured at a 1100px
@@ -871,8 +873,19 @@
   opacity:0; transition:opacity .18s ease;
 }
 .gart:hover .gzoom,.gart:focus-visible .gzoom{opacity:1}
+/* The watermark strip, repeated as text. The strip burned into the PNG is the copy that
+   travels with the file; this is the copy a visitor can actually read, because at 268px
+   wide the strip is a few pixels tall however large it is drawn. Mono, because it is a
+   reading off a machine and the rest of the site sets measurements that way.
+   It wraps -- no ellipsis anywhere on this site, and this line carries the model
+   attribution that Apache-2.0 requires be kept. */
+.gprov{
+  display:block; margin-top:9px; text-align:center; color:#7d8d84;
+  font:400 10.5px/1.45 ui-monospace,Menlo,Consolas,monospace;
+  letter-spacing:.005em; overflow-wrap:break-word;
+}
 .gq{
-  display:block; margin-top:13px; text-align:center; color:#a3b8ab;
+  display:block; margin-top:10px; text-align:center; color:#a3b8ab;
   font:400 clamp(13.5px,1.02vw,15.5px)/1.34 ui-serif,Georgia,"Times New Roman",serif;
   letter-spacing:-.01em;
 }

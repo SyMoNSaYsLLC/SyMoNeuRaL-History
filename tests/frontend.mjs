@@ -118,6 +118,30 @@ try {
   });
   record('a render opens large enough to read its watermark', lb.ok, lb.why);
 
+  // ---- the watermark's claim is readable without opening anything ----------
+  // The strip burned into the PNG is 3.5x downscaled in a gutter, so it cannot be read in
+  // place at any size that does not eat the picture. The same facts are printed as text in
+  // .gprov, and this asserts what the DOM *shows*: the line is on screen, is not clipped,
+  // and still carries the two things that are obligations rather than decoration -- the
+  // seed (the reproducibility claim) and the model name (an Apache-2.0 attribution
+  // condition, which is why every ellipsis rule was removed from this stylesheet).
+  const prov = await page.evaluate(() => {
+    const el = document.querySelector('.gart .gprov');
+    if (!el) return { ok: false, why: 'no .gprov under any gutter render' };
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const t = el.textContent;
+    const clipped = cs.textOverflow === 'ellipsis' || el.scrollWidth > el.clientWidth + 1;
+    return {
+      ok: r.width > 0 && r.height > 0 && parseFloat(cs.fontSize) >= 10 &&
+          cs.visibility !== 'hidden' && cs.display !== 'none' &&
+          !clipped && /seed \d/.test(t) && /FLUX/.test(t) && /RTX/.test(t),
+      why: `"${t.trim()}" at ${cs.fontSize}, ${Math.round(r.width)}px wide` +
+           (clipped ? ' -- CLIPPED' : ', not clipped'),
+    };
+  });
+  record('the watermark is readable as text without opening the render', prov.ok, prov.why);
+
   // ---- the receipts grid, and the order page it feeds ----------------------
   const cards = await page.$$eval('#more .card', els => els.map(e => ({
     tag: e.querySelector('.ctag')?.textContent.trim(),

@@ -3,7 +3,8 @@
 **Last updated 2026-08-17 01:40. Written for a fresh agent with zero prior context.**
 
 > **If you read nothing else:** nothing is broken, nothing is blocked. Run
-> `node tests/frontend.mjs https://symoneural.com` (expect 17/17), read `git log`, then
+> `node tests/frontend.mjs https://symoneural.com` (expect 18/18 once the pending deploy
+> lands; 17/18 before it, failing only the .gprov assertion), read `git log`, then
 > pick up §5. The one thing you cannot do yourself is deploy — see §0b.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
@@ -18,7 +19,7 @@ conversation, so every number, path and decision you need is stated here.
 ## 0. Sixty-second version
 
 - **Nothing is broken and nothing is blocked.** The site is deployed, the API is current,
-  and `node tests/frontend.mjs https://symoneural.com` passes **17/17 against the public
+  and `node tests/frontend.mjs https://symoneural.com` passes **17/18 against the public
   site** — including generating a real image on the real card mid-test.
 - The repo is at `/home/google/Symoneural`, branch `main`, no remote. **Every commit
   states its reason**; `git log` is genuinely worth twenty minutes before you touch
@@ -35,8 +36,8 @@ conversation, so every number, path and decision you need is stated here.
 ## 0b. First moves
 
 ```bash
-node tests/frontend.mjs                 # 17/17 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 17/17 against production
+node tests/frontend.mjs                 # 18/18 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 17/18 -- the 18th needs the deploy
 git log --oneline -25
 ```
 
@@ -62,7 +63,7 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 | `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
 | `symoneural-api.service` | active, restarted 01:03, PID 170388 |
 | Caddy | serving, TLS auto-renew |
-| `tests/frontend.mjs` | 17/17 local, 17/17 production |
+| `tests/frontend.mjs` | **18/18 local, 17/18 production.** The one production failure is the new `.gprov` assertion, and it is the correct answer, not a fault: the watermark work is built and waiting on `sudo scripts/deploy.sh --prune`. It flips to 18/18 the moment that runs. |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | 9, all idempotent, hash-verified across two runs |
 | Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
@@ -109,6 +110,26 @@ Seven commits, `14f1599` through `677e25b`. In the order they happened:
 - **`js` listed before `json` in a `find -regex` alternation silently dropped every .json
   file.** `-regex` must match the whole path; `js` matched, `on` did not, and it never
   backed up to try the longer alternative. Order alternations longest-first.
+
+## 2b. Built 2026-08-17, NOT yet live — needs `sudo scripts/deploy.sh --prune`
+
+Everything in §2 above is deployed. This is not, and the distinction is the one that has
+caused every "it's still broken" exchange in this project, so keep the two lists apart.
+
+- **The watermark is two rows of 20px instead of one of 12px**, on all 18 `site/art-*.png`.
+  Redrawn with `build_gallery.py --restamp` — no GPU, no governor lease, artwork unchanged.
+- **Each gutter render prints its provenance as HTML text** (`.gprov`), because a burned-in
+  strip cannot survive a 3.5× downscale at any size that leaves the picture intact.
+- **`tools/build_cachebust.py` now stamps `.png`, `.svg` and `.woff2`, not just CSS and JS.**
+  This one is load-bearing for the above: the Caddyfile puts `max-age=604800` on `*.png` and
+  the renders keep their filenames, so without a stamp the user deploys, looks, sees the old
+  four-pixel bar and reasonably concludes it did not work.
+- **`build_sky.py`'s caption reads the sidecar** instead of a hardcoded `FLUX.1-schnell · 4
+  steps`, so a caption can no longer disagree with the watermark on the image it captions.
+- **`_art.dims()` reads the PNG header** rather than trusting `height="802"`, which the
+  watermark change made wrong in two generators at once.
+- **An 18th assertion**, `the watermark is readable as text without opening the render`. It
+  was verified to fail: injecting `text-overflow:ellipsis` into `.gprov` turns it red.
 
 ## 3. What changed structurally (do not re-learn this the hard way)
 
@@ -258,16 +279,28 @@ cascade.** The tooling for that is in §6.
 Roughly in the order the user asked for it. **Nothing here is blocked and nothing is
 broken** — this is a queue of new work, not a repair list.
 
-0. **The watermark question — ask the user before doing anything else on it.** Each render
-   carries a strip naming model, quantisation, 768×768, steps, seed and the seconds it took
-   on this card. That strip is the claim the images make, and at any size that fits in a
-   page gutter it is roughly four pixels tall. The current answer is a lightbox: hovering
-   shows "Click to read the watermark", clicking opens the full 768px file with the prompt
-   beside it. The user twice said "you can't see the watermarks", so the standing option —
-   **offered, not yet accepted** — is to regenerate all nineteen renders via
-   `tools/build_gallery.py` with a substantially larger watermark strip. That costs ~11.2s
-   of GPU per image (≈3.5 min total, one governor lease) and changes every image on the
-   site. **Ask first.** Do not silently redesign the images.
+0. **The watermark question — DONE 2026-08-17, built and waiting on a deploy.** The user
+   chose: bigger strip **and** the same facts as HTML text. Three things this taught, all
+   worth keeping:
+
+   - **It never needed the GPU.** The bar is drawn *below* the render, so the art is exactly
+     the top `meta['size']` rows of each PNG and cropping recovers it losslessly; everything
+     the bar prints is already in the `art-*.json` sidecars. `build_gallery.py --restamp`
+     redraws all eighteen in a few seconds of CPU, takes no governor lease, and cannot alter
+     a pixel of the artwork (verified: SHA-256 of the cropped art region is unchanged).
+     An earlier draft of this section said it cost ~3.5 min of GPU. It does not.
+   - **"Bigger font" was not available, only "more lines".** The old one-line bar measured
+     704px of a 768px canvas; at 16px it overflows. The bar is now two rows of 20px (`FOOT`
+     80px, 9% of the image). Three rows cost 16% and four cost 22% — the picture starts
+     paying for its own caption, which is why two won.
+   - **A burned-in caption cannot win against a 3.5× downscale.** At the 268px a gutter
+     render is shown at, even a four-row bar is marginal. So `_art.provenance()` prints the
+     same facts as real HTML text under each render (`.gprov`), which is crisp at every
+     width and costs no image area. The strip is the copy that travels with the downloaded
+     file; the text is the copy a visitor reads in place.
+
+   There are **18** distinct renders, not nineteen — the test counts `<img>` nodes and one
+   render is placed twice.
 
 1. **Image page restyle** — reference `references/stable-diffusion-webui-master/`.
    The user's words: "the text is all jacked up and looks like shit. Make it look good like
@@ -332,7 +365,7 @@ broken** — this is a queue of new work, not a repair list.
     with a consumer card wants llama.cpp. The rack, the governor and the routes should not
     know which is running.
 
-    **Do it with the test suite as the safety net**: `node tests/frontend.mjs` passes 17/17
+    **Do it with the test suite as the safety net**: `node tests/frontend.mjs` passes 18/18
     today, and it asserts on rendered DOM rather than on endpoints, so it will catch a
     broken split. Run it after every extraction, not at the end.
 
@@ -440,7 +473,15 @@ broken** — this is a queue of new work, not a repair list.
    Note also that CUDA's EULA governs redistribution, so if a delivered image bakes CUDA in,
    read that clause first — see `LICENSES.md` §6.
 
-10. **Fix the `scripts/deploy.sh` subshell bug** (§1).
+10. **The `scripts/deploy.sh` subshell bug — DONE, and it was already done.** Fixed in
+    commit `aa424d3`: the loop reads from a process substitution (`done < <(...)`), so it
+    runs in the current shell and `missing` survives to the exit test. Verified empirically
+    rather than by reading the comment — the block was run verbatim against a fake webroot
+    containing one present and one absent reference, and it counted 1 and exited non-zero.
+    §1 and two entries here listed it as outstanding after it had been fixed; that was the
+    stale claim, not the code. The other `while read` in that script (the orphan scan) *is*
+    in a subshell, but it only writes to stdout and sets nothing the caller reads, so it is
+    correct as written.
 11. **`sudo scripts/install-service.sh`** — DONE 2026-08-16 23:23; the unit is installed,
     enabled and running. Manage with `systemctl {status,restart,stop} symoneural-api`.
 
@@ -467,9 +508,23 @@ python3 tools/build_training.py    # the manual                          -> site
 python3 tools/build_sky.py         # the 19-render constellation         -> site/build.html
 python3 tools/build_cachebust.py   # <-- ALWAYS LAST. stamps ?v=<hash> on every local asset
 ```
-`tools/build_gallery.py` is separate: it **renders on the GPU** (~11.2s per image, takes a
-governor lease) and only needs running if the artwork itself changes.
-`tools/_art.py` is a shared helper, not a generator — do not run it.
+`tools/build_gallery.py` is separate, and which flag you use decides whether it touches the
+card at all:
+
+```bash
+python3 tools/build_gallery.py              # render what is missing   -- GPU, ~11.2s each
+python3 tools/build_gallery.py --force      # re-render everything     -- GPU
+python3 tools/build_gallery.py --restamp    # redraw the watermark bar -- NO GPU, seconds
+```
+
+`--restamp` crops each PNG to `meta['size']` rows and redraws the bar from the sidecar. It
+is idempotent *because* it crops to the art height rather than subtracting the current bar
+height, so it discards whatever bar is present regardless of size. Changing the watermark
+never needs a governor lease and never re-renders the art.
+
+`tools/_art.py` is a shared helper, not a generator — do not run it. It is also the only
+place that should compute a render's dimensions: `_art.dims()` reads the PNG's IHDR, because
+`height="802"` was hardcoded in two generators and the watermark change made both wrong.
 
 **Always run every generator twice and diff before committing.** One line does it:
 ```bash
@@ -485,8 +540,8 @@ that put nineteen full-size renders down the left of the live page.
 
 ### Test in a real browser — this is the important one
 ```bash
-node tests/frontend.mjs                          # 17/17 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 17/17 against production
+node tests/frontend.mjs                          # 18/18 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 18/18 once the pending deploy lands
 ```
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries
 GPU/CPU/`--`, nothing overlaps or spills past the right edge at 390px, ravencalc returns
@@ -494,7 +549,7 @@ GPU/CPU/`--`, nothing overlaps or spills past the right edge at 390px, ravencalc
 the assertion that would have caught the 404 that shipped — curl proved the endpoint
 answered, which was never in doubt.
 
-Four of the seventeen exist because of specific bugs and are worth not deleting:
+Five of the eighteen exist because of specific bugs and are worth not deleting:
 
 | Test | The bug it exists for |
 |---|---|
@@ -622,12 +677,21 @@ obligation is real there.
 vendored Swagger UI) and we serve model output. Debian packages on the box are the operator's
 dependencies, not our redistribution.
 
-**Known compliance gap, not yet fixed:** `site/swagger-ui-bundle.js` is 1.45 MB served to every
-visitor and its own banner reads `For license information please see
-swagger-ui-bundle.js.LICENSE.txt` — a file that does not exist in `site/`, in the webroot, or
-anywhere on the box. Swagger UI is Apache-2.0 and the bundle embeds MIT code (core-js). Fetch
-that file from the matching swagger-ui-dist release and drop it beside the bundle; `scripts/deploy.sh`
-will pick it up.
+**The Swagger compliance gap is closed, and the fix this section used to recommend was
+impossible.** It said to "fetch `swagger-ui-bundle.js.LICENSE.txt` from the matching
+swagger-ui-dist release". That file does not exist upstream — verified by downloading
+`swagger-ui-dist@5.17.14` from the npm registry and listing the tarball, which contains
+exactly `package/LICENSE` and `package/NOTICE`. The banner naming it is a webpack/terser
+artifact: terser writes the pointer whether or not the extracted file is published.
+
+What is shipped is correct and complete: `site/swagger-ui-LICENSE.txt` and
+`site/swagger-ui-NOTICE.txt`, both **byte-identical to upstream** (SHA-256 compared), and
+`.txt` is in `deploy.sh`'s `PUBLISH` list so they reach the webroot. The bundle itself is a
+SHA-256 match for 5.17.14. `LICENSES.md` §1 has the full reasoning and got there first.
+
+Remaining nicety, not an obligation: no page *links* those two files. Apache-2.0 §4 requires
+the NOTICE be included in the distribution, which it is; discoverability is a separate and
+softer thing. Worth a footer link if anyone is in `documentation.html` anyway.
 `backend/apps/remix/THIRD-PARTY-LICENSES.md` has the full audit. The Apache-2.0 attribution on
 the rack's `detail` line ("built on Qwen2.5-7B-Instruct") is a **licence condition** — that is
 why truncating it mattered.
