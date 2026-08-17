@@ -166,8 +166,15 @@ that is fine, because it only writes to stdout and sets nothing its caller reads
 node tests/frontend.mjs             # every page, against a running API on :8800
 node tests/tuner_failpaths.mjs      # tuner.html, self-contained -- starts its own fake provider
 node tests/tuner_watch.mjs          # tuner-watch.html, ditto -- no account, no real stream
-cd backend && python3 -m pytest apps/ -q
+cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
+
+**682 pass; the two `--ignore`s are not optional and not a failure you introduced.** Without
+them pytest stops at *collection* — `Interrupted: 2 errors`, zero tests run, which reads exactly
+like you broke the suite. `apps/reinforce/tests` imports `cupy` and `apps/remix/tests` imports
+`symon_capture`; neither is installed on the **system** interpreter and neither may be, since
+that is the serving path (see *Python environments*). They are per-project suites that need
+their own environment, so they are excluded here rather than made to look green.
 
 System Chrome via Playwright, nothing to download. The two tuner suites need no API and no
 provider account: each starts `tests/tuner_fake_provider.py` and stops it again, so the whole
