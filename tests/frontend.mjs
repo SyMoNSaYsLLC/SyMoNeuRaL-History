@@ -89,7 +89,12 @@ try {
   record('image prompt box present', !!promptBox);
   if (promptBox) {
     await promptBox.fill('a single green LED on a dark rack panel');
-    const btn = await page.$('button:has-text("Generate"), button');
+    // Must be specific. 'button:has-text("Generate"), button' matched the header's
+    // Documentation dropdown once the nav gained <button> elements -- a selector list
+    // returns the first element in DOM order matching *either* branch, so the fallback
+    // silently won and the test clicked open a menu and waited 4 minutes for an image.
+    const btn = page.locator('#app button, main button, form button, button')
+                    .filter({ hasText: /generate/i }).first();
     await btn.click();
     // a cold FLUX load plus a render; chat gets evicted first
     await page.waitForSelector('img[src*="/api/gen/"]', { timeout: 240000 });

@@ -111,13 +111,17 @@ CONSOLE = f"""{BEGIN}
       {module("projected", "On an H200", "~625", "tok/s", "same 14B &middot; vendor 4.8 TB/s", plain="The same model on a datacentre card costing 30&times; more")}
     </div>
 
-    <p class="tnote">
-      Live modules are read from the card as you watch. Measured modules were benchmarked on
-      this machine. Projected modules are bandwidth &divide; weight-bytes arithmetic applied to a
-      measured or vendor figure &mdash; never presented as a result.
-      <strong>We do not quote a number we have not either measured or shown the arithmetic
-      for.</strong>
-    </p>
+    <div class="confoot">
+      <div class="cf-keys">
+        <p><b class="k-live">Live</b>read from the card as you watch.</p>
+        <p><b class="k-meas">Measured</b>benchmarked on this machine.</p>
+        <p><b class="k-proj">Projected</b>bandwidth &divide; weight-bytes arithmetic applied to a
+           measured or vendor figure &mdash; never presented as a result.</p>
+      </div>
+      <p class="cf-rule">
+        We do not quote a number we have not either measured or shown the arithmetic for.
+      </p>
+    </div>
   </div>
 </section>
 {END}"""

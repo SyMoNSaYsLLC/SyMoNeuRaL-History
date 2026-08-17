@@ -309,15 +309,18 @@
   .tracks .a{color:var(--dim)}
   .tracks .w{display:block; color:var(--faint); font-size:12.5px; margin-top:3px}
 
-  /* live badge in the nav */
-  .live{
+  /* Live badge in the nav. Scoped to the anchor: as a bare .live it also matched the
+     control board legend's <span class="key live">, which is why one of three equal
+     legend entries had a green pill and drew every eye. Same failure as the duplicated
+     .bar rule that collapsed the site header. */
+  a.live{
     display:inline-flex; align-items:center; gap:7px; background:rgba(46,224,138,.13);
     border:1px solid rgba(46,224,138,.4); color:var(--accent);
     border-radius:999px; padding:6px 13px; font-size:13.5px; font-weight:600; text-decoration:none;
   }
-  .live s{width:7px;height:7px;border-radius:50%;background:var(--accent);
+  a.live s{width:7px;height:7px;border-radius:50%;background:var(--accent);
     text-decoration:none; display:block; animation:pulse 2.2s ease-in-out infinite}
-  .live:hover{background:rgba(46,224,138,.2)}
+  a.live:hover{background:rgba(46,224,138,.2)}
 
   /* ==================== the rack ====================
      A status board dressed as hardware. Every light here is driven by /api/status --
@@ -551,11 +554,22 @@
     font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.15em;
     text-transform:uppercase; color:var(--faint);
   }
-  .conhead .key{display:inline-flex; align-items:center; gap:6px; color:var(--faint)}
-  .conhead .key s{width:5px;height:5px;border-radius:50%;text-decoration:none;display:block}
-  .conhead .key.live s{background:var(--accent)}
-  .conhead .key.meas s{background:var(--amber)}
-  .conhead .key.proj s{background:transparent;border:1px solid #7fb8d8}
+  .conhead .key{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 10px; border-radius:999px;
+    border:1px solid rgba(var(--k),.38); background:rgba(var(--k),.11);
+    color:rgb(var(--k));
+  }
+  .conhead .key s{
+    width:5px; height:5px; border-radius:50%; text-decoration:none; display:block;
+    background:rgb(var(--k));
+  }
+  .conhead .key.live{--k:46,224,138}
+  .conhead .key.meas{--k:255,171,61}
+  .conhead .key.proj{--k:127,184,216}
+  /* projected is arithmetic rather than a reading, so its dot stays hollow -- the one
+     difference between the three that carries meaning */
+  .conhead .key.proj s{background:transparent; border:1px solid rgb(var(--k))}
   .conhead .sp{margin-left:auto; text-transform:none; letter-spacing:.03em;
     font-family:ui-monospace,Menlo,Consolas,monospace; font-weight:500}
 
@@ -717,10 +731,12 @@
   .actions{margin-top:18px}
 
   #rack, #console{padding-top:24px; padding-bottom:24px}
-  #rack h2, #console h2{font-size:clamp(21px,2.1vw,26px)}
+  #rack h2, #console h2, #order h2, #more h2{font-size:clamp(21px,2.1vw,26px)}
   #rack .shead, #console .shead{margin-bottom:6px}
-  #rack .sub, #console .sub{margin-top:9px; font-size:15px; line-height:1.5; max-width:96ch}
-  #rack .tnote, #console .tnote{margin-top:9px; font-size:12.5px; line-height:1.5; max-width:96ch}
+  #rack > .wrap > .sub, #console > .wrap > .sub{
+    margin-top:9px; font-size:15px; line-height:1.5; max-width:96ch;
+  }
+  #rack > .wrap > .tnote{margin-top:9px; font-size:12.5px; line-height:1.5; max-width:96ch}
 
   /* the rack: a 1U face does not need 13px of padding to read as 1U */
   #rack .unit{padding:9px 15px; gap:13px}
@@ -909,20 +925,57 @@
   .linklist a{flex-direction:column; gap:3px}
 }
 
-/* plain-English line on each control board module.
-   The value stays the headline and the engineering detail stays underneath it; this sits
-   between them and says what the number actually means to someone who does not write
-   CUDA. Nothing was removed to make room -- the module just got a third line. */
+/* Control board module: three lines, in descending order of who needs them.
+     .val    the number
+     .plain  what it means, in ordinary English -- the line most visitors read
+     .sub    the engineering provenance, kept for the people who want it
+
+   The sizes encode that order (13px plain over 11.5px mono detail). They were briefly
+   inverted: the density pass styled "#console .sub", which also matches every module's
+   detail line and, being one id plus one class, outranked ".mod .sub" -- so the mono
+   footnote rendered at 15px, larger than the sentence above it. That rule is scoped to
+   the section intro now. */
+.mod{display:flex; flex-direction:column}
 .mod .plain{
-  margin-top:6px; color:var(--dim); font-size:12px; line-height:1.42;
+  margin-top:7px; color:var(--dim); font-size:13px; line-height:1.45;
   letter-spacing:-.002em;
 }
-.mod .plain + .sub{
-  margin-top:5px; font-size:11px; color:var(--faint); opacity:.9;
+.mod .sub{
+  margin-top:auto; padding-top:7px; font-size:11.5px; color:var(--faint);
 }
-
-/* modules share a row height so wrapped sub-lines do not stagger the grid */
+/* modules stretch to a common row height so a wrapped detail line does not stagger
+   the grid */
 .console{align-items:stretch}
-.mod{display:flex; flex-direction:column}
-.mod .sub{margin-top:auto; padding-top:6px}
-.mod .plain{margin-top:6px; color:var(--dim); font-size:12px; line-height:1.42}
+
+/* ---- control board footer ----
+   This was a flat grey paragraph restating the legend in prose, sitting under a board
+   made of instrument modules and matching none of it. It now bookends the board: the
+   same bordered strip as the header at the top, with each category named in its own
+   colour so the words connect to the chips above rather than to a footnote. */
+.confoot{
+  margin-top:13px; border:1px solid var(--line); border-radius:10px;
+  background:var(--panel2); overflow:hidden;
+}
+.cf-keys{display:grid; grid-template-columns:repeat(3,1fr); gap:0}
+.cf-keys p{
+  margin:0; padding:12px 15px; color:var(--faint); font-size:12.5px; line-height:1.5;
+  border-right:1px solid var(--line);
+}
+.cf-keys p:last-child{border-right:0}
+.cf-keys b{
+  display:block; margin-bottom:5px; font:650 10.5px/1 ui-sans-serif,system-ui,sans-serif;
+  letter-spacing:.15em; text-transform:uppercase;
+}
+.k-live{color:var(--accent)}
+.k-meas{color:var(--amber)}
+.k-proj{color:#7fb8d8}
+.cf-rule{
+  margin:0; padding:11px 15px; border-top:1px solid var(--line);
+  background:rgba(46,224,138,.045); color:var(--dim);
+  font-size:12.5px; line-height:1.5; text-align:center; letter-spacing:.01em;
+}
+@media (max-width:760px){
+  .cf-keys{grid-template-columns:1fr}
+  .cf-keys p{border-right:0; border-bottom:1px solid var(--line)}
+  .cf-keys p:last-child{border-bottom:0}
+}
