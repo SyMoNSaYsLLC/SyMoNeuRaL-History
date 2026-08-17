@@ -179,11 +179,29 @@ class TestMatte(unittest.TestCase):
             for x in range(12, 14):
                 planes[0][y * w + x], planes[1][y * w + x], planes[2][y * w + x] = 190, 90, 60
         rgba, _ = matte.cut(w, h, [bytes(p) for p in planes], "magenta")
-        i = 4 * w + 4                      # the spilled corner, inside the edge band
+
+        # The two blocks above are one contiguous subject spanning x 4..13, y 4..11. `CHOKE`
+        # throws the outermost ring of that away before anything else happens, so the edge
+        # band -- the only place despill and feather touch -- starts `CHOKE` pixels further
+        # in than the block does. These coordinates were `4` and `13` and went red the day
+        # the choke landed: the pixels they named had become background, so nothing was
+        # despilled there and nothing was supposed to be. Derived from `CHOKE` rather than
+        # rewritten to 5 and 12, so the next change to it moves the test with the code.
+        first, last = 4 + matte.CHOKE, 13 - matte.CHOKE
+        self.assertEqual(rgba[3][4 * w + 4], 0,
+                         "the choked outer ring must be transparent, not merely dimmed")
+
+        i = (4 + matte.CHOKE) * w + first   # the spilled corner that survives the choke
         self.assertLess(rgba[0][i], 230, "red was not despilled at the edge")
         self.assertLess(rgba[2][i], 225, "blue was not despilled at the edge")
         self.assertEqual(rgba[1][i], 100, "the non-key channel must not be touched")
-        j = 4 * w + 13                     # warm, but not spill
+
+        # Warm, but not spill -- and genuinely inside the band, which is what stops this
+        # assertion passing vacuously. A 2px-wide block loses its outer column to the choke,
+        # so the column that survives is necessarily within `BAND` of the new background.
+        # Verified by deleting the `if spill > 0:` guard in `matte.cut`: this pixel then
+        # moves to (220, 90, 90), which it could not do from outside the band.
+        j = (4 + matte.CHOKE) * w + last
         self.assertEqual((rgba[0][j], rgba[1][j], rgba[2][j]), (190, 90, 60),
                          "a warm subject colour was desaturated as if it were spill")
 

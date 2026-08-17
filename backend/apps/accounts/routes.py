@@ -114,8 +114,11 @@ async def status_route() -> dict:
         "enabled": on,
         "signup_open": on,
         "session_ttl_s": session_ttl_s() if on else None,
-        "note": ("sign in or create an account" if on else
-                 "this box has not been given a session secret, so accounts are closed"),
+        # Both of these are rendered verbatim as a sentence on /account.html, so they are
+        # written as sentences. The lower-case, full-stop-less version shipped for a while
+        # and read as a log line that had escaped onto the page.
+        "note": ("Sign in, or create an account." if on else
+                 "This box has not been given a session secret, so accounts are closed."),
     }
 
 

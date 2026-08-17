@@ -30,6 +30,24 @@
 #
 # That means this is a good target for the upgrade/flash work and NOT a substitute for a rig
 # when testing telemetry: nothing here will answer pyasic on 4028 with real readings.
+#
+# ---------------------------------------------------------------------------------------
+# YOU DO NOT NEED SYM_ASIC_ENABLED TO RUN THIS
+#
+# Asked directly, so it is answered here rather than in a doc somewhere else. This script
+# needs no environment at all -- it is qemu-system-arm and a firmware package.
+#
+#   SYM_ASIC_ENABLED=1 and SYM_ASIC_TOKEN gate the HTTP API: /api/asicminer/scan,
+#   /firmware, and the /emulator route that starts THIS script for you from the panel.
+#   They exist because those are remote-control endpoints on a box that faces the public
+#   internet. They have nothing to do with booting firmware from your own terminal.
+#
+# And setting them will not make the Miner panel show readings from what this boots. See
+# the DOES NOT block above: no hashboards means no bmminer means nothing answers on 4028,
+# so the panel reads `offline`, correctly. That is not a misconfiguration to chase.
+#
+# `SYM_ASIC_ENABLED` also has to be the literal string `1`. The check is `== "1"`, so
+# `true`, `yes` and `on` all leave the surface off without saying so.
 # ---------------------------------------------------------------------------------------
 set -euo pipefail
 

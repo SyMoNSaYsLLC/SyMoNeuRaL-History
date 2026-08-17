@@ -221,9 +221,10 @@ def match_video_codec(line: str) -> str:
     return token if token in VIDEO_CODECS else ""
 
 
-#: Same rules as `VIDEO_CODECS`, for the audio side. Parsed but not published -- kept because
-#: AC-3 and MP2 are the "video plays, no sound in Chrome" complaint and the field is three lines
-#: cheaper to have ready than to add later.
+#: Same rules as `VIDEO_CODECS`, for the audio side, and published by `public()` -- see the note
+#: there. AC-3 and E-AC-3 are not merely the "video plays, no sound" complaint: an MSE build that
+#: refuses the audio codec appends nothing at all, so the picture stops too, and the reading that
+#: separates that from a broken tuner is this one.
 AUDIO_CODECS = frozenset({
     "aac", "ac3", "eac3", "mp2", "mp3", "opus", "vorbis", "flac", "pcm_s16le", "dts", "truehd",
 })
@@ -369,11 +370,10 @@ class Session:
         `error` is either one of our own origin-only messages or a fixed sentence. It is never
         ffmpeg's stderr and never an upstream library's exception text.
 
-        `vcodec` is the one field here whose value originates in ffmpeg's output, and it is safe
-        for exactly one reason: it is not ffmpeg's text, it is a token from `VIDEO_CODECS` that
-        ffmpeg's text was matched against. Anything unrecognised becomes "". `acodec` is
-        deliberately **not** published -- nothing consumes it yet, and an unused field is a
-        field nobody is checking.
+        `vcodec` and `acodec` are the two fields here whose values originate in ffmpeg's output,
+        and they are safe for exactly one reason: they are not ffmpeg's text, they are tokens
+        from `VIDEO_CODECS` / `AUDIO_CODECS` that ffmpeg's text was matched against. Anything
+        unrecognised becomes "".
 
         The reason `vcodec` is published at all: a session can be `live`, with a playlist, with
         segments being served, and still show the visitor a black rectangle, because the stream
@@ -391,6 +391,22 @@ class Session:
             "error": error,
             "mode": self.mode,
             "vcodec": self.vcodec,
+            # `acodec` IS published now, and the docstring above no longer says otherwise.
+            #
+            # It was parsed and withheld on the grounds that an unused field is a field nobody
+            # is checking. That was the wrong call and a measured failure says so: a channel
+            # reported `state: live`, `vcodec: h264`, 87 MB pulled from the provider over five
+            # minutes and every indicator on the box green, while the browser decoded ZERO
+            # frames and the page had nothing to say. An MSE build that will not take AC-3 --
+            # `MediaSource.isTypeSupported('video/mp2t; codecs="avc1.42E01E,ac-3"')` is false
+            # on the Chrome in this repo's test path -- fails to append the buffer, and a page
+            # that can only see `vcodec` reports a perfectly healthy h264 stream over a black
+            # rectangle. The audio codec was the missing half of that diagnosis.
+            #
+            # Same safety property as `vcodec`, for the same reason: this is not ffmpeg's text,
+            # it is a token from `AUDIO_CODECS` that ffmpeg's text was matched against, and
+            # anything unrecognised becomes "". A fabricated stderr line cannot get through it.
+            "acodec": self.acodec,
             "playlist": f"stream/{self.id}/{PLAYLIST_NAME}",
             "age_s": round(time.monotonic() - self.created, 1),
             "bytes_in": self.bytes_in,

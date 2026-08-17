@@ -94,6 +94,38 @@ try {
            bad.length ? bad.join('; ') : `${names.length} names, none a prefix of another`);
   }
 
+  // ---- one unit per surface ------------------------------------------------
+  // Garrett: "you need to migrate tuner and guide to be 1". Tuner and Guide were two units
+  // with the SAME href, /tuner.html, so the rack showed one page twice and disagreed with
+  // itself about how many things this box runs. They are now one unit.
+  //
+  // The assertion is on the INVARIANT rather than on a count. `units.length === 11` would go
+  // red every time a genuine surface is added, which is the kind of assertion people delete
+  // instead of reading. What was actually broken is narrower and survives the rack growing:
+  // no two tiles may claim the same page AND the same bus, because then they are one thing
+  // shown twice. Tuner and Guide were exactly that -- both `cpu`, both /tuner.html.
+  //
+  // Sharing a page is fine on its own, which is why this is not the blunter check: Coder and
+  // Project both link to /documentation.html because neither has a page yet and that beats
+  // linking to a 404. A rule that failed that would be measuring the wrong thing.
+  //
+  // This comment used to cite the two Miner units -- ASIC and GPU, different hardware, one
+  // page -- as the second example. They were merged into a single `miner` row on 2026-08-17
+  // (the two halves now ride in its `sub` array), so that example no longer exists. The rule
+  // is unchanged and still correct; only the illustration was stale.
+  const tiles = await page.$$eval('#units .unit', els => els.map(e => ({
+    href: e.getAttribute('href'),
+    bus: e.querySelector('.ubus')?.textContent?.trim() || '',
+  })));
+  const keys = tiles.filter(t => t.href && t.href !== '/documentation.html')
+                    .map(t => `${t.href} [${t.bus}]`);
+  const dupes = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+  record('no two rack units are the same page on the same bus', dupes.length === 0,
+         dupes.length ? `duplicated: ${dupes.join(', ')}` : `${keys.length} distinct`);
+  record('the tuner unit carries the guide too',
+         units.some(u => /Tuner/.test(u.name || '') && /Guide/.test(u.name || '')),
+         units.map(u => u.name).filter(n => /Tuner|Guide/.test(n)).join(' | ') || 'no tuner unit');
+
   // the rack must lead the page now
   const order = await page.evaluate(() => {
     const r = document.querySelector('#rack'), c = document.querySelector('#console');

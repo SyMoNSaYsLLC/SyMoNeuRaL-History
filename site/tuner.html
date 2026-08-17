@@ -288,6 +288,10 @@
        first child parked it at the far left of a 440px column with a hole beside it.
        Measured in the render, not reasoned about: the star belongs against the name and
        the group is what gets pushed to the right edge. */
+    /* `[hidden]` has to win over the `display:grid` above it. The UA rule for `hidden` is
+       weaker than any author `display`, so without this the guide view would render with the
+       full channel list still laid out underneath it. */
+    #tnbody .tn-list[hidden]{display:none}
     #tnbody .tn-list li{gap:9px; align-items:center; justify-content:flex-start}
     #tnbody .tn-list b{margin-right:auto}
     #tnbody .tn-fav{
@@ -314,6 +318,128 @@
     }
     #tnbody .tn-showmore:hover{color:var(--accent); border-color:rgba(46,224,138,.45)}
     #tnbody .tn-showmore[hidden]{display:none}
+
+    /* ---- the guide, 2026-08-17 -------------------------------------------------
+       A real grid: time across, channels down, what is on in the cell. It replaces
+       nothing -- the list is still there behind a toggle, because a list is the
+       right shape for 31,888 films and a grid is the right shape for live TV.
+
+       Every cell is drawn from `POST /api/tuner/epg`, which is the provider's own
+       `get_short_epg`. A channel the provider publishes no guide for says so in
+       words; there is no placeholder programme and no "No Information" filler,
+       because a made-up cell in a grid is indistinguishable from a real one.
+
+       The row is a positioned strip rather than a CSS grid of half-hour columns:
+       programmes do not respect half hours (a 42-minute Walking Dead measured off
+       a real panel), so column snapping would draw every one of them in the wrong
+       place. Left and width are percentages of the visible window. */
+    #tnbody .tn-guide{margin-top:14px}
+    #tnbody .tn-guide[hidden]{display:none}
+    #tnbody .tn-vtabs{display:flex; gap:7px; align-items:center; margin:12px 0 0; flex-wrap:wrap}
+    #tnbody .tn-vtab{
+      cursor:pointer; padding:6px 13px; border-radius:999px; border:1px solid var(--line);
+      background:var(--panel2); color:var(--dim); font:650 11.9px/1 inherit;
+    }
+    #tnbody .tn-vtab.on{
+      border-color:rgba(46,224,138,.5); color:var(--accent); background:rgba(46,224,138,.1);
+    }
+    #tnbody .tn-vmeta{color:var(--faint); font-size:11.4px; margin-left:auto}
+    #tnbody .tn-ghead3{
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 9px;
+    }
+    #tnbody .tn-gwhen{color:var(--fg); font:650 12.4px/1.4 inherit}
+    #tnbody .tn-gnav{
+      cursor:pointer; padding:5px 11px; border-radius:8px; border:1px solid var(--line);
+      background:var(--panel2); color:var(--dim); font:600 11.6px/1 inherit;
+    }
+    #tnbody .tn-gnav:hover{color:var(--accent); border-color:rgba(46,224,138,.45)}
+    /* The row under the status line that offers full-width playback. `[hidden]` is honoured
+       explicitly because the rule beside it sets `display`, and an author `display` on a
+       class beats the UA stylesheet's `[hidden]{display:none}` -- which is how a hidden
+       front-page section shipped occupying 425px of a 1440px window on this site. */
+    #tnbody .tn-prow{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:9px 0 0}
+    #tnbody .tn-prow[hidden]{display:none}
+    #tnbody .tn-watchwhy{font:500 11.4px/1.45 inherit; color:var(--faint)}
+    #tnbody .tn-gscroll{
+      position:relative; overflow:auto; max-height:min(60vh,560px);
+      border:1px solid var(--line); border-radius:12px; background:var(--panel);
+    }
+    #tnbody .tn-gruler{
+      position:sticky; top:0; z-index:3; display:flex; background:var(--panel2);
+      border-bottom:1px solid var(--line);
+    }
+    #tnbody .tn-gcorner{
+      flex:0 0 186px; padding:7px 10px; color:var(--faint); font:650 10.4px/1.3 inherit;
+      letter-spacing:.11em; text-transform:uppercase; border-right:1px solid var(--line);
+      position:sticky; left:0; background:var(--panel2); z-index:4;
+    }
+    #tnbody .tn-gticks{position:relative; flex:1 1 auto; min-width:520px; height:30px}
+    #tnbody .tn-gtick{
+      position:absolute; top:0; bottom:0; padding-left:6px; color:var(--faint);
+      font:600 10.6px/30px inherit; border-left:1px solid var(--line); white-space:nowrap;
+    }
+    #tnbody .tn-grow{display:flex; border-bottom:1px solid var(--line-soft,rgba(255,255,255,.06))}
+    #tnbody .tn-grow:last-child{border-bottom:0}
+    #tnbody .tn-gchan{
+      flex:0 0 186px; padding:8px 10px; border-right:1px solid var(--line);
+      position:sticky; left:0; background:var(--panel); z-index:2; cursor:pointer;
+      display:flex; flex-direction:column; gap:3px; text-align:left; color:var(--fg);
+      font:600 11.9px/1.35 inherit; overflow-wrap:break-word;
+    }
+    #tnbody .tn-gchan:hover{background:var(--panel2)}
+    #tnbody .tn-gchan em{font-style:normal; color:var(--faint); font-size:10.6px; font-weight:500}
+    #tnbody .tn-gstrip{position:relative; flex:1 1 auto; min-width:520px; min-height:46px}
+    #tnbody .tn-gprog{
+      position:absolute; top:4px; bottom:4px; overflow:hidden; cursor:pointer;
+      border:1px solid var(--line); border-radius:8px; background:var(--panel2);
+      padding:5px 8px; text-align:left; color:var(--dim); font:600 11.4px/1.3 inherit;
+    }
+    #tnbody .tn-gprog:hover{border-color:rgba(46,224,138,.5); color:var(--fg)}
+    #tnbody .tn-gprog.on{
+      border-color:rgba(46,224,138,.55); background:rgba(46,224,138,.12); color:var(--fg);
+    }
+    #tnbody .tn-gprog u{
+      display:block; text-decoration:none; color:var(--faint); font-size:10.4px; font-weight:500;
+    }
+    #tnbody .tn-gnone{
+      position:absolute; inset:4px 6px; display:flex; align-items:center;
+      color:var(--faint); font:500 11.1px/1.4 inherit;
+    }
+    #tnbody .tn-gline{
+      position:absolute; top:0; bottom:0; width:2px; background:var(--accent);
+      opacity:.75; pointer-events:none; z-index:1;
+    }
+    #tnbody .tn-gnote{margin:9px 0 0; color:var(--faint); font-size:11.5px; line-height:1.6}
+
+    /* ---- what the player is actually doing ------------------------------------
+       Every figure in here is read from hls.js or from the session document; there
+       is not one number on this panel that the page made up. `-` means the player
+       has not reported it yet, which is a reading too. */
+    #tnbody .tn-stats{margin:10px 0 0; font-size:11.9px}
+    #tnbody .tn-stats > summary{cursor:pointer; color:var(--dim); font-weight:600}
+    #tnbody .tn-stats > summary:hover{color:var(--accent)}
+    #tnbody .tn-sgrid{
+      display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:8px;
+      margin:10px 0 0;
+    }
+    #tnbody .tn-scell{
+      border:1px solid var(--line); border-radius:9px; background:var(--panel2);
+      padding:8px 10px;
+    }
+    #tnbody .tn-scell b{
+      display:block; color:var(--faint); font:650 10.2px/1.3 inherit;
+      letter-spacing:.11em; text-transform:uppercase;
+    }
+    #tnbody .tn-scell span{
+      display:block; margin-top:4px; color:var(--fg); font:600 12.6px/1.35 inherit;
+      font-variant-numeric:tabular-nums; overflow-wrap:break-word;
+    }
+    #tnbody .tn-srow{display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin:10px 0 0}
+    #tnbody .tn-srow label{color:var(--faint); font-size:11.2px}
+    #tnbody .tn-srow select{
+      background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+      border-radius:8px; padding:5px 9px; font:600 11.4px/1 inherit;
+    }
     </style>
 
     <div class="pgwrap">
@@ -352,6 +478,17 @@
           <div class="tn-player" id="tnplayer" hidden>
             <video id="tnvideo" controls playsinline></video>
             <p class="tn-now" id="tnnow"></p>
+
+            <!-- Full-width playback on its own page, /tuner-watch.html. The handoff is a
+                 localStorage entry plus a navigation and NOTHING is put in the URL: a stream
+                 URL carries the visitor's own provider credentials and uvicorn logs a request
+                 line. It carries the live session id too, so the other page rejoins this
+                 stream instead of closing it and asking the provider again. -->
+            <div class="tn-prow" id="tnprow" hidden>
+              <button type="button" class="tn-gnav" id="tnwatch">Watch full width, with the
+                guide over the picture &rarr;</button>
+              <span class="tn-watchwhy" id="tnwatchwhy"></span>
+            </div>
             <div class="tn-fail" id="tnfail" hidden>
               <h4 id="tnfailh"></h4>
               <p id="tnfailp"></p>
@@ -360,6 +497,39 @@
                 <code id="tnfailc"></code>
               </details>
             </div>
+
+            <!-- Options, settings and statistics. Every figure is a reading taken from
+                 hls.js or from the session document this box publishes -- resolution and
+                 bitrate from the chosen level, buffer from the video element's own
+                 buffered ranges, dropped frames from getVideoPlaybackQuality(), throughput
+                 from hls.js's bandwidth estimate. Nothing on this panel is computed from a
+                 guess, and a figure the player has not reported yet reads as `-`. -->
+            <details class="tn-stats" id="tnstats" hidden>
+              <summary>Playback options, settings and statistics</summary>
+              <div class="tn-sgrid">
+                <div class="tn-scell"><b>Resolution</b><span id="ps-res">-</span></div>
+                <div class="tn-scell"><b>Level bitrate</b><span id="ps-rate">-</span></div>
+                <div class="tn-scell"><b>Measured throughput</b><span id="ps-tp">-</span></div>
+                <div class="tn-scell"><b>Buffer ahead</b><span id="ps-buf">-</span></div>
+                <div class="tn-scell"><b>Dropped frames</b><span id="ps-drop">-</span></div>
+                <div class="tn-scell"><b>Frames decoded</b><span id="ps-dec">-</span></div>
+                <div class="tn-scell"><b>Segment length</b><span id="ps-seg">-</span></div>
+                <div class="tn-scell"><b>Segments held</b><span id="ps-segn">-</span></div>
+                <div class="tn-scell"><b>From the provider</b><span id="ps-in">-</span></div>
+                <div class="tn-scell"><b>Path</b><span id="ps-mode">-</span></div>
+                <div class="tn-scell"><b>Session age</b><span id="ps-age">-</span></div>
+                <div class="tn-scell"><b>Player</b><span id="ps-eng">-</span></div>
+              </div>
+              <div class="tn-srow">
+                <label for="ps-level">Quality</label>
+                <select id="ps-level"><option value="-1">auto</option></select>
+                <label for="ps-audio">Audio</label>
+                <select id="ps-audio"><option value="-1">as sent</option></select>
+                <button type="button" class="tn-gnav" id="ps-pip">Picture in picture</button>
+                <button type="button" class="tn-gnav" id="ps-full">Full screen</button>
+              </div>
+              <p class="tn-gnote" id="ps-why"></p>
+            </details>
           </div>
 
           <p class="tn-note" id="tnnote">Your playlist is yours. It is held in this
@@ -400,6 +570,33 @@
           </div>
 
           <p class="tn-empty" id="tnempty" hidden></p>
+
+          <!-- Guide or list. Both views read the same filtered set, so a subcategory
+               tick or a Guide-AI filter narrows them together; only the shape changes. -->
+          <div class="tn-vtabs" id="tnviews" hidden>
+            <button type="button" class="tn-vtab" id="tnvguide" aria-pressed="false">Guide</button>
+            <button type="button" class="tn-vtab on" id="tnvlist" aria-pressed="true">List</button>
+            <span class="tn-vmeta" id="tnvmeta"></span>
+          </div>
+
+          <div class="tn-guide" id="tnguide" hidden>
+            <div class="tn-ghead3">
+              <button type="button" class="tn-gnav" id="tngback">&#8592; 90 min</button>
+              <button type="button" class="tn-gnav" id="tngnow">now</button>
+              <button type="button" class="tn-gnav" id="tngfwd">90 min &#8594;</button>
+              <span class="tn-gwhen" id="tngwhen"></span>
+              <button type="button" class="tn-gnav" id="tngpage">next 30 channels</button>
+            </div>
+            <div class="tn-gscroll" id="tngscroll">
+              <div class="tn-gruler">
+                <div class="tn-gcorner">Channel</div>
+                <div class="tn-gticks" id="tngticks"></div>
+              </div>
+              <div id="tngrows"></div>
+            </div>
+            <p class="tn-gnote" id="tngnote"></p>
+          </div>
+
           <ul class="tn-list" id="tnlist"></ul>
           <button type="button" class="tn-showmore" id="tnmore" hidden></button>
 
@@ -1294,7 +1491,15 @@ async function api(path, payload) {
     try { fetch(u, {method: 'POST', keepalive: true}); } catch (e) {}
   }
 
+  // Set for exactly one navigation: the handoff to /tuner-watch.html. The slot is deliberately
+  // NOT released then, because that page ADOPTS the running session -- which is what makes the
+  // handoff instant rather than a fresh upstream connect and several seconds of black screen.
+  // The exposure is bounded and collecting it is the reaper's ordinary job: if that page never
+  // loads, nothing polls the session and it is taken back within IDLE_TIMEOUT.
+  var handingOff = false;
+
   function letGo() {
+    if (handingOff) return;
     var id = sid; sid = null;
     stopTimers();
     if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
@@ -1339,13 +1544,31 @@ async function api(path, payload) {
   var FIRST_VIDEO_MS = 45000;
 
   function clearFail() {
-    failEl.hidden = true; failD.hidden = true;
+    failEl.hidden = true; failD.hidden = true; failSticky = false;
     failH.textContent = ''; failP.textContent = ''; failC.textContent = '';
   }
 
+  // THE CODEC DIAGNOSIS OUTRANKS WHAT FOLLOWS IT, and this is not cosmetic ordering.
+  //
+  // A stream the browser cannot decode produces a fatal hls.js error a moment after the codec
+  // panel is written -- MSE refuses the buffer, that is the whole mechanism -- and the error
+  // handler then overwrote "This stream is H.265 / HEVC" with "Playback stopped. The player
+  // could not fetch the next part of the stream." Which is the same black rectangle with the
+  // cause replaced by a symptom, and it is exactly the failure this panel exists to prevent.
+  //
+  // It surfaced the moment the hls.js path started running on Chrome at all (see `play`); the
+  // native path never raised the error, so the bug was there the whole time and unreachable.
+  // The suite caught it: `an undecodable codec is named outright` went red on "Playback
+  // stopped.".
+  //
+  // `sticky` is cleared by clearFail(), i.e. by the next tune, so it cannot outlive its stream.
+  var failSticky = false;
+
   // `said` is the provider's or the server's own sentence and is quoted as such, kept
   // apart from our explanation so the visitor can see which words are whose.
-  function showFail(head, mine, said, tech) {
+  function showFail(head, mine, said, tech, sticky) {
+    if (failSticky && !sticky) return;
+    failSticky = !!sticky;
     failH.textContent = head;
     failP.textContent = mine || '';
     if (said) {
@@ -1371,15 +1594,68 @@ async function api(path, payload) {
       .catch(function () { return null; });
   }
 
-  // Codecs a browser cannot decode even though `-c copy` succeeded and every light on
-  // the box is green. This is a genuine blank screen with nothing broken anywhere, and
-  // it is unfindable unless the page says the word out loud.
-  var UNPLAYABLE = {hevc: 'H.265 / HEVC', h265: 'H.265 / HEVC', av1: 'AV1',
-                    mpeg2video: 'MPEG-2', vc1: 'VC-1'};
+  // ---- codecs a browser cannot decode ------------------------------------------------
+  //
+  // `-c copy` succeeds, every light on the box is green, and the visitor gets a black
+  // rectangle. This is unfindable unless the page says the word out loud.
+  //
+  // IT IS NOT ONLY THE VIDEO CODEC, and that was a real hole. Measured on one of the owner's
+  // own channels: `state: live`, `vcodec: h264`, 87 MB pulled from the provider across five
+  // minutes, session healthy -- and the browser decoded ZERO frames, because MSE refuses the
+  // whole segment when it cannot take the AUDIO track. The picture stops for a soundtrack.
+  // `sessions.py` had parsed `acodec` all along and deliberately not published it; it does now.
+  //
+  // And the answer is ASKED OF THIS BROWSER rather than looked up in a table of what browsers
+  // are believed to do. Measured here on Chrome 151, in MPEG-TS, which is what the box serves:
+  // h264, aac, mp2 and mp3 accepted; hevc, mpeg2video, vc1, av1, vp9, ac3, eac3, dts and
+  // truehd all refused. A table would have been wrong about mp2 in the same week it was
+  // written -- it is fine, and it was on the suspect list.
+  var VMIME = {h264: 'avc1.42E01E', hevc: 'hvc1.1.6.L93.B0', h265: 'hvc1.1.6.L93.B0',
+               av1: 'av01.0.04M.08', vp9: 'vp09.00.10.08', vp8: 'vp8',
+               mpeg2video: 'mp4v.61', vc1: 'vc-1', mpeg4: 'mp4v.20.9'};
+  var AMIME = {aac: 'mp4a.40.2', ac3: 'ac-3', eac3: 'ec-3', mp2: 'mp4a.6B', mp3: 'mp4a.69',
+               opus: 'opus', flac: 'flac', dts: 'dtsc', truehd: 'mlpa', vorbis: 'vorbis'};
+  var CODEC_NAMES = {hevc: 'H.265 / HEVC', h265: 'H.265 / HEVC', av1: 'AV1', vp9: 'VP9',
+                     vp8: 'VP8', mpeg2video: 'MPEG-2', vc1: 'VC-1', mpeg4: 'MPEG-4 Part 2',
+                     ac3: 'Dolby Digital (AC-3)', eac3: 'Dolby Digital Plus (E-AC-3)',
+                     dts: 'DTS', truehd: 'Dolby TrueHD', opus: 'Opus', flac: 'FLAC',
+                     vorbis: 'Vorbis'};
 
+  // Both containers are asked about and a codec either one will take is NOT warned about: the
+  // box serves MPEG-TS and hls.js remuxes to fMP4, so refusing on the strength of one of them
+  // would put a scary sentence over a stream that plays. A false alarm here is the expensive
+  // mistake -- it teaches the visitor to ignore the panel.
+  function decodable(token, isVideo) {
+    var m = (isVideo ? VMIME : AMIME)[token];
+    if (!m) return true;
+    if (!window.MediaSource || !window.MediaSource.isTypeSupported) return true;
+    return window.MediaSource.isTypeSupported('video/mp2t; codecs="' + m + '"')
+        || window.MediaSource.isTypeSupported((isVideo ? 'video/mp4' : 'audio/mp4')
+                                              + '; codecs="' + m + '"');
+  }
+
+  // One place for the sentence, because it was two and they had already drifted -- one named the
+  // codec in its technical line and the other did not.
+  function codecFail(j, warn) {
+    showFail('This stream is ' + warn + '.',
+             'The box is receiving it and copying it through without re-encoding, so nothing '
+             + 'here has failed \u2014 but this browser cannot decode ' + warn + '. When it is '
+             + 'the sound it will not take, it refuses the whole stream rather than just the '
+             + 'audio, so the picture stays black either way. Play it in VLC, or pick another '
+             + 'quality from your provider.',
+             null,
+             'reported by the transcoder \u2014 video: ' + (j.vcodec || 'not reported')
+             + ', audio: ' + (j.acodec || 'not reported'),
+             true);
+  }
+
+  //: The name of the codec this browser will not take, video first, or '' if it will take both.
   function codecWarning(j) {
     var v = j && j.vcodec ? String(j.vcodec).toLowerCase() : '';
-    return UNPLAYABLE[v] ? UNPLAYABLE[v] : '';
+    if (v && !decodable(v, true)) return CODEC_NAMES[v] || v;
+    var a = j && j.acodec ? String(j.acodec).toLowerCase() : '';
+    if (a && !decodable(a, false)) return (CODEC_NAMES[a] || a) + ' audio';
+    return '';
   }
 
   function tune(c) {
@@ -1437,15 +1713,7 @@ async function api(path, payload) {
         // be playing. `segments` is published for exactly this decision.
         if (j.state === 'live' && !j.note && (j.segments || 0) > 0) {
           nowEl.textContent = (c.name || '') + '  \u00b7  live';
-          if (warn) {
-            showFail('This stream is ' + warn + '.',
-                     'The box is receiving it and copying it through without '
-                     + 're-encoding, so nothing here has failed \u2014 but no browser '
-                     + 'on this machine can decode ' + warn + ', so the picture will '
-                     + 'stay black. Play it in VLC, or pick another quality from your '
-                     + 'provider.', null, 'video codec reported by the transcoder: '
-                     + j.vcodec);
-          }
+          if (warn) codecFail(j, warn);
           play('/api/tuner/' + j.playlist, c, j);
           return;
         }
@@ -1490,12 +1758,7 @@ async function api(path, payload) {
           stopTimers();
           nowEl.textContent = (c.name || '') + '  \u00b7  live';
           var warn = codecWarning(j);
-          if (warn) {
-            showFail('This stream is ' + warn + '.',
-                     'The box is receiving it, but no browser on this machine can '
-                     + 'decode ' + warn + ', so the picture will stay black.',
-                     null, 'video codec reported by the transcoder: ' + j.vcodec);
-          }
+          if (warn) codecFail(j, warn);
           play('/api/tuner/' + j.playlist, c, j);
           return;
         }
@@ -1526,16 +1789,33 @@ async function api(path, payload) {
 
   function play(src, c, j) {
     if (hls) { hls.destroy(); hls = null; }
-    // Safari plays HLS natively; Chrome and Firefox need hls.js, which is why it is vendored.
+    // hls.js FIRST, and the browser's own HLS only where hls.js will not run. This order is the
+    // reverse of what shipped, and the reversal is a bug fix, not a preference.
+    //
+    // MEASURED on the Chrome this repo tests with: `canPlayType('application/vnd.apple.mpegurl')`
+    // returns **'maybe'** -- a truthy string. So `if (canPlayType(...))` took the native branch
+    // on every Chrome visit, and everything below it was dead code in the browser almost every
+    // visitor uses: the `liveSyncDurationCount: 1` change that took first video from 31 s to
+    // 2.5 s, the fatal-error handler that goes and asks the box why a stream stopped, the level
+    // and throughput readings on the statistics panel, and the quality selector. The panel read
+    // "the browser's own HLS" with bitrate and throughput at `-`, which is what gave it away.
+    //
+    // Safari is the case the fallback exists for: it has no MSE-based path and does play HLS
+    // natively, and there `Hls.isSupported()` is false, so it falls through correctly.
+    if (window.Hls && window.Hls.isSupported()) {
+      hlsPlay(src, c, j);
+      return;
+    }
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = src; safePlay(); watch(c); return;
     }
-    if (!window.Hls || !window.Hls.isSupported()) {
-      showFail('This browser cannot play HLS.',
-               'hls.js is vendored at /hls.js and either did not load or is not '
-               + 'supported here. The stream itself is fine.', null, null);
-      return;
-    }
+    showFail('This browser cannot play HLS.',
+             'hls.js is vendored at /hls.js and either did not load or is not supported '
+             + 'here, and this browser has no HLS support of its own. The stream itself '
+             + 'is fine.', null, null);
+  }
+
+  function hlsPlay(src, c, j) {
     // THE THING THAT MADE IT SLOW, and it was never the box.
     //
     // ffmpeg is asked for 2-second segments, but it stream-copies -- so it can only cut on a
@@ -1790,6 +2070,477 @@ async function api(path, payload) {
         + ', which found nothing your own words had not \u2014 so this is the local result.';
     }
   }
+
+  // =====================================================================================
+  // THE GUIDE. Time across, channels down, what is on in the cell.
+  // =====================================================================================
+  //
+  // Garrett, on the thing this replaces: "update the damn tuner guide with epg and not that
+  // terrible tiny select and deselect shit". The tick grid is still there -- it is how you
+  // choose what the guide covers, and 10,072 channels need choosing from -- but it is no
+  // longer the only way to look at live TV.
+  //
+  // The data is the provider's own `get_short_epg`, via `POST /api/tuner/epg`, which returns
+  // epoch seconds. The window is 3 hours wide and starts on a half hour so the ruler lands on
+  // round numbers.
+  //
+  // WHAT THIS DOES NOT DO, deliberately:
+  //   * it does not invent a cell. A channel the provider publishes nothing for says
+  //     "no guide published" in the strip, once, and stays empty. A grid full of
+  //     "No Information" boxes is the decorative-indicator rule broken forty times a screen.
+  //   * it does not ask for the guide for 10,072 channels. It asks for the rows on screen,
+  //     30 at a time -- the route caps at 60 and each row is one request to somebody else's
+  //     panel. `next 30 channels` is what pages it.
+  //   * it does not fetch for VOD or Series. A film has no schedule; the honest answer is the
+  //     list, which the toggle keeps one click away.
+  var guideEl = document.getElementById('tnguide');
+  var viewsEl = document.getElementById('tnviews'), vMeta = document.getElementById('tnvmeta');
+  var vGuide = document.getElementById('tnvguide'), vList = document.getElementById('tnvlist');
+  var ticksEl = document.getElementById('tngticks'), rowsEl = document.getElementById('tngrows');
+  var whenEl = document.getElementById('tngwhen'), gNote = document.getElementById('tngnote');
+  var WINDOW_S = 10800, STEP_S = 5400, GROWS = 30;
+  var viewMode = 'list', gLeft = 0, gPage = 0, gCache = {}, gBusy = false, gTick = null;
+
+  function snapHalfHour(t) { return Math.floor(t / 1800) * 1800; }
+
+  function hhmm(epoch) {
+    var d = new Date(epoch * 1000);
+    var h = d.getHours(), m = d.getMinutes();
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+
+  function setView(m) {
+    viewMode = m;
+    vGuide.className = 'tn-vtab' + (m === 'guide' ? ' on' : '');
+    vList.className = 'tn-vtab' + (m === 'list' ? ' on' : '');
+    vGuide.setAttribute('aria-pressed', m === 'guide' ? 'true' : 'false');
+    vList.setAttribute('aria-pressed', m === 'list' ? 'true' : 'false');
+    guideEl.hidden = m !== 'guide';
+    list.hidden = m === 'guide';
+    if (m === 'guide') {
+      moreBtn.hidden = true;
+      if (!gLeft) gLeft = snapHalfHour(Date.now() / 1000);
+      gDraw();
+      gLoad();
+      if (!gTick) gTick = setInterval(gNowLine, 30000);
+    } else {
+      renderList();
+      if (gTick) { clearInterval(gTick); gTick = null; }
+    }
+  }
+  vGuide.addEventListener('click', function () { setView('guide'); });
+  vList.addEventListener('click', function () { setView('list'); });
+
+  document.getElementById('tngback').addEventListener('click', function () {
+    gLeft -= STEP_S; gDraw(); gLoad();
+  });
+  document.getElementById('tngfwd').addEventListener('click', function () {
+    gLeft += STEP_S; gDraw(); gLoad();
+  });
+  document.getElementById('tngnow').addEventListener('click', function () {
+    gLeft = snapHalfHour(Date.now() / 1000); gDraw(); gLoad();
+  });
+  document.getElementById('tngpage').addEventListener('click', function () {
+    gPage += 1;
+    if (gPage * GROWS >= view.length) gPage = 0;
+    gDraw(); gLoad();
+  });
+
+  //: The channels this page of the guide is showing: the current filtered view, sliced.
+  function gRows() {
+    return view.slice(gPage * GROWS, gPage * GROWS + GROWS);
+  }
+
+  function gDraw() {
+    var rows = gRows();
+    var right = gLeft + WINDOW_S;
+    whenEl.textContent = hhmm(gLeft) + '\u2013' + hhmm(right) + '  \u00b7  rows '
+      + (rows.length ? gPage * GROWS + 1 : 0) + '\u2013' + (gPage * GROWS + rows.length)
+      + ' of ' + view.length;
+
+    ticksEl.innerHTML = '';
+    for (var t = gLeft; t < right; t += 1800) {
+      var tick = document.createElement('div');
+      tick.className = 'tn-gtick';
+      tick.style.left = ((t - gLeft) / WINDOW_S * 100) + '%';
+      tick.style.width = (1800 / WINDOW_S * 100) + '%';
+      tick.textContent = hhmm(t);
+      ticksEl.appendChild(tick);
+    }
+
+    rowsEl.innerHTML = '';
+    rows.forEach(function (idx) {
+      var c = all[idx];
+      var row = document.createElement('div');
+      row.className = 'tn-grow';
+
+      var chan = document.createElement('button');
+      chan.type = 'button';
+      chan.className = 'tn-gchan';
+      chan.appendChild(document.createTextNode(c.name || '(unnamed)'));
+      var sub = document.createElement('em');
+      sub.textContent = groupOf(c);
+      chan.appendChild(sub);
+      chan.addEventListener('click', function () { tune(c); });
+      row.appendChild(chan);
+
+      var strip = document.createElement('div');
+      strip.className = 'tn-gstrip';
+      gStrip(strip, c);
+      row.appendChild(strip);
+      rowsEl.appendChild(row);
+    });
+    gNowLine();
+  }
+
+  // One row's worth of programmes, clipped to the window. A programme that starts before the
+  // left edge is drawn from the edge, which is how a grid shows something already running --
+  // dropping it would leave the row looking empty during a three-hour film.
+  function gStrip(strip, c) {
+    var sid = String(c.stream_id || '');
+    var progs = sid ? gCache[sid] : null;
+    var right = gLeft + WINDOW_S;
+    strip.innerHTML = '';
+    if (!sid) {
+      var m = document.createElement('div');
+      m.className = 'tn-gnone';
+      m.textContent = 'no guide for a pasted playlist \u2014 an Xtream panel login is what '
+        + 'carries one';
+      strip.appendChild(m);
+      return;
+    }
+    if (progs === undefined) {
+      var l = document.createElement('div');
+      l.className = 'tn-gnone';
+      l.textContent = 'asking your provider\u2026';
+      strip.appendChild(l);
+      return;
+    }
+    var shownAny = false;
+    var now = Date.now() / 1000;
+    (progs || []).forEach(function (p) {
+      if (p.stop <= gLeft || p.start >= right) return;
+      var a = Math.max(p.start, gLeft), b = Math.min(p.stop, right);
+      var el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'tn-gprog' + (p.start <= now && now < p.stop ? ' on' : '');
+      el.style.left = ((a - gLeft) / WINDOW_S * 100) + '%';
+      el.style.width = (Math.max(60, b - a) / WINDOW_S * 100) + '%';
+      el.appendChild(document.createTextNode(p.title || '(untitled)'));
+      var u = document.createElement('u');
+      u.textContent = hhmm(p.start) + '\u2013' + hhmm(p.stop);
+      el.appendChild(u);
+      el.title = (p.title || '') + '  ' + hhmm(p.start) + '\u2013' + hhmm(p.stop)
+               + (p.desc ? '\n\n' + p.desc : '');
+      el.addEventListener('click', function () { tune(c); });
+      strip.appendChild(el);
+      shownAny = true;
+    });
+    if (!shownAny) {
+      var n = document.createElement('div');
+      n.className = 'tn-gnone';
+      n.textContent = (progs && progs.length)
+        ? 'nothing published for this part of the day'
+        : 'no guide published for this channel';
+      strip.appendChild(n);
+    }
+  }
+
+  // The "now" marker is a reading, so it is only drawn when now is actually inside the
+  // window being displayed. Pinning it to the edge while you page forward would be a
+  // decoration that always agrees with itself.
+  function gNowLine() {
+    var old = rowsEl.querySelectorAll('.tn-gline');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+    var now = Date.now() / 1000;
+    if (now < gLeft || now > gLeft + WINDOW_S) return;
+    var pct = (now - gLeft) / WINDOW_S * 100;
+    var strips = rowsEl.querySelectorAll('.tn-gstrip');
+    for (var n = 0; n < strips.length; n++) {
+      var line = document.createElement('div');
+      line.className = 'tn-gline';
+      line.style.left = pct + '%';
+      strips[n].appendChild(line);
+    }
+  }
+
+  // Ask for the rows on screen that we have not already got, and nothing else.
+  function gLoad() {
+    var c = creds();
+    if (c.mode !== 'xtream') {
+      gNote.textContent = 'A pasted M3U carries no guide endpoint, so there is nothing to '
+        + 'ask for. Log in with an Xtream panel and the guide fills in from your '
+        + 'provider\u2019s own schedule.';
+      return;
+    }
+    var want = [];
+    gRows().forEach(function (idx) {
+      var sid = String(all[idx].stream_id || '');
+      if (sid && gCache[sid] === undefined) want.push(sid);
+    });
+    if (!want.length || gBusy) { if (!want.length) gDraw(); return; }
+    gBusy = true;
+    gNote.textContent = 'asking your provider for ' + want.length + ' channel'
+      + (want.length === 1 ? '' : 's') + ' of guide\u2026';
+    fetch('/api/tuner/epg', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({server: c.host, username: c.user, password: c.pass,
+                            stream_ids: want, limit: 8})
+    }).then(function (r) {
+      return r.json().then(function (j) { return {ok: r.ok, j: j}; });
+    }).then(function (res) {
+      gBusy = false;
+      if (!res.ok) {
+        gNote.textContent = 'The guide request failed: '
+          + ((res.j && res.j.detail) ? String(res.j.detail) : 'no reason given')
+          + '  Nothing on this box filters a guide; this is what came back.';
+        return;
+      }
+      // A channel that answered with an empty list is CACHED as empty, not left unknown --
+      // otherwise every redraw asks the panel again for a channel that has no guide, which
+      // is how a page ends up hammering somebody else's server.
+      want.forEach(function (sid) {
+        gCache[sid] = (res.j.channels && res.j.channels[sid]) || [];
+      });
+      var withData = 0;
+      want.forEach(function (sid) { if (gCache[sid].length) withData += 1; });
+      var failed = Object.keys(res.j.failed || {}).length;
+      gNote.textContent = withData + ' of ' + want.length + ' channels published a guide'
+        + (failed ? ', ' + failed + ' request' + (failed === 1 ? '' : 's') + ' failed' : '')
+        + '  \u00b7  ' + (res.j.elapsed_ms || 0) + ' ms, straight from your provider'
+        + '  \u00b7  nothing about it is stored on this box.'
+        + (withData < want.length
+            ? '  A channel with no guide is one your provider publishes no schedule for; '
+              + 'it is not hidden and it still plays.'
+            : '');
+      // Failures are cached as empty too, but the note above has already said how many
+      // failed -- so the row reads "no guide published" while the count says why.
+      gDraw();
+    }).catch(function (e) {
+      gBusy = false;
+      gNote.textContent = 'Could not reach this box for the guide (' + String(e && e.message)
+        + '). Your provider was never contacted.';
+    });
+  }
+
+  // The guide only makes sense for live TV, and `render()` is what knows the category
+  // changed. Wrapping it here rather than editing it keeps one definition of "the view
+  // has changed" instead of two that can drift.
+  var renderInner = render;
+  render = function () {
+    renderInner();
+    viewsEl.hidden = !all.length;
+    // `renderInner` decides the pager from the list's own paging state, so in guide view it
+    // has to be put back -- the list it pages is hidden.
+    if (viewMode === 'guide') { moreBtn.hidden = true; list.hidden = true; }
+    var live = (cat === 'live' || cat === 'fav' || cat === 'filtered');
+    vGuide.disabled = !live;
+    vMeta.textContent = live ? '' : 'The guide is for live TV. ' + catLabel(cat)
+      + ' has no schedule to draw, so this stays a list.';
+    if (!live && viewMode === 'guide') { setView('list'); return; }
+    if (viewMode === 'guide') { gPage = 0; gDraw(); gLoad(); }
+  };
+
+  // =====================================================================================
+  // PLAYBACK OPTIONS, SETTINGS AND STATISTICS
+  // =====================================================================================
+  //
+  // Garrett asked for this directly. Every number is read from the player or from the
+  // session document; `-` means it has not been reported yet, which is itself a reading.
+  // There is no synthetic "health" score and no bar that moves on a timer.
+  var statsEl = document.getElementById('tnstats');
+  var psLevel = document.getElementById('ps-level'), psAudio = document.getElementById('ps-audio');
+  var psWhy = document.getElementById('ps-why');
+  var statsT = null, lastSession = null;
+
+  function put(id, text) { document.getElementById(id).textContent = text; }
+
+  function fmtRate(bps) {
+    if (!bps || bps < 1) return '-';
+    if (bps >= 1e6) return (bps / 1e6).toFixed(2) + ' Mb/s';
+    return Math.round(bps / 1e3) + ' kb/s';
+  }
+
+  function fmtBytes(n) {
+    if (!n) return '-';
+    if (n >= 1e9) return (n / 1e9).toFixed(2) + ' GB';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
+    return Math.round(n / 1e3) + ' kB';
+  }
+
+  function bufferAhead() {
+    try {
+      for (var i = 0; i < video.buffered.length; i++) {
+        if (video.buffered.start(i) <= video.currentTime
+            && video.currentTime <= video.buffered.end(i)) {
+          return video.buffered.end(i) - video.currentTime;
+        }
+      }
+    } catch (e) { /* buffered throws on a detached element */ }
+    return null;
+  }
+
+  function statsTick() {
+    var q = null;
+    if (video.getVideoPlaybackQuality) { q = video.getVideoPlaybackQuality(); }
+    var w = video.videoWidth, h = video.videoHeight;
+    put('ps-res', (w && h) ? w + ' \u00d7 ' + h : '-');
+    var buf = bufferAhead();
+    put('ps-buf', buf === null ? '-' : buf.toFixed(1) + ' s');
+    put('ps-drop', q ? String(q.droppedVideoFrames) : '-');
+    put('ps-dec', q ? String(q.totalVideoFrames) : '-');
+    put('ps-eng', hls ? 'hls.js ' + (window.Hls && window.Hls.version ? window.Hls.version : '')
+                      : 'the browser\u2019s own HLS');
+
+    if (hls) {
+      // `currentLevel` is **-1 while the level is being chosen automatically**, which is the
+      // default and therefore the normal case -- so reading it alone printed `-` for the level
+      // bitrate on a stream that was plainly playing at a known bitrate. `loadLevel` is the
+      // index actually being fetched, and it resolves the auto choice. Measured: 286 Mb/s of
+      // throughput and 2 levels beside a bitrate of `-`, which is what gave it away.
+      var li = hls.currentLevel;
+      if (li < 0 && typeof hls.loadLevel === 'number') li = hls.loadLevel;
+      var lv = (li >= 0 && hls.levels) ? hls.levels[li] : null;
+      put('ps-rate', lv ? fmtRate(lv.bitrate)
+                          + (hls.currentLevel < 0 ? ' (auto)' : '') : '-');
+      put('ps-tp', fmtRate(hls.bandwidthEstimate));
+    } else {
+      put('ps-rate', '-');
+      put('ps-tp', '-');
+    }
+    var j = lastSession;
+    put('ps-seg', j && j.segment_s ? Number(j.segment_s).toFixed(2) + ' s' : '-');
+    put('ps-segn', j && j.segments !== undefined ? String(j.segments) : '-');
+    put('ps-in', j ? fmtBytes(j.bytes_in) : '-');
+    put('ps-mode', j && j.mode ? (j.mode === 'direct' ? 'stream copy, no GPU' : String(j.mode))
+                              : '-');
+    put('ps-age', j && j.age_s !== undefined ? Math.round(j.age_s) + ' s' : '-');
+  }
+
+  function statsStart(c, j) {
+    lastSession = j || null;
+    statsEl.hidden = false;
+    if (statsT) clearInterval(statsT);
+    statsT = setInterval(function () {
+      statsTick();
+      // The session half of the panel comes from the same poll the watchdog already runs,
+      // one level up; this only refreshes the numbers it left behind.
+      session().then(function (s) { if (s) { lastSession = s; } });
+    }, 1000);
+    statsTick();
+    fillLevels();
+    psWhy.textContent = 'Quality is your provider\u2019s -- this box stream-copies and does '
+      + 'not re-encode, so there is one level unless they publish more. Everything above is '
+      + 'measured by the player in this browser or read from the session on the box.';
+  }
+
+  function fillLevels() {
+    while (psLevel.options.length > 1) psLevel.remove(1);
+    while (psAudio.options.length > 1) psAudio.remove(1);
+    if (!hls) return;
+    (hls.levels || []).forEach(function (lv, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = (lv.height ? lv.height + 'p' : 'level ' + (i + 1))
+        + (lv.bitrate ? ' \u00b7 ' + fmtRate(lv.bitrate) : '');
+      psLevel.appendChild(o);
+    });
+    (hls.audioTracks || []).forEach(function (tr, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = tr.name || tr.lang || ('track ' + (i + 1));
+      psAudio.appendChild(o);
+    });
+  }
+
+  psLevel.addEventListener('change', function () {
+    if (hls) hls.currentLevel = parseInt(psLevel.value, 10);
+  });
+  psAudio.addEventListener('change', function () {
+    var v = parseInt(psAudio.value, 10);
+    if (hls && v >= 0) hls.audioTrack = v;
+  });
+  document.getElementById('ps-pip').addEventListener('click', function () {
+    if (!video.requestPictureInPicture) {
+      psWhy.textContent = 'This browser does not offer picture-in-picture.';
+      return;
+    }
+    video.requestPictureInPicture().catch(function (e) {
+      psWhy.textContent = 'Picture-in-picture was refused: ' + String(e && e.message);
+    });
+  });
+  document.getElementById('ps-full').addEventListener('click', function () {
+    var el = document.getElementById('tnplayer');
+    if (el.requestFullscreen) { el.requestFullscreen().catch(function () {}); }
+  });
+
+  // =====================================================================================
+  // HANDING THE STREAM TO /tuner-watch.html
+  // =====================================================================================
+  //
+  // Garrett: "You can make the stream move to its own symoneural.com/tuner/watch or something
+  // so we can almost like full screen for improved guide pip settings etc etc."
+  //
+  // The offer only appears once a channel is actually playing. A button that says "watch full
+  // width" beside a stream that never opened is an invitation to a black rectangle on a second
+  // page, and the whole design of this surface is that it says what is true.
+  //
+  // NOTHING GOES IN THE URL. The stream URL carries the visitor's provider credentials and
+  // uvicorn logs a request line, so the channel travels in localStorage -- the same place the
+  // credentials already live, and never off this browser.
+  var prow = document.getElementById('tnprow'), watchBtn = document.getElementById('tnwatch');
+  var watchWhy = document.getElementById('tnwatchwhy');
+  var WK = 'symoneural.tuner.watch';
+  var watchable = null;
+
+  function offerWatch(c) {
+    watchable = c || null;
+    prow.hidden = !watchable;
+    watchWhy.textContent = '';
+  }
+
+  watchBtn.addEventListener('click', function () {
+    if (!watchable) return;
+    try {
+      localStorage.setItem(WK, JSON.stringify({
+        name: watchable.name || '', url: watchable.url || '',
+        stream_id: watchable.stream_id || '', group: groupOf(watchable), sid: sid || ''}));
+    } catch (e) {
+      // Private mode, or a full quota. Say so and stay here rather than navigating to a page
+      // that would have nothing to open and no way to explain why.
+      watchWhy.textContent = 'This browser refused to store the handoff ('
+        + String(e && e.message ? e.message : e) + '), so the other page would open empty. '
+        + 'Playback here is unaffected.';
+      return;
+    }
+    // The session is handed over alive, not released: the watch page adopts it. See `letGo`.
+    handingOff = true;
+    location.href = '/tuner-watch.html';
+  });
+
+  // `play()` is where a stream actually becomes a picture, so that is where the panel
+  // starts reading -- and where the handoff becomes truthful. Wrapped rather than edited,
+  // same reason as `render()` above.
+  var playInner = play;
+  play = function (src, c, j) {
+    playInner(src, c, j);
+    statsStart(c, j);
+    offerWatch(c);
+  };
+
+  // Withdraw the offer the moment a different channel is asked for: until that one is playing
+  // there is nothing to hand over, and the id in the old offer is about to be released.
+  var tuneInner = tune;
+  tune = function (c) {
+    offerWatch(null);
+    tuneInner(c);
+  };
+
+  var stopInner = stopTimers;
+  stopTimers = function () {
+    stopInner();
+    if (statsT) { clearInterval(statsT); statsT = null; }
+  };
 })();
 </script>
 </body>

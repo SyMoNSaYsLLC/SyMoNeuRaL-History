@@ -1460,14 +1460,42 @@ class TestCodecReporting(unittest.TestCase):
         import json
         self.assertNotIn(SENTINEL_PASS, json.dumps(s.public()))
 
-    def test_public_document_carries_the_codec(self):
+    def test_public_document_carries_both_codecs(self):
+        """Video AND audio. The audio half is the one that was missing and it cost a real bug.
+
+        This assertion used to be `assertNotIn("acodec", ...)`, on the reasoning that an unused
+        field is a field nobody is checking. That was wrong, and a measured failure is why: a
+        channel reported `state: live`, `vcodec: h264`, 87 MB pulled from the provider over five
+        minutes and every indicator on the box green, while the browser decoded ZERO frames --
+        because MSE refuses the whole segment when it will not take the AUDIO track, and Chrome
+        will not take AC-3. The page could only see `vcodec`, so it had nothing to say and the
+        visitor got a black rectangle with no explanation.
+        """
         s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
                              scrub=Scrubber(), policy=Policy())
         self.assertIn("vcodec", s.public())
         self.assertEqual(s.public()["vcodec"], "")
-        # `acodec` is parsed but deliberately unpublished -- an unused field is a field nobody
-        # is checking. If it is ever published, this line is the reminder to say so.
-        self.assertNotIn("acodec", s.public())
+        self.assertIn("acodec", s.public())
+        self.assertEqual(s.public()["acodec"], "")
+
+    def test_a_hostile_audio_codec_cannot_reach_the_public_document(self):
+        """Same allow-list property as `vcodec`, now that `acodec` is published too.
+
+        ffmpeg's stderr can quote its input, so the token is matched against `AUDIO_CODECS` and
+        anything unrecognised becomes "". Publishing a field that carried ffmpeg's text verbatim
+        would have handed a hostile stream a channel into the document the browser is given.
+        """
+        line = f"[info]   Stream #0:1: Audio: {SENTINEL_PASS} (LC), 48000 Hz, stereo"
+        self.assertEqual(sessions._match_audio_codec(line), "")
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())
+        s.acodec = sessions._match_audio_codec(line)
+        import json
+        self.assertNotIn(SENTINEL_PASS, json.dumps(s.public()))
+
+    def test_a_real_audio_codec_is_reported(self):
+        line = "[info]   Stream #0:1: Audio: ac3 (AC-3 / 0x332D4341), 48000 Hz, 5.1, fltp"
+        self.assertEqual(sessions._match_audio_codec(line), "ac3")
 
     @needs_ffmpeg
     def test_hevc_is_reported_while_everything_else_looks_healthy(self):
@@ -1590,7 +1618,72 @@ class TestTuneDeadline(unittest.TestCase):
         """
         self.assertGreaterEqual(routes.TUNE_WAIT_SECONDS, 20.0)
         self.assertLessEqual(routes.TUNE_WAIT_SECONDS, 60.0)
-        self.assertLess(routes.TUNE_WAIT_SECONDS, sessions.IDLE_TIMEOUT + 1)
+
+    def test_the_wait_keeps_the_session_alive_while_it_waits(self):
+        """Why `TUNE_WAIT_SECONDS` (25 s) is allowed to exceed `IDLE_TIMEOUT` (12 s).
+
+        This test replaces an assertion that read `TUNE_WAIT_SECONDS < IDLE_TIMEOUT + 1`.
+        That was already false in the commit that introduced it -- `979c3dc` raised the wait
+        to 25 s and dropped the idle timeout 45 -> 12 s in one change -- and it stayed red
+        because it was checking the wrong thing. Two numbers being ordered was never the
+        protection; the protection is the `MANAGER.touch(session.id)` inside the wait loop.
+        A client blocked on `/tune` *is* activity on the session, so the reaper, which
+        measures idleness from the last player request, never sees the session go quiet.
+
+        Assert the mechanism, not the arithmetic: over a wait, the loop must touch
+        repeatedly. One touch at the top would leave the session ageing again for the rest of
+        the wait, which is the bug the ordering assertion was groping at.
+        """
+        class Waiting:
+            """A manager whose session never becomes ready, and which counts the touches."""
+
+            def __init__(self):
+                self.touches = 0
+                self.session = sessions.Session(
+                    id="slow", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                    scrub=Scrubber(), policy=Policy())
+
+            def start(self, *a, **k):
+                return self.session
+
+            def touch(self, sid):
+                self.touches += 1
+                return self.session
+
+            def get(self, sid):
+                return self.session           # still there, just not ready
+
+            def stop_session(self, sid):
+                return False
+
+            def list(self):
+                return []
+
+            def reap(self):
+                return 0
+
+        try:
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception as exc:                                  # pragma: no cover
+            self.skipTest(f"TestClient unavailable: {exc}")
+
+        app = FastAPI()
+        app.include_router(routes.router, prefix="/api/tuner")
+        client = TestClient(app, raise_server_exceptions=False)
+        mgr = Waiting()
+        real_mgr, real_wait = routes.MANAGER, routes.TUNE_WAIT_SECONDS
+        try:
+            routes.MANAGER = mgr
+            routes.TUNE_WAIT_SECONDS = 1.0      # ~4 iterations at the loop's 0.25 s sleep
+            r = client.post("/api/tuner/tune", json={"url": "http://p.example/1.ts"})
+        finally:
+            routes.MANAGER, routes.TUNE_WAIT_SECONDS = real_mgr, real_wait
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("poll the session", r.text)
+        # At the real 25 s wait this is ~100 touches, none of them more than 0.25 s apart, so
+        # a 12 s idle timeout is never approached. Two is enough to prove it is per-iteration.
+        self.assertGreaterEqual(mgr.touches, 2)
 
     def test_a_long_wait_never_hands_back_a_session_that_is_already_gone(self):
         """The window the longer wait widened.

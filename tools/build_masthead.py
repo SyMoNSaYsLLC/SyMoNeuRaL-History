@@ -67,7 +67,12 @@ BLOCK = f"""{BEGIN}
       </p>
       <div class="actions">
         <a class="cta" href="/build.html">Have one built &rarr;</a>
-        <a class="cta ghost" href="#rack">See it running</a>
+        <!-- `/livestack`, NOT `#rack`. This block is copied verbatim into overview.html by
+             build_split.py, and that page has no #rack section -- the rack lives on its own
+             page since the split. The link therefore did nothing at all on the page it is
+             most often read from: `/` 302s to `/overview`, so the masthead a visitor sees is
+             almost always the copied one. A path works from both. -->
+        <a class="cta ghost" href="/livestack">See it running</a>
       </div>
     </div>
 

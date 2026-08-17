@@ -106,6 +106,33 @@ class H(SimpleHTTPRequestHandler):
                                         "bytes_in": 99, "idle_timeout_s": 45,
                                         "segments": 3, "segment_s": 2.0,
                                         "max_lifetime_s": 1800})
+            if c == "ac3":
+                # THE ONE THAT LOOKS PERFECT AND SHOWS NOTHING. h264 video -- which every
+                # browser decodes -- with a Dolby Digital soundtrack, which Chrome's MSE
+                # refuses. It refuses the whole segment, not just the audio, so the picture
+                # is black while `vcodec` reads a reassuring `h264` and every byte counter on
+                # the box climbs. Measured on one of the owner's own channels: live, h264,
+                # 87 MB pulled over five minutes, zero frames decoded, and the page had
+                # nothing to say because it could only see the video codec.
+                return self._json(200, {"id": "S1", "label": "x", "state": "live",
+                                        "error": None, "mode": "direct", "vcodec": "h264",
+                                        "acodec": "ac3",
+                                        "playlist": "stream/S1/live.m3u8", "age_s": 1.0,
+                                        "bytes_in": 91_226_112, "idle_timeout_s": 45,
+                                        "segments": 4, "segment_s": 6.54,
+                                        "max_lifetime_s": 1800})
+            if c == "aac":
+                # The control for `ac3`, and the assertion that matters most: an ordinary
+                # h264 + AAC stream must produce NO panel at all. A codec warning that fires
+                # on a stream which plays is worse than none -- it teaches the visitor to
+                # ignore the one panel that tells the truth.
+                return self._json(200, {"id": "S1", "label": "x", "state": "live",
+                                        "error": None, "mode": "direct", "vcodec": "h264",
+                                        "acodec": "aac",
+                                        "playlist": "stream/S1/live.m3u8", "age_s": 1.0,
+                                        "bytes_in": 1_150_000, "idle_timeout_s": 45,
+                                        "segments": 6, "segment_s": 2.002,
+                                        "max_lifetime_s": 1800})
             if c == "emptylive":
                 # The one the gate exists for: state "live", playlist named, nothing in it.
                 return self._json(200, {"id": "S1", "label": "x", "state": "live",
@@ -140,6 +167,14 @@ class H(SimpleHTTPRequestHandler):
         if c == "hevc":
             return {**base, "state": "live", "error": None, "vcodec": "hevc",
                     "segments": 3, "segment_s": 2.0}
+        if c == "ac3":
+            return {**base, "state": "live", "error": None, "vcodec": "h264",
+                    "acodec": "ac3", "segments": 4, "segment_s": 6.54,
+                    "bytes_in": 91_226_112}
+        if c == "aac":
+            return {**base, "state": "live", "error": None, "vcodec": "h264",
+                    "acodec": "aac", "segments": 6, "segment_s": 2.002,
+                    "bytes_in": 1_150_000}
         if c == "emptylive":
             return {**base, "state": "live", "error": None,
                     "segments": 0, "segment_s": 0.0}

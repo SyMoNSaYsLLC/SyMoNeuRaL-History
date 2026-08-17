@@ -15,7 +15,9 @@ backend/apps/tuner/
   m3u.py          M3U/EXTINF channel parser + a separate HLS playlist parser
   xtream.py       Xtream Codes protocol client
   sessions.py     ffmpeg HLS sessions: the pump, the caps, the reaper
+  epg.py          the programme guide: get_short_epg and XMLTV, on one clock
   routes.py       the APIRouter and the rack `status()`
+  test_epg.py     34 tests against a scripted panel, offline
   test_tuner.py   108 tests, offline, no provider needed. Includes a local repro
                   harness: ffmpeg synthesises the failure modes (HTML at 200, a 403
                   page, a User-Agent gate, AES-128 HLS, HEVC) so every fix is falsifiable
@@ -70,6 +72,24 @@ The Tuner never takes the GPU lock. It is `-c copy` — a demux and a remux, no 
 encoding, no CUDA — so it is a CPU surface like RavenCalc, and the rack unit reports
 `bus: "cpu"`. Making it queue behind chat or image would be a lie about what it uses.
 
+### The rack unit is the Tuner AND the Guide
+
+Garrett: *"symon guide and symon tuner should be migrated together"*, then *"you need to migrate
+tuner and guide to be 1"*. The rack used to carry two units whose `href` was the same page,
+which is a rack disagreeing with itself about how many things this box runs. `status()` now
+returns one unit, labelled *SyMoNeuRaL Tuner & Guide*, and `api.py` no longer builds a `guide`
+unit.
+
+**Nothing was deleted to achieve it.** `backend/apps/guide/` is untouched and `/api/guide/*`
+still serves the page's filter — the fold is in what the rack claims, not in what runs. The
+guide half's own claim is carried in the tuner unit's detail line in every state, because it is
+the thing a visitor cannot check by looking: *guide filtering on the CPU, never takes the GPU
+lock*. That is the same claim RavenCalc makes and it is worth as much here.
+
+Note what `offline` now means: without ffmpeg the streaming half cannot work but the guide half
+still answers perfectly, so the offline detail names the part that is missing rather than
+implying the whole surface is dead.
+
 ### Environment variables (all optional)
 
 | Variable | Default | Meaning |
@@ -106,6 +126,8 @@ and the request is the one their own player would make.
 | `POST` | `/playlist` | `{url}` or `{text}` → parsed channels, groups, `truncated` |
 | `POST` | `/xtream/info` | `{server, username, password}` → account status, expiry, connection limits |
 | `POST` | `/xtream/channels` | `+ {kinds: ["live","vod","series"]}` → catalogue |
+| `POST` | `/epg` | `+ {stream_id}` or `{stream_ids: [...], limit}` → the guide for a grid |
+| `POST` | `/epg/xmltv` | `+ {ids, max_per_channel}` → the whole account's guide in one request |
 | `POST` | `/tune` | `{url, label}` → starts a session, waits up to 25 s for real output |
 | `GET` | `/session/{sid}` | session state (also a heartbeat) |
 | `DELETE` | `/session/{sid}` | stop and free the slot |
@@ -138,6 +160,63 @@ request that was about to succeed. The same measurement repeated at `-probesize`
 **the probe sizes were left alone**: time to first playlist is bounded by how much data the HLS
 muxer needs to close its first segment, not by the probe. Raising them would have been a guess
 dressed as a fix.
+
+---
+
+## The programme guide — `epg.py`
+
+Garrett: *"you need to pull epg do you know how to do it?"*, and then, of the tick-grid that
+was the only way to look at live TV: *"update the damn tuner guide with epg and not that
+terrible tiny select and deselect shit."*
+
+Two sources, and they are not alternatives — they answer different questions:
+
+| | `get_short_epg` (`POST /epg`) | `xmltv.php` (`POST /epg/xmltv`) |
+|---|---|---|
+| shape | JSON, one channel per request | one XML document, the whole account |
+| keyed on | `stream_id` | `tvg_id` / `epg_channel_id` |
+| titles | base64 | plain text |
+| times | `start_timestamp` epoch | `20260817140000 +0000` |
+| cost | one request per channel | one request, tens of MB |
+
+**There is no `get_live_movies` or `get_live_vod` action.** That was asked directly and the
+answer is that neither exists in Xtream Codes; a film has no schedule, and the honest answer
+for VOD is the catalogue.
+
+What the module refuses to do, and each refusal is a decision:
+
+* **A timestamp with no UTC offset is dropped, not guessed.** XMLTV permits a bare
+  `20260817140000`, and the only way to place it on a clock is to assume the provider's
+  timezone is yours. A guide that is silently three hours wrong is worse than one that says it
+  has nothing — so those rows are counted into `dropped_no_clock` and the count is published.
+  `calendar.timegm` is used rather than `time.mktime`, so the box's own `TZ` cannot move
+  anybody's guide.
+* **A channel whose every row is undateable gets no bucket at all**, rather than an empty list.
+  `{"a.tv": []}` would claim "this channel has a guide and it is empty", which is not what
+  happened.
+* **`_maybe_b64` decodes only when the result is believable.** `"News"` is valid base64 and
+  decodes to bytes that are not text; a decoder that trusts the encoding turns a title into
+  mojibake.
+* **A truncated XMLTV document keeps what it parsed.** A panel that times out mid-write still
+  returns 200, and discarding 9,000 good channels because the 9,001st is half-written is the
+  wrong trade. `iterparse` + `elem.clear()` keeps memory bounded either way.
+* **`now_next` returns `None` rather than `programmes[0]`.** A `get_short_epg` reply routinely
+  begins in the past and can have a gap; a "now" plucked from whichever row happened to be
+  first is the same class of lie as an always-green status LED.
+
+`now`/`next`/`progress` are computed **on the server**, because the clock that matters is the
+one the provider's timestamps are on. A visitor with a wrong system clock would otherwise see a
+guide that is wrong in a way nothing on the page could explain.
+
+`POST /epg` caps at **60 ids** and runs **6 at a time**; the page asks for the 30 rows it is
+showing and no more. Each id is one request to somebody else's panel, so a "just fetch
+everything" grid is a page hammering a third party. Measured against a real account: a grid of
+24 named broadcasters answered **24/24 in 1,275 ms**, 23 of them with a programme on now. Of
+10,072 live channels, **5,304 (52%) carry a `tvg_id`** — the rest genuinely have no guide, and
+the page says so per row rather than drawing an empty box.
+
+`backend/apps/tuner/test_epg.py` covers all of the above against a scripted panel: 34 tests,
+no network.
 
 ---
 
@@ -201,12 +280,13 @@ Never written to disk, never logged, never in a URL on any route here.
   (internal, for logging) and `public()["error"]` carries only this package's own origin-only
   messages, or the fixed sentence *"the transcoder could not stream-copy this source"*. So the
   page cannot show ffmpeg's exact complaint — deliberately. Read it from the log instead.
-- **`public()["vcodec"]` is the one published field derived from ffmpeg's output**, and it is
-  safe for exactly one reason: it is not ffmpeg's text, it is a token from an allow-list
-  (`sessions.VIDEO_CODECS`) that ffmpeg's text was matched against. Anything unrecognised —
-  including a hostile stream whose metadata quotes a credential — becomes `""`. A test feeds the
-  matcher a fabricated `Stream #0:0: Video: <sentinel password>` line and asserts the document
-  stays clean.
+- **`public()["vcodec"]` and `public()["acodec"]` are the two published fields derived from
+  ffmpeg's output**, and they are safe for exactly one reason: they are not ffmpeg's text, they
+  are tokens from allow-lists (`sessions.VIDEO_CODECS`, `sessions.AUDIO_CODECS`) that ffmpeg's
+  text was matched against. Anything unrecognised — including a hostile stream whose metadata
+  quotes a credential — becomes `""`. Tests feed the matchers a fabricated
+  `Stream #0:0: Video: <sentinel password>` line and the audio equivalent, and assert the
+  document stays clean.
 - **An upstream error body is excerpted into the message**, which is the most dangerous string
   in the package: panels reflect the requested path back, credentials and all. It goes through
   `Scrubber.from_urls` over both the requested and the reached URL, which treats every path
@@ -230,9 +310,20 @@ no new deploy step. Two things are new in the payloads and one is a behaviour ch
    copy to write is roughly *"this stream is H.265/HEVC and your browser cannot decode it"*, and
    it is the honest thing to say rather than letting the player fail silently. `vcodec == ""` is
    not an error; it means the codec has not been read yet, so do not warn on it.
-   (`Session.acodec` is parsed and available if you want it — AC-3 and MP2 are the "video plays,
-   no sound in Chrome" complaint — but it is deliberately **not** in `public()` yet. Ask and it
-   is one line.)
+
+   **`"acodec"` is published too, and checking only `vcodec` is not enough.** It was withheld on
+   the reasoning that an unused field is a field nobody is checking; a measured failure says that
+   was wrong. One of the owner's channels reported `state: live`, `vcodec: h264`, 87 MB pulled
+   from the provider over five minutes and every indicator on the box green, while the browser
+   decoded **zero** frames — because MSE refuses the whole segment when it will not take the
+   AUDIO track, and Chrome takes no AC-3. The picture stops for a soundtrack, and a page that can
+   only see `vcodec` reports a perfectly healthy h264 stream over a black rectangle.
+
+   **Ask the browser, do not consult a table.** The pages call
+   `MediaSource.isTypeSupported()` against both `video/mp2t` (what this box serves) and fMP4
+   (what hls.js remuxes to), and warn only when *neither* is accepted. Measured on Chrome 151:
+   h264, aac, mp2 and mp3 accepted; hevc, mpeg2video, vc1, av1, vp9, ac3, eac3, dts and truehd
+   refused. A hard-coded list would have been wrong about mp2 in the same week it was written.
 2. **`public()["error"]` is now often the provider's own sentence**, not only our fixed one:
    `"http://host:80: upstream returned HTTP 403 - Subscription expired. Your account ran out on
    2026-01-01."` It is scrubbed, single-line and capped near 300 characters, but it is *third-
@@ -307,11 +398,14 @@ Nothing else in `public()` changed, and it still has no field that can hold a cr
   pattern — deliberately not "the content type is texty", because misconfigured servers send
   real transport streams as `text/html` constantly and a header-only rule would break every one
   of those working streams.
-- **Codec reporting.** `public()["vcodec"]` names the video codec ffmpeg found. This exists for
-  HEVC, which is the nastiest failure here because every indicator is green: `-c copy` succeeds,
-  the playlist is written, segments are served with 200s, and no browser decodes HEVC in MSE, so
-  the visitor sees a black rectangle. There is nothing to fix in the pipeline; the only honest
-  response is to say which codec arrived.
+- **Codec reporting.** `public()["vcodec"]` and `public()["acodec"]` name the codecs ffmpeg
+  found. This exists for the nastiest failure here, the one where every indicator is green:
+  `-c copy` succeeds, the playlist is written, segments are served with 200s, and the browser
+  still shows a black rectangle. HEVC video is the obvious case. **AC-3 audio on H.264 video is
+  the case that was missed for months**, because the video codec looked fine and the audio codec
+  was not published — MSE refuses the whole segment over the soundtrack, so the picture dies
+  too. There is nothing to fix in the pipeline; the only honest response is to say which codec
+  arrived, both of them.
 - 108 tests, offline, ~13 seconds (ffmpeg builds the media fixtures). Every fix above was
   verified by reverting it and confirming the guarding test fails.
 

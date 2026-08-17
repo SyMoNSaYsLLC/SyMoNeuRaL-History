@@ -28,6 +28,23 @@ It is a shared secret that gates starting a QEMU process and scanning a network.
 reuse `SYM_MINER_TOKEN` (the GPU miner's) for it: two surfaces with different blast radii
 should not fall together.
 
+### What these two variables do NOT do
+
+Asked directly, so it is answered where it is read. **They gate this HTTP API and nothing
+else** — `/api/asicminer/scan`, `/firmware`, and the `/emulator` route that starts a QEMU
+guest for you. That is why they exist: those are remote-control endpoints on a box that
+faces the public internet, and one of them takes a filename.
+
+- **The emulator does not need them.** `scripts/qemu-antminer.sh <firmware.tar.gz> --shell
+  --serve` boots Antminer firmware from a terminal with no environment set at all. If you
+  are working on the flash path, that is the whole command.
+- **Setting them will not make the Miner panel show an emulated rig.** QEMU emulates the
+  Zynq-7007 CPU, not the FPGA fabric or the hashboards, so `bmminer` never starts and
+  nothing answers pyasic on port 4028. The panel reads `offline`, which is correct rather
+  than broken. Telemetry needs a rig; the emulator is for `upgrade.cgi`.
+- **`ENABLED` is not a boolean.** It reads like one. `SYM_ASIC_ENABLED=true` leaves the
+  surface off and says nothing, because the check is `== "1"`.
+
 ### Where the variables actually have to go
 
 `scripts/symoneural.sh` starts the API with `setsid python3 backend/api.py` and sources no

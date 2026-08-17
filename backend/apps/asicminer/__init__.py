@@ -18,6 +18,23 @@ is no honest public version of a live panel.
     SYM_ASIC_TOKEN=<shared secret>  # every request must present it
     SYM_ASIC_RIGS=10.0.0.11,10.0.0.12   # optional; addresses to probe
 
+`SYM_ASIC_ENABLED` must be the **literal string `1`**. `true`, `yes` and `on` all leave the
+surface off, and silently -- the check is `== "1"`, not truthiness. It reads like a boolean
+and is not one, which is the single most reported confusion about this surface.
+
+**These two variables gate the HTTP API and nothing else.** They do not gate the emulator
+itself: `scripts/qemu-antminer.sh <firmware.tar.gz> --shell --serve` boots Antminer firmware
+under QEMU from a terminal with no environment set at all. What they gate is the operator
+*route* that starts it for you, `POST /api/asicminer/emulator`, along with `/scan` and
+`/firmware` -- because those are remote-control endpoints on a box facing the public
+internet, and the emulator route takes a filename.
+
+And setting them will not make the Miner panel show readings from an emulated rig. QEMU
+emulates the Zynq CPU, not the hashboards, so nothing inside answers pyasic on port 4028;
+the panel will correctly read **offline**. The emulator is for the firmware/flash path
+(`upgrade.cgi`), which is exactly what `scripts/qemu-antminer.sh` says at the top of the
+file. A rig is the only thing that produces telemetry.
+
 Off by default and 503 with both unset. That mirrors `backend/apps/cryptominer/`, which
 already refuses to start without `SYM_MINING_ENABLED=1`, and it matters more here: this box
 serves the public internet, and rig control is not something to expose by accident. Without
@@ -116,8 +133,12 @@ async def discover(cidr: str) -> dict:
     not. This adds the second gate: the surface has to be switched on at all.
     """
     if not enabled():
-        return {"rigs": [], "error": "surface disabled — set SYM_ASIC_ENABLED=1 and "
-                                     "SYM_ASIC_TOKEN"}
+        # The value is spelled out because `ENABLED` reads like a boolean and is not one:
+        # the check is `== "1"`, so `true` leaves the surface off and says nothing.
+        return {"rigs": [], "error": "surface disabled — set SYM_ASIC_ENABLED=1 (the "
+                                     "literal string 1, not true) and SYM_ASIC_TOKEN. "
+                                     "Both gate this API only; scripts/qemu-antminer.sh "
+                                     "needs neither"}
     if not (VENV_PY.is_file() and SCAN.is_file()):
         return {"rigs": [], "error": "asicminer venv not installed"}
     try:
@@ -162,7 +183,8 @@ def unit_state(result: dict | None) -> tuple[str, str]:
     must never show a mining surface as `ready` on the strength of the code existing.
     """
     if not enabled():
-        return "offline", "disabled — set SYM_ASIC_ENABLED=1 and SYM_ASIC_TOKEN"
+        return "offline", ("disabled — set SYM_ASIC_ENABLED=1 (the literal string 1, "
+                           "not true) and SYM_ASIC_TOKEN")
     if not installed():
         return "offline", "control venv not installed"
     if result is None:
