@@ -69,6 +69,37 @@ while read -r ref; do
 done < <(grep -ohE '(src|href)="/[^"#]+"' "$DST"/*.html \
          | sed 's/.*"\/\(.*\)"/\1/' | sort -u)
 
+# --- orphans -----------------------------------------------------------------
+# This script copies; it has never deleted. So every rename leaves its old file in the
+# webroot forever: 19 generated renders (13 MB) that moved to backend/output/, six
+# superseded index backups, and a static docs/ directory that Caddy now shadows by
+# proxying /docs to FastAPI. Report them every time, delete only when asked.
+echo
+echo "checking for files in the webroot that are no longer in site/:"
+orphans=0
+orphan_list="$(mktemp)"
+find "$DST" -maxdepth 1 -type f -printf '%f\n' | sort | while read -r f; do
+  [ -f "$SRC/$f" ] || echo "$f"
+done > "$orphan_list"
+orphans="$(wc -l < "$orphan_list")"
+
+if [ "$orphans" -eq 0 ] && [ ! -d "$DST/docs" ]; then
+  echo "  none"
+else
+  sed 's/^/  orphan  /' "$orphan_list"
+  [ -d "$DST/docs" ] && echo "  orphan  docs/            (a directory -- /docs is proxied to the API now)"
+  if [ "${1:-}" = "--prune" ]; then
+    echo
+    while read -r f; do rm -f -- "$DST/$f"; done < "$orphan_list"
+    [ -d "$DST/docs" ] && rm -rf -- "$DST/docs"
+    echo "  pruned $orphans file(s)$([ -d "$DST/docs" ] || echo ' and docs/')"
+  else
+    echo
+    echo "  left in place. Remove them with:  sudo $0 --prune"
+  fi
+fi
+rm -f "$orphan_list"
+
 echo
 if [ "$missing" -gt 0 ]; then
   echo "FAILED: $missing referenced asset(s) are not on disk. The site is deployed but"
