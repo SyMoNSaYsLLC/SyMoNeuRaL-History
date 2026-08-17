@@ -1,5 +1,20 @@
 """Generate `site/project.html` -- the web client for `backend/apps/project`.
 
+    python3 tools/build_project.py && python3 tools/build_cachebust.py
+
+Runs BEFORE `build_cachebust.py`, which must run last. The `SHELL` this file borrows from
+`build_pages` carries plain `href="/symoneural.css"`, so a bare run here emits ten asset
+links with no `?v=` stamp -- and the Caddyfile marks .css/.js/.png/.svg/.woff2
+`max-age=604800`, so a destamped page ships new markup against a stylesheet the browser may
+keep for a week with no way to invalidate it. That has already produced one visibly broken
+page in front of a visitor. This page shipped destamped exactly that way; a peer session
+caught it and restamped in `8c8b89f`.
+
+Nothing downstream catches it, which is what makes it worth a docstring: `scripts/deploy.sh`
+strips `?v=` before checking that references resolve, so a destamped page deploys perfectly
+quietly and the reference check stays green. Check it directly instead --
+`grep -c '?v=' site/project.html` must be non-zero before calling this surface done.
+
 `backend/apps/project/README.md` closes its "What is NOT implemented" list with, in first
 place, *"There is no page."* The API has been complete and usable from `curl` since it was
 written; nothing rendered it, so the rack tile pointed at `/documentation.html` and the
