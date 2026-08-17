@@ -163,6 +163,24 @@ A fourth: `jobs.py` builds an argv and `runner.py` parses one, and neither impor
 flag on one side only is argparse exit 2 on **stderr**, which `parse_log()` never reads — so the
 panel shows a failed run with no kind and no stage. `ArgvContractTests` asserts the 36 flags agree.
 
+A fifth, one layer later than construction and the most expensive of the set: **how trl *calls* a
+reward function.** `grpo_trainer.py:1672` passes `prompts=`, `completions=`, `completion_ids=` and
+then splats `reward_kwargs` — every surviving dataset column, which is why
+`remove_unused_columns=False` is set, plus `trainer_state` and `log_metric` unconditionally. A
+reward that does not absorb arbitrary keywords raises `TypeError` at the **first reward
+computation**: inside the training loop, after the acquire, after the 4-bit load, after a group of
+rollouts has already been generated and paid for. `RewardInvocationTests` asserts every offered
+reward takes `**kwargs` and then calls each one with the exact keyword set trl uses, checking it
+returns one finite-or-`None` value per completion — trl raises by name and count otherwise.
+
+Values, as opposed to field names, are checked two ways because trl affords only two. `optim`,
+`lr_scheduler_type` and the strategies are enum-validated, so every preset's real config is
+**constructed** in the training venv and a bad value raises there. `loss_type`, `scale_rewards`
+and `vllm_mode` are annotated plain `str` with no `Literal`, and `GRPOConfig(scale_rewards=
+"banana")` raises nothing at all — verified — so those are checked against trl's own default and
+the values its `help` metadata names. `vllm_mode` is the one that matters: it defaults to
+`colocate`, the mode this package refuses by arithmetic.
+
 - A metric key absent from `jobs._ALLOWED_KEYS` is **dropped**, so a live RL run shows an empty
   reward curve. trl logs names like `rewards/chosen`, and `/` is outside the value character class
   — `runner._METRIC_KEYS` maps them, and `MetricProtocolTests` asserts the two ends agree per key.
@@ -176,7 +194,9 @@ traceback can carry a training example in it.
 ## Running it
 
 ```bash
-# The suites. 120 python assertions, 46 in a real browser.
+# The suites. 124 python assertions, 46 in a real browser. Six of the 124 read trl's real
+# dataclasses out of `training/.venv` in a subprocess and SKIP if that venv is absent -- so
+# "124 passed, 0 skipped" is a claim about a box that has it.
 python3 backend/apps/reinforce/test_reinforce.py
 node    backend/apps/reinforce/test_page.mjs
 
@@ -220,16 +240,22 @@ a test enforces >80 characters of it:
 
 ## State
 
-**Neither end is wired in, and both are one line from being so.**
-
-- The HTTP surface is **not mounted**. `backend/api.py` contains no reference to this package;
-  `routes.py` used to open by asserting that it did, which was never true and is corrected.
-  Mounting is `app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])`
-  beside the `tuner` include. It is left un-taken deliberately: it turns on a route that takes
-  the whole card and is never evicted, so it is the owner's call. The surface still fails closed
-  on top of that — mounting is necessary to reach these routes, not sufficient to start a run.
+- **The HTTP surface is mounted** at `/api/train`, beside the `tuner` include. It was not, for
+  the whole of this package's life, while `routes.py` opened by asserting that it was — every
+  route unreachable and the docstring saying otherwise. Mounting does not turn training on:
+  shut, all seven routes answer **503**; open, `/presets` answers **200** and `/start` still
+  answers **403** without the token. All four states were exercised, not reasoned about.
+- **The rack unit is still hand-rolled** and deliberately left alone. `api.py` builds the `train`
+  unit inline from `CHAT_ADAPTER.exists()` and points it at `/training.html`, while
+  `reinforce.status()` returns the bay's real state and the `__init__` docstring names
+  `Unit(**status())` as the contract. Swapping it belongs to whichever session owns
+  `site/reinforce.html` — that file does not exist on this branch, so pointing the unit at it
+  from here would be a dead link.
 - The panel (`page.html` / `page.js`) is **staged**: no generator or deploy step consumes it, and
   it renders only under `test_page.mjs`. Publishing it is a separate decision.
+
+`backend/api.py` on this branch is an **old copy** — it branched before several other sessions
+landed their own mounts. Take the two lines by hand; do not merge this file wholesale.
 
 The whole bay is also **untracked in the main checkout** — `git ls-files backend/apps/reinforce`
 returns only the CUDA engine's 62 files. It lives on the `worktree-reinforce-rl` branch.

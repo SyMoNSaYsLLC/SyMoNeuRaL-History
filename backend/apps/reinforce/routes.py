@@ -1,16 +1,14 @@
-"""SyMoNeuRaL Reinforce -- the HTTP surface. Designed to be mounted at `/api/train`.
+"""SyMoNeuRaL Reinforce -- the HTTP surface, mounted at `/api/train` by `backend/api.py`.
 
-**It is not mounted yet.** `backend/api.py` contains no reference to this package; an earlier
-revision of this line asserted that it did, which was never true. Mounting it is one line
-beside the `tuner` include, and it is a deliberate un-taken decision rather than an oversight --
-see `TRAINING_BAY.md` ("State"). Adding it turns on a route that takes the whole GPU and is
-never evicted, so it is the owner's call, not an agent's:
+That is true as of the `include_router` call beside the `tuner` one, and it had to be *made*
+true: an earlier revision of this line asserted the mount while `backend/api.py` contained no
+reference to this package at all, so every route here was unreachable and the docstring said
+otherwise. Verified rather than assumed -- with the gate shut every route answers 503, and with
+it open `/presets` answers 200 while `/start` still answers 403 without the token.
 
-    app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
-
-Nothing here assumes that prefix, the way `apps/tuner` does not assume its own. The surface
-still fails closed on top of that -- see the gate below -- so mounting it is necessary to reach
-these routes but not sufficient to start a run.
+Nothing here assumes that prefix, the way `apps/tuner` does not assume its own. Mounting is
+necessary to reach these routes and **not** sufficient to start a run -- the gate below is what
+decides that, and it is shut by default.
 
 ## Why this is an APIRouter and not a second server
 

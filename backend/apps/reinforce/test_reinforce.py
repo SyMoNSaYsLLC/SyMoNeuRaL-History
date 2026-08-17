@@ -186,14 +186,151 @@ class TrlContractTests(unittest.TestCase):
     def test_every_config_kwarg_exists_in_trl(self):
         trl = self._trl()
         kw = _config_kwargs(pathlib.Path(__file__).with_name("runner.py"))
-        self.assertTrue(kw["grpo"] and kw["dpo"], "no config kwargs were extracted at all; "
-                        "the AST scan has drifted from how runner.py builds its configs")
+        # Sentinels, not an emptiness check. `targs` is unioned into both, so renaming the
+        # local `grpo` to anything else would drop all 16 RL-specific keys and still leave 17
+        # base keys behind -- a test that passes while checking nothing that matters.
+        for key, objective in (("num_generations", "grpo"), ("reward_weights", "grpo"),
+                               ("precompute_ref_log_probs", "dpo"), ("beta", "grpo")):
+            self.assertIn(key, kw[objective],
+                          f"the AST scan did not find `{key}` among the {objective} config keys; "
+                          f"it has drifted from how runner.py builds its configs and is now "
+                          f"checking the shared base only")
         for objective, fields in (("grpo", set(trl["grpo"])), ("dpo", set(trl["dpo"]))):
             missing = kw[objective] - fields
             self.assertEqual(missing, set(),
                              f"runner.py passes {sorted(missing)} to the {objective} config, and "
                              f"the installed trl has no such field. This is a TypeError at stage "
                              f"'train', after the governor acquire and the model load.")
+
+    # Values that come from `runner.py` as literals rather than from a preset. Kept here
+    # rather than scraped, because the point of the construction test is to feed trl the
+    # values a real run would and see whether its `__post_init__` accepts them.
+    RUNNER_LITERALS = {
+        "optim": "paged_adamw_8bit", "bf16": True, "report_to": [],
+        "gradient_checkpointing": True, "per_device_train_batch_size": 1,
+        "logging_steps": 1, "warmup_steps": 1, "seed": 0,
+    }
+
+    CONSTRUCT = (
+        "import json,sys,tempfile;"
+        "from trl import GRPOConfig,DPOConfig;"
+        "cases=json.load(sys.stdin);bad=[]\n"
+        "for name,kind,kw in cases:\n"
+        "    kw['output_dir']=tempfile.mkdtemp()\n"
+        "    try:(GRPOConfig if kind=='grpo' else DPOConfig)(**kw)\n"
+        "    except Exception as e:bad.append([name,type(e).__name__,str(e)[:200]])\n"
+        "print(json.dumps(bad))"
+    )
+
+    def test_every_preset_actually_constructs_its_trl_config(self):
+        """Field *names* existing is not the same as field *values* being accepted.
+
+        `optim`, `save_strategy`, `lr_scheduler_type`, `eval_strategy`, `loss_type`,
+        `scale_rewards` and `vllm_mode` are all validated in `__post_init__`, so a wrong value
+        raises at exactly the moment a wrong name would -- stage `train`, card already taken.
+        Nothing had ever constructed `vllm_mode="server"` at all.
+        """
+        import subprocess
+        repo = pathlib.Path(__file__).resolve().parents[3]
+        python = repo / "training" / ".venv" / "bin" / "python"
+        if not python.exists():
+            raise unittest.SkipTest(f"no training venv at {python}")
+
+        cases = []
+        for name, preset in presets.PRESETS.items():
+            p = preset if isinstance(preset, dict) else preset.__dict__
+            if p["method"] == "sft":
+                continue
+            mc = dict(p["method_config"])
+            # `reference`, `rewards` and `rollout` are this package's own vocabulary and are
+            # never splatted into a trl config -- runner.py reads them and passes the results.
+            for own in ("reference", "rewards", "rollout"):
+                mc.pop(own, None)
+            kw = dict(self.RUNNER_LITERALS)
+            kw.update(num_train_epochs=p["epochs"], learning_rate=p["learning_rate"],
+                      gradient_accumulation_steps=p["gradient_accumulation_steps"],
+                      lr_scheduler_type=p["lr_scheduler_type"],
+                      save_strategy=p["save_strategy"],
+                      eval_strategy="epoch" if p["val_split"] else "no")
+            if p["method"] == "preference":
+                kw.update(mc, max_length=p["max_length"], precompute_ref_batch_size=1)
+                cases.append([name, "dpo", kw])
+            else:
+                kw.update(mc, remove_unused_columns=False, log_completions=True,
+                          num_completions_to_print=2, use_cache=True, reward_weights=[1.0])
+                cases.append([name, "grpo", kw])
+                vllm = dict(kw, use_vllm=True, vllm_mode="server",
+                            vllm_server_base_url="http://example.invalid:8000")
+                cases.append([name + "+vllm", "grpo", vllm])
+
+        self.assertTrue(cases, "no preference or reinforcement preset was found to construct")
+        out = subprocess.run([str(python), "-c", self.CONSTRUCT], input=json.dumps(cases),
+                             capture_output=True, text=True, timeout=300)
+        if out.returncode != 0:
+            raise unittest.SkipTest(f"trl not importable in the training venv: {out.stderr[-200:]}")
+        bad = json.loads(out.stdout.strip().splitlines()[-1])
+        self.assertEqual(bad, [], f"these configurations do not construct under the installed "
+                                  f"trl, and would raise at stage 'train': {bad}")
+
+    HELP_PROBE = (
+        "import dataclasses,json;"
+        "from trl import GRPOConfig,DPOConfig;"
+        "print(json.dumps({c.__name__:{f.name:[str(f.metadata.get('help','')),repr(f.default)]"
+        " for f in dataclasses.fields(c)} for c in (GRPOConfig,DPOConfig)}))"
+    )
+
+    def test_the_free_string_settings_are_values_trl_still_supports(self):
+        """The gap the construction test cannot close, closed a different way.
+
+        `optim` and `lr_scheduler_type` are enum-validated, so a wrong value raises at
+        construction and `test_every_preset_actually_constructs_its_trl_config` catches it.
+        `loss_type`, `scale_rewards` and `vllm_mode` are **not**: trl 1.10.0 annotates all
+        three as plain `str` with no `Literal`, and constructing one with `scale_rewards=
+        "banana"` raises nothing at all -- verified. A wrong value there is either a silent
+        change of algorithm or a failure deep in the trainer.
+
+        There is no machine-readable set of valid values to check against, so this checks the
+        two things that do exist: trl's own default, and the supported values its `help`
+        metadata names. Both are real sources and both break loudly if a future trl drops a
+        mode, which is the actual risk -- `vllm_mode` defaults to `colocate`, the mode this
+        package refuses by arithmetic, so `server` being silently renamed would hand every
+        rollout to a co-tenant that cannot fit.
+        """
+        import subprocess
+        repo = pathlib.Path(__file__).resolve().parents[3]
+        python = repo / "training" / ".venv" / "bin" / "python"
+        if not python.exists():
+            raise unittest.SkipTest(f"no training venv at {python}")
+        out = subprocess.run([str(python), "-c", self.HELP_PROBE],
+                             capture_output=True, text=True, timeout=180)
+        if out.returncode != 0:
+            raise unittest.SkipTest("trl not importable in the training venv")
+        meta = json.loads(out.stdout)
+
+        used = {("GRPOConfig", "loss_type"): {"dapo"},
+                ("GRPOConfig", "scale_rewards"): {"group"},
+                ("GRPOConfig", "vllm_mode"): {"server"},
+                ("DPOConfig", "loss_type"): {"sigmoid"}}
+        for preset in presets.PRESETS.values():
+            p = preset if isinstance(preset, dict) else preset.__dict__
+            cfg = "DPOConfig" if p["method"] == "preference" else "GRPOConfig"
+            for key in ("loss_type", "scale_rewards"):
+                if key in p["method_config"]:
+                    used[(cfg, key)].add(p["method_config"][key])
+
+        for (cls, field), values in used.items():
+            helptext, default = meta[cls][field]
+            for value in values:
+                with self.subTest(config=cls, field=field, value=value):
+                    # A word-boundary match, not a quoted one: trl's own help for
+                    # `scale_rewards` writes ``True` or `group'` -- an unbalanced quote in
+                    # upstream's docstring -- and a test that fails on someone else's typo is
+                    # a test that gets deleted.
+                    import re
+                    self.assertRegex(helptext, rf"\b{re.escape(value)}\b",
+                                  f"{cls}.{field}={value!r} is no longer named among the values "
+                                  f"trl's own help lists; it is a plain `str` field, so nothing "
+                                  f"would have raised -- it would just quietly do something else")
 
     def test_trainer_arguments_are_spelled_the_way_trl_spells_them(self):
         trl = self._trl()
@@ -224,6 +361,74 @@ class TrlContractTests(unittest.TestCase):
         self.assertNotIn("max_prompt_length", trl["grpo"],
                          "GRPOConfig now has max_prompt_length; this package drops over-long "
                          "prompts itself on the stated grounds that it does not")
+
+
+class RewardInvocationTests(unittest.TestCase):
+    """How trl *calls* a reward function, which is one layer later than how it is configured.
+
+    `grpo_trainer.py:1672` is the call site, and it is unforgiving:
+
+        output_reward_func = reward_func(
+            prompts=prompts, completions=completions, completion_ids=completion_ids_list,
+            **reward_kwargs)
+
+    `reward_kwargs` carries every surviving dataset column -- which is the whole reason
+    `remove_unused_columns=False` is set -- and, unconditionally, `trainer_state` and
+    `log_metric`. So a reward function that does not absorb arbitrary keywords raises
+    `TypeError` at the **first reward computation**: inside the training loop, after the
+    acquire, after the 4-bit load, after a group of rollouts has already been generated. That
+    is later and more expensive than the construction failure `TrlContractTests` covers, and
+    no RL run has ever executed on this box, so nothing else has exercised this path.
+
+    trl also requires exactly one reward per prompt (it raises by name and count otherwise).
+    """
+
+    def _callables(self):
+        funcs = {}
+        for spec in rewards.offered():
+            fn = getattr(rewards, spec["id"], None)
+            self.assertTrue(callable(fn), f"rewards.offered() names {spec['id']}, which is not "
+                                          f"a callable in rewards.py")
+            funcs[spec["id"]] = fn
+        self.assertTrue(funcs, "no reward functions are offered at all")
+        return funcs
+
+    def test_every_reward_absorbs_the_keywords_trl_passes(self):
+        import inspect
+        for name, fn in self._callables().items():
+            with self.subTest(reward=name):
+                params = inspect.signature(fn).parameters
+                self.assertTrue(
+                    any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()),
+                    f"{name} has no **kwargs, so trl's `trainer_state`/`log_metric` -- and any "
+                    f"dataset column that happens to be present -- raise TypeError inside the "
+                    f"training loop, after the rollouts have already been paid for")
+                for required in ("prompts", "completions"):
+                    if required in params:
+                        self.assertIsNot(
+                            params[required].default, inspect.Parameter.empty,
+                            f"{name}'s `{required}` has no default; every caller in this package "
+                            f"other than trl treats these as optional")
+
+    def test_a_reward_survives_the_exact_call_trl_makes(self):
+        """The signature check proves it accepts the keywords; this proves it runs on them."""
+        completions = ["Prices are set by the operator; email symonsayadmin@symoneural.com.",
+                       "151 tok/s, measured on this machine."]
+        for name, fn in self._callables().items():
+            with self.subTest(reward=name):
+                got = fn(prompts=["a question", "another"], completions=completions,
+                         completion_ids=[[1, 2], [3, 4]],
+                         # Not ours, and always present: trl adds both unconditionally.
+                         trainer_state=None, log_metric=lambda *a, **k: None,
+                         # A dataset column that this reward may or may not want.
+                         answer=["x", "y"])
+                self.assertEqual(len(got), len(completions),
+                                 f"{name} returned {len(got)} rewards for {len(completions)} "
+                                 f"completions; trl raises ValueError by name on that")
+                for value in got:
+                    self.assertTrue(value is None or isinstance(value, (int, float)),
+                                    f"{name} returned {value!r}; trl converts None to NaN but "
+                                    f"casts everything else with torch.tensor(dtype=float32)")
 
 
 class ArgvContractTests(unittest.TestCase):

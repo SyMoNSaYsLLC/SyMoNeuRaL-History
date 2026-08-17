@@ -483,7 +483,8 @@ files have to agree and disagreement is silent, the agreement is a test, not a c
 ### Testing
 
 ```bash
-python3 backend/apps/reinforce/test_reinforce.py   # 120 passed, 0 skipped
+python3 backend/apps/reinforce/test_reinforce.py   # 124 passed, 0 skipped (6 skip without
+                                                   # training/.venv -- they read real trl)
 node    backend/apps/reinforce/test_page.mjs       # 46/46, real Chrome
 ```
 
@@ -502,16 +503,29 @@ Three test *premises* were invalidated by this work and were rewritten rather th
 presets must be **exactly** 0.0 *and* carry a rationale — the invariant tightened), and
 `test_preference_tuning_is_stated_not_built` was replaced by its inverse.
 
+### The surface is now actually reachable
+
+`backend/api.py` had **no reference to this package** — `grep -n reinforce backend/api.py`
+returned nothing — while the first line of `routes.py` read "Mounted at `/api/train` by
+`backend/api.py`". Every route was unreachable and the docstring said otherwise. Both are fixed:
+an import beside `tuner` and one `include_router`, with the claim in `routes.py` rewritten to
+what is now true. All four gate states were exercised rather than reasoned about — shut, all
+seven routes answer 503; open, `/presets` answers 200 and `/start` answers 403 with no token and
+403 with a wrong one.
+
+> **`backend/api.py` on this branch is a stale copy.** It branched before several other sessions
+> landed their own mounts (a peer reports `accounts`, `gateway`, `guide`, `project` at
+> api.py:2070-2074 in the live checkout; this copy has only `tuner`). **Take the two lines by
+> hand — do not merge this file wholesale**, or you will revert four other surfaces. `ast.parse`
+> the result immediately: a half-applied edit there takes the whole site down.
+
 ### What is NOT done
 
-- **The HTTP surface is not mounted, and `routes.py` used to claim it was.** `backend/api.py` has
-  no reference to this package — `grep -n reinforce backend/api.py` returns nothing. The first
-  line of `routes.py` read "Mounted at `/api/train` by `backend/api.py`"; that was never true and
-  is now corrected in place. Mounting is one line beside the `tuner` include:
-  `app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])`. Left un-taken
-  on purpose — it turns on a route that takes the whole card and is never evicted, so it is the
-  owner's call, not an agent's. The gate still fails closed on top of it, so mounting is necessary
-  to reach the routes and not sufficient to start a run.
+- **The rack unit is still hand-rolled, and that is left alone deliberately.** `api.py` builds
+  the `train` unit inline from `CHAT_ADAPTER.exists()` with `href="/training.html"`, while
+  `reinforce.status()` already returns the bay's real state and the `__init__` docstring names
+  `Unit(**status())` as the contract. Swapping it belongs to whoever owns `site/reinforce.html`,
+  which does **not exist on this branch** — pointing the unit there from here is a dead link.
 - **The panel is staged, not wired in.** No generator and no deploy step consumes
   `page.html`/`page.js`; they render only under `test_page.mjs`. Publishing the bay is a separate
   decision, and it needs §4's gate story thought through first — the surface is off unless

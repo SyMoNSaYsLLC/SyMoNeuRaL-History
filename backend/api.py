@@ -77,6 +77,7 @@ import asicminer  # noqa: E402
 import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
 import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
 from apps import tuner  # noqa: E402  -- IPTV surface, brings its own APIRouter
+from apps import reinforce  # noqa: E402  -- the training bay, see apps/reinforce/TRAINING_BAY.md
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
@@ -1757,6 +1758,15 @@ async def asic_emulator(request: Request, body: EmuBody) -> dict:
 # is unreachable. Prefix matches the Backstage shape the backend is heading towards
 # (§5 item 13) -- a surface answers at /api/<id>.
 app.include_router(tuner.router, prefix="/api/tuner", tags=["tuner"])
+
+# The training bay, same shape and the same ordering rule. Mounting it does NOT turn training
+# on: every route here answers 503 unless BOTH `SYM_REINFORCE_ENABLED=1` and
+# `SYM_REINFORCE_TOKEN` are set, and `/start` and `/stop` want the token on top of that. That
+# gate is a hard requirement rather than hardening for later -- a training run takes the whole
+# card and the governor refuses to evict `train`, so a world-callable start is a rack-wide
+# denial of service costing one HTTP request. Unset, the surface reads `offline` and names the
+# switch, which is an honest reading of something that genuinely cannot accept work.
+app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
 
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a
