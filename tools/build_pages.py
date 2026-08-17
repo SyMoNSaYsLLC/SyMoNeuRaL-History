@@ -1254,8 +1254,8 @@ TUNER_JS = """<script src="/hls.js"></script>
     // format the model can actually finish is the difference between this working and the
     // fallback firing on every request.
     var prompt = 'List the words to search for in a TV channel list to find: ' + q
-      + '\n\nRules: reply with ONE line, at most 8 lowercase keywords, comma separated. '
-      + 'No sentences, no repeats, no explanation.\n\nKeywords:';
+      + '\\n\\nRules: reply with ONE line, at most 8 lowercase keywords, comma separated. '
+      + 'No sentences, no repeats, no explanation.\\n\\nKeywords:';
     fetch('/api/chat', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({prompt: prompt, temperature: 0.1, max_tokens: 64})
@@ -1264,11 +1264,11 @@ TUNER_JS = """<script src="/hls.js"></script>
       return r.text();
     }).then(function (txt) {
       var out = '';
-      txt.split('\n').forEach(function (line) {
+      txt.split('\\n').forEach(function (line) {
         if (line.indexOf('data:') !== 0) return;
         try { var j = JSON.parse(line.slice(5)); if (j.delta) out += j.delta; } catch (e) {}
       });
-      var first = out.trim().split('\n').filter(function (l) { return l.trim(); })[0] || '';
+      var first = out.trim().split('\\n').filter(function (l) { return l.trim(); })[0] || '';
       var terms = first.split(',').map(function (t) {
         return t.trim().toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9 ]+$/g, '');
       }).filter(function (t) { return t.length > 1 && t.length < 24; }).slice(0, 12);

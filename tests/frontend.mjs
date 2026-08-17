@@ -181,6 +181,27 @@ try {
   });
   record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
 
+  // ---- no page throws a script error ------------------------------------
+  // This exists because a generator shipped BROKEN JAVASCRIPT to production and the suite
+  // passed 22/22 anyway. tuner.html's script had an unterminated string literal -- a `\\n`
+  // written into a non-raw Python string in build_pages.py became a real newline inside a
+  // JS literal -- so the entire page's behaviour was dead while every assertion about its
+  // markup, CSS and endpoints still passed. Counting passes is not the same as the page
+  // working, and only a parse check catches that.
+  const broken = [];
+  for (const pg of ['', 'chat.html', 'image.html', 'ravencalc.html', 'remix.html',
+                    'miner.html', 'gateway.html', 'tuner.html', 'build.html',
+                    'documentation.html', 'training.html', 'account.html']) {
+    const probe = await ctx.newPage();
+    const errs = [];
+    probe.on('pageerror', e => errs.push(`${pg || '/'}: ${e.message}`));
+    await probe.goto(new URL('/' + pg, BASE).href, { waitUntil: 'networkidle' }).catch(() => {});
+    await probe.close();
+    broken.push(...errs);
+  }
+  record('no page throws a script error', broken.length === 0,
+         broken.length ? broken.join(' | ').slice(0, 160) : 'all 12 pages clean');
+
   // ---- the GPU panel beside a prompt carries a real reading ---------------
   // The rule this exists for: no decorative indicators. A panel that renders its layout but
   // never receives data is exactly the fake gauge the site argues against, and it looks
