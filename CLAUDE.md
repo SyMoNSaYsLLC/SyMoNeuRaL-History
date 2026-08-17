@@ -54,12 +54,23 @@ One RTX 5070 Ti, 15.92 GiB. Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB)
 
 ## Python environments
 
-The base interpreter is pinned at exactly **7 packages** and must never be extended — check with
-`pip freeze | wc -l`. `numba-cuda` silently downgrades numpy, and three other packages pin
-conflicting `cuda-core`/`cuda-python` versions.
+The **CUDA sample venv** at `cuda-samples/python/.venv` is pinned at exactly **7 packages** and
+must never be extended:
 
-- The serving API deliberately uses only the **system** interpreter: fastapi, uvicorn and sympy
-  are already OS packages, so there is no virtualenv in the serving path.
+```bash
+cuda-samples/python/.venv/bin/pip freeze | wc -l    # expect exactly 7
+```
+
+`numba-cuda` silently downgrades numpy, and three other packages pin conflicting
+`cuda-core`/`cuda-python` versions. (Earlier revisions of this file said "the base interpreter
+is pinned at 7 packages, check with `pip freeze | wc -l`". That is wrong twice over: the bare
+command runs against the **system** interpreter, which is a Debian install carrying 212
+packages, and the count would never have been 7. Use the full path above.)
+
+- The serving API deliberately uses only the **system** interpreter: fastapi, uvicorn, pydantic
+  and sympy are already OS packages, so there is no virtualenv in the serving path. Do not
+  `pip install` into it — the deny rules in `.claude/settings.local.json` block the bare forms
+  precisely because a stray install there is hard to notice and hard to undo.
 - Training has its own venv at `training/.venv` (torch cu128 — Blackwell sm_120 needs it).
 - Anything else that conflicts gets its own isolated venv.
 

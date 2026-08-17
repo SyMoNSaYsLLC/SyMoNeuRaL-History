@@ -332,10 +332,29 @@ It is not Apache-only. What is actually in play:
 | **Apache-2.0** | the model weights (Qwen2.5, FLUX.1-schnell) and Caddy |
 | **MIT** | llama.cpp, stable-diffusion.cpp, FastAPI, Pillow (MIT-CMU) |
 | **BSD-3-Clause** | uvicorn, SymPy |
-| **MPL-2.0** | `certifi` only — weak, file-level copyleft, satisfied by not modifying it |
-| **NVIDIA** | the CUDA toolkit |
+| **NVIDIA** | the CUDA toolkit (not redistributed — customers install it themselves) |
 
 Nothing is GPL or AGPL, and nothing forces this project's own code to be opened.
+
+**MPL-2.0 does not apply to symoneural.com.** An earlier draft of this section said `certifi`
+brought weak copyleft in. It does not: `certifi` is a Debian OS package on this box (pulled in
+by certbot and requests), the serving stack never imports it — verified, importing fastapi,
+uvicorn and sympy does not load it — and we do not redistribute it. The MPL line came from
+`symoneural_remix/THIRD-PARTY-LICENSES.md`, which audits the **remix component's** bundled
+dependencies. That is a different distribution unit; if remix is ever shipped as a package, the
+obligation is real there.
+
+**The distinction that matters for any licence question here:** obligations attach to what we
+*distribute*, not to what is installed on the server. We distribute `site/` (which includes a
+vendored Swagger UI) and we serve model output. Debian packages on the box are the operator's
+dependencies, not our redistribution.
+
+**Known compliance gap, not yet fixed:** `site/swagger-ui-bundle.js` is 1.45 MB served to every
+visitor and its own banner reads `For license information please see
+swagger-ui-bundle.js.LICENSE.txt` — a file that does not exist in `site/`, in the webroot, or
+anywhere on the box. Swagger UI is Apache-2.0 and the bundle embeds MIT code (core-js). Fetch
+that file from the matching swagger-ui-dist release and drop it beside the bundle; `deploy.sh`
+will pick it up.
 `symoneural_remix/THIRD-PARTY-LICENSES.md` has the full audit. The Apache-2.0 attribution on
 the rack's `detail` line ("built on Qwen2.5-7B-Instruct") is a **licence condition** — that is
 why truncating it mattered.
