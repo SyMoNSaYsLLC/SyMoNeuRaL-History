@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Gateway — stablecoin licensing, honestly labelled</title>
-<meta name="description" content="A TRON/USDT licensing and validation gateway. Designed, not yet deployed.">
-<link rel="stylesheet" href="/symoneural.css?v=49b346c269">
+<meta name="description" content="A TRON/USDT licensing and validation gateway. Its status is read from the chain.">
+<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -21,7 +21,7 @@
       <b>SyMoNeu<i>RaL</i></b>
     </a>
     <nav>
-      <a class="navlink" href="/">Live stack</a>
+      <a class="navlink" href="/livestack">Live stack</a>
       <a class="navlink" href="/documentation.html">Documentation</a>
       <a class="navlink" href="/training.html">Manuals</a>
       <a class="navlink" href="/docs">API</a>
@@ -35,9 +35,9 @@
 <div class="hero" style="padding:56px 0 26px">
   <div class="wrap">
     <p class="eyebrow"><img src="/terminal-64.png?v=439ec988d7" alt="" width="20" height="20"
-       style="display:inline-block;vertical-align:-4px;margin-right:8px">Surface · designed, not deployed</p>
-    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">Licensing that clears in seconds, and says whose number that is.</h1>
-    <p class="lede" style="font-size:16.5px">A licensing gateway on the TRON Virtual Machine, settling in USDT, with a local daemon that makes a human approve the configuration before anything is broadcast. Nothing is deployed yet, so this page reports offline and labels every figure it quotes as vendor or projected.</p>
+       style="display:inline-block;vertical-align:-4px;margin-right:8px">Surface · network · TRON</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">Licensing that settles on-chain, and says whose number that is.</h1>
+    <p class="lede" style="font-size:16.5px">A licensing gateway on the TRON Virtual Machine, settling in USDT, with a local daemon that makes a human approve the configuration before anything is broadcast. The status line below is read live from this box: it names the network it is pointed at, what it last read from the chain, and how old that reading is.</p>
   </div>
 </div>
 
@@ -67,6 +67,29 @@
       </div>
 
       <aside class="side">
+        <div class="gpu-panel">
+          <p class="gpu-head"><s></s>RTX 5070 Ti<span class="gpu-link" id="con-link">socket: connecting</span></p>
+          <div class="gpu-row">
+            <label>VRAM free <b id="m-vram">&mdash;</b></label>
+            <div class="gbar" id="m-vrambar"><i style="width:0%"></i></div>
+          </div>
+          <div class="gpu-row">
+            <label>Power <b id="m-pwr">&mdash;</b></label>
+            <div class="gbar" id="m-pwrbar"><i style="width:0%"></i></div>
+          </div>
+          <dl class="gpu-facts">
+            <dt>Temperature</dt><dd id="m-temp">&mdash;</dd>
+            <dt>Holding</dt><dd id="m-holder">&mdash;</dd>
+            <dt>Queued</dt><dd id="m-queue">&mdash;</dd>
+          </dl>
+          <!-- The whole stack, not just the holder. console.js already renders the rack
+               into #units, so carrying that id here shows every surface and which one is
+               actually busy -- "something else is running" answered by looking, rather
+               than inferred from one field. Styled compact for a sidebar. -->
+          <div class="units gpu-stack" id="units"></div>
+          <p class="gpu-why"><b>Gateway does not use the GPU.</b> This is the card the rest of the stack shares, shown here so you can see what it is doing; nothing on this page waits for it.</p>
+        </div>
+        
         <div class="callout">
           <h3>Every figure here is someone else&rsquo;s</h3>
           <p><b>~3 second confirmation</b> and <b>27 Super Representatives</b> are
@@ -76,7 +99,12 @@
             make execution free; it moves the cost from the end user to whoever rents the
             Energy. Calling that zero would describe an accounting choice as a physical
             property.</p>
-          <p><b>Nothing here is measured</b>, because nothing has run.</p>
+          <p><b>What is measured here comes from the chain reader</b> &mdash; head block,
+            whether a contract exists at the configured address, and how long the node took
+            to answer. It runs off the request path and its age is printed with it, because
+            &ldquo;real, and 40 seconds old&rdquo; is a different claim from &ldquo;real
+            right now&rdquo;. When the surface is switched off there is no reading to show,
+            and the status line says that rather than showing a stale one.</p>
         </div>
         <div class="callout">
           <h3>Pricing</h3>
@@ -85,10 +113,15 @@
             <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>.</p>
         </div>
         <div class="callout">
-          <h3>Why it reads offline</h3>
-          <p>There is no deployed contract, no wallet, no daemon and <b>no key material on
-            this box</b>. Signing belongs on the operator&rsquo;s own machine, never in the
-            environment of a public-facing web process.</p>
+          <h3>What is, and is not, on this box</h3>
+          <p>There is <b>no wallet, no private key and no signing code</b> in the process
+            serving this page, and there is no off-chain daemon. Reading a public chain needs
+            none of them: the calls this box makes are unauthenticated, and it cannot build,
+            sign or broadcast a transaction &mdash; its own test suite asserts that.</p>
+          <p>Signing lives on the operator&rsquo;s own machine. Whether a contract is deployed,
+            and what is at that address, is <b>not claimed on this page</b> &mdash; it is read
+            from the chain and reported in the status line above, so this page cannot come to
+            disagree with the machine.</p>
         </div>
       </aside>
     </div>
@@ -124,8 +157,9 @@
     <nav>
       <a href="/">Home</a>
       <a href="/training.html">Training</a>
-      <a href="/#hardware">Hardware</a>
-      <a href="/#inference">Inference</a>
+      <a href="/documentation.html#hardware">Hardware</a>
+      <a href="/documentation.html#inference">Inference</a>
+      <a href="/credits.html">Credits</a>
     </nav>
   </div>
 </footer>

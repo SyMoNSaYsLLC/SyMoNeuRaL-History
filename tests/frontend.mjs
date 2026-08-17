@@ -69,8 +69,12 @@ try {
          // does not recognise, which is the honest answer to an unknown value.
          units.every(u => ['GPU', 'CPU', 'ASIC', 'NET', '--'].includes(u.bus)),
          units.map(u => `${u.name}=${u.bus}`).join(', '));
-  record('train unit is renamed',
-         units.some(u => u.name === 'SyMoNeuRaL Quantized Low-Rank Adaptation Tool'));
+  // Renamed again 2026-08-17: the old label was our prefix bolted onto the expansion of a
+  // generic technique, and it wrapped to five lines in the compact GPU panel. What this
+  // assertion guards is unchanged -- that the training bay carries a real PRODUCT name in
+  // the SyMoNeuRaL series, not a technique description.
+  record('train unit carries a product name',
+         units.some(u => u.name === 'SyMoNeuRaL Reinforce'));
 
   // the rack must lead the page now
   const order = await page.evaluate(() => {
@@ -160,7 +164,7 @@ try {
     return {
       ok: r.width > 0 && r.height > 0 && parseFloat(cs.fontSize) >= 10 &&
           cs.visibility !== 'hidden' && cs.display !== 'none' &&
-          !clipped && /seed \d/.test(t) && /FLUX/.test(t) && /RTX/.test(t),
+          !clipped && /seed \d/.test(t) && /SymonImage/.test(t) && /RTX/.test(t),
       why: `"${t.trim()}" at ${cs.fontSize}, ${Math.round(r.width)}px wide` +
            (clipped ? ' -- CLIPPED' : ', not clipped'),
     };
@@ -201,6 +205,54 @@ try {
     };
   });
   record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
+
+  // ---- the gateway page shows the API's own words, and does not light an LED ----
+  // docs/specs/gateway-completion.md item 6. Before this, the suite touched gateway.html
+  // only in the script-error sweep below -- so the licensing surface could have reported
+  // anything at all, or nothing, and every test still passed.
+  //
+  // It reads /api/status, NOT /api/gateway/state. That route answers 503 while the surface
+  // is switched off, which is its correct behaviour and production's current state, so an
+  // assertion bound to it would go red on a healthy system -- HANDOVER §3.0d is a list of
+  // five verification steps that did exactly that. /api/status carries the gateway unit in
+  // every configuration.
+  //
+  // The comparison is verbatim on purpose. The whole design of this surface is that the
+  // detail line is free-text carrying the truth the four state strings cannot express
+  // (backend/apps/gateway/__init__.py, "Do not invent a fifth state string"). A page that
+  // paraphrased it -- or that fell back to a friendly default when the fetch failed -- would
+  // be inventing a reading, which is the one thing this rack exists to not do.
+  await page.goto(BASE + '/gateway.html', { waitUntil: 'networkidle' });
+  await page.waitForFunction(
+    () => !/Reading the surface state/.test(
+      document.getElementById('gwdetail')?.textContent || 'Reading the surface state'),
+    { timeout: 15000 }).catch(() => {});
+  const gw = await page.evaluate(async () => {
+    const s = await fetch('/api/status', { headers: { Accept: 'application/json' } })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    const unit = s && (s.units || []).find(u => u.id === 'gateway');
+    const led = document.querySelector('#gwhead s');
+    return {
+      shown: document.getElementById('gwstate')?.textContent?.trim(),
+      detail: document.getElementById('gwdetail')?.textContent?.trim(),
+      apiState: unit?.state, apiDetail: (unit?.detail || '').trim(),
+      // The LED is a bare <s> with no class. symoneural.css renders that as an unlit grey
+      // dot; any class the JS added would light it. Reading the computed colour rather than
+      // the class list is the lesson from three cascade bugs in this stylesheet -- and an
+      // unearned green light on a licensing surface is precisely the decorative indicator
+      // .claude/CLAUDE.md forbids.
+      ledClass: led ? led.className : null,
+      ledColor: led ? getComputedStyle(led).backgroundColor : null,
+    };
+  });
+  record('the gateway page prints the API\'s own state and detail, verbatim',
+         !!gw.apiState && gw.shown === gw.apiState &&
+         gw.detail.length > 0 && gw.detail === gw.apiDetail,
+         `page "${gw.shown}" / api "${gw.apiState}" · detail ${gw.detail === gw.apiDetail
+           ? `matches (${gw.detail.length} chars)` : `DIFFERS: "${gw.detail}"`}`);
+  record('the gateway status dot is unlit while the surface is offline',
+         gw.apiState !== 'offline' || !gw.ledClass,
+         `state=${gw.apiState} led class=${JSON.stringify(gw.ledClass)} bg=${gw.ledColor}`);
 
   // ---- no page throws a script error ------------------------------------
   // This exists because a generator shipped BROKEN JAVASCRIPT to production and the suite
@@ -399,12 +451,29 @@ try {
     const paths = [...new Set([...src.matchAll(/['"](\/api\/tuner\/[a-z\/]+)['"]/g)].map(m => m[1]))];
     if (!paths.length) return { ok: false, why: 'the page names no /api/tuner endpoint' };
     const codes = {};
+    let routed = true;
     for (const name of paths) {
+      // A path ending in `/` is a PREFIX the page appends an id to -- `/session/<id>`,
+      // which the player polls to find out WHY a stream did not start. POSTing to the
+      // bare prefix probes a route nobody ever meant to exist and reports 405 for a
+      // perfectly healthy page, which is the "check that fails on healthy input" this
+      // suite is supposed to be the opposite of. Probe it the way the page uses it --
+      // GET, with an id on the end -- and tell "routed, no such session" apart from
+      // "no such route" by the body: FastAPI's own miss says "Not Found", ours says
+      // what is actually missing.
+      if (name.endsWith('/')) {
+        const r = await fetch(name + '__probe__');
+        const j = await r.json().catch(() => ({}));
+        const isRouted = typeof j.detail === 'string' && j.detail !== 'Not Found';
+        codes[name] = (isRouted ? 'routed' : 'NOT ROUTED') + `(GET ${r.status})`;
+        if (!isRouted) routed = false;
+        continue;
+      }
       const r = await fetch(name, { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: '{}' });
       codes[name] = r.status;
+      if (r.status === 404 || r.status === 405) routed = false;
     }
-    const routed = Object.values(codes).every(c => c !== 405 && c !== 404);
     return { ok: styled && routed,
              why: `styled=${styled}, ` + Object.entries(codes)
                    .map(([k, v]) => `${k.replace('/api/tuner', '')}=${v}`).join(' ') };

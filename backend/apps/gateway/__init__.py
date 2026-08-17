@@ -6,29 +6,47 @@ USDT (TRC-20) for a custom Debian/Ubuntu workspace compilation; a local TronWeb 
 validates the environment configuration and, once the payment confirms, unlocks the compiled
 workspace.
 
-## Status: designed, not built. The surface reports `offline` and that is the truth.
+## Status: the read side is built and measured. The surface is still `offline`, and that is
+## the truth, not a defect.
 
-There is no deployed contract, no wallet, no daemon and no key material on this box. That is
-why every reading here is null and the rack unit is offline. It is listed on the rack anyway
-for the same reason the QLoRA bay is: a surface that exists in the architecture but is not
-running should be visible and honestly labelled, not hidden until it works.
+This package can now read the chain: it resolves and checksums a TRON address, reaches a
+public node with no key material of any kind, and reports whether a contract is actually
+deployed at the configured address and at which block it looked. That is a real measurement
+and it is the first this surface has ever produced.
+
+It is still `offline`, on **every** path, because `offline` here means what it means for
+every other unit on the rack: *this surface will not do its job if you click it.* A visitor
+cannot obtain a licence. There is no deployed contract, no off-chain daemon, and no payment
+has ever cleared. A contract existing at an address is not a working licensing service, and
+lighting the rack on the strength of one would be exactly the decorative indicator
+`.claude/CLAUDE.md` forbids. What the reading buys is a **better** offline: a detail line
+that says precisely what is missing and how to supply it.
+
+## Do not invent a fifth state string
+
+`api.py`'s `Unit.state` is `Literal["ready","busy","queued","offline"]`, so `configured` or
+`provisioned` is a pydantic `ValidationError` -- a 500 on `/api/status`, which is polled and
+drives the websocket, so it would take the whole rack down for every visitor. And even if the
+model allowed it, `site/console.js:47` is `u.state === 'offline' ? 'led' : 'led on'`: any
+other string lights the green power LED. The truth goes in the detail line, which is
+free-text and reaches the page verbatim (`site/gateway.html` sets `d.textContent = u.detail`).
 
 ## Every figure the PoC quotes belongs to someone else
 
 `.claude/CLAUDE.md` requires each figure be labelled **measured** on this machine, **vendor**
-specification, or **projected** arithmetic. Nothing in the PoC is measured, because nothing
-has run:
+specification, or **projected** arithmetic:
 
-- **~3 second block confirmation** -- VENDOR. That is TRON's DPoS block time as published by
-  the network, not a timing taken here. The PoC says "exactly three seconds"; block times are
-  a target, not a guarantee, and this module does not repeat the word "exactly".
+- **~3 second block confirmation** -- VENDOR. TRON's DPoS block time as published by the
+  network, not a timing taken here. The PoC says "exactly three seconds"; block times are a
+  target, not a guarantee, and this module does not repeat the word "exactly".
 - **27 Super Representatives** -- VENDOR. A parameter of the TRON network.
 - **"transaction fee is effectively zero"** -- PROJECTED, and the wording matters. Energy
   rental does not make execution free; it moves the cost from the end user to whoever rents
-  the Energy. Presenting that as "zero fees" would be describing an accounting choice as a
+  the Energy. Presenting that as "zero fees" would describe an accounting choice as a
   physical property.
-- **Throughput, settlement rates, cost per licence** -- none exist. There is nothing to
-  quote and this module quotes nothing.
+- **Head block number, contract presence, node latency** -- MEASURED, by `chain.probe`, and
+  the detail line says how old the reading is. Nothing else here is measured, because
+  nothing else has run.
 
 ## Pricing
 
@@ -36,35 +54,88 @@ There is none here, deliberately. The site's standing rule is that prices are qu
 published, and inventing one on a licensing surface would be the most damaging possible place
 to break it. Fee questions go to symonsayadmin@symoneural.com.
 
-## Switches, off by default
+## Switches, off by default -- and there are exactly three
 
     SYM_GATEWAY_ENABLED=1        # the surface exists at all
-    SYM_GATEWAY_NETWORK=shasta   # shasta (testnet) | nile (testnet) | mainnet
-    SYM_GATEWAY_CONTRACT=T...    # deployed licensing contract address
+    SYM_GATEWAY_NETWORK=nile     # shasta (testnet) | nile (testnet) | mainnet
+    SYM_GATEWAY_CONTRACT=T...    # deployed licensing contract address, base58check
 
 Mainnet moves real money, so it is never the default and the state line always names the
 network it is pointed at. A gateway that does not say which chain it is on is one
 misconfiguration away from taking real USDT while everyone believes it is a test.
 
-**No private key is read by this module, and none should ever be put in the environment of a
-public-facing web process.** Signing belongs in the off-chain daemon on the operator's own
-machine, which is exactly where the PoC puts it.
+**There is no wallet variable and there must not be one.** Reading the chain -- which is all
+this package does -- is unauthenticated: no address, no key, no signature. A wallet is needed
+to *receive* a payment and a private key to *sign* one, and neither belongs in the
+environment of a public-facing web process. Signing belongs in the off-chain daemon on the
+operator's own machine, which is exactly where the PoC puts it. There is also deliberately no
+`SYM_GATEWAY_NODE_URL`: endpoints come from `chain.NODES`, keyed by the validated network
+name, so this process can never be pointed at an arbitrary host.
+
+## Switching it on -- the whole operator procedure
+
+The three values above go in a systemd drop-in rather than in `ops/symoneural-api.service`,
+because a drop-in is one command, is reversible by deleting one file, and does not modify a
+tracked template for what is still a testnet experiment. When a real mainnet contract exists,
+move them into the `@@ROOT@@` template so a reinstall carries them.
+
+    sudo install -d /etc/systemd/system/symoneural-api.service.d
+    sudo tee /etc/systemd/system/symoneural-api.service.d/gateway.conf >/dev/null <<'EOF'
+    [Service]
+    Environment=SYM_GATEWAY_ENABLED=1
+    Environment=SYM_GATEWAY_NETWORK=nile
+    Environment=SYM_GATEWAY_CONTRACT=T...
+    EOF
+    sudo systemctl daemon-reload && sudo systemctl restart symoneural-api
+    curl -s localhost:8800/api/gateway/state | python3 -m json.tool
+
+To undo it: `sudo rm /etc/systemd/system/symoneural-api.service.d/gateway.conf` and repeat
+the reload and restart. **No private key belongs in that file, or in any file systemd reads.**
+
+## Layout
+
+    address.py   base58check decode/encode/validate -- catches a transposed character
+    keccak.py    Keccak-256 (NOT hashlib.sha3_256 -- different padding, different digest)
+    abi.py       encode/decode for address, uint256, bool, string
+    chain.py     the read-only node client, and the fail-closed rule in full
+    routes.py    the APIRouter; serves the cache, never triggers a fetch
+    __main__.py  `python3 -m apps.gateway` -- reads three REAL networks. See below.
+
+## The suite is offline. The transport is not, and that gap is covered separately
+
+`test_gateway.py` is 57 tests and every one injects `fetch=`, deliberately: a suite that needs
+egress to pass is the next entry in `.claude/HANDOVER.md` §3.0d's list of verification steps
+that failed on healthy input. But stubbing the transport means `chain.http_post` -- the only
+code here that touches the network -- is never exercised by it.
+
+`python3 -m apps.gateway` closes that gap by hand, against real nodes, both directions
+(a present contract and an absent one) plus four negative controls. Run it after any change to
+`chain.py`. Measured 2026-08-17: mainnet head block 85,439,122 in 430 ms; USDT reads back as
+`TetherToken` with 33 ABI functions; the same address on Nile and Shasta reads absent.
+
+## The operator half lives in `ops/gateway/` and the dependency runs one way
+
+Contracts, the compiler toolchain, deployment and quote signing are all over there, in their
+own venv, because they hold a private key and this package must never be able to. That tool
+imports `address.py`, `keccak.py` and `chain.NODES` from here so there is one implementation
+of base58check and one endpoint map. **Nothing here may import from `ops/`.** See
+`ops/gateway/DEPLOY.md` for the procedure that turns the switches above on.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
-import re
+import time
 
-# TRON base58 addresses start with T and are 34 characters. Checked before the address is
-# ever displayed, so a typo in the environment surfaces as "malformed" rather than being
-# rendered as though it were a real deployment.
-ADDRESS = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
+from . import abi, address, chain
+from .chain import NODES
+from .routes import router
 
-NETWORKS = {
-    "shasta": "Shasta testnet",
-    "nile": "Nile testnet",
-    "mainnet": "TRON mainnet",
-}
+__all__ = ["enabled", "network", "contract", "unit_state", "status", "router",
+           "CACHE", "refresher", "address", "chain", "abi", "NODES"]
+
+log = logging.getLogger("symoneural.gateway")
 
 
 def enabled() -> bool:
@@ -79,25 +150,204 @@ def contract() -> str:
     return (os.environ.get("SYM_GATEWAY_CONTRACT") or "").strip()
 
 
-def unit_state() -> tuple[str, str]:
-    """(state, detail) for the rack.
+def configured() -> tuple[bool, str]:
+    """(is the environment complete, what is wrong if not).
 
-    Offline on every path today, because nothing is deployed. Each path gives the actual
-    reason rather than a single vague label -- "not configured" and "pointed at a contract
-    that does not parse" are different problems and the rack should say which one it is.
+    The message is written for the operator reading it off the rack: it names the variable
+    and what a valid value looks like, because "offline" on its own does not distinguish a
+    broken unit from one awaiting configuration.
     """
     if not enabled():
-        return "offline", "designed, not deployed — see /gateway.html"
+        return False, ("not configured — set SYM_GATEWAY_ENABLED=1, SYM_GATEWAY_NETWORK "
+                       "(nile|shasta|mainnet) and SYM_GATEWAY_CONTRACT (a T… address) · "
+                       "see /gateway.html")
     net = network()
-    if net not in NETWORKS:
-        return "offline", (f"SYM_GATEWAY_NETWORK={net or 'unset'} — expected one of "
-                           + ", ".join(NETWORKS))
+    if net not in NODES:
+        return False, (f"SYM_GATEWAY_NETWORK={net or 'unset'} — expected one of "
+                       + ", ".join(NODES))
     addr = contract()
     if not addr:
-        return "offline", f"{NETWORKS[net]} — no contract address set"
-    if not ADDRESS.match(addr):
-        return "offline", f"{NETWORKS[net]} — contract address is malformed"
-    # Configured, but this module does not reach the chain, so it will not claim the
-    # contract is live. Verifying that needs the daemon, which is not built.
-    return "offline", (f"{NETWORKS[net]} · {addr[:6]}…{addr[-4:]} configured — "
-                       "daemon not built, nothing has confirmed on-chain")
+        return False, (f"{NODES[net][0]} — SYM_GATEWAY_CONTRACT unset; it takes the deployed "
+                       "licensing contract address, 34 characters beginning with T")
+    why = address.reason(addr)
+    if why:
+        return False, f"{NODES[net][0]} — SYM_GATEWAY_CONTRACT is malformed: {why}"
+    return True, ""
+
+
+# --------------------------------------------------------------------- the reading cache
+
+
+class ChainCache:
+    """Last known chain reading, refreshed off the request path.
+
+    `/api/status` is polled and also drives the websocket, so nothing in it may block --
+    `backend/api.py` states that rule at the status handler and `AsicCache` above it is the
+    precedent this copies. A node read measured 0.69-2.64 s from this box; inline, that would
+    be added to every status poll and every websocket frame for every visitor.
+
+    `None` means "not yet probed", which `unit_state` reports as offline rather than
+    inventing an optimistic default. The age is carried with the value so a stale reading is
+    labelled rather than presented as current: "real but N seconds old" is a different claim
+    from "real right now", and this rack's whole argument is that it does not blur those.
+    """
+
+    TTL = 60.0
+
+    def __init__(self) -> None:
+        self._value: dict | None = None
+        self._at: float = 0.0
+
+    def get(self) -> dict | None:
+        if self._value is None:
+            return None
+        return {**self._value, "age_s": round(time.monotonic() - self._at, 1)}
+
+    def stale(self) -> bool:
+        return time.monotonic() - self._at >= self.TTL
+
+    def put(self, value: dict) -> None:
+        self._value, self._at = value, time.monotonic()
+
+
+CACHE = ChainCache()
+
+
+async def refresh_once() -> dict | None:
+    """One probe, off the event loop thread. Returns the reading, or None if not configured.
+
+    `chain.probe` is blocking `urllib`, so it runs in a worker thread. It never raises; the
+    `except` here is for a bug in this function, and it stores nothing rather than storing
+    something reassuring.
+    """
+    ok, _ = configured()
+    if not ok:
+        return None
+    try:
+        reading = await asyncio.to_thread(chain.probe, network(), contract())
+    except Exception as e:                       # never let a bug here look like a success
+        reading = {"network": network(), "contract": contract(), "at": time.time(),
+                   "error": f"{e.__class__.__name__}: {e}", "block": None,
+                   "contract_present": None}
+    CACHE.put(reading)
+    return reading
+
+
+async def refresher() -> None:
+    """Keep `CACHE` warm while the surface is configured. Started from api.py's lifespan.
+
+    It logs its first pass, once. `asicminer`'s equivalent is announced by `api.py` at start
+    (`log.info("asic surface enabled; probing %d configured rig(s)")`); this task cannot be
+    announced there because whether it has anything to do depends on all three switches, not
+    just the one `api.py` checks. Without the line, an operator who set `SYM_GATEWAY_ENABLED`
+    and mistyped the network would see a loop that runs forever, does nothing, and says
+    nothing in `journalctl -u symoneural-api`.
+    """
+    announced = False
+    while True:
+        try:
+            reading = await refresh_once()
+            if not announced:
+                announced = True
+                if reading is None:
+                    log.info("gateway refresher idle: %s", configured()[1])
+                elif reading.get("error"):
+                    log.info("gateway refresher running; %s could not be read: %s",
+                             network(), reading["error"])
+                else:
+                    log.info("gateway refresher running; %s head block %s, contract %s",
+                             network(), reading.get("block"),
+                             "present" if reading.get("contract_present") else "absent")
+        except asyncio.CancelledError:
+            raise
+        except Exception:                        # never let this kill the loop
+            log.exception("gateway chain refresh failed")
+        await asyncio.sleep(ChainCache.TTL)
+
+
+# --------------------------------------------------------------------- the rack unit
+
+
+def unit_state(reading: dict | None = None) -> tuple[str, str]:
+    """(state, detail) for the rack.
+
+    `reading` is the cached output of `chain.probe`, exactly as `asicminer.unit_state` takes
+    `_asic_cache.get()`. It defaults to `None` so an existing zero-argument call keeps
+    working; `None` means "not yet probed", never "assume fine".
+
+    ### THE RULE, and it is the whole point of this surface
+
+    **Every return here is `offline`, and no `except` in this package may return anything
+    else.** A gateway that cannot verify must say so. `docs/specs/symon-ml-review.md`
+    finding 1 is a licence check whose TRON lookup fell back to `return True`, so blocking
+    `api.trongrid.io` with one iptables rule *granted* the licence -- a check that fails open
+    is worse than no check, because the surface around it claims the weights are protected.
+
+    This function is the place that bug would be born. The natural next commit is "the
+    contract is there, so report ready", and that commit is wrong: a deployed contract is not
+    a working licensing service. `ready` requires the off-chain daemon to exist and run, a
+    payment path a real person can complete, a confirmed payment that unlocks something, and
+    that round trip exercised end to end at least once. Until all five are true the honest
+    answer is a better `offline`. If you are changing this to return `ready`, you are also
+    introducing an authorization decision that does not exist today -- resolve findings 1 and
+    2 of that review first.
+    """
+    ok, why = configured()
+    if not ok:
+        return "offline", why
+
+    net, addr = network(), contract()
+    name, short = NODES[net][0], address.short(addr)
+
+    # A reading taken against a different network or contract answers a question nobody
+    # asked. Discard it rather than letting it describe the current configuration.
+    if not reading or reading.get("network") != net or reading.get("contract") != addr:
+        return "offline", (f"{name} · {short} configured — the chain has not been read yet; "
+                           "the status refresher supplies that reading")
+
+    age = reading.get("age_s")
+    when = f"{age:.0f}s ago" if isinstance(age, (int, float)) else "just now"
+
+    if reading.get("error"):
+        return "offline", f"{name} · {short} — cannot verify ({when}): {reading['error']}"
+
+    block = reading.get("block")
+    at_block = f"block {block:,}" if isinstance(block, int) else "an unknown block"
+
+    if reading.get("contract_present") is False:
+        return "offline", (f"{name} · {short} — measured {when}: the node answered at "
+                           f"{at_block} and no contract is deployed at that address")
+    if reading.get("contract_present") is True:
+        fns = reading.get("abi_functions")
+        what = f"a contract with {fns} function{'s' if fns != 1 else ''}" if fns else "a contract"
+        cname = reading.get("contract_name")
+        return "offline", (f"{name} · {short} — measured {when}: {what}"
+                           + (f" named {cname}" if cname else "")
+                           + f" is deployed, read at {at_block}. Offline because the "
+                             "off-chain daemon is not built and no licence has ever cleared")
+
+    # contract_present is None with no error: the probe returned a shape this function does
+    # not understand. Unverified is offline, and says so rather than guessing.
+    return "offline", (f"{name} · {short} — the chain reading came back in an unexpected "
+                       "shape and was not trusted")
+
+
+def status(reading: dict | None = None) -> dict:
+    """The rack unit as a plain dict, for `Unit(**gateway.status(gateway.CACHE.get()))`.
+
+    Deliberately not built from `api.py`'s `Unit` model -- importing it would put this
+    package inside `api.py`'s import graph. The keys match `Unit`'s fields, `bus` included,
+    so nothing has to be patched in at the call site. Built on `unit_state` rather than
+    beside it, so the two can never drift.
+    """
+    state, detail = unit_state(reading)
+    return {
+        "id": "gateway",
+        "label": "SyMoNeuRaL Gateway",
+        "slot": "1U",
+        "state": state,
+        "bus": "net",
+        "href": "/gateway.html",
+        "spec": "TRON TVM · USDT (TRC-20) licensing",
+        "detail": detail,
+    }
