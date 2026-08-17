@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Tuner — your playlist, your credentials</title>
 <meta name="description" content="IPTV over ffmpeg stream copy. Credentials stay in your browser.">
-<link rel="stylesheet" href="/symoneural.css?v=731dc93b8c">
+<link rel="stylesheet" href="/symoneural.css?v=5270aea7dc">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -205,6 +205,18 @@ function status(el, text, busy) {
   const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
   const grow = $('.grow', el); if (grow) grow.textContent = text;
 }
+// These three surfaces use a <textarea> rather than an <input> so a long prompt WRAPS and
+// can be read back. A textarea takes Enter as a newline, so submit is restored explicitly;
+// Shift+Enter still gives a deliberate line break. Applied to whichever box the page has.
+document.addEventListener('DOMContentLoaded', () => {
+  const box = $('#prompt') || $('#expr') || $('#brief');
+  const f = $('#form');
+  if (!box || !f || box.tagName !== 'TEXTAREA' || box.dataset.enterBound) return;
+  box.dataset.enterBound = '1';
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
+  });
+});
 async function api(path, payload) {
   const r = await fetch(path, {
     method: 'POST', headers: {'Content-Type': 'application/json'},

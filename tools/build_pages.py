@@ -113,6 +113,18 @@ function status(el, text, busy) {
   const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
   const grow = $('.grow', el); if (grow) grow.textContent = text;
 }
+// These three surfaces use a <textarea> rather than an <input> so a long prompt WRAPS and
+// can be read back. A textarea takes Enter as a newline, so submit is restored explicitly;
+// Shift+Enter still gives a deliberate line break. Applied to whichever box the page has.
+document.addEventListener('DOMContentLoaded', () => {
+  const box = $('#prompt') || $('#expr') || $('#brief');
+  const f = $('#form');
+  if (!box || !f || box.tagName !== 'TEXTAREA' || box.dataset.enterBound) return;
+  box.dataset.enterBound = '1';
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
+  });
+});
 async function api(path, payload) {
   const r = await fetch(path, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -363,8 +375,8 @@ IMAGE_BODY = """    <div class="pgwrap">
           </div>
         </div>
         <form class="composer" id="form">
-          <input type="text" id="prompt" maxlength="1200"
-                 placeholder="a raven perched on a server rack, volumetric light, cinematic">
+          <textarea id="prompt" rows="3" maxlength="1200"
+                    placeholder="a raven perched on a server rack, volumetric light, cinematic"></textarea>
           <button class="cta" id="send" type="submit">Generate</button>
         </form>
       </div>
@@ -466,7 +478,7 @@ CALC_BODY = """    <div class="pgwrap">
           </div>
         </div>
         <form class="composer" id="form">
-          <input type="text" id="expr" maxlength="1000" placeholder="x**2*sin(x)">
+          <textarea id="expr" rows="3" maxlength="1000" placeholder="x**2*sin(x)"></textarea>
           <button class="cta" id="send" type="submit">Compute</button>
         </form>
       </div>
@@ -548,8 +560,8 @@ REMIX_BODY = """    <div class="pgwrap">
           </div>
         </div>
         <form class="composer" id="form">
-          <input type="text" id="brief" maxlength="1200"
-                 placeholder="late-night drive through a rainy city, building slowly">
+          <textarea id="brief" rows="3" maxlength="1200"
+                    placeholder="late-night drive through a rainy city, building slowly"></textarea>
           <button class="cta" id="send" type="submit">Build it</button>
         </form>
       </div>

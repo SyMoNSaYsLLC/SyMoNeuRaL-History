@@ -248,7 +248,17 @@
     font:16px/1.55 ui-sans-serif,system-ui,sans-serif; min-height:80px; max-height:260px;
   }
   /* The button should not stretch to the full height of a tall box. */
-  .composer .cta{align-self:flex-end}
+  .composer .cta{align-self:flex-end; flex:0 0 auto; white-space:nowrap}
+
+  /* On a phone the row does not fit: the textarea takes the width it is given and the
+     button was pushed off the right edge of the viewport entirely -- "Generate" was half
+     off screen on a 390px display. Stack instead, and let the button span the width, which
+     is also a bigger tap target than a squeezed pill. */
+  @media (max-width:560px){
+    .composer{flex-wrap:wrap; padding:12px}
+    .composer textarea, .composer input[type=text]{flex:1 1 100%; min-height:150px}
+    .composer .cta{flex:1 1 100%; align-self:stretch; text-align:center}
+  }
   .composer textarea:focus, .composer input:focus{outline:none; border-color:var(--accent)}
 
   /* controls panel */
