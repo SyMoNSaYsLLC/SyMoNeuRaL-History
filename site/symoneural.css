@@ -1666,8 +1666,17 @@
      `overflow:hidden`; here it would be a real scrollbar on a decorative gradient. In-gate
      the panel is at least 740 - 156 = 584px tall, which clears it by 127px. THAT MARGIN IS
      WHAT THE min-height FLOOR BUYS -- drop the gate below ~615px tall and the glow starts
-     scrolling the hero. */
-  html.ns #hero{display:flex; flex-direction:column; justify-content:center;
+     scrolling the hero.
+
+     `safe` is not decoration. Centring a flex child that overflows its scroll container
+     puts the child's top ABOVE the container's top, where no amount of scrolling reaches
+     it -- the classic centred-overflow trap, and here it would eat the h1 on the page's
+     landing view. `safe center` falls back to flex-start the moment the content does not
+     fit. Browsers too old to know the keyword drop the whole declaration and get
+     flex-start, which is the same safe behaviour. Today the margin is 111px at the tightest
+     in-gate corner (1301x740: a 437px masthead in a 584px panel), so this is a guard
+     against a future copy edit rather than a live bug. */
+  html.ns #hero{display:flex; flex-direction:column; justify-content:safe center;
     padding-top:18px; padding-bottom:18px}
   html.ns footer{padding:10px 0}
   html.ns .foot{font-size:11.5px}

@@ -242,6 +242,12 @@ try {
     await probe.waitForTimeout(250);
     ns[key] = await probe.evaluate(async (ids) => {
       const d = document.documentElement, out = { worst: 101, worstId: null };
+      // BEFORE any click: what does a visitor actually land on? Every other front-page
+      // assertion now opens the tab it needs, which means none of them would notice if the
+      // landing view broke -- the mirror image of the vacuous check this file just lost.
+      // The masthead must be the open panel and the rest closed.
+      out.lands = ids.filter(i => {
+        const e = document.getElementById(i); return e && !e.hidden; }).join(',');
       for (const i of ids) {                       // measure each panel while IT is the open one
         const b = document.querySelector(`.ns-tab[data-panel="${i}"]`);
         if (b) b.click();
@@ -259,12 +265,15 @@ try {
     }, PANELS);
     await probe.close();
   }
-  const folded = k => ns[k].ns && !ns[k].scrolls && ns[k].visible === 1 && ns[k].worst >= 45;
-  const plain = k => !ns[k].ns && ns[k].scrolls && ns[k].visible === PANELS.length;
+  // In-gate the landing view is the masthead alone; out-of-gate nothing is hidden at all.
+  const folded = k => ns[k].ns && !ns[k].scrolls && ns[k].visible === 1 && ns[k].worst >= 45
+                      && ns[k].lands === 'hero';
+  const plain = k => !ns[k].ns && ns[k].scrolls && ns[k].visible === PANELS.length
+                     && ns[k].lands === PANELS.join(',');
   record('the front page folds into a panel big enough to read',
          folded('in') && folded('corner') && plain('out') && plain('slit'),
          Object.entries(ns).map(([k, v]) =>
-           `${k}: ns=${v.ns} scroll=${v.scrolls} shown=${v.visible} min panel ${v.worst}% (${v.worstId})`
+           `${k}: ns=${v.ns} scroll=${v.scrolls} lands on [${v.lands}] min panel ${v.worst}% (${v.worstId})`
          ).join(' | '));
 
   // ---- the GPU panel beside a prompt carries a real reading ---------------
