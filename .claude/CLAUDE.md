@@ -130,9 +130,19 @@ python3 tools/build_training.py    # manual                  -> site/training.ht
 python3 tools/build_tabs.py        # one-screen front page   -> site/index.html
 python3 tools/build_gallery.py     # homepage art (uses GPU) -> site/art-*.png
 python3 tools/build_gallery.py --restamp   # redraw the watermark bar only -- NO GPU
+python3 tools/build_cachebust.py   # ALWAYS LAST -- see below
 ./scripts/symoneural.sh on|off|status   # the live API (off is the kill switch)
 sudo ./scripts/deploy.sh                # site/ -> /var/www/symoneural (needs a password)
 ```
+
+**`build_cachebust.py` runs last, and every generator run un-does it.** The generators emit
+plain `href="/symoneural.css"`; the stamper rewrites those to `?v=<content hash>` so a week-old
+cached stylesheet can never be served against new markup. That means any generator you run
+*strips the stamps off every page it writes*, and a commit made at that moment ships pages whose
+assets are cacheable for a week with no way to invalidate them. This is not theoretical: a run of
+`build_pages.py` here silently destamped seven pages, and the diff read like a harmless refresh.
+So: **regenerate, then stamp, then look at `git status`** — if a page you did not touch is still
+modified, you skipped the stamper. It is idempotent and cheap; there is no reason not to run it.
 
 The generator scripts are idempotent and must stay that way — `tools/build_console.py` once nested
 folds inside folds when run twice. **Run every generator twice and `diff` before committing.**
