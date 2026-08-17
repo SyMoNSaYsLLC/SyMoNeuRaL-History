@@ -249,11 +249,55 @@ def package_by_id(pid: str) -> pathlib.Path | None:
 
 QEMU_SCRIPT = ROOT_HINT / "scripts" / "qemu-antminer.sh"
 EMU_PID = ROOT_HINT / "run" / "qemu-antminer.pid"
+EMU_LOG = ROOT_HINT / "run" / "qemu-antminer.log"
+
+# What the guest prints when it has finished booting and handed over a shell. Busybox says
+# this because `--shell` passes `init=/bin/sh`, so there is no controlling terminal.
+BOOTED_MARKER = "job control turned off"
+
+# Written into the console log by `emulator_start()` so `_emulator_booted()` can tell
+# this boot from the last one.
+EMU_RUN_MARKER = "=== qemu-antminer start"
+
+# The process the pidfile must still name. `qemu-antminer.sh` execs qemu, so after the exec
+# the pid's cmdline is qemu's own.
+EMU_CMDLINE_MARKERS = ("qemu-system-arm", "qemu-antminer.sh")
+
+
+def _proc_cmdline(pid: int) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return fh.read().replace(b"\0", b" ").decode("utf-8", "replace")
+    except OSError:
+        return ""
 
 
 def emulator_status() -> dict:
-    """Is an emulator running, and which package. Reads the pidfile, never guesses."""
-    out = {"running": False, "pid": None, "package": None, "web": None}
+    """Is an emulator running, has it actually booted, and which package.
+
+    Three things here are readings rather than inferences, and each replaced something that
+    was not:
+
+    * **`running` is not "a pid exists".** It also requires that the pid still be a qemu.
+      Pids are recycled; a pidfile left behind by a reboot whose number now belongs to
+      something else reported `running: true`, and `emulator_stop()` would then have
+      SIGTERMed that stranger's whole process group.
+    * **`booted` is read from the guest's own output.** Measured on this box, `running`
+      went true 0.5s after launch and the shell prompt did not appear until 6.0s -- a
+      five-and-a-half second window in which a caller was told the emulator was up. Nothing
+      used to read the log at all.
+    * **`web` is only reported once the guest has booted, and carries what it means.** It
+      was a hardcoded literal emitted beside any live pid. It is a *host-side* SLIRP
+      forward: `--shell` boots to `/bin/sh` and never starts lighttpd, so the port accepts
+      a connection and the guest answers nothing. Saying so is the honest version.
+
+    This function must not mutate. It used to `unlink` the pidfile on any exception --
+    including `PermissionError`, which means "alive, but not yours", so a *status query*
+    deleted the record of a live emulator. A genuinely dead pid is cleaned up by
+    `emulator_start()`, which is a write in the first place.
+    """
+    out = {"running": False, "pid": None, "package": None, "web": None,
+           "booted": False, "log": str(EMU_LOG)}
     if not EMU_PID.is_file():
         return out
     try:
@@ -261,14 +305,40 @@ def emulator_status() -> dict:
         pid = int(raw[0].strip())
         os.kill(pid, 0)                      # signal 0: does it exist, are we allowed
     except (ValueError, IndexError, ProcessLookupError, PermissionError, OSError):
-        # Stale pidfile -- the process died without cleaning up. Say not running rather
-        # than reporting a pid that is gone.
-        EMU_PID.unlink(missing_ok=True)
         return out
-    out.update(running=True, pid=pid,
+    if not any(m in _proc_cmdline(pid) for m in EMU_CMDLINE_MARKERS):
+        out["note"] = (f"run/qemu-antminer.pid names pid {pid}, which is alive but is not "
+                       "a qemu — treating it as stale rather than signalling it")
+        return out
+    booted = _emulator_booted()
+    out.update(running=True, pid=pid, booted=booted,
                package=(raw[1].strip() if len(raw) > 1 else None),
-               web="http://127.0.0.1:8080")
+               web=("http://127.0.0.1:8080" if booted else None),
+               note=("host-side port forward only; --shell boots to /bin/sh and does not "
+                     "start the guest's lighttpd, so nothing answers on it"
+                     if booted else "booting — the guest has not reached a shell yet"))
     return out
+
+
+def _emulator_booted() -> bool:
+    """Has the guest reached a shell? Read out of its console log, not assumed.
+
+    Only the current run counts. The log is appended across boots, so without cutting at
+    the last start marker the *previous* boot's shell prompt would make a machine that is
+    still loading its kernel report `booted` the instant it was launched -- exactly the
+    false confidence this field exists to remove.
+    """
+    try:
+        with open(EMU_LOG, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - 65536))
+            tail = fh.read()
+    except OSError:
+        return False
+    marker = tail.rfind(EMU_RUN_MARKER.encode())
+    if marker != -1:
+        tail = tail[marker:]
+    return BOOTED_MARKER.encode() in tail
 
 
 def emulator_start(pid_str: str) -> dict:
@@ -294,19 +364,29 @@ def emulator_start(pid_str: str) -> dict:
                                       "the emulator takes a browser-upgrade .tar.gz"}
 
     import subprocess
-    log = ROOT_HINT / "run" / "qemu-antminer.log"
+    EMU_PID.unlink(missing_ok=True)          # the write that clears a stale pidfile
     try:
-        proc = subprocess.Popen(
-            [str(QEMU_SCRIPT), str(pkg), "--shell", "--serve"],
-            stdout=log.open("wb"), stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, start_new_session=True,
-        )
+        # `with`, not `log.open("wb")` inline: the original never closed the handle, so
+        # every start leaked a descriptor. `"wb"` also truncated the previous boot's
+        # console log -- the only record of how the last run went -- so this appends and
+        # separates runs with a marker instead.
+        with open(EMU_LOG, "ab") as log:
+            log.write(f"\n{EMU_RUN_MARKER} {pkg.name} ===\n".encode())
+            log.flush()
+            proc = subprocess.Popen(
+                [str(QEMU_SCRIPT), str(pkg), "--shell", "--serve"],
+                stdout=log, stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL, start_new_session=True,
+            )
     except Exception as e:
         return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
     EMU_PID.write_text(f"{proc.pid}\n{pkg.name}\n")
-    return {"ok": True, "pid": proc.pid, "package": pkg.name,
-            "web": "http://127.0.0.1:8080",
-            "note": "booting to a shell; the guest web UI needs lighttpd started by hand"}
+    # No `web` here. It is not up yet: measured, the guest takes ~6s from launch to a
+    # shell prompt on a warm unpack, longer when the two nested tars still have to be
+    # extracted. Poll `emulator_status()` and wait for `booted`.
+    return {"ok": True, "pid": proc.pid, "package": pkg.name, "booted": False,
+            "note": "booting to a shell; poll emulator_status() until booted is true. "
+                    "The guest web UI needs lighttpd started by hand."}
 
 
 def emulator_stop() -> dict:

@@ -297,12 +297,33 @@ def main() -> int:
                          "any runme.sh whose md5 is listed, before checking signatures")
     ap.add_argument("--sd", action="store_true",
                     help="treat this as an SD-card recovery zip, checked against readme.factory")
+    ap.add_argument("--microbt", action="store_true",
+                    help="treat this as a MicroBT/Whatsminer .bin -- container header only, "
+                         "because the payload is encrypted")
     a = ap.parse_args()
-    # Guess by extension when not told, so the common case needs no flag -- but the flag
-    # wins, because a mis-detected format silently checks the wrong thing.
-    sd = a.sd or (not a.sd and pkg_is_zip(a.package))
-    print(json.dumps(check_sd(a.package) if sd else check(a.package, a.bitmain_pub, a.blacklist), indent=2))
+    # Guess by content when not told, so the common case needs no flag -- but a flag wins,
+    # because a mis-detected format silently checks the wrong thing.
+    #
+    # `sd = a.sd or (not a.sd and pkg_is_zip(...))` was the old line. The second clause can
+    # never change the result: `or` only evaluates it when `a.sd` is already false, so
+    # `not a.sd` is always true there. It read as if it did something.
+    if a.microbt or (not a.sd and is_microbt(a.package)):
+        out = check_microbt(a.package)
+    elif a.sd or pkg_is_zip(a.package):
+        out = check_sd(a.package)
+    else:
+        out = check(a.package, a.bitmain_pub, a.blacklist)
+    print(json.dumps(out, indent=2))
     return 0
+
+
+def is_microbt(p: pathlib.Path) -> bool:
+    """MicroBT .bin, recognised by its four-byte magic rather than by its extension."""
+    try:
+        with p.open("rb") as f:
+            return int.from_bytes(f.read(4), "little") == MICROBT_MAGIC
+    except OSError:
+        return False
 
 
 def pkg_is_zip(p: pathlib.Path) -> bool:
@@ -312,9 +333,6 @@ def pkg_is_zip(p: pathlib.Path) -> bool:
     except OSError:
         return False
 
-
-if __name__ == "__main__":
-    sys.exit(main())
 
 
 # ---------------------------------------------------------------- MicroBT / Whatsminer
@@ -391,3 +409,12 @@ def check_microbt(pkg: pathlib.Path) -> dict:
         "but only for the board named here.")
     out["would_pass"] = bool(out["magic_ok"] and out["size_consistent"])
     return out
+
+
+# The entry point is the LAST thing in this file, and that is load-bearing. It used to sit
+# above `check_microbt`, and `if __name__ == "__main__"` runs during module execution --
+# so `main()` was called before `check_microbt` and `MICROBT_MAGIC` existed, and dispatching
+# to them from the CLI would have raised NameError rather than working. The Whatsminer
+# checker was reachable only by importing this file as a library, which nothing did.
+if __name__ == "__main__":
+    sys.exit(main())
