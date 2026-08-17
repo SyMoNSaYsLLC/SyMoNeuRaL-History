@@ -155,11 +155,24 @@ DENY = re.compile(
 
 # ======================================================================== models
 
+class Turn(BaseModel):
+    """One prior exchange, replayed so the model can follow a conversation."""
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=MAX_PROMPT_CHARS)
+
+
 class ChatRequest(BaseModel):
     """A question for the local model."""
     prompt: str = Field(..., max_length=MAX_PROMPT_CHARS,
                         description="What to ask. Longer than the cap is refused, not truncated.",
                         examples=["Why is decode memory-bandwidth bound on this card?"])
+    # Multi-turn. The client keeps the transcript -- nothing is stored on this box -- and
+    # replays it here, which is why there is no conversation id and no history endpoint.
+    # Capped at 20 turns because a 7B at Q4 has a finite context and silently dropping the
+    # beginning of a long chat is worse than refusing to take it.
+    history: list[Turn] = Field(default_factory=list, max_length=20,
+                                description="Prior turns, oldest first. The client holds "
+                                            "the transcript; the server keeps nothing.")
     temperature: float = Field(0.7, ge=0.0, le=1.5,
                                description="Low keeps it factual; high makes it wander.")
     max_tokens: int = Field(512, ge=16, le=2048,
@@ -1503,8 +1516,9 @@ async def chat(body: ChatRequest,
                         "ms": exact.get("_anticipated_ms"),
                     }}) + "\n\n"
 
-            messages = [{"role": "system", "content": system},
-                        {"role": "user", "content": body.prompt}]
+            messages = ([{"role": "system", "content": system}]
+                        + [t.model_dump() for t in body.history]
+                        + [{"role": "user", "content": body.prompt}])
             started, tokens, out = time.time(), 0, []
             async for piece in chat_deltas(messages, body.max_tokens, body.temperature):
                 tokens += 1
