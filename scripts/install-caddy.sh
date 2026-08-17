@@ -100,7 +100,30 @@ check "https:// index"        "https://$DOMAIN/"             200
 check "https:// api status"   "https://$DOMAIN/api/status"   200
 check "https:// swagger"      "https://$DOMAIN/docs"         200
 check "https:// openapi"      "https://$DOMAIN/openapi.json" 200
-check "http:// redirects"     "http://$DOMAIN/"              200
+
+# The plain-HTTP check is NOT a 200. Caddy enables automatic HTTP->HTTPS redirects, so the
+# correct answer here is a 308 pointing at https -- and asserting 200 made this script
+# report FAIL on a completely healthy install, because `check` does not follow redirects.
+# A verification step that cries wolf gets ignored, and then it is worse than nothing.
+# Assert what should actually be true: it redirects, and it redirects to https on this host.
+redir_code="$(curl -fsS -o /dev/null -w '%{http_code}' -m 15 "http://$DOMAIN/" 2>/dev/null || echo 000)"
+redir_to="$(curl -fsS -o /dev/null -w '%{redirect_url}' -m 15 "http://$DOMAIN/" 2>/dev/null || echo '')"
+case "$redir_code:$redir_to" in
+  30[1278]:https://$DOMAIN/*)
+    printf '  ok    %-28s %s -> %s\n' "http:// redirects" "$redir_code" "$redir_to" ;;
+  *)
+    printf '  FAIL  %-28s %s -> %s (wanted a 3xx to https://%s/)\n' \
+      "http:// redirects" "$redir_code" "${redir_to:-nothing}" "$DOMAIN"; fail=1 ;;
+esac
+
+# The four front-page sections are reverse-proxied by the Caddyfile, NOT files on disk.
+# They are checked here because this is the script that runs after a Caddy change, and
+# because they cannot be checked anywhere else: against localhost the API answers them
+# directly and the Caddyfile block is never exercised. That is precisely how they shipped
+# 404ing while the local suite passed 25/25.
+for sec in overview livestack controlboard receipts; do
+  check "https:// /$sec"    "https://$DOMAIN/$sec"    200
+done
 
 # The reason for the migration: /api/ws must upgrade rather than fall back to polling.
 say "WebSocket upgrade"
