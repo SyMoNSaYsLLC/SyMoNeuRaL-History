@@ -60,7 +60,7 @@ below stands on.
 ```bash
 cd backend && python3 -m apps.gateway          # reads three real TRON networks
 cd ops/gateway && node test_contracts.mjs      # executes the contracts in a local EVM
-cd backend && python3 -m pytest apps/gateway -q # 57 offline tests
+cd backend && python3 -m pytest apps/gateway apps/settlement -q   # 115 offline tests
 ```
 
 Measured 2026-08-17 from this box:
@@ -95,8 +95,12 @@ Honest gaps, since everything above is stated as measured:
 - **No transaction has ever been signed or broadcast**, so no key, no funds and no gas
   estimate has been tested. The contracts are proven by *execution* in a local EVM at Istanbul,
   which is much stronger than compiling, but it is not the TVM.
-- The 57 backend tests all inject `fetch=`, so they never touch the network. That gap is
-  exactly why `python3 -m apps.gateway` exists; run it if you want the transport proven today.
+- The 115 backend tests (61 gateway · 54 settlement) all inject `fetch=`, so they never touch
+  the network. That gap is exactly why `python3 -m apps.gateway` exists; run it if you want the
+  transport proven today.
+- **No settlement has ever been recorded**, so the `ready` branch of `unit_state` has been
+  reached only in tests, never from a real chain read. `backend/state/clearances.jsonl` does
+  not exist on this box and should not be created by hand — see the recorder section below.
 
 ---
 
@@ -273,19 +277,26 @@ click it.* For the Gateway that means a visitor can obtain a licence. Phase C do
 that, and lighting the LED on a deployed contract would be the decorative indicator
 `.claude/CLAUDE.md` forbids.
 
-**Two of the four are now built.** `backend/apps/settlement/` verifies a settlement — payer,
-token, amount and workspace, fail-closed — and issues a short-lived Ed25519 entitlement for it.
-`python3 -m apps.settlement` walks the whole round trip and prints each step.
+**Three of the five are now built.** `backend/apps/settlement/` verifies a settlement — payer,
+token, amount and workspace, fail-closed — records it, and issues a short-lived Ed25519
+entitlement for it. `python3 -m apps.settlement` walks the whole round trip and prints each
+step.
 
 | | | |
 |---|---|---|
-| 1 | **The off-chain verifier** | **done** — `apps/settlement/`, 47 tests, each fail-closed case verified to go red with the bug put back |
+| 1 | **The off-chain verifier** | **done** — `apps/settlement/`, each fail-closed case verified to go red with the bug put back |
 | 2 | **The unlock decision** | **answered** — payment rail, not DRM; see below |
-| 3 | **A payment path a real person can complete** | not built. Quoting is a CLI invocation today (`gateway-cli.py quote`); a buyer needs a page |
-| 4 | **One complete round trip against a real chain** | not done, and cannot be until Phase B deploys something |
+| 3 | **The writer that records a settlement** | **done** — `apps/settlement/record.py`. This was missing and nobody had noticed, because both halves it joins were tested and passing |
+| 4 | **A payment path a real person can complete** | not built. Quoting is a CLI invocation today (`gateway-cli.py quote`); a buyer needs a page |
+| 5 | **One complete round trip against a real chain** | not done, and cannot be until Phase B deploys something |
 
-Item 3 is now the only *engineering* left, and it is small next to what it sits on. Item 4 is
-not engineering at all — it needs a deployed contract and somebody to buy something.
+Item 4 is the only *engineering* left. Item 5 is not engineering at all — it needs a deployed
+contract and somebody to buy something.
+
+Item 3 is the one worth pausing on, because of how it hid. The verifier had 47 passing tests
+and the rack had its own; the defect was in neither component but in the absence of a third,
+and no test of either half could have failed. What found it was asking "what writes this file?"
+and getting the answer "a rehearsal, into a temp directory".
 
 ### The decision, taken
 
@@ -313,5 +324,32 @@ a public key and there is no code path in the web process that can reach a priva
 the configured network *and* the configured contract address. Not a flag, not a config file —
 `_cleared` reads the clearance store, and an operator who could turn the light green by editing
 a setting would have a decorative indicator. No settlement has ever been recorded, so the
-answer is `offline`, and it will stay `offline` through Phases A–C. **Phase D, or a Nile
-purchase, is what turns it green — and it will do so on its own, with no further code.**
+answer is `offline`, and it will stay `offline` through Phases A–C.
+
+**An earlier revision of this section said a purchase would turn it green "on its own, with no
+further code". That was false, and it was the most misleading sentence in this document.**
+Nothing wrote a clearance. The verifier could prove a settlement and the rack could read one,
+but no code path joined them, so a real customer could have paid on a real chain and the lamp
+would have stayed dark for ever — with every test passing, because each half worked. That gap
+is now closed by `apps/settlement/record.py`, and the honest version is below.
+
+### Recording a settlement — the step that actually lights it
+
+After a customer redeems a quote, verify and record it. This reads the chain; it cannot be
+told to trust you:
+
+```bash
+cd backend && python3 -m apps.settlement.record \
+    --network nile --contract <licence address> --nonce <the quote's nonce> \
+    --payer <customer address> --token <token address> \
+    --workspace 0x<the 32-byte workspace from the quote> --min-amount 250000000
+```
+
+It re-reads `licenceByNonce` from the node, checks the payer, token, amount and workspace, and
+writes a clearance only if all four match. A refusal writes nothing — including when the
+refusal is "the node was unreachable", so an outage can never leave a clearance behind. Running
+it twice records once. There is no flag that skips the chain read, and a test parses this
+module's AST to keep it that way.
+
+The next `/api/status` poll then reads `ready`. **That is what turns the LED green, and it is
+the only thing that does.**

@@ -69,6 +69,23 @@ def exploding(exc=OSError("network is unreachable")):
     return _fetch
 
 
+def probe_reading(**over):
+    """A `chain.probe` reading shaped the way `unit_state` actually demands.
+
+    The keys are load-bearing and were got wrong first time: `unit_state` discards any reading
+    whose `network`/`contract` do not match the configured pair, and reads `age_s`,
+    `contract_present`, `contract_name` and `abi_functions` -- not `age`, `present`, `name` or
+    `functions`. A reading with the wrong keys is thrown away and the state is `offline` for a
+    reason that has nothing to do with what the test is asserting, so a test built on one
+    passes while proving nothing.
+    """
+    r = {"network": NET, "contract": CONTRACT, "contract_present": True,
+         "contract_name": "SymoneuralLicence", "abi_functions": 9,
+         "block": 70_000_000, "age_s": 1.0}
+    r.update(over)
+    return r
+
+
 def ok_args(**over):
     args = dict(expect_payer=PAYER, expect_token=TOKEN, expect_workspace=WS,
                 min_amount=1_000_000)
@@ -431,3 +448,142 @@ class TestNotTheOtherLicensingPackage:
         src = "\n".join((Path(__file__).parent / f).read_text()
                         for f in ("verify.py", "entitlement.py", "store.py"))
         assert "import licensing" not in src and "from licensing" not in src
+
+
+# ------------------------------------------ the writer: the only path from a payment to the LED
+
+class TestRecorder:
+    """`record_settlement` is the only thing in the serving tree that writes a clearance.
+
+    Until it existed nothing did, so a real customer could have paid on a real chain and the
+    rack would have stayed dark. These tests are mostly about what it must *not* write.
+    """
+
+    def _store(self, tmp_path):
+        return store.ClearanceStore(tmp_path / "clearances.jsonl")
+
+    def test_a_verified_settlement_is_recorded_once(self, tmp_path):
+        from settlement.record import record_settlement
+        s = self._store(tmp_path)
+        r = record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()),
+                              **ok_args())
+        assert r, str(r)
+        assert s.count() == 1
+        c = s.all()[0]
+        assert (c.nonce, c.payer, c.token, c.amount) == (7, PAYER, TOKEN, 1_000_000)
+        assert (c.network, c.contract) == (NET, CONTRACT)
+
+    def test_an_unreachable_chain_records_nothing(self, tmp_path):
+        from settlement.record import record_settlement
+        s = self._store(tmp_path)
+        r = record_settlement(NET, CONTRACT, 7, store=s, fetch=exploding(), **ok_args())
+        assert not r
+        assert s.count() == 0, "an outage left a clearance behind"
+
+    def test_a_refused_settlement_records_nothing(self, tmp_path):
+        """One case per field, because a single 'it refuses' test hides three live bugs."""
+        from settlement.record import record_settlement
+        for label, over in (("payer", dict(expect_payer=OTHER)),
+                            ("token", dict(expect_token=OTHER)),
+                            ("workspace", dict(expect_workspace=OTHER_WS)),
+                            ("amount", dict(min_amount=2_000_000))):
+            s = self._store(tmp_path / label)
+            r = record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()),
+                                  **ok_args(**over))
+            assert not r, f"wrong {label} was granted"
+            assert s.count() == 0, f"wrong {label} was recorded anyway"
+
+    def test_recording_the_same_nonce_twice_appends_once(self, tmp_path):
+        from settlement.record import record_settlement, AlreadyRecorded
+        s = self._store(tmp_path)
+        first = record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()),
+                                  **ok_args())
+        second = record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()),
+                                   **ok_args())
+        assert first and isinstance(second, AlreadyRecorded)
+        assert not second, "AlreadyRecorded must stay falsy"
+        assert s.count() == 1
+
+    def test_the_same_nonce_on_another_contract_is_a_different_licence(self, tmp_path):
+        from settlement.record import record_settlement
+        s = self._store(tmp_path)
+        record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()), **ok_args())
+        r = record_settlement("shasta", CONTRACT, 7, store=s, fetch=node(encode_licence()),
+                              **ok_args())
+        assert r, "a nonce is only unique within one deployment"
+        assert s.count() == 2
+
+    def test_there_is_no_way_to_record_without_a_chain_read(self):
+        """No bypass flag, no caller-supplied record: every write follows a chain read.
+
+        Scanned through the AST rather than as text. A substring scan reads this module's own
+        prose -- the docstring says the words it is looking for -- and fails on the sentence
+        promising the thing it is checking. That already happened once here, and once before
+        in `test_nothing_here_can_sign_a_tron_transaction`.
+        """
+        import ast
+        src = (Path(__file__).parent / "record.py").read_text()
+        tree = ast.parse(src)
+
+        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        names |= {a.arg for n in ast.walk(tree)
+                  if isinstance(n, ast.arguments) for a in n.args + n.kwonlyargs}
+        names |= {k.arg for n in ast.walk(tree)
+                  if isinstance(n, ast.keyword) for k in [n] if k.arg}
+        flags = {s.value for s in ast.walk(tree)
+                 if isinstance(s, ast.Constant) and isinstance(s.value, str)
+                 and s.value.startswith("--")}
+
+        for escape in ("force", "assume", "skip_verify", "no_verify", "trust"):
+            bad = {i for i in names | flags if escape in i.lower()}
+            assert not bad, f"record.py grew a bypass: {bad}"
+
+        called = {n.func.id for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        assert "verify_payment" in called, "recording no longer reads the chain"
+
+
+class TestRecordingIsWhatLightsTheLed:
+    """End to end: the rack is dark until a settlement is recorded, and green after.
+
+    This is the assertion the whole surface exists to earn. It runs `unit_state` for real
+    against a temporary clearance file rather than asserting on a mocked return value.
+    """
+
+    def test_unit_state_goes_from_offline_to_ready_when_a_settlement_is_recorded(
+            self, tmp_path, monkeypatch):
+        import gateway
+        from settlement.record import record_settlement
+
+        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
+
+        reading = probe_reading()
+
+        state, _ = gateway.unit_state(reading)
+        assert state == "offline", "dark before anything settled"
+
+        r = record_settlement(NET, CONTRACT, 7, fetch=node(encode_licence()), **ok_args())
+        assert r, str(r)
+
+        state, detail = gateway.unit_state(reading)
+        assert state == "ready", f"a settlement did not light the LED: {detail}"
+
+    def test_a_settlement_on_a_different_contract_does_not_light_it(
+            self, tmp_path, monkeypatch):
+        import gateway
+        from settlement.record import record_settlement
+
+        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
+
+        record_settlement("shasta", OTHER, 7, fetch=node(encode_licence()), **ok_args())
+        state, detail = gateway.unit_state(probe_reading())
+        assert state == "offline", "somebody else's deployment lit our lamp"
+        # It must be dark for the RIGHT reason. With a malformed reading this assertion
+        # passes no matter what the store holds, which is how it first passed.
+        assert "no licence has ever cleared" in detail, detail

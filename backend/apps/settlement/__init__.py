@@ -89,6 +89,12 @@ from .entitlement import Entitlement, EntitlementError, mint, verify
 from .store import Clearance, ClearanceStore
 from .verify import Granted, Refused, verify_payment
 
+# `record` is deliberately NOT re-exported here. It carries the operator CLI, and
+# `python3 -m apps.settlement.record` imports this package first; if that import has already
+# bound the submodule, Python runs the module a second time as `__main__` and warns
+# "found in sys.modules ... may result in unpredictable behaviour". The recording step is
+# operator-facing and appears in ops/gateway/DEPLOY.md, so a clean run matters more than the
+# convenience of a shorter import. Use `from settlement.record import record_settlement`.
 __all__ = [
     "Entitlement", "EntitlementError", "mint", "verify",
     "Clearance", "ClearanceStore",
