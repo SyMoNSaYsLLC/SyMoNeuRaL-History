@@ -69,6 +69,12 @@ RUN.mkdir(exist_ok=True)
 # before there was an apps/ directory to put it in.
 sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 
+# The ASIC miner surface. Imported as a package rather than put on sys.path, because unlike
+# RavenCalc it is a thin shim over a subprocess: the rig protocols need 31 packages and live
+# in backend/apps/asicminer/.venv, which this interpreter must never import from.
+sys.path.insert(0, str(HERE / "apps"))
+import asicminer  # noqa: E402
+
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
 SD_CLI = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
@@ -212,7 +218,12 @@ class Unit(BaseModel):
     label: str
     slot: str
     state: Literal["ready", "busy", "queued", "offline"]
-    bus: Literal["gpu", "cpu"]
+    # The bus a surface actually runs on. `asic` is external mining hardware reached over
+    # the network, `net` is a surface whose work is I/O rather than compute -- neither
+    # contends for the GPU lock, which is why they are distinct values rather than being
+    # folded into `cpu`. `site/console.js` maps these to the plate text and prints '--'
+    # for anything it does not recognise rather than guessing.
+    bus: Literal["gpu", "cpu", "asic", "net"]
     href: str
     spec: str
     detail: str
@@ -237,6 +248,55 @@ class Status(BaseModel):
 
 
 # ======================================================================== plumbing
+
+class AsicCache:
+    """Last known rig readings, refreshed off the request path.
+
+    `/api/status` is polled and also drives the websocket, so it must never block. Probing
+    rigs means spawning a subprocess that waits on network timeouts -- up to 30s if a rig
+    has been unplugged, which is exactly when it is slowest and exactly when someone is
+    looking. So the endpoint reads whatever was last measured and a background task does the
+    waiting.
+
+    `None` means "not yet probed", which `asicminer.unit_state` reports as offline rather
+    than inventing an optimistic default. A stale reading is labelled by `age_s` rather than
+    being silently presented as current -- the whole rack argues that its numbers are real,
+    and "real but N seconds old" is a different claim from "real right now".
+    """
+
+    TTL = 20.0
+
+    def __init__(self) -> None:
+        self._value: dict | None = None
+        self._at: float = 0.0
+
+    def get(self) -> dict | None:
+        if self._value is None:
+            return None
+        return {**self._value, "age_s": round(time.monotonic() - self._at, 1)}
+
+    def stale(self) -> bool:
+        return time.monotonic() - self._at >= self.TTL
+
+    def put(self, value: dict) -> None:
+        self._value, self._at = value, time.monotonic()
+
+
+_asic_cache = AsicCache()
+
+
+async def asic_refresher() -> None:
+    """Keep `_asic_cache` warm while the surface is enabled. Started in the lifespan."""
+    while True:
+        try:
+            if asicminer.enabled() and asicminer.installed():
+                _asic_cache.put(await asicminer.probe())
+        except asyncio.CancelledError:
+            raise
+        except Exception:                      # never let this kill the loop
+            log.exception("asic refresh failed")
+        await asyncio.sleep(AsicCache.TTL)
+
 
 class RateLimiter:
     """Token bucket per client key.
@@ -937,8 +997,16 @@ async def lifespan(_: FastAPI):
     log.info("caps: prompt<=%d, queue %d, %d/min, %d/hr",
              MAX_PROMPT_CHARS, QUEUE_DEPTH, RATE_PER_MIN, RATE_PER_HOUR)
     ticker = asyncio.create_task(telemetry_loop())
+    # Only run when an operator has switched the surface on. With the env unset this task
+    # would loop forever doing nothing, so it is not started at all -- and the rack still
+    # reports the ASIC unit correctly, because `unit_state` reads the switches directly.
+    asic = asyncio.create_task(asic_refresher()) if asicminer.enabled() else None
+    if asic:
+        log.info("asic surface enabled; probing %d configured rig(s)", len(asicminer.rigs()))
     yield
     ticker.cancel()
+    if asic:
+        asic.cancel()
     await stop_llama()
 
 
@@ -1109,6 +1177,11 @@ def build_status() -> Status:
             return "busy"
         return "queued" if holder else "ready"
 
+    # The ASIC surface never touches the GPU lock, so it is read outside the block above.
+    # Disabled is the default and costs nothing: `unit_state` short-circuits on the env
+    # switches, so no subprocess is spawned unless an operator has turned the surface on.
+    asic_state, asic_detail = asicminer.unit_state(_asic_cache.get())
+
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
         units=[
@@ -1144,6 +1217,15 @@ def build_status() -> Status:
                  detail="fine-tune in progress — serving surfaces queue" if holder == "train"
                         else ("adapter loaded · for model/adapter tuning"
                               if CHAT_ADAPTER.exists() else "no adapter built")),
+            # Mining hardware, reached over the network rather than over PCIe -- so it never
+            # touches the GPU lock and cannot be evicted by a page view. Off unless both
+            # SYM_ASIC_ENABLED and SYM_ASIC_TOKEN are set, and `offline` until a rig
+            # actually answers: there is no demo rig and no placeholder hashrate. See
+            # backend/apps/asicminer/ for why that default is the honest one.
+            Unit(id="asicminer", label="SyMoNeuRaL Miner", slot="4U",
+                 state=asic_state, bus="asic", href="/miner.html",
+                 spec="Antminer + MicroBT · pyasic 0.75.0",
+                 detail=asic_detail),
         ],
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,

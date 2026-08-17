@@ -30,6 +30,13 @@
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
     'stroke-linecap="round"><path d="M12 3v9"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/></svg>';
   var WORDS = {ready: 'ready', busy: 'busy', queued: 'queued', offline: 'offline'};
+  // The bus plate names the hardware a surface actually runs on. It used to be
+  // `u.bus === 'cpu' ? 'CPU' : 'GPU'`, which was fine while there were only two buses and
+  // silently wrong the moment there were more -- an ASIC surface would have printed "GPU",
+  // a plate on a page arguing that every reading is real, claiming the wrong hardware.
+  // Anything unrecognised prints '--' rather than guessing.
+  var BUSES = {gpu: 'GPU', cpu: 'CPU', asic: 'ASIC', net: 'NET'};
+  function busLabel(b) { return BUSES[b] || '--'; }
 
   function el(id) { return document.getElementById(id); }
   function txt(id, value) { var n = el(id); if (n) n.textContent = value; }
@@ -39,7 +46,7 @@
             : u.state === 'queued' ? 'led blue blink' : 'led';
     var pwr = u.state === 'offline' ? 'led' : 'led on';
     return '<span class="leds"><i class="' + pwr + '"></i><i class="' + act + '"></i>' +
-           '<i class="led ' + (u.bus === 'cpu' ? 'blue' : '') + '"></i></span>';
+           '<i class="led ' + (u.bus !== 'gpu' ? 'blue' : '') + '"></i></span>';
   }
 
   function renderRack() {
@@ -51,7 +58,7 @@
         '<span class="pwr">' + POWER + '</span>' +
         '<span class="uname"><b>' + u.label + '</b><span>' + u.spec +
           ' &middot; ' + u.detail + '</span></span>' +
-        '<span class="ubus">' + (u.bus === 'cpu' ? 'CPU' : 'GPU') + '</span>' +
+        '<span class="ubus">' + busLabel(u.bus) + '</span>' +
         '<span class="ustate"><span class="txt">' + (WORDS[u.state] || u.state) + '</span>' +
           '<span class="slot">' + u.slot + '</span></span>' +
         '<span class="scan"><i></i></span></a>';

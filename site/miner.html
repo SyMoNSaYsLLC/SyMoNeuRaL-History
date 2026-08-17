@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL Miner — Antminer and MicroBT, read honestly</title>
+<meta name="description" content="An operator surface for ASIC mining rigs. Offline until real hardware answers.">
+<link rel="stylesheet" href="/symoneural.css?v=74692800ef">
+<link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
+<link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0823a86bfe">
+<meta name="theme-color" content="#0e100f">
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png?v=ded4e8a102" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <a class="navlink" href="/">Live stack</a>
+      <a class="navlink" href="/documentation.html">Documentation</a>
+      <a class="navlink" href="/training.html">Manuals</a>
+      <a class="navlink" href="/docs">API</a>
+      <a class="navlink" href="/account.html">Account</a>
+      <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="cta" href="/build.html">Have one built</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" style="padding:56px 0 26px">
+  <div class="wrap">
+    <p class="eyebrow"><img src="/terminal-64.png?v=439ec988d7" alt="" width="20" height="20"
+       style="display:inline-block;vertical-align:-4px;margin-right:8px">Operator surface · ASIC</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">Mining hardware, read the same way as the card.</h1>
+    <p class="lede" style="font-size:16.5px">The rack on the home page reads real sensors off an RTX 5070 Ti. This does the same for Antminer and MicroBT rigs on the operator's network. No rigs are attached to this machine, so it reports offline — which is the reading, not a placeholder.</p>
+  </div>
+</div>
+
+<section style="border-top:0;padding-top:0">
+  <div class="wrap">
+    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="mnhead"><s></s>SyMoNeuRaL Miner
+          <span class="grow" id="mnstate">reading&hellip;</span></div>
+        <div class="body" id="mnbody">
+          <p class="mn-empty" id="mnempty">Reading the surface state from
+            <code>/api/status</code>&hellip;</p>
+          <table class="mn-rigs" id="mnrigs" hidden>
+            <thead><tr><th>Rig</th><th>Model</th><th>Hashrate</th><th>Temp</th>
+              <th>Power</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="callout">
+          <h3>What this reads</h3>
+          <p>Antminer rigs over the bmminer JSON-RPC API and MicroBT/Whatsminer over
+            btminer, using <b>pyasic 0.75.0</b>. Both are polled over the network, so this
+            surface never touches the GPU lock and is never evicted to serve a page.</p>
+        </div>
+        <div class="callout">
+          <h3>Why it says offline</h3>
+          <p>There is no mining hardware attached to this machine. Rather than draw a
+            dashboard of invented numbers, the unit reports <b>offline</b> and every reading
+            stays empty until a rig answers. Any figure this page ever shows is
+            <b>measured</b> off real hardware.</p>
+        </div>
+        <div class="callout">
+          <h3>Operator surface</h3>
+          <p>This is a tool for hardware on the operator's own network — your rig is on your
+            LAN and this server cannot reach it. It is disabled unless
+            <code>SYM_ASIC_ENABLED</code> and <code>SYM_ASIC_TOKEN</code> are both set, so a
+            misconfiguration fails closed.</p>
+        </div>
+      </aside>
+    </div>
+
+
+    <div class="callout" style="margin-top:34px">
+      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <p>
+        Chat and image never run at the same time here. A lock hands the GPU to exactly one
+        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
+        once &mdash; and when they swap, we wait for the driver to actually hand the memory
+        back before the next one starts. If you are queued behind someone, that is not a bug;
+        it is one card doing one thing at a time.
+      </p>
+      <p>
+        <strong>RavenCalc is the exception</strong> &mdash; it is SymPy on the CPU, so it never
+        touches the GPU and never queues. Everything here is a demonstration of the stack on
+        the smallest machine we would ever ship, not a statement of capacity. A server we spec
+        for you would not be sharing one GPU with itself.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+      <img src="/mark-32.png?v=fc9400dc9f" alt="" width="22" height="22">
+      <b style="font-size:14.5px;color:var(--fg)">SyMoNeu<i style="font-style:normal;color:var(--accent)">RaL</i></b>
+    </a>
+    <span>&copy; SymonSays LLC &middot; <a href="mailto:symonsayadmin@symoneural.com"
+      style="color:var(--dim);text-decoration:none">symonsayadmin@symoneural.com</a></span>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/training.html">Training</a>
+      <a href="/#hardware">Hardware</a>
+      <a href="/#inference">Inference</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Shared helpers. Every bound below is also enforced on the server -- these exist to make
+// the UI honest about the limits, not to be the limits.
+const $ = (s, r=document) => r.querySelector(s);
+function status(el, text, busy) {
+  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
+  const grow = $('.grow', el); if (grow) grow.textContent = text;
+}
+async function api(path, payload) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
+  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+  return body;
+}
+</script>
+<script src="/console.js?v=ee2d468781" defer></script>
+<script src="/ui.js?v=ab7363f237" defer></script>
+<script>
+(function () {
+  'use strict';
+  // Reads the same /api/status the rack reads -- one source of truth, so this page and the
+  // unit on the home page can never disagree about whether a rig is answering.
+  var stateEl = document.getElementById('mnstate');
+  var empty = document.getElementById('mnempty');
+  var table = document.getElementById('mnrigs');
+
+  function render(unit) {
+    if (!unit) {
+      stateEl.textContent = 'not present';
+      empty.textContent = 'The miner surface is not present in this API build.';
+      return;
+    }
+    stateEl.textContent = unit.state;
+    // No rig rows are ever synthesised. The detail line is the API's own words.
+    empty.textContent = unit.detail;
+    table.hidden = true;
+  }
+
+  fetch('/api/status', {headers: {'Accept': 'application/json'}})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (s) {
+      render(s && (s.units || []).filter(function (u) { return u.id === 'asicminer'; })[0]);
+    })
+    .catch(function () {
+      stateEl.textContent = 'unreachable';
+      empty.textContent = 'Could not reach /api/status.';
+    });
+})();
+</script>
+</body>
+</html>

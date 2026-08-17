@@ -54,8 +54,9 @@ RACK = f"""{BEGIN}
     <p class="shead"><img src="/terminal-64.png" alt="" width="22" height="22">Live Stack</p>
     <h2>The rack, as it is right now</h2>
     <p class="sub">
-      Five surfaces on one workstation, pushed live over one socket. If a unit says busy,
+      Every surface on one workstation, pushed live over one socket. If a unit says busy,
       someone is genuinely using it and you are looking at a real queue. Pick a green one.
+      A unit reading offline is telling you the truth as well: nothing here is lit for effect.
     </p>
 
   </div>

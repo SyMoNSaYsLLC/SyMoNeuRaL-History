@@ -46,7 +46,11 @@ try {
   })));
   record('rack renders units from /api/status', units.length >= 5, `${units.length} units`);
   record('bus plate carries a real reading',
-         units.every(u => ['GPU', 'CPU', '--'].includes(u.bus)),
+         // ASIC and NET are buses too. The plate used to be `bus === 'cpu' ? 'CPU' : 'GPU'`,
+         // so an ASIC surface printed "GPU" -- the wrong hardware, on the one plate the page
+         // asks you to trust. '--' stays allowed: it is what console.js prints for a bus it
+         // does not recognise, which is the honest answer to an unknown value.
+         units.every(u => ['GPU', 'CPU', 'ASIC', 'NET', '--'].includes(u.bus)),
          units.map(u => `${u.name}=${u.bus}`).join(', '));
   record('train unit is renamed',
          units.some(u => u.name === 'SyMoNeuRaL Quantized Low-Rank Adaptation Tool'));

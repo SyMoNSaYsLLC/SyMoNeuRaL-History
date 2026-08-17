@@ -558,6 +558,86 @@ form.addEventListener('submit', async e => {
 </script>"""
 
 
+# ---------------------------------------------------------------- miner (ASIC)
+# Deliberately has no controls on it. The rig actions -- reboot, pool change, power mode --
+# are operator functions behind a token, and putting the buttons on a public page and then
+# refusing the click is worse than not drawing them: it advertises an attack surface and
+# teaches visitors that the site's controls are ornamental. This page reports, and says
+# plainly what it would report if hardware were attached.
+MINER_BODY = """    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="mnhead"><s></s>SyMoNeuRaL Miner
+          <span class="grow" id="mnstate">reading&hellip;</span></div>
+        <div class="body" id="mnbody">
+          <p class="mn-empty" id="mnempty">Reading the surface state from
+            <code>/api/status</code>&hellip;</p>
+          <table class="mn-rigs" id="mnrigs" hidden>
+            <thead><tr><th>Rig</th><th>Model</th><th>Hashrate</th><th>Temp</th>
+              <th>Power</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="callout">
+          <h3>What this reads</h3>
+          <p>Antminer rigs over the bmminer JSON-RPC API and MicroBT/Whatsminer over
+            btminer, using <b>pyasic 0.75.0</b>. Both are polled over the network, so this
+            surface never touches the GPU lock and is never evicted to serve a page.</p>
+        </div>
+        <div class="callout">
+          <h3>Why it says offline</h3>
+          <p>There is no mining hardware attached to this machine. Rather than draw a
+            dashboard of invented numbers, the unit reports <b>offline</b> and every reading
+            stays empty until a rig answers. Any figure this page ever shows is
+            <b>measured</b> off real hardware.</p>
+        </div>
+        <div class="callout">
+          <h3>Operator surface</h3>
+          <p>This is a tool for hardware on the operator's own network — your rig is on your
+            LAN and this server cannot reach it. It is disabled unless
+            <code>SYM_ASIC_ENABLED</code> and <code>SYM_ASIC_TOKEN</code> are both set, so a
+            misconfiguration fails closed.</p>
+        </div>
+      </aside>
+    </div>
+"""
+
+MINER_JS = """<script>
+(function () {
+  'use strict';
+  // Reads the same /api/status the rack reads -- one source of truth, so this page and the
+  // unit on the home page can never disagree about whether a rig is answering.
+  var stateEl = document.getElementById('mnstate');
+  var empty = document.getElementById('mnempty');
+  var table = document.getElementById('mnrigs');
+
+  function render(unit) {
+    if (!unit) {
+      stateEl.textContent = 'not present';
+      empty.textContent = 'The miner surface is not present in this API build.';
+      return;
+    }
+    stateEl.textContent = unit.state;
+    // No rig rows are ever synthesised. The detail line is the API's own words.
+    empty.textContent = unit.detail;
+    table.hidden = true;
+  }
+
+  fetch('/api/status', {headers: {'Accept': 'application/json'}})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (s) {
+      render(s && (s.units || []).filter(function (u) { return u.id === 'asicminer'; })[0]);
+    })
+    .catch(function () {
+      stateEl.textContent = 'unreachable';
+      empty.textContent = 'Could not reach /api/status.';
+    });
+})();
+</script>"""
+
+
 def main() -> int:
     print("building surface pages:")
     page("chat.html",
@@ -597,6 +677,17 @@ def main() -> int:
               "model, one GPU, one server underneath — which is the whole architecture in "
               "one page.",
          body=REMIX_BODY, script=REMIX_JS)
+
+    page("miner.html",
+         title="SyMoNeuRaL Miner — Antminer and MicroBT, read honestly",
+         desc="An operator surface for ASIC mining rigs. Offline until real hardware answers.",
+         icon="/terminal-64.png", eyebrow="Operator surface · ASIC",
+         heading="Mining hardware, read the same way as the card.",
+         lede="The rack on the home page reads real sensors off an RTX 5070 Ti. This does "
+              "the same for Antminer and MicroBT rigs on the operator's network. No rigs "
+              "are attached to this machine, so it reports offline — which is the reading, "
+              "not a placeholder.",
+         body=MINER_BODY, script=MINER_JS)
     return 0
 
 
