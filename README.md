@@ -86,7 +86,9 @@ backend/                the server
     coder/              workspace agent; local-first, three gates, all failing closed
     cryptominer/        GPU miner (Ravencoin/KawPow) -- the `gpuminer` rack unit
     gateway/            TRON/USDT licensing; offline on the rack, designed not deployed
-    guide/              turns a question into a channel filter; owns no weights
+    guide/              turns a question into a channel filter; owns no weights.
+                        Being merged into tuner/ -- it already serves /tuner.html and
+                        has no page or deploy story of its own
     licensing/          the dev fee -- signed contracts, verified offline
     project/            shared workspace for a person and the local models
     ravencalc/          exact symbolic maths (SymPy, CPU, never takes the GPU lock)
@@ -100,7 +102,8 @@ backend/                the server
 
 bin/symoneural          the CLI -- one command over the whole stack
 
-tools/                  the site generators, all idempotent -- twelve of them
+tools/                  the site generators, all idempotent. `ls tools/build_*.py` is the
+                        authority on the set; the list below should match it exactly
   build_pages.py        the prompt surfaces           -> site/
   _art.py               shared markup for a render (not a generator -- do not run it)
   build_masthead.py     pitch + hero side by side     -> site/index.html
@@ -151,7 +154,7 @@ run/                    runtime state: the GPU lock directory, pidfile, logs.
                         somebody logrotating a mutex out from under a running surface
 ```
 
-**Why `backend/apps/` has thirteen entries and chat/image do not.** Chat and image are
+**Why `backend/apps/` has an entry per surface and chat/image do not.** Chat and image are
 routes inside `api.py` — one process, one GPU lock, one deployment. The things under `apps/`
 are separate codebases with their own docs, dependencies and release cycle. That is a real
 distinction rather than a favourite, and it answers the next question directly: a surface
@@ -165,8 +168,11 @@ the backend as plugins so every surface is a peer by construction, and the rack 
 registry a surface appears on *because it registered*. That is not built.
 
 **The rack is the authority on how many surfaces exist, and this file is not.** `GET
-/api/status` answers with the live list, currently twelve units. Count it there; the
-equivalent line has already been stale twice in `.claude/HANDOVER.md`.
+/api/status` answers with the live list. Count it there, and note that the count is not
+stable: surfaces can merge as well as arrive, and `guide` and `tuner` already share a
+page (`guide` reports `href=/tuner.html`), so folding them into one surface is under
+consideration. The equivalent line has already been stale twice in
+`.claude/HANDOVER.md`, which is why no number is quoted here.
 
 ## The rules this project actually runs on
 
