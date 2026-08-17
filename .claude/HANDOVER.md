@@ -3,8 +3,7 @@
 **Last updated 2026-08-17 01:40. Written for a fresh agent with zero prior context.**
 
 > **If you read nothing else:** nothing is broken, nothing is blocked. Run
-> `node tests/frontend.mjs https://symoneural.com` (expect 18/18 once the pending deploy
-> lands; 17/18 before it, failing only the .gprov assertion), read `git log`, then
+> `node tests/frontend.mjs https://symoneural.com` (expect 18/18), read `git log`, then
 > pick up §5. The one thing you cannot do yourself is deploy — see §0b.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
@@ -19,7 +18,7 @@ conversation, so every number, path and decision you need is stated here.
 ## 0. Sixty-second version
 
 - **Nothing is broken and nothing is blocked.** The site is deployed, the API is current,
-  and `node tests/frontend.mjs https://symoneural.com` passes **17/18 against the public
+  and `node tests/frontend.mjs https://symoneural.com` passes **18/18 against the public
   site** — including generating a real image on the real card mid-test.
 - The repo is at `/home/google/Symoneural`, branch `main`, no remote. **Every commit
   states its reason**; `git log` is genuinely worth twenty minutes before you touch
@@ -37,7 +36,7 @@ conversation, so every number, path and decision you need is stated here.
 
 ```bash
 node tests/frontend.mjs                 # 18/18 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 17/18 -- the 18th needs the deploy
+node tests/frontend.mjs https://symoneural.com   # 18/18 against production
 git log --oneline -25
 ```
 
@@ -54,7 +53,7 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
-## 1. State of the machine, verified 2026-08-17 01:40
+## 1. State of the machine, verified 2026-08-17 03:15
 
 | Thing | State |
 |---|---|
@@ -63,7 +62,7 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 | `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
 | `symoneural-api.service` | active, restarted 01:03, PID 170388 |
 | Caddy | serving, TLS auto-renew |
-| `tests/frontend.mjs` | **18/18 local, 17/18 production.** The one production failure is the new `.gprov` assertion, and it is the correct answer, not a fault: the watermark work is built and waiting on `sudo scripts/deploy.sh --prune`. It flips to 18/18 the moment that runs. |
+| `tests/frontend.mjs` | **18/18 local, 18/18 production** |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | 9, all idempotent, hash-verified across two runs |
 | Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
@@ -111,10 +110,13 @@ Seven commits, `14f1599` through `677e25b`. In the order they happened:
   file.** `-regex` must match the whole path; `js` matched, `on` did not, and it never
   backed up to try the longer alternative. Order alternations longest-first.
 
-## 2b. Built 2026-08-17, NOT yet live — needs `sudo scripts/deploy.sh --prune`
+## 2b. The watermark work — DEPLOYED 2026-08-17 03:12, verified live
 
-Everything in §2 above is deployed. This is not, and the distinction is the one that has
-caused every "it's still broken" exchange in this project, so keep the two lists apart.
+Production is **18/18**. Verified beyond the suite: the render served from
+`https://symoneural.com/art-fast.png?v=153f708e54` is byte-identical to the local file
+(SHA-256 match) and measures **768×848**, i.e. the new 80px bar. The `?v=` value is the
+file's own content hash, which is the cache-bust working as designed — `max-age=604800` is
+still set on the PNG, but the URL now changes whenever the file does.
 
 - **The watermark is two rows of 20px instead of one of 12px**, on all 18 `site/art-*.png`.
   Redrawn with `build_gallery.py --restamp` — no GPU, no governor lease, artwork unchanged.
@@ -541,7 +543,7 @@ that put nineteen full-size renders down the left of the live page.
 ### Test in a real browser — this is the important one
 ```bash
 node tests/frontend.mjs                          # 18/18 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 18/18 once the pending deploy lands
+node tests/frontend.mjs https://symoneural.com   # 18/18 against production
 ```
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries
 GPU/CPU/`--`, nothing overlaps or spills past the right edge at 390px, ravencalc returns
