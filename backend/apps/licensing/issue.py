@@ -8,16 +8,23 @@ side ships only `contract-signing.pub` and verifies offline.
     # once, on a machine that is not this one if you can help it
     python3 issue.py keygen --out ./contract-signing
 
-    # a contract. --fee is REQUIRED and has no default, deliberately.
+    # a standard contract -- 2.5%, the agreed rate, applied without retyping it
     python3 issue.py sign --key ./contract-signing.key \\
-        --contract "Warehouse A" --type standard --fee-bps 250 --days 365
+        --contract "Warehouse A" --days 365
+
+    # a negotiated one. --fee-bps is REQUIRED here: an unstated custom rate is a
+    # contradiction, and inheriting the standard rate silently is how a "custom" deal
+    # quietly becomes the list price.
+    python3 issue.py sign --key ./contract-signing.key \\
+        --contract "Fleet — 4,000 rigs" --type custom --fee-bps 150 --days 365
 
     # what a key actually says, using only the public half
     python3 issue.py show "SYMN1.eyJ...."
 
-There is no default rate anywhere in this package. `--fee-bps` must be given explicitly on
-every contract, because a default fee is a rate nobody chose, and this project does not
-publish prices it was not given.
+The standard rate lives in this file and nowhere else. `licensing/__init__.py` — the half
+that runs on a rig — still has no rate in it at all, so a machine reads its fee from a
+signed contract or has no fee. That separation is the point: a default in the verifier
+would be a number a tampered or missing contract could silently fall back to.
 """
 from __future__ import annotations
 
@@ -31,6 +38,27 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import licensing  # noqa: E402
+
+# The standard rate: 2.5%, chosen by Garrett on 2026-08-17 to match Braiins' headline.
+#
+# It lives HERE, in the issuing tool, and deliberately not in `licensing/__init__.py`. The
+# verifier must never carry a rate: a rig reads its fee from the signed contract or it has
+# no fee at all, so a tampered or absent contract can never quietly fall back to a number.
+# This constant only saves retyping when minting a standard contract.
+#
+# Sourced, because it is a competitive claim and this project labels those. From
+# braiins.com/os-firmware: the headline is "2.5% dev fee", but the FAQ on the same page says
+# "we collect a 2-2.5% dev fee (depending on the hardware model)". So 2.5% matches their
+# CEILING, not a flat rate they charge everywhere -- on some hardware Braiins is cheaper than
+# this. Worth knowing before "same as Braiins" is used in any customer-facing copy, because
+# it is true of the headline and not of every rig.
+#
+# And the comparison is against Braiins, not against Bitmain. Stock Antminer firmware has no
+# dev fee: bmminer extracted from the S17 Pro rootfs carries no hardcoded pool (only the bare
+# "stratum+tcp://" scheme string it uses to parse the operator's own URL) and no devfee or
+# donation strings at all. So this is not "replacing Bitmain's fee" -- stock takes 0%, and a
+# dev fee is something custom firmware adds. The honest pitch is 2.5% against Braiins' 2-2.5%.
+STANDARD_FEE_BPS = 250
 
 
 def keygen(out: pathlib.Path) -> int:
@@ -106,8 +134,11 @@ def main() -> int:
     s.add_argument("--contract", required=True, help="human-readable contract name")
     s.add_argument("--type", dest="ctype", default="standard",
                    choices=["standard", "custom"])
-    s.add_argument("--fee-bps", type=int, required=True,
-                   help="dev fee in basis points (1 bps = 0.01%%). No default, on purpose.")
+    s.add_argument("--fee-bps", type=int, default=None,
+                   help=f"dev fee in basis points (1 bps = 0.01%%). Omit ONLY with "
+                        f"--type standard, which uses {STANDARD_FEE_BPS} bps "
+                        f"({STANDARD_FEE_BPS / 100}%%). A custom contract must state its "
+                        f"rate explicitly -- that is what makes it custom.")
     s.add_argument("--days", type=int, required=True)
 
     w = sub.add_parser("show", help="verify and print a contract key")
@@ -118,7 +149,14 @@ def main() -> int:
     if a.cmd == "keygen":
         return keygen(a.out)
     if a.cmd == "sign":
-        return sign(a.key, a.contract, a.ctype, a.fee_bps, a.days)
+        fee = a.fee_bps
+        if fee is None:
+            if a.ctype != "standard":
+                print("--fee-bps is required for a custom contract: a negotiated rate has "
+                      "to be stated, not inherited.", file=sys.stderr)
+                return 1
+            fee = STANDARD_FEE_BPS
+        return sign(a.key, a.contract, a.ctype, fee, a.days)
     return show(a.token, a.pub)
 
 

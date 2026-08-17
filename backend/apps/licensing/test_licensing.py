@@ -177,5 +177,64 @@ class TestDisclosure(Base):
         self.assertIn("no dev fee applies", d["terms"])
 
 
+
+
+class TestIssuerRates(Base):
+    """The standard rate is a business decision; where it lives is a safety decision."""
+
+    def test_verifier_never_assigns_a_rate_literal(self):
+        """No integer literal in the verifier can ever become a dev fee.
+
+        Checks the precise property rather than a proxy for it. Two earlier attempts were
+        wrong in instructive ways: grepping the source for "250" fired on the comment that
+        explains the unit, and allow-listing "safe" integers fired on 86400 (seconds in a
+        day). Both would have been deleted the first time they cried wolf. What actually
+        matters is narrow -- `dev_fee_bps` must only ever be read from a verified payload,
+        never assigned a constant.
+        """
+        import ast
+        tree = ast.parse(pathlib.Path(licensing.__file__).read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                for k, v in zip(node.keys, node.values):
+                    if (isinstance(k, ast.Constant) and k.value in
+                            ("dev_fee_bps", "dev_fee_percent")):
+                        self.assertNotIsInstance(
+                            v, ast.Constant if not (isinstance(v, ast.Constant)
+                                                    and v.value is None) else type(None),
+                            f"{k.value} is assigned the literal "
+                            f"{getattr(v, 'value', v)!r} in the verifier")
+        for name in dir(licensing):
+            if "FEE" in name.upper() and "BPS" in name.upper():
+                self.fail(f"licensing.{name} is a rate constant in the verifier")
+
+    def test_no_contract_means_no_rate_at_runtime(self):
+        # The behavioural half of the same guarantee.
+        self.assertIsNone(licensing.parse("", pubkey=self.pub)["dev_fee_bps"])
+        self.assertIsNone(licensing.disclosure(
+            licensing.parse("", pubkey=self.pub))["dev_fee_percent"])
+
+    def test_issuer_standard_rate_is_250_bps(self):
+        sys.path.insert(0, str(pathlib.Path(licensing.__file__).resolve().parent))
+        import issue
+        self.assertEqual(issue.STANDARD_FEE_BPS, 250)
+        self.assertEqual(issue.STANDARD_FEE_BPS / 100, 2.5)
+
+    def test_a_standard_contract_verifies_at_two_and_a_half_percent(self):
+        t = self.good(type="standard", dev_fee_bps=250)
+        r = licensing.parse(t, pubkey=self.pub, now=self.now)
+        self.assertEqual(r["state"], licensing.STATE_VALID)
+        self.assertEqual(r["dev_fee_percent"], 2.5)
+        self.assertIn("2.5%", licensing.disclosure(r)["terms"])
+
+    def test_a_custom_rate_is_carried_verbatim(self):
+        # A negotiated contract must not be quietly normalised to the standard rate.
+        for bps in (0, 100, 150, 249, 251, 500):
+            r = licensing.parse(self.good(type="custom", dev_fee_bps=bps),
+                                pubkey=self.pub, now=self.now)
+            self.assertEqual(r["dev_fee_bps"], bps)
+            self.assertEqual(r["type"], "custom")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
