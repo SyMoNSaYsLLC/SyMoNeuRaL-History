@@ -148,7 +148,8 @@ and the file times agree with the names:
 
 | Session | Owns — do not write these files | Evidence on disk |
 |---|---|---|
-| `symoneural reinforce lora tuning` | `backend/apps/reinforce/**`, `tools/build_reinforce.py`, `site/reinforce.html` | both written 14:49 |
+| `symoneural reinforce lora tuning` | `backend/apps/reinforce/**` on branch `worktree-reinforce-rl` | `23f96b3` |
+| **unidentified** | `tools/build_reinforce.py`, `site/reinforce.html`, `site/reinforce.js`, and the uncommitted `/api/train` mount in `main`'s working copy | written 14:49, still untracked |
 | `symoneural miner completion` | `backend/apps/asicminer/**` (code), `site/miner.html` | — |
 | `symoneural coder online integration` | `backend/apps/coder/**` | — |
 | `symoneural gateway online status` | `backend/apps/gateway/**`, `site/gateway.html` | — |
@@ -210,6 +211,21 @@ Three things will save the person doing it real time:
   **Anything that looks up a unit by id must search the top level and then `sub`** — the site
   deploys before the API restarts, so both shapes are live at once for a while. `ast.parse`
   after every resolution.
+
+**Merging `worktree-reinforce-rl`'s `backend/api.py` wholesale reverts four surfaces.** That
+branch forked at `595835d`, so its copy of the file carries **two** `include_router` calls —
+`tuner` and the new `reinforce` — where `main` has five. Verified here, not taken on trust:
+`git show worktree-reinforce-rl:backend/api.py | grep -c include_router` prints 2. Take the
+import line and the `include_router` line by hand; accepting that side of the conflict silently
+un-mounts accounts, gateway, guide and project. The mount itself is right and is `23f96b3`.
+
+**Who wrote the training bay page is unknown, and that matters for who to ask.** An earlier
+revision of §1b credited `tools/build_reinforce.py` and `site/reinforce.html` to the reinforce
+session. It has checked and denies them: they are absent from its branch, and it never created
+them. They appeared in `main`'s working copy at 14:49 alongside an uncommitted `/api/train`
+mount and an uncommitted `tools/build_pages.py`, and all of it is **still untracked or
+uncommitted**. So the bay page has no owner on record — do not assume the reinforce session
+will commit it, and do not delete it assuming it is a stray.
 
 **The sharpest hazard is Reinforce, which exists in two places at once.** `main`'s working copy
 carries an uncommitted `/api/train` mount in `backend/api.py`, an uncommitted
