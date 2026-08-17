@@ -15,6 +15,17 @@ That last category is the one worth having. A stack diagram where everything is 
 marketing diagram. The value of publishing this one is that three of its cells say we do not
 do the thing, and one says a headline technique measurably made this machine slower.
 
+Naming rule, applied consistently through this file: **components we run carry SyMoNeuRaL
+names; components we compare ourselves to keep theirs.** So the serving runtime is
+SymonServe and the image runtime is SymonRender, while vLLM, TensorRT-LLM, SGLang, CUTLASS,
+FlashInfer, NCCL, NIXL, Dynamo, cuBLASLt and CuPy stay as written -- they are the reference
+architecture this section is mapped onto, and a comparison you rename is no longer a
+comparison. Upstream attribution for everything we run is consolidated on /credits.html.
+
+Quantisation format strings (`GGUF`, `Q4_K_M`, `q4_k`) are also left alone. They are file
+formats, not vendor brands; renaming them would make the page factually wrong, and they
+double as the Apache-2.0 §4(b) statement that we modified the weights.
+
 Idempotent: lives between markers, replaced wholesale.
 """
 from __future__ import annotations
@@ -49,9 +60,9 @@ LAYERS = [
      ]),
     ("Application Acceleration", "/reinforce-64.png",
      "Accelerates models out of the box, and allows custom optimisation", [
-        ("Runtime", "llama.cpp &middot; stable-diffusion.cpp", "impl",
-         "GGML rather than vLLM/TensorRT-LLM/SGLang. Deliberate: no torch in the serving "
-         "path, so the pinned base environment never moves."),
+        ("Runtime", "SymonServe &middot; SymonRender", "impl",
+         "SymonServe rather than vLLM/TensorRT-LLM/SGLang. Deliberate: no torch in the "
+         "serving path, so the pinned base environment never moves."),
         ("Kernels", "hand-written CUDA, NVRTC", "impl",
          "Compiled at runtime and diffed against a CuPy reference. Where CUTLASS and "
          "FlashInfer sit in the reference stack."),
@@ -59,8 +70,9 @@ LAYERS = [
          "cuBLASLt reached 32,338 GFLOPS against 4,210 for a good hand-written tiled "
          "kernel &mdash; roughly 13&times;. Write custom kernels for what libraries do not cover."),
         ("Compression", "GGUF Q4_K_M &middot; q4_k", "impl",
-         "Post-training quantization, the first of NVIDIA's top five. 7B to 4.68&nbsp;GB, "
-         "FLUX to 6.88&nbsp;GB &mdash; which is the only reason either fits."),
+         "Post-training quantization, the first of NVIDIA's top five. SymonChat to "
+         "4.68&nbsp;GB, SymonImage&nbsp;F1 to 6.88&nbsp;GB &mdash; which is the only "
+         "reason either fits."),
         ("KV-cache transfer", "&mdash;", "na",
          "NIXL and Mooncake move cache between nodes. There is one node."),
         ("Collective communication", "&mdash;", "na",
@@ -78,7 +90,8 @@ LAYERS = [
 # (technique, status, our number)
 TECHNIQUES = [
     ("Low-precision kernel", "impl",
-     "GGUF Q4_K_M for chat, q4_k for FLUX. Weights are the thing being read every token, so "
+     "GGUF Q4_K_M for SymonChat, q4_k for SymonImage&nbsp;F1. Weights are the thing being "
+     "read every token, so "
      "this is the optimisation that decides whether a model runs at all."),
     ("Speculative decoding", "measured",
      "Tuned to draft depth 2: <b>157.4 tok/s at 43.8% acceptance</b>, about +5% over "
@@ -101,7 +114,8 @@ TECHNIQUES = [
      "dominates compute that there is nothing left to hide behind it."),
     ("NVFP4", "absent",
      "The hardware is here &mdash; Blackwell sm_120, and <code>cuda_fp4.h</code> ships in "
-     "CUDA 13.3 &mdash; but GGML has no FP4 path, so our serving runtime cannot reach it. "
+     "CUDA 13.3 &mdash; but SymonServe has no FP4 path, so our serving runtime cannot "
+     "reach it. "
      "Getting there means TensorRT-LLM or an FP4 kernel written against CUTLASS. We are not "
      "going to claim a format we do not execute."),
     ("Disaggregated serving", "na",
@@ -179,7 +193,7 @@ STACK = f"""{BEGIN}
       <p>
         <strong>NVFP4 is the interesting one.</strong> This card is Blackwell, the format is
         supported in silicon, and the CUDA toolkit here ships the headers. What is missing is
-        a path through our runtime: GGML has no FP4 kernels. That is a real gap, it is ours,
+        a path through our runtime: SymonServe has no FP4 kernels. That is a real gap, it is ours,
         and it is on the list rather than quietly omitted.
       </p>
     </div>

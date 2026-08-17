@@ -15,7 +15,7 @@
 <meta property="og:image" content="/mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0e100f">
-<link rel="stylesheet" href="/symoneural.css?v=49b346c269">
+<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 </head>
 <body>
@@ -40,18 +40,270 @@
 
 
 <!-- ===================== PAGE HEAD ===================== -->
+<!-- The account surface. Every state on this page is rendered from a real reading of
+     GET /api/accounts/status and GET /api/accounts/me -- there is no hardcoded "signed
+     out" view and no decorative indicator. If this box has not been given a session
+     secret the page says exactly that, because "not open yet" and "misconfigured" are
+     different facts and a visitor is entitled to know which one they are looking at.
+
+     All class names are prefixed `ac-` and scoped under #acct. Grepped against
+     symoneural.css and rack-detail.css first: zero prior definitions. Four separate bugs
+     on this site have come from generic class names colliding across components. -->
+<style>
+#acct .ac-panel{
+  border:1px solid var(--line); border-radius:16px; background:var(--panel);
+  padding:22px 24px; max-width:560px;
+}
+#acct .ac-state{margin:0 0 4px; color:var(--dim); font-size:12.5px; letter-spacing:.08em;
+  text-transform:uppercase}
+#acct h2{margin:0 0 8px}
+#acct label{display:block; margin:13px 0 5px; font-size:12.5px; color:var(--dim)}
+#acct input{
+  width:100%; box-sizing:border-box; padding:10px 12px; border-radius:9px;
+  border:1px solid var(--line); background:var(--panel2, #121513); color:var(--fg);
+  font:14px/1.3 inherit;
+}
+#acct input:focus{outline:2px solid var(--accent); outline-offset:1px}
+#acct .ac-row{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:17px}
+#acct .ac-go{
+  background:var(--accent); color:#07130d; border:0; border-radius:999px;
+  padding:10px 20px; font:650 13.5px/1 inherit; cursor:pointer;
+}
+#acct .ac-go:disabled{opacity:.5; cursor:default}
+#acct .ac-alt{
+  background:none; border:1px solid var(--line); color:var(--dim); border-radius:999px;
+  padding:10px 18px; font:600 13px/1 inherit; cursor:pointer;
+}
+#acct .ac-alt:hover{color:var(--fg)}
+/* The message line. No text-overflow:ellipsis -- a server's explanation of why a signup
+   was refused is exactly the text you must be able to read in full. It wraps. */
+#acct .ac-msg{
+  margin:14px 0 0; padding:11px 13px; border-radius:10px; font-size:13.5px;
+  line-height:1.5; overflow-wrap:anywhere;
+}
+#acct .ac-msg.bad{border:1px solid rgba(255,171,61,.42); background:rgba(255,171,61,.07)}
+#acct .ac-msg.good{border:1px solid rgba(46,224,138,.4); background:rgba(46,224,138,.07)}
+#acct .ac-kv{margin:0; display:grid; grid-template-columns:auto 1fr; gap:7px 18px}
+#acct .ac-kv dt{color:var(--dim); font-size:12.5px}
+#acct .ac-kv dd{margin:0; font-size:13.5px; overflow-wrap:anywhere}
+#acct .ac-hint{margin:9px 0 0; color:var(--dim); font-size:12.5px; line-height:1.5}
+#acct details{margin-top:18px}
+#acct summary{cursor:pointer; color:var(--dim); font-size:13px}
+</style>
+
 <div class="hero" style="padding:24px 0 0">
   <div class="wrap">
     <p class="eyebrow">Accounts</p>
-    <h1>Not open yet.</h1>
-    <p class="lede">
-      There is no signup, no subscription and no billing on this site today, so there is
-      nothing here to log into. When that changes this page will say so and will describe
-      exactly what is being sold. Until then, everything on symoneural.com is free to use
-      and runs on one workstation.
+    <h1 id="ac-h1">Sign in</h1>
+    <p class="lede" id="ac-lede">
+      Checking whether this box has accounts switched on&hellip;
     </p>
   </div>
 </div>
+
+<section id="acct" style="padding-top:22px">
+  <div class="wrap">
+    <div class="ac-panel" id="ac-panel" hidden>
+      <p class="ac-state" id="ac-state"></p>
+
+      <!-- signed out: one form that is either a sign-in or a signup -->
+      <form id="ac-form" hidden autocomplete="on">
+        <h2 id="ac-formh">Sign in</h2>
+        <label for="ac-email">Email address</label>
+        <input id="ac-email" type="email" autocomplete="username" spellcheck="false" required>
+        <label for="ac-pw">Password</label>
+        <input id="ac-pw" type="password" autocomplete="current-password" required>
+        <p class="ac-hint" id="ac-pwhint" hidden>At least 12 characters. Length is worth
+          more than punctuation, and the password is hashed with scrypt at 64&nbsp;MiB
+          before it is stored &mdash; <b>123&nbsp;ms measured on this machine</b>, which
+          is the cost an attacker pays per guess.</p>
+        <div class="ac-row">
+          <button class="ac-go" id="ac-submit" type="submit">Sign in</button>
+          <button class="ac-alt" id="ac-toggle" type="button">Create an account</button>
+        </div>
+      </form>
+
+      <!-- signed in -->
+      <div id="ac-in" hidden>
+        <h2>Signed in</h2>
+        <dl class="ac-kv">
+          <dt>Address</dt><dd id="ac-who"></dd>
+          <dt>Account created</dt><dd id="ac-created"></dd>
+          <dt>Live sessions</dt><dd id="ac-sess"></dd>
+        </dl>
+        <div class="ac-row">
+          <button class="ac-alt" id="ac-out" type="button">Sign out</button>
+          <button class="ac-alt" id="ac-outall" type="button">Sign out everywhere</button>
+        </div>
+        <details>
+          <summary>Change password</summary>
+          <form id="ac-pwform">
+            <label for="ac-old">Current password</label>
+            <input id="ac-old" type="password" autocomplete="current-password" required>
+            <label for="ac-new">New password</label>
+            <input id="ac-new" type="password" autocomplete="new-password" required>
+            <div class="ac-row">
+              <button class="ac-go" type="submit">Change it</button>
+            </div>
+            <p class="ac-hint">Changing the password revokes every session, including
+              this one &mdash; a password change that leaves an intruder signed in has
+              done nothing. This browser is issued a fresh session on success.</p>
+          </form>
+        </details>
+      </div>
+
+      <p class="ac-msg" id="ac-msg" hidden></p>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  var panel = document.getElementById('ac-panel'), stateEl = document.getElementById('ac-state');
+  var form = document.getElementById('ac-form'), inEl = document.getElementById('ac-in');
+  var msg = document.getElementById('ac-msg'), h1 = document.getElementById('ac-h1');
+  var lede = document.getElementById('ac-lede'), formh = document.getElementById('ac-formh');
+  var submit = document.getElementById('ac-submit'), toggle = document.getElementById('ac-toggle');
+  var pwhint = document.getElementById('ac-pwhint'), pw = document.getElementById('ac-pw');
+  var signup = false;
+
+  function say(text, good) {
+    msg.textContent = text;
+    msg.className = 'ac-msg ' + (good ? 'good' : 'bad');
+    msg.hidden = !text;
+  }
+
+  // The server's own sentence is what gets shown. FastAPI puts it in `detail`; a
+  // pydantic validation error puts a list there instead, hence the shape check.
+  function detail(j, fallback) {
+    if (!j) return fallback;
+    if (typeof j.detail === 'string') return j.detail;
+    if (Array.isArray(j.detail) && j.detail.length && j.detail[0].msg) return j.detail[0].msg;
+    return fallback;
+  }
+
+  function setMode(isSignup) {
+    signup = isSignup;
+    formh.textContent = isSignup ? 'Create an account' : 'Sign in';
+    submit.textContent = isSignup ? 'Create account' : 'Sign in';
+    toggle.textContent = isSignup ? 'I already have an account' : 'Create an account';
+    pwhint.hidden = !isSignup;
+    pw.setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
+    h1.textContent = isSignup ? 'Create an account' : 'Sign in';
+    say('');
+  }
+
+  function fmt(epoch) {
+    if (!epoch) return '\u2014';
+    var d = new Date(epoch * 1000);
+    return d.toISOString().slice(0, 10) + ' ' + d.toTimeString().slice(0, 5);
+  }
+
+  function showSignedIn(acct) {
+    form.hidden = true; inEl.hidden = false;
+    stateEl.textContent = 'signed in';
+    h1.textContent = 'Your account';
+    lede.textContent = 'This is a real session on this box. Sessions are rows in a '
+      + 'database here, not signed tokens, so signing out actually ends them.';
+    document.getElementById('ac-who').textContent = acct.email || '';
+    document.getElementById('ac-created').textContent = fmt(acct.created);
+    fetch('/api/accounts/sessions').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        document.getElementById('ac-sess').textContent =
+          j ? (j.count + (j.count === 1 ? ' session' : ' sessions')) : '\u2014';
+      });
+  }
+
+  function showSignedOut() {
+    inEl.hidden = true; form.hidden = false;
+    stateEl.textContent = 'not signed in';
+    lede.textContent = 'Accounts are open on this box. There is still no subscription and '
+      + 'no billing here \u2014 pricing is quoted by mail, never published or invented.';
+    setMode(false);
+  }
+
+  function showClosed(note) {
+    form.hidden = true; inEl.hidden = true;
+    stateEl.textContent = 'closed';
+    h1.textContent = 'Not open yet.';
+    lede.textContent = 'There is no signup and no billing on this site today, so there '
+      + 'is nothing here to log into. Everything on symoneural.com is free to use and '
+      + 'runs on one workstation.';
+    say(note, false);
+  }
+
+  // Read the real state before drawing anything. The page has no default view: a
+  // sign-in form rendered before asking would be furniture claiming a capability.
+  fetch('/api/accounts/status')
+    .then(function (r) { return r.json(); })
+    .then(function (st) {
+      panel.hidden = false;
+      if (!st.enabled) return showClosed(st.note || 'accounts are closed on this box');
+      return fetch('/api/accounts/me').then(function (r) {
+        if (r.ok) return r.json().then(showSignedIn);
+        showSignedOut();
+      });
+    })
+    .catch(function () {
+      panel.hidden = false;
+      stateEl.textContent = 'unknown';
+      say('The account service on this box could not be reached, so this page cannot '
+          + 'say whether accounts are open. That is a fault here, not a refusal.', false);
+    });
+
+  toggle.addEventListener('click', function () { setMode(!signup); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    submit.disabled = true; say('');
+    fetch('/api/accounts/' + (signup ? 'signup' : 'login'), {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: document.getElementById('ac-email').value,
+                            password: pw.value})
+    }).then(function (r) {
+      return r.json().then(function (j) { return {ok: r.ok, s: r.status, j: j}; });
+    }).then(function (res) {
+      submit.disabled = false;
+      if (!res.ok) return say(detail(res.j, 'that did not work'), false);
+      pw.value = '';
+      showSignedIn(res.j);
+      say(signup ? 'Account created and signed in.' : 'Signed in.', true);
+    }).catch(function () {
+      submit.disabled = false;
+      say('Could not reach the account service.', false);
+    });
+  });
+
+  document.getElementById('ac-out').addEventListener('click', function () {
+    fetch('/api/accounts/logout', {method: 'POST'}).then(function () {
+      showSignedOut(); say('Signed out. That session row is revoked, not just forgotten '
+                           + 'by this browser.', true);
+    });
+  });
+
+  document.getElementById('ac-outall').addEventListener('click', function () {
+    fetch('/api/accounts/signout-everywhere', {method: 'POST'}).then(function () {
+      showSignedOut(); say('Every session for this account has been revoked.', true);
+    });
+  });
+
+  document.getElementById('ac-pwform').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var o = document.getElementById('ac-old'), n = document.getElementById('ac-new');
+    fetch('/api/accounts/password', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({old: o.value, new: n.value})
+    }).then(function (r) {
+      if (r.status === 204) {
+        o.value = ''; n.value = '';
+        return say('Password changed. Every other session was revoked; this browser has '
+                   + 'a fresh one.', true);
+      }
+      return r.json().then(function (j) { return say(detail(j, 'that did not work'), false); });
+    });
+  });
+})();
+</script>
 
 <section id="billing" style="padding-top:26px">
   <div class="wrap">
@@ -105,7 +357,8 @@
       <a href="/training.html">Manuals</a>
       <a href="/docs">API</a>
       <a href="mailto:symonsayadmin@symoneural.com">Contact</a>
-    </nav>
+          <a href="/credits.html">Credits</a>
+</nav>
   </div>
 </footer>
 

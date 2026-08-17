@@ -21,7 +21,7 @@ assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 SITE = ROOT / "site"
 
 NAV = """    <nav>
-      <a class="navlink" href="/">Live stack</a>
+      <a class="navlink" href="/livestack">Live stack</a>
       <a class="navlink" href="/documentation.html">Documentation</a>
       <a class="navlink" href="/training.html">Manuals</a>
       <a class="navlink" href="/docs">API</a>
@@ -99,8 +99,9 @@ SHELL = """<!doctype html>
     <nav>
       <a href="/">Home</a>
       <a href="/training.html">Training</a>
-      <a href="/#hardware">Hardware</a>
-      <a href="/#inference">Inference</a>
+      <a href="/documentation.html#hardware">Hardware</a>
+      <a href="/documentation.html#inference">Inference</a>
+      <a href="/credits.html">Credits</a>
     </nav>
   </div>
 </footer>
@@ -238,7 +239,7 @@ CHAT_BODY = """    <div class="cu">
         <div class="cu-log" id="log"></div>
 
         <form class="cu-composer" id="form">
-          <textarea id="prompt" rows="1" maxlength="1200"
+          <textarea id="prompt" rows="1" maxlength="100000"
                     placeholder="How can I help?"></textarea>
           <div class="cu-tools">
             <label class="cu-attach" title="Attach a text file">
@@ -397,12 +398,12 @@ CHAT_JS = """<script>
 
     // Everything before this turn, replayed. The cap matches the server's, so a long chat
     // is trimmed here rather than refused there.
-    var prior = chats[cur].turns.slice(0, -1).slice(-19);
+    var prior = chats[cur].turns.slice(0, -1).slice(-1000);
 
     fetch('/api/chat', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({prompt: sent, history: prior,
-                            temperature: 0.7, max_tokens: 512})
+                            temperature: 0.7, max_tokens: 4096})
     }).then(function (r) {
       if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) {
         throw new Error(j.detail || j.error || ('HTTP ' + r.status));
@@ -465,7 +466,7 @@ IMAGE_BODY = """    <div class="pgwrap">
           </div>
         </div>
         <form class="composer" id="form">
-          <textarea id="prompt" rows="3" maxlength="1200"
+          <textarea id="prompt" rows="3" maxlength="100000"
                     placeholder="a raven perched on a server rack, volumetric light, cinematic"></textarea>
           <button class="cta" id="send" type="submit">Generate</button>
         </form>
@@ -557,7 +558,77 @@ form.addEventListener('submit', async e => {
 </script>"""
 
 # ---------------------------------------------------------------- calc
-CALC_BODY = """    <div class="pgwrap">
+#
+# The keypad's CSS is inline, in the page, on purpose. `site/symoneural.css` is not written
+# by this generator, so shipping these rules with the markup keeps the two halves in one
+# file and one commit -- and an inline block cannot be served stale against new markup,
+# which is the failure `tools/build_cachebust.py` exists to prevent.
+#
+# EVERY class below is prefixed `rc-` and EVERY rule is scoped under `.rc-calc`. `.bar`,
+# `.live`, `.card` and `#console .sub` have each been defined a second time in this
+# codebase and each time the second definition silently ate the first -- five instances of
+# one bug class. Do not add a generic name here.
+CALC_BODY = """    <style>
+    /* ---- RavenCalc keypad. All names rc-, all rules scoped under .rc-calc. ---- */
+    .rc-calc .rc-strip{
+      display:flex; flex-wrap:wrap; align-items:center; gap:7px;
+      padding:12px 16px; border-top:1px solid var(--line); background:var(--panel2);
+    }
+    .rc-calc .rc-lab{
+      font:650 10.5px/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+      text-transform:uppercase; color:var(--faint); margin-right:4px;
+    }
+    .rc-calc .rc-op{
+      background:var(--bg); color:var(--dim); border:1px solid var(--line);
+      border-radius:8px; padding:7px 11px; cursor:pointer;
+      font:600 11.9px/1.3 ui-sans-serif,system-ui,sans-serif;
+    }
+    .rc-calc .rc-op:hover{color:var(--fg); border-color:var(--faint)}
+    .rc-calc .rc-op[aria-pressed=true]{
+      background:var(--accent); color:var(--accent-ink); border-color:transparent;
+    }
+    .rc-calc .rc-op:focus-visible,
+    .rc-calc .rc-key:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+    .rc-calc .rc-pad{
+      padding:12px 16px 14px; border-top:1px solid var(--line); background:var(--panel2);
+    }
+    .rc-calc .rc-group{margin-top:11px}
+    .rc-calc .rc-group:first-child{margin-top:0}
+    .rc-calc .rc-glab{
+      margin:0 0 6px; font:650 10.5px/1.5 ui-sans-serif,system-ui,sans-serif;
+      letter-spacing:.13em; text-transform:uppercase; color:var(--faint);
+    }
+    /* minmax(0,1fr), never a fixed width: a fixed key width is how a six-column pad runs
+       past the right edge of a 390px viewport. Long labels wrap and the row grows. */
+    .rc-calc .rc-keys{display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px}
+    .rc-calc .rc-key{
+      background:var(--bg); color:var(--fg); border:1px solid var(--line);
+      border-radius:8px; padding:9px 3px; cursor:pointer; min-height:36px;
+      font:600 11.9px/1.25 ui-monospace,Menlo,Consolas,monospace;
+      overflow-wrap:anywhere;
+    }
+    .rc-calc .rc-key:hover{border-color:var(--accent)}
+    .rc-calc .rc-key:active{background:var(--panel)}
+    .rc-calc .rc-fn{color:var(--dim)}
+    .rc-calc .rc-var{color:var(--accent)}
+    .rc-calc .rc-act{color:var(--amber)}
+    /* `del` and `AC` are both words on purpose: the U+232B backspace glyph rendered as an
+       unreadable smudge at this size in the monospace stack, measured on this machine. */
+
+    .rc-calc .rc-line{margin-bottom:5px}
+    .rc-calc .rc-line:last-child{margin-bottom:0}
+    /* The answer is the readout. Nothing here truncates -- it wraps, per the repo rule. */
+    .rc-calc .rc-ans{
+      font-size:19px; line-height:1.45; color:var(--accent); overflow-wrap:anywhere;
+    }
+    @media (max-width:560px){
+      .rc-calc .rc-keys{gap:5px}
+      .rc-calc .rc-key{font-size:11px; padding:9px 2px}
+      .rc-calc .rc-ans{font-size:17px}
+    }
+    </style>
+    <div class="pgwrap rc-calc">
       <div class="stage">
         <div class="head" id="rhead"><s class="on"></s>SyMoNeuRaL RavenCalc
           <span class="grow">cpu &middot; never queues</span></div>
@@ -567,33 +638,109 @@ CALC_BODY = """    <div class="pgwrap">
             computing it, and checking its own answer where checking is cheap.
           </div>
         </div>
+
+        <!-- The operation is a row of real buttons rather than a <select>: it is the single
+             most important choice on the page and a collapsed menu hides six of the seven
+             answers. `#op` is a hidden input and is the ONE source of truth -- the buttons
+             write it and read their pressed state back from it, so the field that is posted
+             and the button that looks chosen cannot disagree. -->
+        <div class="rc-strip" role="group" aria-label="Operation">
+          <span class="rc-lab">Operation</span>
+          <input type="hidden" id="op" value="integrate">
+          <button type="button" class="rc-op" data-op="differentiate" aria-pressed="false">differentiate</button>
+          <button type="button" class="rc-op" data-op="integrate" aria-pressed="true">integrate</button>
+          <button type="button" class="rc-op" data-op="limit" aria-pressed="false">limit</button>
+          <button type="button" class="rc-op" data-op="series" aria-pressed="false">series</button>
+          <button type="button" class="rc-op" data-op="solve" aria-pressed="false">solve</button>
+          <button type="button" class="rc-op" data-op="simplify" aria-pressed="false">simplify</button>
+          <button type="button" class="rc-op" data-op="evaluate" aria-pressed="false">evaluate</button>
+        </div>
+
         <form class="composer" id="form">
-          <textarea id="expr" rows="3" maxlength="1000" placeholder="x**2*sin(x)"></textarea>
+          <textarea id="expr" rows="3" maxlength="100000" placeholder="x**2*sin(x)"></textarea>
           <button class="cta" id="send" type="submit">Compute</button>
         </form>
+
+        <!-- The keypad sits OUTSIDE #form deliberately. A <button> inside a form with no
+             type is a submit button, and the shared Enter handler calls requestSubmit(),
+             which activates the form's default submit button -- so a key in here without
+             type="button" would make Enter type a digit instead of computing. They all
+             carry type="button" as well; both halves, because either alone is one edit
+             away from being wrong.
+             Every label is the SymPy name that is actually inserted. `title` carries the
+             human meaning; the button does not lie about what it types. -->
+        <div class="rc-pad" id="rcpad">
+          <div class="rc-group">
+            <p class="rc-glab">Functions</p>
+            <div class="rc-keys">
+              <button type="button" class="rc-key rc-fn" data-fn="sin">sin</button>
+              <button type="button" class="rc-key rc-fn" data-fn="cos">cos</button>
+              <button type="button" class="rc-key rc-fn" data-fn="tan">tan</button>
+              <button type="button" class="rc-key rc-fn" data-fn="asin" title="inverse sine">asin</button>
+              <button type="button" class="rc-key rc-fn" data-fn="acos" title="inverse cosine">acos</button>
+              <button type="button" class="rc-key rc-fn" data-fn="atan" title="inverse tangent">atan</button>
+              <button type="button" class="rc-key rc-fn" data-fn="sinh" title="hyperbolic sine">sinh</button>
+              <button type="button" class="rc-key rc-fn" data-fn="cosh" title="hyperbolic cosine">cosh</button>
+              <button type="button" class="rc-key rc-fn" data-fn="tanh" title="hyperbolic tangent">tanh</button>
+              <button type="button" class="rc-key rc-fn" data-fn="log" title="natural logarithm (log and ln are the same function in SymPy)">log</button>
+              <button type="button" class="rc-key rc-fn" data-fn="ln" title="natural logarithm">ln</button>
+              <button type="button" class="rc-key rc-fn" data-fn="exp" title="e raised to the power">exp</button>
+              <button type="button" class="rc-key rc-fn" data-fn="sqrt" title="square root">sqrt</button>
+              <button type="button" class="rc-key rc-fn" data-fn="Abs" title="absolute value &mdash; capital A, this is SymPy's name for it">Abs</button>
+              <button type="button" class="rc-key rc-fn" data-fn="factorial" title="factorial, n!">factorial</button>
+              <button type="button" class="rc-key rc-fn" data-ins="pi" title="pi, exactly &mdash; not 3.14159">pi</button>
+              <button type="button" class="rc-key rc-fn" data-ins="E" title="Euler's number e, exactly">E</button>
+              <button type="button" class="rc-key rc-fn" data-ins="oo" title="infinity &mdash; two lowercase letter o">oo</button>
+            </div>
+          </div>
+          <div class="rc-group">
+            <p class="rc-glab">Numbers, operators, variables</p>
+            <div class="rc-keys">
+              <button type="button" class="rc-key" data-ins="7">7</button>
+              <button type="button" class="rc-key" data-ins="8">8</button>
+              <button type="button" class="rc-key" data-ins="9">9</button>
+              <button type="button" class="rc-key" data-ins="(" aria-label="Open bracket">(</button>
+              <button type="button" class="rc-key" data-ins=")" aria-label="Close bracket">)</button>
+              <button type="button" class="rc-key rc-act rc-back" data-act="back" aria-label="Backspace" title="Backspace &mdash; deletes at the caret">del</button>
+              <button type="button" class="rc-key" data-ins="4">4</button>
+              <button type="button" class="rc-key" data-ins="5">5</button>
+              <button type="button" class="rc-key" data-ins="6">6</button>
+              <button type="button" class="rc-key" data-ins="+" aria-label="Plus">+</button>
+              <button type="button" class="rc-key" data-ins="-" aria-label="Minus">-</button>
+              <button type="button" class="rc-key rc-act" data-act="clear" aria-label="Clear the expression" title="Clear the expression">AC</button>
+              <button type="button" class="rc-key" data-ins="1">1</button>
+              <button type="button" class="rc-key" data-ins="2">2</button>
+              <button type="button" class="rc-key" data-ins="3">3</button>
+              <button type="button" class="rc-key" data-ins="*" aria-label="Multiply">*</button>
+              <button type="button" class="rc-key" data-ins="/" aria-label="Divide">/</button>
+              <button type="button" class="rc-key" data-ins="," aria-label="Comma">,</button>
+              <button type="button" class="rc-key" data-ins="0">0</button>
+              <button type="button" class="rc-key" data-ins="." aria-label="Decimal point">.</button>
+              <button type="button" class="rc-key" data-ins="**" aria-label="Power, two asterisks" title="power &mdash; x**2 is x squared">**</button>
+              <button type="button" class="rc-key rc-var" data-ins="x">x</button>
+              <button type="button" class="rc-key rc-var" data-ins="y">y</button>
+              <button type="button" class="rc-key rc-var" data-ins="z">z</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <aside class="panel">
-        <h3>Operation</h3>
-        <div class="ctl">
-          <select id="op">
-            <option value="integrate">integrate</option>
-            <option value="differentiate">differentiate</option>
-            <option value="simplify">simplify</option>
-            <option value="solve">solve</option>
-            <option value="limit">limit</option>
-            <option value="series">series</option>
-            <option value="evaluate">evaluate</option>
-          </select>
-        </div>
+        <h3>Applied to</h3>
         <div class="ctl">
           <label for="var">Variable</label>
           <input type="text" id="var" value="x" maxlength="16">
         </div>
-        <div class="ctl" id="ptwrap" style="display:none">
+        <div class="ctl" id="ptwrap" hidden>
           <label for="pt">Point</label>
           <input type="text" id="pt" value="0" maxlength="32">
         </div>
+        <p class="hint">
+          The keys type SymPy, which is the language the engine actually reads:
+          <code>**</code> for a power, <code>sqrt(x)</code>, <code>Abs(x)</code>,
+          <code>pi</code> and <code>E</code> as exact constants, <code>oo</code> for
+          infinity. You can type it yourself as well &mdash; the box is a plain text field.
+        </p>
         <p class="hint">
           Symbolic in, symbolic out &mdash; you get an exact answer rather than a float that
           already lost the argument. An antiderivative is differentiated back and simplified
@@ -603,39 +750,140 @@ CALC_BODY = """    <div class="pgwrap">
       </aside>
     </div>"""
 
+# NOTE ON ESCAPES, which have killed a page in production once already: this is a NORMAL
+# triple-quoted string, not a raw one. A `\n` written here becomes a REAL newline inside the
+# emitted JavaScript, and inside a JS string literal that is an unterminated string that
+# kills the whole page's script -- silently, because markup, CSS and endpoint assertions all
+# still pass. Write `\\n`. There are none below; keep it that way.
 CALC_JS = """<script>
-const form = $('#form'), out = $('#out'), op = $('#op');
-op.addEventListener('change', () =>
-  $('#ptwrap').style.display = op.value === 'limit' ? '' : 'none');
+(function () {
+  'use strict';
+  var form = document.getElementById('form');
+  var out = document.getElementById('out');
+  var expr = document.getElementById('expr');
+  var opField = document.getElementById('op');
+  var ptwrap = document.getElementById('ptwrap');
+  var head = document.getElementById('rhead');
+  var send = document.getElementById('send');
+  var pad = document.getElementById('rcpad');
+  var ops = Array.prototype.slice.call(document.querySelectorAll('.rc-op'));
 
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const expression = $('#expr').value.trim();
-  if (!expression) return;
-  out.style.color = 'var(--fg)';
-  out.textContent = 'computing\\u2026';
-  try {
-    const payload = {expression, operation: op.value, variable: $('#var').value.trim()};
-    if (op.value === 'limit') payload.point = $('#pt').value.trim();
-    const r = await api('/api/ravencalc', payload);
-    const c = r.check || {};
-    const verdict = c.performed
-      ? (c.passed === true ? '<span class="v">verified</span>'
-         : c.passed === false ? '<span class="bad">CHECK FAILED</span>'
-         : '<span class="bad">unconfirmed</span>')
-      : '<span class="k">not checked</span>';
-    out.innerHTML =
-      `<div><span class="k">in</span> ${esc(r.input.text)}</div>` +
-      `<div><span class="k">out</span> <span class="v">${esc(r.result.text)}</span></div>` +
-      `<div><span class="k">chk</span> ${verdict}` +
-        (c.how ? ` <span class="k">&mdash; ${esc(c.how)}</span>` : '') + `</div>` +
-      `<div><span class="k">eng</span> <span class="k">${esc(r.engine)} \\u00b7 ${r.seconds}s \\u00b7 ` +
-        `${r.exact ? 'exact' : 'symbolic'}</span></div>`;
-  } catch (err) {
-    out.innerHTML = '<span class="bad">' + esc(err.message) + '</span>';
+  // ---- the operation ------------------------------------------------------
+  // `point` reaches the engine for BOTH limit and series -- ravencalc.py parses it and
+  // passes it to sympy.series() as the expansion point, even though CalcRequest documents
+  // the field as limit-only. Offered for both, hidden for the five that ignore it.
+  function setOp(name) {
+    opField.value = name;
+    ops.forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-op') === name ? 'true' : 'false');
+    });
+    ptwrap.hidden = !(name === 'limit' || name === 'series');
   }
-});
-function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+  ops.forEach(function (b) {
+    b.addEventListener('click', function () { setOp(b.getAttribute('data-op')); });
+  });
+  setOp(opField.value);
+
+  // ---- the keypad ---------------------------------------------------------
+  // Everything is written at the caret, not appended: a calculator that can only add to the
+  // end of the line is not one you can correct a mistake in.
+  function place(a, b) { expr.focus(); expr.setSelectionRange(a, b); }
+
+  function insert(text) {
+    var s = expr.selectionStart, e = expr.selectionEnd, v = expr.value;
+    expr.value = v.slice(0, s) + text + v.slice(e);
+    place(s + text.length, s + text.length);
+  }
+
+  // A function key wraps the selection if there is one -- select `x+1`, press sin, and you
+  // get sin(x+1) rather than losing what you had. With no selection the caret lands between
+  // the brackets, which is where you are about to type.
+  function wrap(name) {
+    var s = expr.selectionStart, e = expr.selectionEnd, v = expr.value;
+    var inner = v.slice(s, e);
+    expr.value = v.slice(0, s) + name + '(' + inner + ')' + v.slice(e);
+    var caret = s + name.length + 1 + inner.length;
+    place(caret, caret);
+  }
+
+  function backspace() {
+    var s = expr.selectionStart, e = expr.selectionEnd, v = expr.value;
+    if (s !== e) { expr.value = v.slice(0, s) + v.slice(e); place(s, s); return; }
+    if (s === 0) return;
+    expr.value = v.slice(0, s - 1) + v.slice(s);
+    place(s - 1, s - 1);
+  }
+
+  // Pressing a button moves focus off the textarea and the browser forgets the selection,
+  // so every key would type at position 0. Cancelling mousedown keeps the caret where the
+  // user put it.
+  pad.addEventListener('mousedown', function (ev) {
+    if (ev.target.closest('.rc-key')) ev.preventDefault();
+  });
+  pad.addEventListener('click', function (ev) {
+    var key = ev.target.closest('.rc-key');
+    if (!key) return;
+    var act = key.getAttribute('data-act');
+    if (act === 'clear') { expr.value = ''; place(0, 0); }
+    else if (act === 'back') backspace();
+    else if (key.getAttribute('data-fn')) wrap(key.getAttribute('data-fn'));
+    else insert(key.getAttribute('data-ins') || '');
+  });
+
+  // ---- compute ------------------------------------------------------------
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var expression = expr.value.trim();
+    if (!expression) return;
+    var operation = opField.value;
+    out.style.color = 'var(--fg)';
+    out.textContent = 'computing\\u2026';
+    send.disabled = true;
+    status(head, 'computing\\u2026', true);
+
+    var payload = {expression: expression, operation: operation,
+                   variable: document.getElementById('var').value.trim()};
+    if (operation === 'limit' || operation === 'series') {
+      payload.point = document.getElementById('pt').value.trim();
+    }
+
+    api('/api/ravencalc', payload).then(function (r) {
+      var c = r.check || {};
+      var verdict = c.performed
+        ? (c.passed === true ? '<span class="v">verified</span>'
+           : c.passed === false ? '<span class="bad">CHECK FAILED</span>'
+           : '<span class="bad">unconfirmed</span>')
+        : '<span class="k">not checked</span>';
+      // `in` is what the engine PARSED, which is not always what you typed -- SymPy
+      // evaluates as it parses, so integrate(x**2, x) is already x**3/3 by the time the
+      // operation runs. Printing it is how you can see that, rather than being surprised
+      // by the answer. It is not decoration and it is asserted on by the test suite.
+      out.innerHTML =
+        '<div class="rc-line"><span class="k" title="the expression as SymPy parsed it">in</span> ' +
+          esc(r.input.text) + '</div>' +
+        '<div class="rc-line"><span class="k">out</span> <span class="rc-ans">' +
+          esc(r.result.text) + '</span></div>' +
+        '<div class="rc-line"><span class="k">chk</span> ' + verdict +
+          (c.how ? ' <span class="k">&mdash; ' + esc(c.how) + '</span>' : '') + '</div>' +
+        (r.note ? '<div class="rc-line"><span class="k">note</span> <span class="k">' +
+          esc(r.note) + '</span></div>' : '') +
+        '<div class="rc-line"><span class="k">eng</span> <span class="k">' + esc(r.engine) +
+          ' \\u00b7 ' + r.seconds + 's \\u00b7 ' + (r.exact ? 'exact' : 'symbolic') +
+          '</span></div>';
+    }).catch(function (err) {
+      out.innerHTML = '<span class="bad">' + esc(err.message) + '</span>';
+    }).then(function () {
+      send.disabled = false;
+      status(head, 'cpu \\u00b7 never queues', false);
+    });
+  });
+}());
 </script>"""
 
 # ---------------------------------------------------------------- remix
@@ -650,7 +898,7 @@ REMIX_BODY = """    <div class="pgwrap">
           </div>
         </div>
         <form class="composer" id="form">
-          <textarea id="brief" rows="3" maxlength="1200"
+          <textarea id="brief" rows="3" maxlength="100000"
                     placeholder="late-night drive through a rainy city, building slowly"></textarea>
           <button class="cta" id="send" type="submit">Build it</button>
         </form>
@@ -1048,7 +1296,286 @@ GATEWAY_JS = """<script>
 # The credentials never reach this box. They live in the visitor's localStorage and are
 # sent per request; the backend registers them for the life of a stream session and scrubs
 # them from every error path. Nothing is written to disk and nothing is logged.
-TUNER_BODY = """    <div class="pgwrap">
+#
+# The browsing UI's CSS is emitted here rather than added to site/symoneural.css on
+# purpose: the markup and the rules that lay it out are written in the same place and
+# ship in the same commit, so they cannot drift apart. Every class is `tn-` prefixed AND
+# scoped to `#tnbody`, because generic class names have collided across components five
+# times in this stylesheet already (`.bar`, `.live`, `.card`, `#console .sub`, `.gart`).
+TUNER_BODY = """    <style>
+    /* ---- Tuner browsing, 2026-08-17 -------------------------------------------
+       Six top-level categories, a full-width subcategory grid, and a filter that
+       answers locally before the model is asked. All selectors are scoped to
+       #tnbody. Grepped against site/symoneural.css and site/rack-detail.css first:
+       every class name below has zero prior definitions.
+
+       There is no `text-overflow:ellipsis` anywhere in this block and there must
+       never be one. A truncated group name is often the only thing distinguishing
+       two identically named channels, so clipping it is data loss. Long names wrap. */
+
+    /* ---- why a stream did not play -------------------------------------------
+       The blank screen this replaces was a real defect, not a missing nicety.
+       POST /tune answers 200 with state:"starting" when ffmpeg has not written a
+       playlist within its deadline, and the page used to hand that not-yet-existent
+       manifest straight to hls.js -- which failed its manifest load and left a black
+       <video> with a line of library jargon underneath. The visitor could not tell
+       "the provider says this channel is off air" from "our tuner is broken", and
+       those need completely different responses.
+
+       So: the server is asked why, and its sentence is what gets shown. The hls.js
+       detail is kept too, folded, because it is the thing an engineer needs and
+       dropping it would be data loss. No ellipsis here either -- a provider's
+       message is often long and is exactly the part you must be able to read. */
+    #tnbody .tn-fail{
+      margin:10px 0 0; padding:13px 15px; border-radius:12px;
+      border:1px solid rgba(255,171,61,.42); background:rgba(255,171,61,.07);
+    }
+    #tnbody .tn-fail h4{
+      margin:0 0 5px; font:650 13.5px/1.35 inherit; color:var(--warn,#ffab3d);
+    }
+    #tnbody .tn-fail p{margin:0; font:14px/1.5 inherit; color:var(--fg); overflow-wrap:anywhere}
+    #tnbody .tn-fail .tn-said{
+      display:block; margin-top:7px; padding-left:11px;
+      border-left:2px solid rgba(255,171,61,.42);
+      color:var(--dim); font-style:italic; overflow-wrap:anywhere;
+    }
+    #tnbody .tn-fail details{margin-top:9px}
+    #tnbody .tn-fail summary{cursor:pointer; color:var(--dim); font-size:12.6px}
+    #tnbody .tn-fail code{
+      display:block; margin-top:6px; font-size:12.4px; color:var(--dim);
+      white-space:pre-wrap; overflow-wrap:anywhere;
+    }
+
+    /* ---- the floating guide prompt ------------------------------------------
+       Fixed, bottom-right, above the fold on every viewport. `position:fixed` puts
+       it outside the page flow deliberately: the alternative -- docking it to the
+       grid -- means it scrolls away exactly when you are looking at the grid,
+       which is the moment it exists for.
+
+       Widths are clamped rather than fixed so the panel never causes a horizontal
+       scrollbar at 390px, which is the constraining viewport for this page. No
+       ellipsis anywhere: the `why` line is Guide's account of what it did to your
+       question, and a truncated account is worse than none. */
+    #tnbody .tn-fg{position:fixed; right:18px; bottom:18px; z-index:70;
+      display:flex; flex-direction:column; align-items:flex-end; gap:9px;
+      max-width:min(380px, calc(100vw - 36px));}
+    #tnbody .tn-fgpill{
+      display:inline-flex; align-items:center; gap:9px; cursor:pointer;
+      padding:10px 17px; border-radius:999px; border:1px solid rgba(46,224,138,.42);
+      background:var(--panel); color:var(--fg); font:650 12.9px/1 inherit;
+      box-shadow:0 6px 22px rgba(0,0,0,.42);
+    }
+    #tnbody .tn-fgpill:hover{border-color:var(--accent)}
+    #tnbody .tn-fgmark{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:20px; height:20px; border-radius:50%; background:var(--accent);
+      color:#07130d; font:800 11.5px/1 inherit;
+    }
+    #tnbody .tn-fgbody{
+      width:min(380px, calc(100vw - 36px)); box-sizing:border-box;
+      border:1px solid var(--line); border-radius:15px; background:var(--panel);
+      padding:15px 16px; box-shadow:0 12px 40px rgba(0,0,0,.5);
+    }
+    #tnbody .tn-fghead{display:flex; align-items:center; gap:10px; margin-bottom:7px}
+    #tnbody .tn-fghead b{font-size:13.6px}
+    #tnbody .tn-fgx{
+      margin-left:auto; background:none; border:0; color:var(--dim); cursor:pointer;
+      font-size:18px; line-height:1; padding:0 2px;
+    }
+    #tnbody .tn-fgx:hover{color:var(--fg)}
+    #tnbody .tn-fgctx{margin:0 0 9px; color:var(--dim); font-size:12.2px; line-height:1.5}
+    #tnbody .tn-fg textarea{
+      width:100%; box-sizing:border-box; resize:vertical; padding:9px 11px;
+      border-radius:9px; border:1px solid var(--line); background:var(--panel2, #121513);
+      color:var(--fg); font:13.4px/1.45 inherit;
+    }
+    #tnbody .tn-fg textarea:focus{outline:2px solid var(--accent); outline-offset:1px}
+    #tnbody .tn-fgrow{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:10px}
+    #tnbody .tn-fggo{
+      background:var(--accent); color:#07130d; border:0; border-radius:999px;
+      padding:8px 16px; font:650 12.6px/1 inherit; cursor:pointer;
+    }
+    #tnbody .tn-fggo:disabled{opacity:.5; cursor:default}
+    #tnbody .tn-fgalt{
+      background:none; border:1px solid var(--line); color:var(--dim);
+      border-radius:999px; padding:8px 15px; font:600 12.4px/1 inherit; cursor:pointer;
+    }
+    #tnbody .tn-fgalt:hover{color:var(--fg)}
+    #tnbody .tn-fgmodel{display:inline-flex; align-items:center; gap:6px;
+      color:var(--dim); font-size:12.2px; cursor:pointer}
+    #tnbody .tn-fgwhy{
+      margin:11px 0 0; padding:9px 11px; border-radius:9px;
+      border:1px solid var(--line); background:var(--panel2, #121513);
+      color:var(--dim); font-size:12.3px; line-height:1.55; overflow-wrap:anywhere;
+    }
+    #tnbody .tn-fgsaved{margin:9px 0 0; color:var(--accent); font-size:12.2px}
+    @media (max-width:520px){
+      #tnbody .tn-fg{right:12px; bottom:12px; left:12px; max-width:none; align-items:stretch}
+      #tnbody .tn-fgbody{width:auto}
+    }
+
+    #tnbody .tn-cats{display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 10px}
+    #tnbody .tn-cat{
+      display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+      padding:9px 15px; border:1px solid var(--line); border-radius:999px;
+      background:var(--panel2); color:var(--dim); font:600 12.9px/1 inherit;
+      transition:color .14s ease, border-color .14s ease, background .14s ease;
+    }
+    #tnbody .tn-cat:hover:not(:disabled){color:var(--fg)}
+    #tnbody .tn-cat.on{color:var(--accent); border-color:rgba(46,224,138,.45); background:var(--panel)}
+    #tnbody .tn-cat:disabled{opacity:.42; cursor:default}
+    #tnbody .tn-cat:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+    #tnbody .tn-cat i{
+      font-style:normal; color:var(--faint);
+      font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+    }
+    #tnbody .tn-cat.on i{color:var(--accent)}
+    /* The sentence under the chips carries the honesty: what the current category is
+       actually sorted or selected by. It wraps -- it is an explanation, and a clipped
+       explanation explains nothing. */
+    #tnbody .tn-catwhy{
+      margin:0 0 4px; color:var(--faint);
+      font:11.5px/1.62 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+    }
+    #tnbody .tn-catwhy:empty{display:none}
+
+    /* ---- the subcategory grid: "literally take entire screen" -------------------
+       Garrett asked for as many groups visible at once as possible. It sits inside
+       .stage .body rather than as a third child of .pgwrap, because .pgwrap is
+       `1fr 320px` from a stylesheet this generator does not own -- a third child
+       would land in row 2 and gain nothing. The 1fr column is ~1400px at 1990px
+       viewport, which auto-fill turns into 5-6 columns of real checkboxes. */
+    #tnbody .tn-gpanel{
+      margin:14px 0 0; border:1px solid var(--line); border-radius:12px;
+      background:var(--panel2); overflow:hidden;
+    }
+    #tnbody .tn-gpanel[hidden]{display:none}
+    #tnbody .tn-ghead{
+      display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+      padding:10px 12px; border-bottom:1px solid var(--line);
+    }
+    #tnbody .tn-gtitle{
+      display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+      background:none; border:0; padding:0; color:var(--fg);
+      font:650 11px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+      text-transform:uppercase;
+    }
+    #tnbody .tn-gtitle:hover{color:var(--accent)}
+    #tnbody .tn-gtitle u{
+      text-decoration:none; display:inline-block; width:12px; color:var(--faint);
+      font:11px/1 ui-monospace,Menlo,Consolas,monospace;
+    }
+    #tnbody .tn-gn{
+      color:var(--faint); letter-spacing:0; text-transform:none;
+      font:11px/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:break-word;
+    }
+    #tnbody .tn-gsearch{
+      flex:1 1 200px; min-width:0; margin-left:auto; padding:7px 11px;
+      background:var(--bg); color:var(--fg); border:1px solid var(--line);
+      border-radius:8px; font:11.9px/1.4 inherit;
+    }
+    #tnbody .tn-gsearch:focus{outline:none; border-color:rgba(46,224,138,.5)}
+    #tnbody .tn-gbtn{
+      flex:0 0 auto; padding:7px 12px; cursor:pointer; border-radius:8px;
+      border:1px solid var(--line); background:var(--panel); color:var(--dim);
+      font:600 11.4px/1 inherit;
+    }
+    #tnbody .tn-gbtn:hover{color:var(--accent); border-color:rgba(46,224,138,.45)}
+    #tnbody .tn-gbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+    /* Measured, not guessed: at a 1990px viewport the grid box is 1330px wide, and a
+       200px track gives six columns. With a 60vh scroll box that is ~120 groups on
+       screen at once, which is what "the most possible to see at one time" asked for.
+       Wider tracks looked calmer and showed 80. */
+    #tnbody .tn-gwrap{padding:9px 12px 12px; max-height:min(60vh,620px); overflow-y:auto}
+    #tnbody .tn-gwrap[hidden]{display:none}
+    #tnbody .tn-ggrid{
+      display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+      gap:1px 16px; align-items:start;
+    }
+    #tnbody .tn-gcell{
+      display:flex; align-items:flex-start; gap:8px; padding:3px 5px;
+      border-radius:6px; cursor:pointer; color:var(--dim); font:11.9px/1.4 inherit;
+    }
+    #tnbody .tn-gcell:hover{background:var(--panel); color:var(--fg)}
+    #tnbody .tn-gcell[hidden]{display:none}
+    #tnbody .tn-gcell input{
+      flex:0 0 auto; width:13px; height:13px; margin:2px 0 0; accent-color:var(--accent);
+      cursor:pointer;
+    }
+    #tnbody .tn-gname{overflow-wrap:anywhere}
+    #tnbody .tn-gcnt{
+      margin-left:auto; padding-left:9px; flex:0 0 auto; color:var(--faint);
+      font:10.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
+    }
+    #tnbody .tn-gempty{
+      margin:8px 3px 2px; color:var(--faint);
+      font:11.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
+    }
+    #tnbody .tn-gempty:empty{display:none}
+
+    /* ---- the filter row and its state readout ---------------------------------
+       The pill is a real state machine, not decoration: it says `not needed` when
+       the local pass answered on its own, `thinking` only while a request is in
+       flight, and `unavailable` when the model could not be reached -- which is
+       the case the previous version could hit silently. */
+    #tnbody .tn-model{
+      display:inline-flex; align-items:center; gap:8px; margin:11px 10px 0 0;
+      padding:6px 11px; border:1px solid var(--line); border-radius:999px;
+      background:var(--panel2); color:var(--faint);
+      font:11px/1 ui-monospace,Menlo,Consolas,monospace;
+    }
+    #tnbody .tn-model s{
+      width:7px; height:7px; border-radius:50%; background:var(--line);
+      text-decoration:none; display:block; flex:0 0 auto;
+    }
+    #tnbody .tn-model.tn-think s{background:var(--amber); animation:pulse 1.1s ease-in-out infinite}
+    #tnbody .tn-model.tn-done s{background:var(--accent)}
+    #tnbody .tn-model.tn-warn s{background:var(--amber)}
+
+    /* ---- results ---------------------------------------------------------------
+       At full width the channel list is a multi-column grid: it is a long list of
+       short rows, so the room turns vertical scrolling into readable columns
+       instead of longer lines. */
+    #tnbody .tn-list{max-height:min(68vh,640px)}
+    @media (min-width:1301px){
+      #tnbody .tn-list{
+        display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+        gap:0 24px; align-content:start;
+      }
+    }
+    /* The base rule is `justify-content:space-between`, which with a star added as the
+       first child parked it at the far left of a 440px column with a hole beside it.
+       Measured in the render, not reasoned about: the star belongs against the name and
+       the group is what gets pushed to the right edge. */
+    #tnbody .tn-list li{gap:9px; align-items:center; justify-content:flex-start}
+    #tnbody .tn-list b{margin-right:auto}
+    #tnbody .tn-fav{
+      flex:0 0 auto; cursor:pointer; background:none; border:0; padding:1px 3px;
+      border-radius:6px; color:var(--faint); font:13.5px/1 inherit;
+    }
+    #tnbody .tn-fav:hover{color:var(--accent)}
+    #tnbody .tn-fav.on{color:var(--accent)}
+    #tnbody .tn-fav:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+    #tnbody .tn-evi{
+      flex:0 1 auto; text-align:right; color:var(--faint);
+      font:11px/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:anywhere;
+    }
+    #tnbody .tn-empty{
+      margin:18px 0 0; padding:16px 18px; border:1px dashed var(--line);
+      border-radius:11px; color:var(--dim); font-size:12.3px; line-height:1.65;
+      overflow-wrap:break-word;
+    }
+    #tnbody .tn-empty[hidden]{display:none}
+    #tnbody .tn-showmore{
+      display:block; width:100%; margin:12px 0 0; padding:9px 12px; cursor:pointer;
+      border:1px solid var(--line); border-radius:9px; background:var(--panel2);
+      color:var(--dim); font:600 11.9px/1 inherit;
+    }
+    #tnbody .tn-showmore:hover{color:var(--accent); border-color:rgba(46,224,138,.45)}
+    #tnbody .tn-showmore[hidden]{display:none}
+    </style>
+
+    <div class="pgwrap">
       <div class="stage">
         <div class="head" id="tnhead"><s></s>SyMoNeuRaL Tuner
           <span class="grow" id="tnstate">idle</span></div>
@@ -1077,30 +1604,98 @@ TUNER_BODY = """    <div class="pgwrap">
           </form>
 
           <!-- player: hidden until something is tuned, because an empty <video> with
-               controls is a piece of furniture that does nothing -->
+               controls is a piece of furniture that does nothing.
+               #tnvideo is load-bearing beyond playback: symoneural.css widens this page
+               to 1800px through `body:has(#tnvideo) .wrap`. Rename it and the page
+               silently reverts to the 1120px prose measure. -->
           <div class="tn-player" id="tnplayer" hidden>
             <video id="tnvideo" controls playsinline></video>
             <p class="tn-now" id="tnnow"></p>
+            <div class="tn-fail" id="tnfail" hidden>
+              <h4 id="tnfailh"></h4>
+              <p id="tnfailp"></p>
+              <details id="tnfaild" hidden>
+                <summary>Technical detail</summary>
+                <code id="tnfailc"></code>
+              </details>
+            </div>
           </div>
 
           <p class="tn-note" id="tnnote">Your playlist is yours. It is held in this
             browser&rsquo;s localStorage, sent per request, and never stored on this
-            machine.</p>
+            machine. <b>Favourites are the same</b> &mdash; they are a list in this
+            browser and are never sent anywhere.</p>
 
-          <!-- browse: kind, then group, then an optional model-assisted filter -->
+          <!-- browse: six categories, then a subcategory grid, then the filter -->
           <div class="tn-browse" id="tnbrowse" hidden>
-            <div class="tn-kinds" id="tnkinds"></div>
+            <div class="tn-cats" id="tncats" role="group" aria-label="Categories"></div>
+            <p class="tn-catwhy" id="tncatwhy"></p>
+
             <div class="tn-ask">
               <input id="tnask" type="text" autocomplete="off"
                      placeholder="Ask for what you want &mdash; &ldquo;90s action movies&rdquo;, &ldquo;motorsport&rdquo;">
-              <button type="button" class="tn-askgo" id="tnaskgo">Ask</button>
+              <button type="button" class="tn-askgo" id="tnaskgo">Filter</button>
               <button type="button" class="tn-askclear" id="tnaskclear" hidden>clear</button>
             </div>
+            <p class="tn-model" id="tnmodel"><s></s><span id="tnmodeltxt">model: idle</span></p>
             <p class="tn-askwhy" id="tnaskwhy"></p>
-            <div class="tn-groups" id="tngroups"></div>
+
+            <div class="tn-gpanel" id="tngpanel" hidden>
+              <div class="tn-ghead">
+                <button type="button" class="tn-gtitle" id="tngtoggle"
+                        aria-expanded="true" aria-controls="tngwrap"><u>&minus;</u>Subcategories</button>
+                <span class="tn-gn" id="tngcount"></span>
+                <input id="tngsearch" class="tn-gsearch" type="search" autocomplete="off"
+                       placeholder="find a subcategory">
+                <button type="button" class="tn-gbtn" id="tngall">Select all</button>
+                <button type="button" class="tn-gbtn" id="tngnone">None</button>
+                <button type="button" class="tn-gbtn" id="tnginv">Invert</button>
+              </div>
+              <div class="tn-gwrap" id="tngwrap">
+                <div class="tn-ggrid" id="tngrid" role="group" aria-label="Subcategories"></div>
+                <p class="tn-gempty" id="tngempty"></p>
+              </div>
+            </div>
           </div>
 
+          <p class="tn-empty" id="tnempty" hidden></p>
           <ul class="tn-list" id="tnlist"></ul>
+          <button type="button" class="tn-showmore" id="tnmore" hidden></button>
+
+          <!-- The floating guide prompt. It follows you down the page because setting up a
+               guide means looking at the subcategory grid and talking about it at the same
+               time, and a prompt that scrolls away turns that into two operations.
+
+               It is not a chat window. It sends ONE question plus the subcategories you
+               have ticked to SyMoNeuRaL Guide, and what comes back re-ticks the grid --
+               so the outcome of the conversation is the guide itself, not a transcript
+               about it. Collapsed by default: an open panel over the player would be the
+               thing everyone hates about floating widgets. -->
+          <div class="tn-fg" id="tnfg" hidden>
+            <button type="button" class="tn-fgpill" id="tnfgpill" aria-expanded="false"
+                    aria-controls="tnfgbody">
+              <span class="tn-fgmark" aria-hidden="true">G</span>
+              <span id="tnfgcount">Guide</span>
+            </button>
+            <div class="tn-fgbody" id="tnfgbody" hidden>
+              <div class="tn-fghead">
+                <b>Set up your guide</b>
+                <button type="button" class="tn-fgx" id="tnfgx" aria-label="Close">&times;</button>
+              </div>
+              <p class="tn-fgctx" id="tnfgctx"></p>
+              <textarea id="tnfgq" rows="2" placeholder="What should your guide keep? &ldquo;UK sports and films, no shopping&rdquo;"></textarea>
+              <div class="tn-fgrow">
+                <button type="button" class="tn-fggo" id="tnfggo">Ask the box</button>
+                <label class="tn-fgmodel"><input type="checkbox" id="tnfgmodel"> use the model too</label>
+              </div>
+              <p class="tn-fgwhy" id="tnfgwhy" hidden></p>
+              <div class="tn-fgrow" id="tnfgapplyrow" hidden>
+                <button type="button" class="tn-fggo" id="tnfgapply">Re-tick the grid</button>
+                <button type="button" class="tn-fgalt" id="tnfgsave">Save as my guide</button>
+              </div>
+              <p class="tn-fgsaved" id="tnfgsaved" hidden></p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1110,6 +1705,22 @@ TUNER_BODY = """    <div class="pgwrap">
           <p><b>Nowhere.</b> They stay in this browser&rsquo;s localStorage and travel with
             each request. The server holds them only for the life of a stream and keeps them
             out of process arguments and error text. Nothing is written to disk.</p>
+          <p><b>Favourites too.</b> The star beside a channel writes to this browser and
+            nothing else. There is no account here and no list of what you watch on this
+            box.</p>
+        </div>
+        <div class="callout">
+          <h3>Why there is no &ldquo;Trending&rdquo;</h3>
+          <p>A playlist is a list of names and URLs. It carries <b>no view counts, no
+            ratings and no trend feed</b>, so a tab called Trending would be a number this
+            machine cannot read &mdash; the same dishonest pixel as a status light that is
+            green because green looks better.</p>
+          <p><b>Most carried</b> is what the data does support: it counts how many of your
+            provider&rsquo;s own groups carry the same title, and how many listings of it
+            exist &mdash; a channel duplicated across Sports, Premium and 4K is genuinely
+            more prominent in that lineup. Ties fall back to the order the provider wrote
+            the playlist in. Every row prints the counts it was ranked by, so you can check
+            it.</p>
         </div>
         <div class="callout">
           <h3>How the stream is handled</h3>
@@ -1123,14 +1734,17 @@ TUNER_BODY = """    <div class="pgwrap">
         </div>
         <div class="callout">
           <h3>What the model actually does here</h3>
-          <p>It reads <b>your question</b>, not your playlist. The prompt becomes a filter
-            &mdash; terms to match, terms to exclude, which kind &mdash; and that filter is
-            applied to the list already in this browser. One request to the card, not one per
-            channel.</p>
-          <p>Feeding thousands of channel names through a 7B would be slow, would hold the GPU
-            lock while it ran, and would be worse at it than a substring match. If the model
-            is busy or its answer will not parse, the box falls back to searching your words
-            directly and says so.</p>
+          <p><b>Your filter runs before the model does.</b> Matching your words against the
+            list already in this browser is pure JavaScript over an array &mdash; it is done
+            in single-digit milliseconds and the page prints the measurement. Results appear
+            first; the card is only asked afterwards, and only when the local pass came back
+            thin or left one of your words unmatched.</p>
+          <p>When it is asked, it reads <b>your question</b>, not your playlist. The prompt
+            comes back as one line of keywords, which widen the match already on screen.
+            Feeding thousands of channel names through a 7B would be slow, would hold the GPU
+            lock while it ran, and would be worse at it than a substring match. The pill above
+            the results says which of those happened: <i>not needed</i>, <i>answered</i>,
+            <i>added nothing</i>, or <i>unavailable</i>.</p>
         </div>
         <div class="callout">
           <h3>Known gaps, stated rather than hidden</h3>
@@ -1144,18 +1758,56 @@ TUNER_BODY = """    <div class="pgwrap">
 """
 
 
+# NOTE FOR ANYONE EDITING THE JS BELOW -- this has shipped broken twice.
+# TUNER_JS is a NORMAL triple-quoted string, not a raw one. A `\n` written here becomes a
+# REAL newline in the emitted JavaScript; inside a string literal that leaves it
+# unterminated and kills the entire page's script, and the browser suite passed 22/22
+# while the page was dead. The same applies to every other backslash escape: `\b`, `\s`,
+# `\d`, `\.` in a regex literal are all silently rewritten by Python.
+# WRITE `\\n`, `\\b`, `\\s`, `\\.` -- always double. Verify by extracting the emitted
+# <script> bodies and running `node --check` on each one; grep alone cannot catch it.
 TUNER_JS = """<script src="/hls.js"></script>
 <script>
 (function () {
   'use strict';
   var K = 'symoneural.tuner';
+  // Favourites are the visitor's, and they stay here. They are never posted to this box:
+  // the whole promise of this surface is that the playlist and the credentials live in the
+  // browser, and a list of what someone likes to watch is exactly the same kind of fact.
+  var FK = 'symoneural.tuner.favourites';
+
   var form = document.getElementById('tnform'), list = document.getElementById('tnlist');
   var note = document.getElementById('tnnote'), st = document.getElementById('tnstate');
-  var browse = document.getElementById('tnbrowse'), groupsEl = document.getElementById('tngroups');
-  var kindsEl = document.getElementById('tnkinds'), askWhy = document.getElementById('tnaskwhy');
+  var browse = document.getElementById('tnbrowse'), catsEl = document.getElementById('tncats');
+  var catWhy = document.getElementById('tncatwhy'), askWhy = document.getElementById('tnaskwhy');
+  var gpanel = document.getElementById('tngpanel'), grid = document.getElementById('tngrid');
+  var gwrap = document.getElementById('tngwrap'), gcount = document.getElementById('tngcount');
+  var gsearch = document.getElementById('tngsearch'), gempty = document.getElementById('tngempty');
+  var emptyEl = document.getElementById('tnempty'), moreBtn = document.getElementById('tnmore');
+  var modelPill = document.getElementById('tnmodel'), modelTxt = document.getElementById('tnmodeltxt');
   var player = document.getElementById('tnplayer'), video = document.getElementById('tnvideo');
   var nowEl = document.getElementById('tnnow');
-  var mode = 'm3u', all = [], view = [], kind = '', group = '', hls = null, aiFilter = null;
+
+  var mode = 'm3u', all = [], hay = [], view = [], hls = null;
+  var cat = 'live', favs = {}, sel = {}, groupRows = [], filterState = null;
+  var carried = [], carriedBy = {}, carriedMaxG = 0, carriedMaxN = 0;
+  var PAGE = 300, shown = PAGE;
+
+  // ---- the six top-level categories.
+  // `live` / `vod` / `series` are the BACKEND'S vocabulary and are not negotiable:
+  // m3u.py::_classify() emits `vod` for a film and never `movie`, xtream.py's spec table
+  // is keyed on `vod`, and routes.py:142 filters the requested kinds to exactly those
+  // three and falls back to ("live",) for anything else. Sending `movie` did not merely
+  // mislabel something once -- the movie catalogue was never requested from the panel at
+  // all. `fav`, `carried` and `filtered` are browser-side views and never leave this file.
+  var CATS = [
+    {id: 'fav',      label: 'Favorites'},
+    {id: 'carried',  label: 'Most carried'},
+    {id: 'filtered', label: 'Filtered'},
+    {id: 'vod',      label: 'Movies'},
+    {id: 'live',     label: 'Live TV'},
+    {id: 'series',   label: 'TV Series'}
+  ];
 
   document.querySelectorAll('.tn-tab').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -1177,6 +1829,11 @@ TUNER_JS = """<script src="/hls.js"></script>
     }
   } catch (e) { /* corrupt entry -- start clean */ }
 
+  try {
+    var fv = JSON.parse(localStorage.getItem(FK) || '[]');
+    if (fv && fv.length) fv.forEach(function (k) { favs[k] = 1; });
+  } catch (e2) { /* corrupt entry -- start with no favourites */ }
+
   function creds() {
     if (mode === 'm3u') return {mode: 'm3u', url: document.getElementById('tn-url').value.trim()};
     return {mode: 'xtream', host: document.getElementById('tn-host').value.trim(),
@@ -1189,11 +1846,12 @@ TUNER_JS = """<script src="/hls.js"></script>
     var c = creds();
     try { localStorage.setItem(K, JSON.stringify(c)); } catch (e2) { /* private mode */ }
     st.textContent = 'loading'; list.innerHTML = ''; browse.hidden = true;
+    emptyEl.hidden = true; moreBtn.hidden = true;
     note.textContent = 'Fetching\\u2026';
     var url  = c.mode === 'm3u' ? '/api/tuner/playlist' : '/api/tuner/xtream/channels';
     var body = c.mode === 'm3u' ? {url: c.url}
              : {server: c.host, username: c.user, password: c.pass,
-                kinds: ['live', 'movie', 'series']};
+                kinds: ['live', 'vod', 'series']};
     fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(body)})
       .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
@@ -1201,160 +1859,1063 @@ TUNER_JS = """<script src="/hls.js"></script>
         if (!res.ok) throw new Error(res.j.error || res.j.detail || 'load failed');
         all = res.j.channels || [];
         st.textContent = all.length ? all.length + ' channels' : 'empty';
-        var notes = (res.j.notes || []).join(' ');
+        // `truncated` is the M3U parser saying it stopped early. It was returned by the API
+        // and read by nothing here, so a playlist over the cap lost its tail block -- usually
+        // Movies, which is the biggest and last in most provider files -- and the page said
+        // "Loaded" as if it had it all. A silent cap is data loss with a friendly face.
+        var notes = (res.j.notes || []).slice();
+        if (res.j.truncated) {
+          notes.push('Only the first ' + res.j.limit + ' entries of this playlist were read. '
+                   + 'Anything after that in the file is missing, which can be a whole '
+                   + 'category -- Movies is usually last.');
+        }
+        var src = c.mode === 'm3u' ? 'playlist' : 'panel';
         note.textContent = (all.length
-            ? 'Loaded from your playlist. Nothing was stored here.'
-            : 'That playlist parsed but contained no channels.') + (notes ? '  ' + notes : '');
-        kind = ''; group = ''; aiFilter = null; askWhy.textContent = '';
+            ? 'Loaded from your ' + src + '. Nothing was stored here.'
+            : 'That ' + src + ' answered but contained no channels.')
+            + (notes.length ? '  ' + notes.join('  ') : '');
+        indexAll();
+        filterState = null; askWhy.textContent = '';
         document.getElementById('tnaskclear').hidden = true;
-        if (all.length) { browse.hidden = false; renderKinds(); apply(); }
+        setModel('', 'model: idle');
+        if (all.length) { browse.hidden = false; pick(firstCat()); }
       })
       .catch(function (err) { st.textContent = 'failed'; note.textContent = String(err.message || err); });
   });
 
-  // ---- browsing: kinds and groups come from the playlist itself, not a fixed list
-  function renderKinds() {
-    var counts = {};
-    all.forEach(function (c) { var k = c.kind || 'live'; counts[k] = (counts[k] || 0) + 1; });
-    var kinds = Object.keys(counts).sort();
-    kindsEl.innerHTML = '';
-    mkChip(kindsEl, 'Everything', all.length, kind === '', function () { kind = ''; group = ''; renderKinds(); apply(); });
-    kinds.forEach(function (k) {
-      var label = k === 'movie' ? 'Movies' : k === 'series' ? 'Series'
-                : k === 'live' ? 'Live TV' : k;
-      mkChip(kindsEl, label, counts[k], kind === k, function () {
-        kind = k; group = ''; renderKinds(); apply(); });
+  // ---- indexing -------------------------------------------------------------------
+  function kindOf(c) {
+    var k = (c && c.kind ? String(c.kind) : 'live').toLowerCase();
+    if (k === 'vod' || k === 'movie' || k === 'movies') return 'vod';
+    if (k === 'series' || k === 'show' || k === 'shows') return 'series';
+    return 'live';
+  }
+  function groupOf(c) { return (c && c.group) ? String(c.group) : '(no group)'; }
+  // Which groups does one row belong to? For every category but Most carried that is the
+  // one group the channel is listed under. A Most carried row is a TITLE, and its whole
+  // claim is that several groups carry it -- so it belongs to all of them. Ticking by the
+  // representative's group alone would let a row saying "3 groups" vanish when one of the
+  // other two is unticked, which is the panel and the evidence line contradicting each
+  // other in the one view built to be auditable.
+  function groupsOfRow(i) {
+    if (cat === 'carried') {
+      var e = carriedBy[i];
+      if (e && e.ng) return Object.keys(e.groups);
+    }
+    return [groupOf(all[i])];
+  }
+  // A favourite is identified by what a visitor can see -- kind, group and name. The URL
+  // is deliberately not part of the key: providers rotate stream URLs, and a favourite
+  // that evaporates on a URL change would look like a bug in the star.
+  function favKey(c) { return kindOf(c) + '\\u0001' + groupOf(c) + '\\u0001' + (c.name || ''); }
+  function isFav(c) { return favs[favKey(c)] === 1; }
+
+  // Quality markers, stripped so that "Sky Sports HD" and "Sky Sports FHD" count as two
+  // listings of one title rather than two unrelated channels. Country and language
+  // prefixes are deliberately NOT stripped: "UK: Sky One" and "US: Sky One" are different
+  // channels, and merging them would inflate the carriage count -- which is the one
+  // number this view is ranked by, so inflating it would make the ranking a lie.
+  // Deliberately narrow. Earlier drafts also stripped bare `1080`/`720` and the words
+  // `raw`, `vip`, `alt`, `multi` -- which merges "Cinema 1080" into "Cinema" and
+  // "Sky Sports Raw" into "Sky Sports". Merging two different channels INFLATES the
+  // carriage count, and that count is the one number this view stakes its honesty on.
+  // When in doubt, do not merge: an under-merged title is ranked slightly low, an
+  // over-merged one is a number that is simply wrong.
+  var QUALITY = /\\b(sd|hd|fhd|uhd|qhd|4k|8k|hevc|h265|h264|1080p|720p|480p|540p)\\b/g;
+  function titleKey(name) {
+    return String(name || '').toLowerCase()
+      .replace(/[\\[\\(\\{][^\\]\\)\\}]*[\\]\\)\\}]/g, ' ')
+      .replace(QUALITY, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function indexAll() {
+    hay = all.map(function (c) {
+      return ((c.name || '') + ' ' + (c.group || '')).toLowerCase();
+    });
+    buildCarried();
+  }
+
+  // ---- "Most carried" -------------------------------------------------------------
+  // THIS TAB IS NOT "TRENDING", AND THAT IS THE POINT.
+  //
+  // A playlist carries no view counts, no ratings and no trend feed. Nothing in this
+  // browser or on that box knows what anyone is watching. A tab labelled "Trending"
+  // populated from a shuffle, or from any proxy dressed up as popularity, would be the
+  // decorative indicator this site's whole argument forbids -- and a tooltip cannot
+  // un-say a label, which is why the honest signal got the NAME and not a footnote.
+  //
+  // What the playlist really does contain, and what this ranks by:
+  //   1. how many of the provider's own groups carry the same title -- a channel that
+  //      appears in Sports, Premium and 4K is genuinely more prominent in that lineup;
+  //   2. how many listings of the same title exist once quality markers are stripped;
+  //   3. playlist position, as the tie-break -- a provider orders its own lineup
+  //      deliberately, and position 1 is a decision somebody made.
+  // Every row prints the counts it was ranked by, so the ranking is auditable rather
+  // than asserted. And when the playlist has no such structure at all, the panel says
+  // so instead of showing an arbitrary order that looks like a ranking.
+  function buildCarried() {
+    var by = {}, order = [];
+    all.forEach(function (c, i) {
+      var key = titleKey(c.name);
+      if (!key) return;
+      var e = by[key];
+      if (!e) { e = by[key] = {idx: i, groups: {}, ng: 0, n: 0}; order.push(e); }
+      e.n += 1;
+      var g = c.group ? String(c.group) : '';
+      if (g && e.groups[g] !== 1) { e.groups[g] = 1; e.ng += 1; }
+      if (!all[e.idx].url && c.url) e.idx = i;
+    });
+    order.sort(function (a, b) { return (b.ng - a.ng) || (b.n - a.n) || (a.idx - b.idx); });
+    carried = order;
+    carriedBy = {}; carriedMaxG = 0; carriedMaxN = 0;
+    order.forEach(function (e) {
+      carriedBy[e.idx] = e;
+      if (e.ng > carriedMaxG) carriedMaxG = e.ng;
+      if (e.n > carriedMaxN) carriedMaxN = e.n;
     });
   }
 
-  function mkChip(host, label, n, on, fn) {
-    var b = document.createElement('button');
-    b.type = 'button'; b.className = 'tn-chip' + (on ? ' on' : '');
-    var s1 = document.createElement('b'); s1.textContent = label;
-    var s2 = document.createElement('i'); s2.textContent = n;
-    b.appendChild(s1); b.appendChild(s2);
-    b.addEventListener('click', fn); host.appendChild(b);
+  // Indexed, not searched. A linear scan per rendered row was 300 x every title on the
+  // playlist, which is real time spent on a page whose selling point is that it is instant.
+  function carriedEvidence(i) { return carriedBy[i] || null; }
+
+  // ---- categories -----------------------------------------------------------------
+  function kindCount(k) {
+    var n = 0;
+    for (var i = 0; i < all.length; i++) if (kindOf(all[i]) === k) n++;
+    return n;
+  }
+  function favCount() {
+    var n = 0;
+    for (var i = 0; i < all.length; i++) if (isFav(all[i])) n++;
+    return n;
   }
 
-  function inKind(c) { return !kind || (c.kind || 'live') === kind; }
+  function poolFor(id) {
+    var out = [], i;
+    if (id === 'fav') {
+      for (i = 0; i < all.length; i++) if (isFav(all[i])) out.push(i);
+      return out;
+    }
+    if (id === 'carried') {
+      for (i = 0; i < carried.length; i++) out.push(carried[i].idx);
+      return out;
+    }
+    if (id === 'filtered') return filterState ? filterState.idx.slice() : [];
+    for (i = 0; i < all.length; i++) if (kindOf(all[i]) === id) out.push(i);
+    return out;
+  }
 
-  function renderGroups() {
-    var counts = {};
-    all.filter(inKind).forEach(function (c) {
-      var g = c.group || '(no group)'; counts[g] = (counts[g] || 0) + 1; });
-    var names = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
-    groupsEl.innerHTML = '';
-    if (names.length < 2) return;
-    mkChip(groupsEl, 'All groups', all.filter(inKind).length, group === '', function () {
-      group = ''; renderGroups(); apply(); });
-    names.slice(0, 40).forEach(function (g) {
-      mkChip(groupsEl, g, counts[g], group === g, function () {
-        group = g; renderGroups(); apply(); });
+  function catCount(id) {
+    if (id === 'fav') return favCount();
+    if (id === 'carried') return carried.length;
+    if (id === 'filtered') return filterState ? filterState.idx.length : 0;
+    return kindCount(id);
+  }
+
+  function firstCat() {
+    if (favCount()) return 'fav';
+    var order = ['live', 'vod', 'series'];
+    for (var i = 0; i < order.length; i++) if (kindCount(order[i])) return order[i];
+    return 'carried';
+  }
+
+  function renderCats() {
+    catsEl.innerHTML = '';
+    CATS.forEach(function (c) {
+      var n = catCount(c.id);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tn-cat' + (cat === c.id ? ' on' : '');
+      b.setAttribute('aria-pressed', cat === c.id ? 'true' : 'false');
+      // Filtered is dead until a filter has actually produced something. An enabled tab
+      // that opens an empty panel is a promise the page has not kept yet.
+      if (c.id === 'filtered' && !filterState) { b.disabled = true; b.title = 'run a filter first'; }
+      var lab = document.createElement('b'); lab.textContent = c.label;
+      var num = document.createElement('i');
+      num.textContent = (c.id === 'filtered' && !filterState) ? '\\u2014' : String(n);
+      b.appendChild(lab); b.appendChild(num);
+      b.addEventListener('click', function () { if (!b.disabled) pick(c.id); });
+      catsEl.appendChild(b);
     });
   }
 
-  function apply() {
-    renderGroups();
-    view = all.filter(function (c) {
-      if (!inKind(c)) return false;
-      if (group && (c.group || '(no group)') !== group) return false;
-      if (aiFilter) {
-        var hay = ((c.name || '') + ' ' + (c.group || '')).toLowerCase();
-        if (aiFilter.match.length &&
-            !aiFilter.match.some(function (t) { return hay.indexOf(t) >= 0; })) return false;
-        if (aiFilter.exclude.some(function (t) { return hay.indexOf(t) >= 0; })) return false;
+  function catExplain() {
+    if (cat === 'carried') {
+      if (carriedMaxG > 1) {
+        return 'Ranked by how many of this playlist\\u2019s own groups carry the same '
+             + 'title, then by how many listings exist, then by playlist position. '
+             + 'Quality markers (HD, FHD, 4K\\u2026) are stripped before counting. '
+             + 'This is carriage in your provider\\u2019s lineup \\u2014 not popularity: '
+             + 'this box has no view counts and does not pretend to.';
       }
-      return true;
+      if (carriedMaxN > 1) {
+        return 'No title in this playlist appears in more than one group, so there is no '
+             + 'carriage to rank by. This is ranked by how many listings of the same '
+             + 'title exist (quality variants), then by playlist position. Still a real '
+             + 'count from your file \\u2014 not popularity.';
+      }
+      return 'Nothing to rank: every title in this playlist appears exactly once, in one '
+           + 'group. This is the provider\\u2019s own playlist order, unchanged. No '
+           + 'popularity data exists here and none has been invented.';
+    }
+    if (cat === 'fav') {
+      return 'Your picks, kept in this browser only. Nothing about them is sent to this '
+           + 'box.';
+    }
+    if (cat === 'filtered' && filterState) {
+      return 'Produced by: ' + filterState.query + '  \\u2014  ' + filterState.why;
+    }
+    if (cat === 'vod') return 'Everything the playlist classifies as a film (the backend calls this kind `vod`).';
+    if (cat === 'series') return 'Everything the playlist classifies as a series.';
+    if (cat === 'live') return 'Everything the playlist classifies as a live channel.';
+    return '';
+  }
+
+  function pick(id) {
+    cat = id;
+    shown = PAGE;
+    renderCats();
+    catWhy.textContent = catExplain();
+    rebuildGroups();
+    render();
+  }
+
+  // ---- the subcategory grid --------------------------------------------------------
+  // Every group in the current category, all of them, with counts. No slice() cap: a cap
+  // here is data loss, and the ask was explicitly for "the most possible to see at one
+  // time". Real <input type="checkbox"> inside a <label> so the whole row is a hit target
+  // and a keyboard reaches it. Every playlist-derived string is set with textContent --
+  // group names arrive from a third party and carry quotes, ampersands and non-ASCII.
+  function rebuildGroups() {
+    var pool = poolFor(cat), counts = {}, names = [];
+    pool.forEach(function (i) {
+      groupsOfRow(i).forEach(function (g) {
+        if (counts[g] === undefined) { counts[g] = 0; names.push(g); }
+        counts[g] += 1;
+      });
+    });
+    names.sort(function (a, b) { return (counts[b] - counts[a]) || a.localeCompare(b); });
+    groupRows = names.map(function (g) { return {name: g, n: counts[g]}; });
+    // Ticks reset with the category, because the groups themselves are different: the
+    // groups under Movies are not the groups under Live TV. Everything ticked is the
+    // only starting point where "None" and "All" both mean something unambiguous.
+    sel = {};
+    names.forEach(function (g) { sel[g] = 1; });
+
+    grid.innerHTML = '';
+    groupRows.forEach(function (row, n) {
+      var lab = document.createElement('label');
+      lab.className = 'tn-gcell';
+      lab.htmlFor = 'tn-g-' + n;
+      var box = document.createElement('input');
+      box.type = 'checkbox'; box.id = 'tn-g-' + n; box.checked = true;
+      box.addEventListener('change', function () {
+        if (box.checked) sel[row.name] = 1; else delete sel[row.name];
+        shown = PAGE; updateGroupCount(); render();
+      });
+      var nm = document.createElement('span');
+      nm.className = 'tn-gname'; nm.textContent = row.name;
+      var ct = document.createElement('span');
+      ct.className = 'tn-gcnt'; ct.textContent = String(row.n);
+      lab.appendChild(box); lab.appendChild(nm); lab.appendChild(ct);
+      grid.appendChild(lab);
+    });
+    gpanel.hidden = groupRows.length < 2;
+    gsearch.value = '';
+    gempty.textContent = '';
+    applyGroupSearch();
+    updateGroupCount();
+  }
+
+  function cells() { return grid.querySelectorAll('.tn-gcell'); }
+
+  function updateGroupCount() {
+    // The floating prompt states how many subcategories it will read. That number has to
+    // move with the ticks or the panel is describing a selection that no longer exists.
+    // Guard on the element, not on the function: `fgSync` is a hoisted declaration and
+    // is callable before the `var fg = document.getElementById(...)` line has run, so a
+    // typeof check would pass and then dereference undefined.
+    if (fg) fgSync();
+    var on = 0;
+    groupRows.forEach(function (r) { if (sel[r.name] === 1) on += 1; });
+    // Under Most carried the number beside a group is how many RANKED TITLES it carries,
+    // not how many listings -- because a row there is a title. Say which, rather than
+    // leaving two different meanings behind the same bare number.
+    gcount.textContent = on + ' of ' + groupRows.length + ' ticked'
+      + (cat === 'carried' ? '  \\u00b7  counts are ranked titles each group carries' : '')
+      + (gsearch.value.trim() ? '  \\u00b7  Select all / None / Invert act on what the search shows' : '');
+  }
+
+  function applyGroupSearch() {
+    var q = gsearch.value.trim().toLowerCase(), visible = 0;
+    var nodes = cells();
+    for (var n = 0; n < nodes.length; n++) {
+      var hit = !q || groupRows[n].name.toLowerCase().indexOf(q) >= 0;
+      nodes[n].hidden = !hit;
+      if (hit) visible += 1;
+    }
+    gempty.textContent = (q && !visible)
+      ? 'No subcategory here matches \\u201c' + gsearch.value.trim() + '\\u201d.' : '';
+  }
+
+  function bulk(fn) {
+    var nodes = cells();
+    for (var n = 0; n < nodes.length; n++) {
+      if (nodes[n].hidden) continue;              // acts on what the search shows
+      var box = nodes[n].querySelector('input');
+      box.checked = fn(box.checked);
+      if (box.checked) sel[groupRows[n].name] = 1; else delete sel[groupRows[n].name];
+    }
+    shown = PAGE; updateGroupCount(); render();
+  }
+
+  // ---- the floating guide prompt ----------------------------------------------------
+  //
+  // One question plus the subcategories you have ticked go to SyMoNeuRaL Guide, and the
+  // answer re-ticks the grid. That is the whole design: the outcome of asking is the
+  // guide itself rather than a paragraph about it.
+  //
+  // The grid is the context on purpose. Guide is good at "sports" and hopeless at "the
+  // ones I picked" -- it never sees your screen. Sending the ticked set with the question
+  // is what lets "drop the shopping channels from these" mean something.
+  var fg = document.getElementById('tnfg'), fgPill = document.getElementById('tnfgpill');
+  var fgBody = document.getElementById('tnfgbody'), fgCount = document.getElementById('tnfgcount');
+  var fgCtx = document.getElementById('tnfgctx'), fgQ = document.getElementById('tnfgq');
+  var fgGo = document.getElementById('tnfggo'), fgWhy = document.getElementById('tnfgwhy');
+  var fgApplyRow = document.getElementById('tnfgapplyrow'), fgApply = document.getElementById('tnfgapply');
+  var fgSave = document.getElementById('tnfgsave'), fgSaved = document.getElementById('tnfgsaved');
+  var fgModel = document.getElementById('tnfgmodel');
+  var fgLast = null;                       // the last answer, or null
+  var GK = 'symoneural.tuner.guide';
+
+  function fgTicked() {
+    var out = [];
+    groupRows.forEach(function (r) { if (sel[r.name] === 1) out.push(r.name); });
+    return out;
+  }
+
+  // Only the channels the grid is currently showing. Sending the whole playlist would
+  // make "these" mean "everything", which is the one thing the ticks are there to stop.
+  function fgChannels() {
+    var on = {}, out = [];
+    fgTicked().forEach(function (g) { on[g] = 1; });
+    poolFor(cat).forEach(function (i) {
+      var hit = false;
+      groupsOfRow(i).forEach(function (g) { if (on[g] === 1) hit = true; });
+      if (!hit) return;
+      var c = all[i];
+      out.push({name: c.name || '', group: groupOf(c), kind: kindOf(c), url: c.url || ''});
+    });
+    return out;
+  }
+
+  function fgSync() {
+    if (!all.length) { fg.hidden = true; return; }
+    fg.hidden = false;
+    var n = fgTicked().length;
+    fgCount.textContent = 'Guide \u00b7 ' + n + ' ticked';
+    fgCtx.textContent = 'It will read the ' + n + ' subcategor'
+      + (n === 1 ? 'y' : 'ies') + ' you have ticked under ' + catLabel(cat)
+      + ' \u2014 ' + fgChannels().length + ' channels \u2014 and nothing else. '
+      + 'Your playlist is not sent anywhere but this box.';
+  }
+
+  function catLabel(id) {
+    for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i].label;
+    return id;
+  }
+
+  function fgOpen(open) {
+    fgBody.hidden = !open;
+    fgPill.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { fgSync(); fgQ.focus(); }
+  }
+  fgPill.addEventListener('click', function () { fgOpen(fgBody.hidden); });
+  document.getElementById('tnfgx').addEventListener('click', function () { fgOpen(false); });
+
+  fgGo.addEventListener('click', function () {
+    var q = fgQ.value.trim();
+    if (!q) { fgQ.focus(); return; }
+    var chans = fgChannels();
+    if (!chans.length) {
+      fgWhy.hidden = false;
+      fgWhy.textContent = 'Nothing is ticked, so there is nothing to narrow. Tick some '
+        + 'subcategories first \u2014 or use Select all and let the box cut it down.';
+      return;
+    }
+    fgGo.disabled = true;
+    fgWhy.hidden = false;
+    fgWhy.textContent = 'asking\u2026';
+    fgApplyRow.hidden = true; fgSaved.hidden = true;
+    fetch('/api/guide/filter', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q, channels: chans,
+                            use_model: fgModel.checked, apply: true})
+    }).then(function (r) {
+      return r.json().then(function (j) { return {ok: r.ok, j: j}; });
+    }).then(function (res) {
+      fgGo.disabled = false;
+      if (!res.ok) {
+        fgWhy.textContent = (res.j && res.j.detail) ? String(res.j.detail)
+                                                    : 'the box could not answer that';
+        return;
+      }
+      fgLast = res.j;
+      var n = res.j.count || 0;
+      // Guide's own account of what it did, verbatim. It already names its provenance
+      // -- local pass or model, and anything it set aside -- and paraphrasing it here
+      // would be this page asserting something the box did not say.
+      fgWhy.textContent = n + (n === 1 ? ' channel' : ' channels') + '. ' + (res.j.why || '');
+      fgApplyRow.hidden = !(res.j.groups && res.j.groups.length);
+    }).catch(function () {
+      fgGo.disabled = false;
+      fgWhy.textContent = 'could not reach the box';
+    });
+  });
+
+  fgApply.addEventListener('click', function () {
+    if (!fgLast || !fgLast.groups) return;
+    var keep = {};
+    fgLast.groups.forEach(function (g) { keep[g] = 1; });
+    var nodes = cells(), on = 0;
+    for (var n = 0; n < nodes.length; n++) {
+      var box = nodes[n].querySelector('input');
+      var name = groupRows[n].name;
+      box.checked = keep[name] === 1;
+      if (box.checked) { sel[name] = 1; on += 1; } else { delete sel[name]; }
+    }
+    shown = PAGE; updateGroupCount(); render();
+    fgSaved.hidden = false;
+    fgSaved.textContent = on + ' subcategor' + (on === 1 ? 'y is' : 'ies are')
+      + ' now ticked. Nothing was removed from your playlist \u2014 untick and they come back.';
+  });
+
+  fgSave.addEventListener('click', function () {
+    var payload = {cat: cat, groups: fgTicked()};
+    try {
+      localStorage.setItem(GK, JSON.stringify(payload));
+      fgSaved.hidden = false;
+      fgSaved.textContent = 'Saved in this browser. It is never sent anywhere, exactly '
+        + 'like your favourites.';
+    } catch (e) {
+      fgSaved.hidden = false;
+      fgSaved.textContent = 'This browser refused to store it (private mode). The ticks '
+        + 'still apply for this session.';
+    }
+  });
+
+  gsearch.addEventListener('input', function () { applyGroupSearch(); updateGroupCount(); });
+  document.getElementById('tngall').addEventListener('click', function () { bulk(function () { return true; }); });
+  document.getElementById('tngnone').addEventListener('click', function () { bulk(function () { return false; }); });
+  document.getElementById('tnginv').addEventListener('click', function () { bulk(function (v) { return !v; }); });
+  document.getElementById('tngtoggle').addEventListener('click', function () {
+    var open = gwrap.hidden;
+    gwrap.hidden = !open;
+    this.setAttribute('aria-expanded', open ? 'true' : 'false');
+    this.querySelector('u').textContent = open ? '\\u2212' : '+';
+  });
+
+  // ---- results ---------------------------------------------------------------------
+  function render() {
+    var pool = poolFor(cat);
+    view = pool.filter(function (i) {
+      var gs = groupsOfRow(i);
+      for (var n = 0; n < gs.length; n++) if (sel[gs[n]] === 1) return true;
+      return false;
     });
     renderList();
+    renderEmpty();
+  }
+
+  function renderEmpty() {
+    var msg = '';
+    if (view.length) { emptyEl.hidden = true; return; }
+    if (cat === 'fav' && !favCount()) {
+      // A visitor with favourites from a DIFFERENT playlist has not got "none" -- they
+      // have got none *here*, and telling them otherwise reads as data loss.
+      msg = Object.keys(favs).length
+        ? 'You have ' + Object.keys(favs).length + ' favourite(s) saved in this browser, '
+          + 'but none of them are in the playlist currently loaded. They are still there '
+          + 'for the playlist they came from.'
+        : 'No favourites yet. Tap the star beside any channel and it is kept here, in '
+          + 'this browser, for next time. Nothing about it is sent to this machine.';
+    } else if (cat === 'filtered' && !filterState) {
+      msg = 'Nothing has been filtered yet. Ask for something above and the result lands '
+          + 'here.';
+    } else if (groupRows.length && !Object.keys(sel).length) {
+      msg = 'Nothing is ticked in the subcategory list, so there is nothing to show. '
+          + '\\u201cSelect all\\u201d puts it back.';
+    } else if (!poolFor(cat).length) {
+      msg = 'This playlist has nothing in this category. That is the reading, not a '
+          + 'placeholder.';
+    } else {
+      msg = 'Nothing here matches the ticked subcategories.';
+    }
+    emptyEl.textContent = msg;
+    emptyEl.hidden = false;
   }
 
   function renderList() {
     list.innerHTML = '';
-    view.slice(0, 500).forEach(function (c) {
-      var li = document.createElement('li');
-      var b = document.createElement('b'); b.textContent = c.name || '(unnamed)';
-      var sp = document.createElement('span'); sp.textContent = c.group || '';
-      li.appendChild(b); li.appendChild(sp);
-      if (c.url) {
-        li.className = 'playable';
-        li.addEventListener('click', function () { tune(c); });
-      } else {
-        var no = document.createElement('em'); no.textContent = 'no stream url';
-        li.appendChild(no);
-      }
-      list.appendChild(li);
-    });
-    if (view.length > 500) {
-      var li = document.createElement('li');
-      li.className = 'tn-more';
-      li.textContent = 'showing 500 of ' + view.length + ' \\u2014 narrow it with a group or a question';
-      list.appendChild(li);
+    var upto = Math.min(shown, view.length);
+    for (var n = 0; n < upto; n++) list.appendChild(row(view[n]));
+    if (view.length > upto) {
+      moreBtn.hidden = false;
+      moreBtn.textContent = 'showing ' + upto + ' of ' + view.length + ' \\u2014 show '
+        + Math.min(PAGE, view.length - upto) + ' more';
+    } else {
+      moreBtn.hidden = true;
     }
   }
 
-  // ---- playback
+  moreBtn.addEventListener('click', function () { shown += PAGE; renderList(); });
+
+  function row(i) {
+    var c = all[i];
+    var li = document.createElement('li');
+
+    var star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'tn-fav' + (isFav(c) ? ' on' : '');
+    star.textContent = isFav(c) ? '\\u2605' : '\\u2606';
+    star.title = isFav(c) ? 'remove from favourites' : 'keep in favourites (this browser only)';
+    star.setAttribute('aria-label', star.title);
+    star.setAttribute('aria-pressed', isFav(c) ? 'true' : 'false');
+    star.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleFav(c);
+      if (cat === 'fav') { shown = PAGE; render(); }
+      else {
+        star.className = 'tn-fav' + (isFav(c) ? ' on' : '');
+        star.textContent = isFav(c) ? '\\u2605' : '\\u2606';
+        star.setAttribute('aria-pressed', isFav(c) ? 'true' : 'false');
+      }
+      renderCats();
+    });
+    li.appendChild(star);
+
+    var b = document.createElement('b'); b.textContent = c.name || '(unnamed)';
+    li.appendChild(b);
+
+    if (cat === 'carried') {
+      var e = carriedEvidence(i);
+      var ev = document.createElement('span');
+      ev.className = 'tn-evi';
+      ev.textContent = e
+        ? (e.ng + (e.ng === 1 ? ' group' : ' groups') + ' \\u00b7 '
+           + e.n + (e.n === 1 ? ' listing' : ' listings'))
+        : (c.group || '');
+      li.appendChild(ev);
+    } else {
+      var sp = document.createElement('span'); sp.textContent = c.group || '';
+      li.appendChild(sp);
+    }
+
+    if (c.url) {
+      li.className = 'playable';
+      li.addEventListener('click', function () { tune(c); });
+    } else {
+      var no = document.createElement('em'); no.textContent = 'no stream url';
+      li.appendChild(no);
+    }
+    return li;
+  }
+
+  function toggleFav(c) {
+    var k = favKey(c);
+    if (favs[k] === 1) delete favs[k]; else favs[k] = 1;
+    try { localStorage.setItem(FK, JSON.stringify(Object.keys(favs))); }
+    catch (e) { /* private mode -- the star still works for this session */ }
+  }
+
+  // ---- playback --------------------------------------------------------------------
+  //
+  // A stream that does not play must SAY why. The rule of thumb the owner uses to
+  // triage his own provider is exactly right and is what this code is built around:
+  // a page from the provider saying the channel is down means the channel is down;
+  // a blank screen means the tuner is broken. A player that renders both as a black
+  // rectangle destroys the only diagnostic signal there is.
+  //
+  // Two mechanisms produced that blank screen and both are handled here.
+  //
+  //   1. POST /tune answers **200** with state:"starting" and a `note` when ffmpeg has
+  //      not written a playlist inside its deadline. `res.ok` is true, so the old code
+  //      handed a manifest that did not exist yet to hls.js. We now wait on the session
+  //      instead of guessing, and report whichever way it resolves.
+  //   2. A fatal hls.js error was written into the status line as library jargon
+  //      ("networkError / manifestLoadError") and nothing ever asked the server why.
+  //      The server is the only party that knows -- it is the one that talked to the
+  //      provider -- so a fatal error now goes and asks it.
+  var failEl = document.getElementById('tnfail'), failH = document.getElementById('tnfailh'),
+      failP = document.getElementById('tnfailp'), failD = document.getElementById('tnfaild'),
+      failC = document.getElementById('tnfailc');
+  var sid = null, waitT = null, watchT = null, hiddenT = null;
+
+  // ---- give the slot back ----------------------------------------------------------
+  // A slot held by somebody who has already left is, on a two-slot box, the entire tuner.
+  // Silence used to be the only signal a departing visitor gave, and silence takes the
+  // server IDLE_TIMEOUT plus a reaper tick to read. So say goodbye out loud.
+  //
+  // `sendBeacon` and not `fetch`: a request started in an unload handler is cancelled when
+  // the document goes away, and beacons are explicitly exempt from that. It only does POST,
+  // which is why the server has a POST route beside the DELETE one.
+  function release(id) {
+    if (!id) return;
+    var u = '/api/tuner/session/' + encodeURIComponent(id) + '/stop';
+    if (navigator.sendBeacon) { navigator.sendBeacon(u, ''); return; }
+    // No beacon (older Safari): keepalive is the documented fallback and survives unload.
+    try { fetch(u, {method: 'POST', keepalive: true}); } catch (e) {}
+  }
+
+  function letGo() {
+    var id = sid; sid = null;
+    stopTimers();
+    if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+    release(id);
+  }
+
+  // Both events, because neither alone is reliable: `pagehide` misses a tab discarded by the
+  // OS, and iOS Safari fires only `visibilitychange` on app switch. The server treats a
+  // repeated release as success, so firing twice costs nothing.
+  window.addEventListener('pagehide', letGo);
+  window.addEventListener('beforeunload', letGo);
+
+  // A hidden tab is not a viewer. Browsers throttle background timers to about one tick a
+  // minute, which is slow enough that the heartbeat alone kept a slot alive indefinitely for
+  // a tab nobody was looking at. Give it a grace period, then hand the slot back; the visitor
+  // gets a plain sentence saying why, not a silently dead player.
+  var HIDDEN_GRACE_MS = 20000;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (!sid || hiddenT) return;
+      hiddenT = setTimeout(function () {
+        hiddenT = null;
+        if (!sid || !document.hidden) return;
+        var name = nowEl.textContent.split('  \\u00b7  ')[0];
+        letGo();
+        video.pause();
+        nowEl.textContent = name + '  \\u00b7  released';
+        showFail('The stream was closed while this tab was in the background.',
+                 'This box has a small number of tuner slots and holding one for a tab '
+                 + 'nobody is watching makes the tuner unavailable to everyone, '
+                 + 'including you in another window. Press the channel again to reopen '
+                 + 'it \\u2014 nothing has failed.', null, null);
+      }, HIDDEN_GRACE_MS);
+    } else if (hiddenT) {
+      clearTimeout(hiddenT); hiddenT = null;
+    }
+  });
+
+  // How long to wait for first video. The server's own /tune deadline is 10s and a
+  // cold upstream plus a probe genuinely takes longer than that, so giving up at 10
+  // would report a failure the box had not actually reached.
+  var FIRST_VIDEO_MS = 45000;
+
+  function clearFail() {
+    failEl.hidden = true; failD.hidden = true;
+    failH.textContent = ''; failP.textContent = ''; failC.textContent = '';
+  }
+
+  // `said` is the provider's or the server's own sentence and is quoted as such, kept
+  // apart from our explanation so the visitor can see which words are whose.
+  function showFail(head, mine, said, tech) {
+    failH.textContent = head;
+    failP.textContent = mine || '';
+    if (said) {
+      var q = document.createElement('span');
+      q.className = 'tn-said';
+      q.textContent = said;
+      failP.appendChild(q);
+    }
+    if (tech) { failC.textContent = tech; failD.hidden = false; }
+    failEl.hidden = false;
+    player.hidden = false;
+  }
+
+  function stopTimers() {
+    if (waitT) { clearInterval(waitT); waitT = null; }
+    if (watchT) { clearInterval(watchT); watchT = null; }
+  }
+
+  function session() {
+    if (!sid) return Promise.resolve(null);
+    return fetch('/api/tuner/session/' + encodeURIComponent(sid))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
+  }
+
+  // Codecs a browser cannot decode even though `-c copy` succeeded and every light on
+  // the box is green. This is a genuine blank screen with nothing broken anywhere, and
+  // it is unfindable unless the page says the word out loud.
+  var UNPLAYABLE = {hevc: 'H.265 / HEVC', h265: 'H.265 / HEVC', av1: 'AV1',
+                    mpeg2video: 'MPEG-2', vc1: 'VC-1'};
+
+  function codecWarning(j) {
+    var v = j && j.vcodec ? String(j.vcodec).toLowerCase() : '';
+    return UNPLAYABLE[v] ? UNPLAYABLE[v] : '';
+  }
+
   function tune(c) {
+    stopTimers(); clearFail();
+    if (hls) { hls.destroy(); hls = null; }
+    // Only reset a source that exists. Calling load() on a <video> with no src makes
+    // Chrome raise NotSupportedError, which is an uncaught error on the page for a
+    // situation where nothing has gone wrong at all.
+    if (video.getAttribute('src')) { video.removeAttribute('src'); video.load(); }
+    // Hand the outgoing session back in the same request that asks for the next one. Changing
+    // channel used to abandon it: the id was dropped here and the session lived on until the
+    // idle reaper noticed, so on a two-slot box the third channel clicked was refused with a
+    // message blaming the provider.
+    var leaving = sid;
+    sid = null;
     nowEl.textContent = 'opening ' + (c.name || '') + '\\u2026';
     player.hidden = false;
     var creds_ = creds();
     fetch('/api/tuner/tune', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: c.url, label: c.name || '',
+      body: JSON.stringify({url: c.url, label: c.name || '', release: leaving || '',
                             username: creds_.user || '', password: creds_.pass || ''})
-    }).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
-      .then(function (res) {
-        if (!res.ok) throw new Error(res.j.detail || res.j.error || 'could not tune');
-        var src = '/api/tuner/' + res.j.playlist;
-        nowEl.textContent = (c.name || '') + '  \\u00b7  ' + res.j.state;
-        play(src);
+    }).then(function (r) {
+        return r.json().then(function (j) { return {ok: r.ok, status: r.status, j: j}; });
       })
-      .catch(function (e) { nowEl.textContent = 'could not tune: ' + (e.message || e); });
+      .then(function (res) {
+        var j = res.j || {};
+        if (!res.ok) {
+          var why = j.detail || j.error || 'no reason given';
+          // 503 with the word "slots" is this box, not the provider. Saying "your provider
+          // refused it" for our own capacity limit is the reason a full tuner reads as a
+          // blocked channel -- and it is the page telling the visitor something untrue.
+          if (res.status === 503 && /slot/i.test(String(why))) {
+            nowEl.textContent = (c.name || '') + '  \\u00b7  no free tuner slot';
+            showFail('Every tuner slot on this box is in use.',
+                     'This is a limit here, not your provider and nothing to do with '
+                     + 'this channel. A slot frees the moment another stream is closed, '
+                     + 'and an abandoned one is collected within seconds. Try again.',
+                     why, null);
+            return;
+          }
+          nowEl.textContent = (c.name || '') + '  \\u00b7  did not open';
+          showFail('This channel did not open.',
+                   'The box asked your provider for it and was refused. That is a '
+                   + 'reading from the provider, not a limit here \\u2014 nothing on '
+                   + 'this machine filters what you may watch.',
+                   why, null);
+          return;
+        }
+        sid = j.id || null;
+        var warn = codecWarning(j);
+        // `live` plus at least one segment actually named by the playlist. The playlist file
+        // exists before it lists anything, so `state === 'live'` alone can hand hls.js an
+        // empty manifest; it then sits silent on a black rectangle while the page claims to
+        // be playing. `segments` is published for exactly this decision.
+        if (j.state === 'live' && !j.note && (j.segments || 0) > 0) {
+          nowEl.textContent = (c.name || '') + '  \\u00b7  live';
+          if (warn) {
+            showFail('This stream is ' + warn + '.',
+                     'The box is receiving it and copying it through without '
+                     + 're-encoding, so nothing here has failed \\u2014 but no browser '
+                     + 'on this machine can decode ' + warn + ', so the picture will '
+                     + 'stay black. Play it in VLC, or pick another quality from your '
+                     + 'provider.', null, 'video codec reported by the transcoder: '
+                     + j.vcodec);
+          }
+          play('/api/tuner/' + j.playlist, c, j);
+          return;
+        }
+        // Still starting. Wait on the session rather than handing hls.js a manifest
+        // that does not exist yet -- that is mechanism (1) above.
+        waitFor(c, j);
+      })
+      .catch(function (e) {
+        nowEl.textContent = (c.name || '') + '  \\u00b7  could not reach the box';
+        showFail('The tuner could not be reached.',
+                 'The request to this machine failed before your provider was ever '
+                 + 'contacted, so this says nothing about the channel.',
+                 null, String(e && e.message ? e.message : e));
+      });
   }
 
-  function play(src) {
+  function waitFor(c, first) {
+    var t0 = Date.now();
+    nowEl.textContent = (c.name || '') + '  \\u00b7  opening\\u2026';
+    waitT = setInterval(function () {
+      var waited = Date.now() - t0;
+      session().then(function (j) {
+        if (!waitT) return;
+        if (!j) {
+          stopTimers();
+          nowEl.textContent = (c.name || '') + '  \\u00b7  ended';
+          showFail('The session ended before any video arrived.',
+                   'The box opened a slot for this channel and the slot closed again '
+                   + 'without producing a picture.', null, null);
+          return;
+        }
+        if (j.state === 'failed') {
+          stopTimers();
+          nowEl.textContent = (c.name || '') + '  \\u00b7  failed';
+          showFail('This channel did not start.',
+                   'This is what the box got back when it tried. Nothing here blocks '
+                   + 'or filters streams.',
+                   j.error || 'no reason given', null);
+          return;
+        }
+        if (j.state === 'live' && (j.segments || 0) > 0) {
+          stopTimers();
+          nowEl.textContent = (c.name || '') + '  \\u00b7  live';
+          var warn = codecWarning(j);
+          if (warn) {
+            showFail('This stream is ' + warn + '.',
+                     'The box is receiving it, but no browser on this machine can '
+                     + 'decode ' + warn + ', so the picture will stay black.',
+                     null, 'video codec reported by the transcoder: ' + j.vcodec);
+          }
+          play('/api/tuner/' + j.playlist, c, j);
+          return;
+        }
+        if (waited > FIRST_VIDEO_MS) {
+          stopTimers();
+          nowEl.textContent = (c.name || '') + '  \\u00b7  no video';
+          showFail('No video arrived within ' + Math.round(FIRST_VIDEO_MS / 1000) + ' seconds.',
+                   'The upstream connection opened but never produced anything the '
+                   + 'transcoder could copy. That usually means the provider is '
+                   + 'answering with something other than a stream.',
+                   j.error || null,
+                   'session state: ' + j.state + ' \\u00b7 bytes read from upstream: '
+                   + (j.bytes_in || 0));
+          return;
+        }
+        nowEl.textContent = (c.name || '') + '  \\u00b7  opening\\u2026 ('
+          + Math.round(waited / 1000) + 's)';
+      });
+    }, 700);
+  }
+
+  // A rejected play() is not a fault worth throwing: autoplay policy and an
+  // undecodable codec both reject here, and both are already explained on the page.
+  function safePlay() {
+    var pr = video.play();
+    if (pr && pr.catch) pr.catch(function () {});
+  }
+
+  function play(src, c, j) {
     if (hls) { hls.destroy(); hls = null; }
     // Safari plays HLS natively; Chrome and Firefox need hls.js, which is why it is vendored.
-    if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = src; video.play(); return; }
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src; safePlay(); watch(c); return;
+    }
     if (!window.Hls || !window.Hls.isSupported()) {
-      nowEl.textContent = 'this browser cannot play HLS and hls.js did not load';
+      showFail('This browser cannot play HLS.',
+               'hls.js is vendored at /hls.js and either did not load or is not '
+               + 'supported here. The stream itself is fine.', null, null);
       return;
     }
-    hls = new window.Hls({lowLatencyMode: false});
+    // THE THING THAT MADE IT SLOW, and it was never the box.
+    //
+    // ffmpeg is asked for 2-second segments, but it stream-copies -- so it can only cut on a
+    // keyframe, and a provider stream with a 10-second GOP yields 10-second segments however
+    // small `-hls_time` is. Measured on a real channel: `#EXT-X-TARGETDURATION:10`,
+    // `#EXTINF:10.427`. hls.js then defaults to `liveSyncDurationCount: 3`, i.e. it starts
+    // three segments behind the live edge, so it waited for THIRTY-ONE SECONDS of video before
+    // showing a frame, on a stream whose first segment was ready in 2.25s.
+    //
+    // Starting one segment back is the whole fix. The cost is honest and it is the reason 3 is
+    // the library default: one segment of buffer absorbs less network jitter, so a bad
+    // connection can stall where it would previously have coasted. That trade is right here --
+    // the alternative is half a minute of black screen on every channel change, and the
+    // segments are 10s each, so even one of them is a deep buffer in absolute terms.
+    //
+    // `segment_s` comes from the session's own `#EXTINF`, so the buffer targets below are
+    // derived from what this stream actually produces rather than from what we asked for.
+    var segS = (j && j.segment_s) || 2;
+    hls = new window.Hls({
+      lowLatencyMode: false,          // LL-HLS needs partial segments; ffmpeg is not making any
+      liveSyncDurationCount: 1,       // was the default 3 -- this is the 31s -> 2.5s change
+      liveMaxLatencyDurationCount: 6,
+      maxBufferLength: Math.max(10, Math.ceil(segS * 2)),
+      startFragPrefetch: true,        // fetch the first fragment while the manifest is parsing
+      manifestLoadingTimeOut: 20000,  // a cold provider is slow to answer, not broken
+      manifestLoadingMaxRetry: 4,
+      manifestLoadingRetryDelay: 250,
+      levelLoadingRetryDelay: 250,
+      fragLoadingRetryDelay: 250,
+      backBufferLength: 30            // a live stream does not need a rewind buffer in RAM
+    });
     hls.loadSource(src); hls.attachMedia(video);
-    hls.on(window.Hls.Events.MANIFEST_PARSED, function () { video.play(); });
+    hls.on(window.Hls.Events.MANIFEST_PARSED, function () { safePlay(); watch(c); });
     hls.on(window.Hls.Events.ERROR, function (_e, d) {
-      if (d && d.fatal) nowEl.textContent = 'playback error: ' + d.type + ' / ' + d.details;
+      if (!d || !d.fatal) return;
+      // The player only knows that a request failed. The server knows what the
+      // provider actually said, so ask it before writing anything down.
+      var tech = 'hls.js: ' + d.type + ' / ' + d.details
+               + (d.response && d.response.code ? ' (HTTP ' + d.response.code + ')' : '');
+      session().then(function (j) {
+        stopTimers();
+        var name = (c && c.name) || '';
+        nowEl.textContent = name + '  \\u00b7  stopped';
+        if (j && j.error) {
+          showFail('Playback stopped.',
+                   'The box was still connected to your provider when this happened, '
+                   + 'and this is what it reported.', j.error, tech);
+        } else {
+          showFail('Playback stopped.',
+                   'The player could not fetch the next part of the stream and the '
+                   + 'box reported no upstream error, so the fault is between this '
+                   + 'browser and this machine rather than at your provider.',
+                   null, tech);
+        }
+      });
     });
   }
 
-  // ---- the model turns a question into a filter. It never sees the playlist.
+  // A stream can die halfway through, and the honest report for that is the provider's
+  // reason -- not a picture that silently stops. Cheap: one GET every five seconds,
+  // which doubles as the session heartbeat the reaper keys on.
+  function watch(c) {
+    if (watchT) clearInterval(watchT);
+    watchT = setInterval(function () {
+      session().then(function (j) {
+        if (!watchT) return;
+        if (!j) { stopTimers(); return; }
+        if (j.state === 'failed' || j.state === 'ended') {
+          stopTimers();
+          var name = (c && c.name) || '';
+          nowEl.textContent = name + '  \\u00b7  ' + j.state;
+          showFail(j.state === 'ended' ? 'The stream ended.' : 'The stream stopped.',
+                   j.state === 'ended'
+                     ? 'Your provider closed the connection. For a live channel that '
+                       + 'usually means the channel went off air.'
+                     : 'The box lost the upstream while playing.',
+                   j.error || null, null);
+        }
+      });
+    }, 5000);
+  }
+
+  // ---- filtering: LOCAL FIRST, then the model only if the local pass was thin --------
+  // The perceived speed is the product. Matching the visitor's words against an array
+  // already in this browser costs single-digit milliseconds; a round trip to a 7B costs
+  // hundreds at best and queues behind whatever else holds the card. So the local pass
+  // runs, renders and prints its own measured duration BEFORE any request is made, and
+  // the model is asked only when that pass came back thin or left a word unmatched.
   var askBox = document.getElementById('tnask');
   document.getElementById('tnaskgo').addEventListener('click', ask);
   askBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') ask(); });
   document.getElementById('tnaskclear').addEventListener('click', function () {
-    aiFilter = null; askBox.value = ''; askWhy.textContent = '';
-    this.hidden = true; apply();
+    filterState = null; askBox.value = ''; askWhy.textContent = '';
+    this.hidden = true;
+    setModel('', 'model: idle');
+    pick(firstCat());
   });
 
-  function plainFilter(q) {
-    // Honest fallback: the user's own words, matched directly. Used when the model is busy
-    // or returns something that will not parse, and always said out loud.
-    var terms = q.toLowerCase().split(/[^a-z0-9]+/).filter(function (t) { return t.length > 2; });
-    return {match: terms, exclude: [], why: 'matched your words directly'};
+  function setModel(cls, text) {
+    modelPill.className = 'tn-model' + (cls ? ' ' + cls : '');
+    modelTxt.textContent = text;
+  }
+
+  // Words that carry no signal in a channel name. Dropping them is what stops "show me
+  // some football" from matching every channel with "me" in it.
+  var STOP = {the: 1, and: 1, for: 1, with: 1, show: 1, some: 1, something: 1, any: 1,
+              all: 1, please: 1, channel: 1, channels: 1, want: 1, watch: 1, give: 1,
+              list: 1, find: 1, that: 1, this: 1, from: 1, you: 1, can: 1, get: 1,
+              are: 1, have: 1, anything: 1, everything: 1};
+
+  function tokenise(q) {
+    var seen = {}, out = [];
+    q.toLowerCase().split(/[^a-z0-9]+/).forEach(function (t) {
+      if (t.length < 3 || STOP[t] === 1 || seen[t] === 1) return;
+      seen[t] = 1; out.push(t);
+    });
+    return out;
+  }
+
+  // One-character-deletion variants: honest typo tolerance ("motorsprt" -> "motorsport")
+  // without the false positives a subsequence match produces, since a subsequence of
+  // three letters matches almost any long string.
+  function variants(t) {
+    var out = [t];
+    if (t.length > 4 && t.charAt(t.length - 1) === 's') out.push(t.slice(0, -1));
+    if (t.length >= 5) {
+      for (var n = 0; n < t.length; n++) out.push(t.slice(0, n) + t.slice(n + 1));
+    }
+    return out;
+  }
+
+  function hits(terms, needAll, fuzzy) {
+    var out = [];
+    var pats = terms.map(function (t) { return fuzzy ? variants(t) : [t]; });
+    for (var i = 0; i < hay.length; i++) {
+      var h = hay[i], got = 0;
+      for (var k = 0; k < pats.length; k++) {
+        var any = false;
+        for (var v = 0; v < pats[k].length; v++) {
+          if (h.indexOf(pats[k][v]) >= 0) { any = true; break; }
+        }
+        if (any) { got += 1; if (!needAll) break; }
+        else if (needAll) break;
+      }
+      if (needAll ? got === pats.length : got > 0) out.push(i);
+    }
+    return out;
+  }
+
+  function localPass(q) {
+    var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    var terms = tokenise(q);
+    var idx = [], how = 'and';
+    if (!terms.length) { idx = []; how = 'none'; }
+    else {
+      idx = hits(terms, true, false);
+      if (!idx.length && terms.length > 1) { idx = hits(terms, false, false); how = 'or'; }
+      if (!idx.length) { idx = hits(terms, false, true); how = 'fuzzy'; }
+    }
+    var unmatched = terms.filter(function (t) { return !hits([t], true, false).length; });
+    var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+    return {idx: idx, terms: terms, unmatched: unmatched, how: how,
+            ms: Math.round((t1 - t0) * 10) / 10};
   }
 
   function ask() {
     var q = askBox.value.trim();
     if (!q) return;
-    askWhy.textContent = 'asking the model\\u2026';
+    var local = localPass(q);
+    if (!local.terms.length) {
+      askWhy.textContent = 'Nothing in that to search for \\u2014 try a name, a sport or a genre.';
+      return;
+    }
+
+    var how = local.how === 'and' ? 'all of your words'
+            : local.how === 'or' ? 'any of your words'
+            : 'your words with one-character typo tolerance';
+    filterState = {idx: local.idx, query: q,
+                   why: 'matched ' + how + ' here in this browser, in ' + local.ms + ' ms'};
+    document.getElementById('tnaskclear').hidden = false;
+    pick('filtered');
+    askWhy.textContent = local.idx.length + ' of ' + all.length + ' channels, matched '
+      + how + ' \\u2014 measured at ' + local.ms + ' ms in this browser.';
+
+    // The gate is match QUALITY, not question length. A wordy question that already
+    // matched well does not need the card; a two-word question that matched nothing does.
+    var thin = local.idx.length < 6 || local.unmatched.length > 0;
+    if (!thin) {
+      setModel('tn-done', 'model: not needed \\u2014 the local pass answered');
+      return;
+    }
+    setModel('tn-think', 'model: thinking\\u2026');
+    askModel(q, local);
+  }
+
+  function askModel(q, local) {
     // A FLAT KEYWORD LIST, not JSON. Asking this 7B for a JSON object at temperature 0.2
     // makes it loop -- measured: it emitted {"match":["premier league","nfl","nba","mlb",
     // "f1","nfl","nba",... until it hit the token cap, so the object never closed and
     // nothing parsed. One line of comma-separated words it completes cleanly every time.
     // Small models are far better at a flat list than at nested structure; picking the
     // format the model can actually finish is the difference between this working and the
-    // fallback firing on every request.
+    // fallback firing on every request. If you need a second field, send a SECOND
+    // one-line prompt -- do not go back to structured output.
     var prompt = 'List the words to search for in a TV channel list to find: ' + q
       + '\\n\\nRules: reply with ONE line, at most 8 lowercase keywords, comma separated. '
       + 'No sentences, no repeats, no explanation.\\n\\nKeywords:';
@@ -1375,26 +2936,38 @@ TUNER_JS = """<script src="/hls.js"></script>
         return t.trim().toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9 ]+$/g, '');
       }).filter(function (t) { return t.length > 1 && t.length < 24; }).slice(0, 12);
       if (!terms.length) throw new Error('no usable keywords');
-      aiFilter = {match: terms, exclude: [],
-                  why: 'the model read your question and searched for: ' + terms.join(', ')};
-      finishAsk();
+      applyModel(q, local, terms);
     }).catch(function (e) {
-      aiFilter = plainFilter(q);
-      aiFilter.why = 'the model could not be used (' + (e.message || e) + '), so this '
-                   + 'matched your words directly';
-      finishAsk();
+      // The fallback is SAID OUT LOUD. A silent fallback is how the JSON version looked
+      // like it worked for weeks while never once using the model.
+      setModel('tn-warn', 'model: unavailable (' + (e.message || e) + ')');
+      askWhy.textContent = local.idx.length + ' of ' + all.length + ' channels. The model '
+        + 'could not be used, so this is your own words matched directly \\u2014 the '
+        + 'result above came from this browser, not the card.';
     });
   }
 
-  function finishAsk() {
-    document.getElementById('tnaskclear').hidden = false;
-    apply();
-    askWhy.textContent = aiFilter.why + '  \\u2014  ' + view.length + ' of ' + all.length
-                       + ' channels';
+  function applyModel(q, local, terms) {
+    var added = terms.filter(function (t) { return local.terms.indexOf(t) < 0; });
+    var union = local.terms.concat(added);
+    var wide = hits(union, false, false);
+    if (wide.length > local.idx.length) {
+      filterState = {idx: wide, query: q,
+                     why: 'your words, widened by the model with: ' + added.join(', ')};
+      setModel('tn-done', 'model: answered \\u2014 ' + terms.join(', '));
+      pick('filtered');
+      askWhy.textContent = wide.length + ' of ' + all.length + ' channels. The local pass '
+        + 'found ' + local.idx.length + ' in ' + local.ms + ' ms and the model widened it '
+        + 'with: ' + added.join(', ') + '.';
+    } else {
+      setModel('tn-done', 'model: answered \\u2014 added nothing');
+      askWhy.textContent = local.idx.length + ' of ' + all.length + ' channels, matched in '
+        + local.ms + ' ms in this browser. The model suggested ' + terms.join(', ')
+        + ', which found nothing your own words had not \\u2014 so this is the local result.';
+    }
   }
 })();
 </script>"""
-
 
 
 def main() -> int:

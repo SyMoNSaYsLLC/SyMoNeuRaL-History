@@ -20,6 +20,11 @@ with the file when someone downloads it; the text is the copy a visitor can read
 `dims()` reads the PNG rather than hardcoding its height. The height was written out as
 `802` in two generators, and the watermark change made both wrong -- a stale height
 attribute reserves the wrong aspect ratio and the page jumps as the images load.
+
+`model_name()` lives here for the same reason the rest of this module does: the sidecar's
+`model` string is printed in two places -- burned into the PNG bar by
+`tools/build_gallery.py` and printed as HTML by `provenance()` below -- and a second copy
+of the mapping is exactly the drift this file exists to prevent.
 """
 from __future__ import annotations
 
@@ -27,6 +32,27 @@ import json
 import pathlib
 
 SITE = pathlib.Path(__file__).resolve().parent.parent / "site"
+
+# Visible surfaces carry SyMoNeuRaL names only. The upstream attribution is consolidated on
+# /credits.html, which is what actually satisfies Apache-2.0 §4 -- the notice has to be
+# present in what we distribute, not repeated on every surface.
+#
+# This is a *prefix* map, not an equality test, and deliberately so. The sidecars on disk
+# were written by an older API and still read "FLUX.1-schnell q4_k"; the API now writes
+# "SymonImage F1 q4_k". Matching the prefix renames the old ones and passes the new ones
+# through untouched, so both render identically without rewriting 18 JSON files.
+#
+# The quantisation suffix is never dropped. `q4_k` is not decoration: Apache-2.0 §4(b)
+# requires stating that we modified the files, and quantising is that modification.
+UPSTREAM = {"FLUX.1-schnell": "SymonImage F1"}
+
+
+def model_name(raw: str) -> str:
+    """The sidecar's model string, rendered under our own name."""
+    for old, new in UPSTREAM.items():
+        if raw.startswith(old):
+            return new + raw[len(old):]
+    return raw
 
 
 def _sidecar(slug: str) -> dict:
@@ -61,7 +87,7 @@ def provenance(slug: str) -> str:
     d = _sidecar(slug)
     if not d:
         return ""
-    return (f'{d["model"]} &middot; {d["size"]}&times;{d["size"]} &middot; '
+    return (f'{model_name(d.get("model", ""))} &middot; {d["size"]}&times;{d["size"]} &middot; '
             f'{d["steps"]} steps &middot; seed {d["seed"]} &middot; '
             f'{d["seconds"]}s on an RTX&nbsp;5070&nbsp;Ti')
 

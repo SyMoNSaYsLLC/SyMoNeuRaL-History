@@ -15,7 +15,7 @@
 <meta property="og:image" content="/mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0e100f">
-<link rel="stylesheet" href="/symoneural.css?v=49b346c269">
+<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 </head>
 <body>
@@ -160,10 +160,10 @@
         <div class="lhead"><img src="/reinforce-64.png?v=7d806bd676" alt="" width="20" height="20">
           <b>Application Acceleration</b><span>Accelerates models out of the box, and allows custom optimisation</span></div>
         <div class="lgrid">
-        <div class="scell" data-s="impl"><b>Runtime</b><span>llama.cpp &middot; stable-diffusion.cpp</span><small>GGML rather than vLLM/TensorRT-LLM/SGLang. Deliberate: no torch in the serving path, so the pinned base environment never moves.</small></div>
+        <div class="scell" data-s="impl"><b>Runtime</b><span>SymonServe &middot; SymonRender</span><small>SymonServe rather than vLLM/TensorRT-LLM/SGLang. Deliberate: no torch in the serving path, so the pinned base environment never moves.</small></div>
         <div class="scell" data-s="impl"><b>Kernels</b><span>hand-written CUDA, NVRTC</span><small>Compiled at runtime and diffed against a CuPy reference. Where CUTLASS and FlashInfer sit in the reference stack.</small></div>
         <div class="scell" data-s="measured"><b>Libraries</b><span>cuBLASLt &middot; cuDNN</span><small>cuBLASLt reached 32,338 GFLOPS against 4,210 for a good hand-written tiled kernel &mdash; roughly 13&times;. Write custom kernels for what libraries do not cover.</small></div>
-        <div class="scell" data-s="impl"><b>Compression</b><span>GGUF Q4_K_M &middot; q4_k</span><small>Post-training quantization, the first of NVIDIA's top five. 7B to 4.68&nbsp;GB, FLUX to 6.88&nbsp;GB &mdash; which is the only reason either fits.</small></div>
+        <div class="scell" data-s="impl"><b>Compression</b><span>GGUF Q4_K_M &middot; q4_k</span><small>Post-training quantization, the first of NVIDIA's top five. SymonChat to 4.68&nbsp;GB, SymonImage&nbsp;F1 to 6.88&nbsp;GB &mdash; which is the only reason either fits.</small></div>
         <div class="scell" data-s="na"><b>KV-cache transfer</b><span>&mdash;</span><small>NIXL and Mooncake move cache between nodes. There is one node.</small></div>
         <div class="scell" data-s="na"><b>Collective communication</b><span>&mdash;</span><small>NCCL coordinates multiple GPUs. There is one GPU; the P2P test is waived.</small></div>
         </div>
@@ -183,13 +183,13 @@
         <caption>Cost-efficient inference techniques &mdash; status on this hardware</caption>
         <thead><tr><th>Technique</th><th>Status</th><th>What we measured</th></tr></thead>
         <tbody>
-          <tr><td class="k">Low-precision kernel</td><td class="num"><span class="badge ok">running</span></td><td>GGUF Q4_K_M for chat, q4_k for FLUX. Weights are the thing being read every token, so this is the optimisation that decides whether a model runs at all.</td></tr>
+          <tr><td class="k">Low-precision kernel</td><td class="num"><span class="badge ok">running</span></td><td>GGUF Q4_K_M for SymonChat, q4_k for SymonImage&nbsp;F1. Weights are the thing being read every token, so this is the optimisation that decides whether a model runs at all.</td></tr>
           <tr><td class="k">Speculative decoding</td><td class="num"><span class="badge meas">measured</span></td><td>Tuned to draft depth 2: <b>157.4 tok/s at 43.8% acceptance</b>, about +5% over baseline. Deeper drafting <em>loses</em> &mdash; depth 5 gave 121.4 tok/s, and the library default measured 139.1. It trades compute for bandwidth, and this box has spare compute but no spare bandwidth.</td></tr>
           <tr><td class="k">Kernel fusion</td><td class="num"><span class="badge ok">running</span></td><td>Hand-written fused kernels compiled through NVRTC; graph replay cut a three-kernel pipeline from 9.65&nbsp;&micro;s to 4.10&nbsp;&micro;s per iteration.</td></tr>
           <tr><td class="k">Fast model loading</td><td class="num"><span class="badge meas">measured</span></td><td>mmap, and it matters more here than most places: the host link is PCIe Gen&nbsp;3 &times;8, so a 7B costs ~675&nbsp;ms to stage and a 14B ~1,181&nbsp;ms.</td></tr>
           <tr><td class="k">KV-cache offloading</td><td class="num"><span class="badge meas">measured</span></td><td>q8_0 KV cache is a <em>memory</em> win, not a speed one &mdash; at short context it measured <b>142.7 tok/s against 149.6</b>. It buys context length, and we say so rather than listing it as a speedup.</td></tr>
           <tr><td class="k">Compute-comms overlap</td><td class="num"><span class="badge meas">measured</span></td><td><em>Rejected on evidence.</em> Multi-stream copy/compute overlap measured <b>1.00&times; / 0.98&times; / 0.93&times;</b> for 2 / 4 / 8 streams. Transfer so dominates compute that there is nothing left to hide behind it.</td></tr>
-          <tr><td class="k">NVFP4</td><td class="num"><span class="badge absent">not implemented</span></td><td>The hardware is here &mdash; Blackwell sm_120, and <code>cuda_fp4.h</code> ships in CUDA 13.3 &mdash; but GGML has no FP4 path, so our serving runtime cannot reach it. Getting there means TensorRT-LLM or an FP4 kernel written against CUTLASS. We are not going to claim a format we do not execute.</td></tr>
+          <tr><td class="k">NVFP4</td><td class="num"><span class="badge absent">not implemented</span></td><td>The hardware is here &mdash; Blackwell sm_120, and <code>cuda_fp4.h</code> ships in CUDA 13.3 &mdash; but SymonServe has no FP4 path, so our serving runtime cannot reach it. Getting there means TensorRT-LLM or an FP4 kernel written against CUTLASS. We are not going to claim a format we do not execute.</td></tr>
           <tr><td class="k">Disaggregated serving</td><td class="num"><span class="badge na">not applicable</span></td><td>Splitting prefill from decode across nodes. One node.</td></tr>
           <tr><td class="k">KV-aware routing</td><td class="num"><span class="badge na">not applicable</span></td><td>Routes requests to the node already holding the prefix. One node.</td></tr>
           <tr><td class="k">Topology-aware scaling</td><td class="num"><span class="badge na">not applicable</span></td><td>NVLink/NVL72 domain placement. No NVLink on a PCIe workstation &mdash; the Gen 3 &times;8 host cap is precisely the constraint NVLink exists to remove.</td></tr>
@@ -208,7 +208,7 @@
       <p>
         <strong>NVFP4 is the interesting one.</strong> This card is Blackwell, the format is
         supported in silicon, and the CUDA toolkit here ships the headers. What is missing is
-        a path through our runtime: GGML has no FP4 kernels. That is a real gap, it is ours,
+        a path through our runtime: SymonServe has no FP4 kernels. That is a real gap, it is ours,
         and it is on the list rather than quietly omitted.
       </p>
     </div>
@@ -633,7 +633,8 @@ $ .venv/bin/pip freeze | wc -l
       <a href="/training.html">Manuals</a>
       <a href="/docs">API</a>
       <a href="mailto:symonsayadmin@symoneural.com">Contact</a>
-    </nav>
+          <a href="/credits.html">Credits</a>
+</nav>
   </div>
 </footer>
 
