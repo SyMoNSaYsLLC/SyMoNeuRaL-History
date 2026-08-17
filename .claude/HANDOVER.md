@@ -342,8 +342,8 @@ anything unrecognised.
   **and** `SYM_ASIC_TOKEN` are both set, so a misconfiguration fails closed on a public box.
 - **`backend/apps/tuner/`** — IPTV over ffmpeg stream-copy to HLS. 57 tests.
 - **`backend/apps/gateway/`** — TRON licensing surface.
-- **`backend/apps/licensing/`** — the dev fee. 21 tests. See §11.
-- **`scripts/qemu-antminer.sh`** — boots real Antminer firmware under QEMU. See §12.
+- **`backend/apps/licensing/`** — the dev fee. 21 tests. See §2d.
+- **`scripts/qemu-antminer.sh`** — boots real Antminer firmware under QEMU. See §2e.
 
 ### Three API routes, all operator-gated
 
@@ -955,7 +955,7 @@ cascade.** The tooling for that is in §6.
 ## 5. Still to do
 
 > **Updated 2026-08-17 05:35, end of the second session.** Items 3, 4 and 5 are now
-> substantially built — see §2c, §11 and §12. What follows is what is genuinely left.
+> substantially built — see §2c, §2d and §2e. What follows is what is genuinely left.
 
 ### Open findings nobody has acted on
 
@@ -1094,7 +1094,7 @@ because they are the cheapest real work available.
 
 - **Telemetry cannot be tested.** The emulator will never run `bmminer` — no hashboards. A
   real rig, or a BOS+ rig, is the only way. No download substitutes for it.
-- MicroBT emulation is **settled as impossible** (encrypted payload, §12). The control plane
+- MicroBT emulation is **settled as impossible** (encrypted payload, §2e). The control plane
   over btminer/4028 works today and is the viable route.
 
 ---
@@ -1467,16 +1467,31 @@ that put nineteen full-size renders down the left of the live page.
 
 ### Test in a real browser — this is the important one
 ```bash
-node tests/frontend.mjs                          # 18/18 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 18/18 against production
+node tests/frontend.mjs                          # local API on :8800
+node tests/frontend.mjs https://symoneural.com   # production
 ```
+**Measured 2026-08-17 ~14:15 — the suite is 26 assertions now, not 18, and the two runs
+disagree:** local **26/26**, production **25/26**. The one production failure is
+`each section has its own URL, carrying only itself, fitting one screen`: `/livestack`
+content overflows its panel by 3px at 1855×745 (595/592) and by **32px at 1301×740**
+(619/587). It passes locally at 589/589, and production is serving
+`symoneural.css?v=5d6297cfb8` while the working tree is at `?v=3c8fa4fd4c`. So this is
+almost certainly the §3.0 chassis-strip fix sitting undeployed rather than a new
+regression — but that last clause is inferred, not measured. `sudo scripts/deploy.sh
+--prune` needs Garrett's password; no agent can close it.
+
+Also seen on **both** runs and **not** a failure: four `400`/`404` lines for
+`/api/tuner/{playlist,xtream/channels,tune,session/__probe__}` in the trailing
+"failed requests" block. That assertion tests whether the routes are *routed*, and a `400`
+on an empty body is a routed endpoint rejecting bad input. Do not chase them.
+
 It asserts on what the DOM *shows*: units render from `/api/status`, the bus plate carries
 GPU/CPU/`--`, nothing overlaps or spills past the right edge at 390px, ravencalc returns
 `x**3/3`, and **a generated image actually decodes** (`naturalWidth > 0`). That last one is
 the assertion that would have caught the 404 that shipped — curl proved the endpoint
 answered, which was never in doubt.
 
-Five of the eighteen exist because of specific bugs and are worth not deleting:
+Four of the twenty-six exist because of specific bugs and are worth not deleting:
 
 | Test | The bug it exists for |
 |---|---|
@@ -1567,8 +1582,13 @@ exit 144. Put the pkill in a command that does not otherwise mention the process
 - Chat: ~5 GB resident, measured **80–92 tok/s** with the persona adapter loaded.
 - Image: FLUX.1-schnell q4_k, ~7 GB, **~11.2s** per 768×768 at 4 steps.
 - Chat and image weight sets **cannot co-reside**. `scripts/gpu-governor.sh` serialises them.
-- Base interpreter: exactly **7 packages** (`pip freeze | wc -l`). Training venv:
-  `training/.venv`, torch cu128.
+- The **CUDA sample venv** at `contrib/cuda-samples/python/.venv` is the thing pinned at
+  exactly **7 packages** — check it by its full path, never with a bare `pip freeze`.
+  Measured 2026-08-17: that venv has 7; the **system** interpreter has **190**, because it is
+  a Debian install and always was. Earlier revisions of this line said "Base interpreter:
+  exactly 7 packages (`pip freeze | wc -l`)", which contradicts `.claude/CLAUDE.md` and sends
+  you looking for a broken machine. Training venv: `training/.venv`, torch **2.11.0+cu128**,
+  `torch.cuda.is_available()` true (verified 2026-08-17).
 - Node 20.19.2 / npm 9.2.0, ffmpeg 7.1.5, patchelf, PIL 11.1.0, ImageMagick all present.
 - `google-chrome` at `/usr/bin/google-chrome`.
 
