@@ -48,15 +48,25 @@ ICONS = {
 
 
 def module(src: str, tag: str, value: str, unit: str, sub: str,
-           mid: str = "", meter: str = "", small: bool = False) -> str:
+           mid: str = "", meter: str = "", small: bool = False, plain: str = "") -> str:
+    """One instrument module.
+
+    `plain` says in ordinary English what the number means; `sub` keeps the engineering
+    detail underneath it. Both are shown. The front page now argues to business owners
+    rather than to CUDA programmers, and "atomics avoided 89.5x" tells that reader
+    nothing -- but deleting the technical line to make room would be exactly the kind of
+    quiet trimming this file was written to prevent.
+    """
     idattr = f' id="{mid}"' if mid else ""
     unit_html = f"<u>{unit}</u>" if unit else ""
     meter_html = (f'<div class="meter" id="{meter}"><i style="width:0%"></i></div>'
                   if meter else "")
     cls = "val sm" if small else "val"
+    plain_html = f'<div class="plain">{plain}</div>' if plain else ""
     return (f'<div class="mod" data-src="{src}">'
             f'<div class="tag"><s></s>{tag}</div>'
             f'<div class="{cls}"{idattr}>{value}{unit_html}</div>'
+            f'{plain_html}'
             f'<div class="sub">{sub}</div>{meter_html}</div>')
 
 
@@ -78,27 +88,27 @@ CONSOLE = f"""{BEGIN}
     </div>
 
     <div class="console">
-      {module("live", "VRAM free", "&mdash;", "", "of 15.92 GiB", "m-vram", "m-vrambar")}
-      {module("live", "Power draw", "&mdash;", "", "300 W limit", "m-pwr", "m-pwrbar")}
-      {module("live", "Die temp", "&mdash;", "", "250-330 W range", "m-temp")}
-      {module("live", "Resident", "idle", "", "one surface at a time", "m-holder", small=True)}
-      {module("live", "Queue", "0", "", "jobs waiting for the card", "m-queue")}
+      {module("live", "VRAM free", "&mdash;", "", "of 15.92 GiB", "m-vram", "m-vrambar", plain="Room left on the card for models right now")}
+      {module("live", "Power draw", "&mdash;", "", "300 W limit", "m-pwr", "m-pwrbar", plain="What the card is pulling from the wall")}
+      {module("live", "Die temp", "&mdash;", "", "250-330 W range", "m-temp", plain="How hot the chip is running")}
+      {module("live", "Resident", "idle", "", "one surface at a time", "m-holder", small=True, plain="Which surface is loaded on the card")}
+      {module("live", "Queue", "0", "", "jobs waiting for the card", "m-queue", plain="People waiting their turn")}
 
-      {module("measured", "DRAM bandwidth", "752", "GB/s", "~84% of 896.1 peak")}
-      {module("measured", "CUDA cores", "8,960", "", "70 SMs &times; 128")}
-      {module("measured", "Host &rarr; device", "6.94", "GB/s", "pinned &middot; 88% of link")}
-      {module("measured", "Device &rarr; host", "7.20", "GB/s", "pinned &middot; 91% of link")}
-      {module("measured", "PCIe link", "Gen 3", "&times;8", "host capped &middot; GPU does Gen 5")}
-      {module("measured", "L2 cache", "48", "MB", "distorts benchmarks under 100 MB")}
-      {module("measured", "Chat decode", "151", "tok/s", "7B Q4_K_M &middot; measured here")}
-      {module("measured", "Resident : host", "107", "&times;", "752 GB/s vs ~7 GB/s")}
-      {module("measured", "Batch 64 gain", "47.3", "&times;", "3,200 &rarr; 151,488 rows/s")}
-      {module("measured", "Atomics avoided", "89.5", "&times;", "shared-mem privatisation")}
-      {module("measured", "Graph replay", "2.27", "&times;", "9.65 &rarr; 4.10 &micro;s/iter")}
+      {module("measured", "DRAM bandwidth", "752", "GB/s", "~84% of 896.1 peak", plain="How fast the card reads its own memory")}
+      {module("measured", "CUDA cores", "8,960", "", "70 SMs &times; 128", plain="How many calculations it runs at once")}
+      {module("measured", "Host &rarr; device", "6.94", "GB/s", "pinned &middot; 88% of link", plain="Speed of sending your data to the card")}
+      {module("measured", "Device &rarr; host", "7.20", "GB/s", "pinned &middot; 91% of link", plain="Speed of getting the answer back")}
+      {module("measured", "PCIe link", "Gen 3", "&times;8", "host capped &middot; GPU does Gen 5", plain="The pipe between the card and the computer")}
+      {module("measured", "L2 cache", "48", "MB", "distorts benchmarks under 100 MB", plain="Scratch memory that makes small tests look faster than real work")}
+      {module("measured", "Chat decode", "151", "tok/s", "7B Q4_K_M &middot; measured here", plain="Words per second when it answers you")}
+      {module("measured", "Resident : host", "107", "&times;", "752 GB/s vs ~7 GB/s", plain="Why models must sit on the card, not in ordinary memory")}
+      {module("measured", "Batch 64 gain", "47.3", "&times;", "3,200 &rarr; 151,488 rows/s", plain="Serving many people at once costs almost nothing extra")}
+      {module("measured", "Atomics avoided", "89.5", "&times;", "shared-mem privatisation", plain="One code change that made a step 89&times; faster")}
+      {module("measured", "Graph replay", "2.27", "&times;", "9.65 &rarr; 4.10 &micro;s/iter", plain="Cutting the setup cost of work done over and over")}
 
-      {module("projected", "14B @ Q4", "~98", "tok/s", "7.7 GB &middot; bandwidth &divide; weights")}
-      {module("projected", "32B @ IQ2", "~78", "tok/s", "9.6 GB &middot; tight KV headroom")}
-      {module("projected", "On an H200", "~625", "tok/s", "same 14B &middot; vendor 4.8 TB/s")}
+      {module("projected", "14B @ Q4", "~98", "tok/s", "7.7 GB &middot; bandwidth &divide; weights", plain="A model twice this size would still answer this fast")}
+      {module("projected", "32B @ IQ2", "~78", "tok/s", "9.6 GB &middot; tight KV headroom", plain="A much larger model, squeezed to fit the card")}
+      {module("projected", "On an H200", "~625", "tok/s", "same 14B &middot; vendor 4.8 TB/s", plain="The same model on a datacentre card costing 30&times; more")}
     </div>
 
     <p class="tnote">
