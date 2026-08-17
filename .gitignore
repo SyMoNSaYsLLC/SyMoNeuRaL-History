@@ -54,3 +54,10 @@ site/*.pdf
 
 # the snapshots moved out of site/ -- keep them on disk, not in the repo
 docs/archive/site-snapshot-*/
+
+# Contract signing private keys. The public half (contract-signing.pub) ships and is
+# tracked; the private half must never be committed, never be on a rig, and never be in
+# the environment of a web process. Belt and braces -- issue.py also chmods it 0600.
+*.key
+!contrib/**/*.key
+backend/apps/licensing/contract-signing.key

@@ -75,6 +75,7 @@ sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 sys.path.insert(0, str(HERE / "apps"))
 import asicminer  # noqa: E402
 import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
+import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
 from apps import tuner  # noqa: E402  -- IPTV surface, brings its own APIRouter
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
@@ -247,6 +248,12 @@ class Status(BaseModel):
     units: list[Unit]
     gpu: GpuState
     link: dict
+    # The dev fee, on the public status endpoint on purpose. A rate that applies without
+    # being visible is the failure mode this whole design exists to rule out, so disclosure
+    # rides on the same response the rack already fetches rather than on an endpoint someone
+    # has to know to ask for. With no contract installed it reports state "none" and no rate,
+    # because there is no default fee anywhere in this codebase.
+    license: dict
 
 
 # ======================================================================== plumbing
@@ -1190,6 +1197,7 @@ def build_status() -> Status:
 
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
+        license=licensing.disclosure(),
         units=[
             Unit(id="chat", label="SyMoNeuRaL Chat", slot="1U", state=gpu_unit("chat", chat_ok),
                  bus="gpu", href="/chat.html",
