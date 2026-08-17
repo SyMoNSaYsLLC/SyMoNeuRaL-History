@@ -44,6 +44,7 @@ from typing import Annotated, Literal
 from fastapi import (Depends, FastAPI, HTTPException, Request, Response, WebSocket,
                      WebSocketDisconnect, status as http)
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -1453,10 +1454,34 @@ async def image(body: ImageRequest,
     # site down with it, which is a far worse outcome than an old image disappearing.
     await asyncio.to_thread(prune_gallery)
 
-    return ImageResult(url=f"/{stamp}", seconds=round(elapsed, 2), seed=seed,
+    return ImageResult(url=f"/api/gen/{stamp}", seconds=round(elapsed, 2), seed=seed,
                        steps=body.steps, size=body.size,
                        model="FLUX.1-schnell q4_k", bytes=out.stat().st_size)
 
+
+
+@app.get("/api/gen/{name}", tags=["surfaces"],
+         responses={200: {"content": {"image/png": {}}}, 404: {"description": "Gone or never existed"}})
+async def gen(name: str) -> FileResponse:
+    """Serve a render produced by `POST /api/image`.
+
+    Renders used to be handed back as `/<file>`, a path in the deployed webroot. But the
+    API writes them into the staging directory, and Apache serves the webroot -- so every
+    image generated on the live site 404'd until somebody ran a deploy, which needs a
+    password no process here has. Serving them from `/api` instead means they are visible
+    the instant they exist, on the same proxied path as every other surface.
+
+    Renders are pruned to the newest 60, so an old url legitimately becomes a 404.
+    """
+    # `name` is attacker-controlled and lands in a filesystem path. Match the exact shape
+    # the generator emits rather than trying to sanitise traversal out of arbitrary input.
+    if not re.fullmatch(r"gen-\d{13}-\d{1,10}\.png", name):
+        raise HTTPException(404, "No such render.")
+    path = GALLERY / name
+    if not path.is_file():
+        raise HTTPException(404, "That render has been pruned.")
+    return FileResponse(path, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 @app.post("/api/calc", tags=["surfaces"])
 async def calc(body: CalcRequest,
