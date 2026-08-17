@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL — Accounts</title>
+<meta name="description" content="Technical resource detailing local hardware performance, quantized model execution and hardware constraints for the SyMoNeuRaL local inference infrastructure.">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="icon" href="/favicon-128.png" sizes="128x128" type="image/png">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:title" content="SyMoNeuRaL — Accounts">
+<meta property="og:description" content="Local hardware performance, quantized model execution and hardware constraints. Every figure measured.">
+<meta property="og:image" content="/mark.png">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0e100f">
+<link rel="stylesheet" href="/symoneural.css">
+<link rel="stylesheet" href="/rack-detail.css">
+</head>
+<body>
+
+<!-- ===================== STATUS BANNER ===================== -->
+<div class="status">
+  <div class="wrap">
+    <b><s></s>Under Construction</b>
+    <span>Active infrastructure development in progress.</span>
+  </div>
+</div>
+
+<!-- ===================== HEADER ===================== -->
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <div class="navitem has-menu">
+        <button class="navlink" aria-expanded="false" aria-haspopup="true">Documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu">
+          <a href="/documentation.html#cost">Owned vs Rented<small>a $1,000 card vs a rented 48 GB server</small></a>
+          <a href="/documentation.html#stack">Inference Architecture<small>mapped onto the NVIDIA stack</small></a>
+          <a href="/documentation.html#hardware">Hardware<small>the card, measured</small></a>
+          <a href="/documentation.html#interconnect">Interconnect<small>PCIe Gen 3 x8, host capped</small></a>
+          <a href="/documentation.html#kernels">Kernels<small>occupancy, atomics, graph replay</small></a>
+          <a href="/documentation.html#inference">Inference<small>decode rates and batching</small></a>
+          <a href="/documentation.html#architecture">Architecture<small>how the surfaces fit together</small></a>
+          <a href="/documentation.html#environment">Environment<small>the 7-package base and its isolates</small></a>
+        </div>
+      </div>
+      <a class="navlink" href="/training.html">Manuals</a>
+      <a class="navlink" href="/docs">API</a>
+      <div class="navitem has-menu">
+        <button class="navlink" aria-expanded="false" aria-haspopup="true">Account <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="menu">
+          <a href="/account.html">Subscription<small>not open yet</small></a>
+          <a href="/account.html#billing">Billing<small>not open yet</small></a>
+          <a href="/account.html#support">Support<small>talk to a person</small></a>
+        </div>
+      </div>
+      <a class="cta ghost" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+    </nav>
+  </div>
+</header>
+
+
+<!-- ===================== PAGE HEAD ===================== -->
+<div class="hero" style="padding:24px 0 0">
+  <div class="wrap">
+    <p class="eyebrow">Accounts</p>
+    <h1>Not open yet.</h1>
+    <p class="lede">
+      There is no signup, no subscription and no billing on this site today, so there is
+      nothing here to log into. When that changes this page will say so and will describe
+      exactly what is being sold. Until then, everything on symoneural.com is free to use
+      and runs on one workstation.
+    </p>
+  </div>
+</div>
+
+<section id="billing" style="padding-top:26px">
+  <div class="wrap">
+    <p class="shead">Billing</p>
+    <h2>Pricing is quoted, not published</h2>
+    <p class="sub">
+      SyMoNeuRaL builds custom AI infrastructure, and the cost depends on the hardware,
+      the models and the workload &mdash; so there is no price list to put here, and a
+      made-up number would be worse than none. For a real quote, mail
+      <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>
+      and describe what you are trying to run.
+    </p>
+    <p class="tnote">
+      What this page will never do is show an invented figure. The whole argument of this
+      site is that its numbers are measured; that rule does not stop applying at pricing.
+      If you want the arithmetic behind owning versus renting a card, that is
+      <a href="/documentation.html#cost">published in full</a>.
+    </p>
+  </div>
+</section>
+
+<section id="support">
+  <div class="wrap">
+    <p class="shead">Support</p>
+    <h2>You get a person</h2>
+    <p class="sub">
+      There is no ticket queue and no bot. Mail
+      <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>
+      and a human answers.
+    </p>
+    <p class="tnote">
+      If the live surfaces are down, that is usually one GPU being held by another job
+      rather than an outage &mdash; the <a href="/">rack</a> shows which surface holds the
+      card and what is queued behind it.
+    </p>
+  </div>
+</section>
+
+<!-- ===================== FOOTER ===================== -->
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="/" style="text-decoration:none; display:flex; align-items:center; gap:10px">
+      <img src="/mark-32.png" alt="" width="22" height="22">
+      <b style="font-size:14.5px; color:var(--fg)">SyMoNeu<i style="font-style:normal; color:var(--accent)">RaL</i></b>
+    </a>
+    <span>© SymonSays LLC · <a href="mailto:symonsayadmin@symoneural.com" style="color:var(--dim); text-decoration:none">symonsayadmin@symoneural.com</a></span>
+    <nav>
+      <a href="/documentation.html#hardware">Hardware</a>
+      <a href="/documentation.html#inference">Inference</a>
+      <a href="/documentation.html#environment">Environment</a>
+      <a href="/training.html">Manuals</a>
+      <a href="/docs">API</a>
+      <a href="mailto:symonsayadmin@symoneural.com">Contact</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="/ui.js" defer></script>
+</body>
+</html>
