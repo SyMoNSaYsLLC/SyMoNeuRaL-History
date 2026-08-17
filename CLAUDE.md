@@ -12,14 +12,14 @@ README that says so.
 | Question | File |
 |---|---|
 | What are the rules? | **this file** |
-| What is the state, what is left to do, what will bite me? | **`HANDOVER.md`** |
-| What does the hardware actually do? | `MIT_AI_Training.md`, and `docs/` |
+| What is the state, what is left to do, what will bite me? | **`.claude/HANDOVER.md`** |
+| What does the hardware actually do? | `symoneural-manual.md`, and `docs/` |
 | Why is the code like this? | **`git log`** — every commit states its reason |
 
-Do not create a second state document. Update `HANDOVER.md`.
+Do not create a second state document. Update `.claude/HANDOVER.md`.
 
 **`demo/` no longer exists.** It was flattened into the repo root: `demo/api.py` is `api.py`,
-`demo/playground.sh` is `symoneural.sh`. Any path with `demo/` in it is from before that and
+`demo/playground.sh` is `scripts/symoneural.sh`. Any path with `demo/` in it is from before that and
 is wrong.
 
 ## Parallelise builds
@@ -30,8 +30,8 @@ not spent watching a progress bar. Launch subagents in one message so they actua
 parallel. The GPU is available to agents that genuinely need it.
 
 Scope agents to files nobody else is writing. The real hazard here is the generator scripts:
-`build_pages.py`, `build_rack.py`, `build_console.py`, `build_cost.py`, `build_stack.py`,
-`build_training.py` and `build_gallery.py` all rewrite files under `site/`, so two writers in
+`tools/build_pages.py`, `tools/build_rack.py`, `tools/build_console.py`, `tools/build_cost.py`, `tools/build_stack.py`,
+`tools/build_training.py` and `tools/build_gallery.py` all rewrite files under `site/`, so two writers in
 that directory will clobber each other. Safe parallel
 tracks are read-only audits, brand-new standalone files, docs, and tests.
 
@@ -39,7 +39,7 @@ tracks are read-only audits, brand-new standalone files, docs, and tests.
 
 One RTX 5070 Ti, 15.92 GiB. Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB) cannot coexist.
 
-- Everything touching the GPU goes through `gpu-governor.sh`, ideally as
+- Everything touching the GPU goes through `scripts/gpu-governor.sh`, ideally as
   `gpu-governor.sh with <surface> -- <cmd>`, which always releases even on crash.
 - **Hold the lock for a job, never for a process lifetime.** Residency (weights loaded) and
   work (using the card) are separate. Holding the lock while a model is merely resident and
@@ -54,11 +54,11 @@ One RTX 5070 Ti, 15.92 GiB. Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB)
 
 ## Python environments
 
-The **CUDA sample venv** at `cuda-samples/python/.venv` is pinned at exactly **7 packages** and
+The **CUDA sample venv** at `contrib/cuda-samples/python/.venv` is pinned at exactly **7 packages** and
 must never be extended:
 
 ```bash
-cuda-samples/python/.venv/bin/pip freeze | wc -l    # expect exactly 7
+contrib/cuda-samples/python/.venv/bin/pip freeze | wc -l    # expect exactly 7
 ```
 
 `numba-cuda` silently downgrades numpy, and three other packages pin conflicting
@@ -107,7 +107,7 @@ out, it cannot be pulled back.
 **Never copy any of these into `site/`, never serve them from an endpoint, and never quote
 their contents into a page or a commit message.** An agent asked to "publish the manual" could
 reasonably mistake the corpus for documentation. It is not: it is the recipe for the product.
-`MIT_AI_Training.md` is the manual and is publishable; the corpus is not.
+`symoneural-manual.md` is the manual and is publishable; the corpus is not.
 
 The line that resolves this against the site's transparency argument: **publish the numbers,
 keep the methods.** "151 tok/s on a 7B Q4_K_M, measured here" is the sales argument and gives
@@ -120,25 +120,25 @@ the protecting. If one is ever added, audit what is tracked first.
 ## Build and deploy
 
 ```bash
-./fetch-models.sh            # weights -> models/ (ungated, Apache-2.0 sources)
-python3 build_pages.py       # chat/image/calc/remix   -> site/*.html
-python3 build_rack.py        # live rack               -> site/index.html
-python3 build_console.py     # control board           -> site/index.html
-python3 build_cost.py        # Owned vs Rented         -> site/documentation.html
-python3 build_stack.py       # Inference Architecture  -> site/documentation.html
-python3 build_training.py    # manual                  -> site/training.html
-python3 build_gallery.py     # homepage art (uses GPU) -> site/art-*.png
-./symoneural.sh on|off|status   # the live API (off is the kill switch)
-sudo ./deploy.sh                # site/ -> /var/www/symoneural (needs a password)
+./scripts/fetch-models.sh            # weights -> models/ (ungated, Apache-2.0 sources)
+python3 tools/build_pages.py       # chat/image/calc/remix   -> site/*.html
+python3 tools/build_rack.py        # live rack               -> site/index.html
+python3 tools/build_console.py     # control board           -> site/index.html
+python3 tools/build_cost.py        # Owned vs Rented         -> site/documentation.html
+python3 tools/build_stack.py       # Inference Architecture  -> site/documentation.html
+python3 tools/build_training.py    # manual                  -> site/training.html
+python3 tools/build_gallery.py     # homepage art (uses GPU) -> site/art-*.png
+./scripts/symoneural.sh on|off|status   # the live API (off is the kill switch)
+sudo ./scripts/deploy.sh                # site/ -> /var/www/symoneural (needs a password)
 ```
 
-The generator scripts are idempotent and must stay that way — `build_console.py` once nested
+The generator scripts are idempotent and must stay that way — `tools/build_console.py` once nested
 folds inside folds when run twice. **Run every generator twice and `diff` before committing.**
 The BEGIN/END marker strings are the contract: change a marker in a generator and you must
 change it in the HTML in the same commit, or the generator stops finding its block and appends
 a second one.
 
-`deploy.sh` pipes into `while read`, so its `missing=1` is set in a subshell and discarded — it
+`scripts/deploy.sh` pipes into `while read`, so its `missing=1` is set in a subshell and discarded — it
 prints `MISSING <file>` but can never exit non-zero on it. Read the output, do not trust the
 exit code.
 

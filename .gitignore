@@ -4,12 +4,6 @@ models/
 # ---- Vendored third-party checkouts (each carries its own .git) ----
 cuda-samples/
 # NVIDIA/skills
-skills/
-llama.cpp/
-stable-diffusion.cpp/
-Nemotron-main/
-RavenCalcServer_Christmas_*/
-
 # ---- Virtualenvs ----
 training/.venv/
 **/.venv/
@@ -34,23 +28,19 @@ __pycache__/
 training/adapter/tokenizer.json
 
 # ---- Nested third-party checkouts (belt and braces: these carry their own .git) ----
-/skills
 /cuda-samples
-/Nemotron-main
-
 # ---- Reference trees added for the IPTV and Miner surfaces (third-party, large) ----
 # Projects_Crypto alone is ~2.5 GB of Antminer/Braiins firmware images.
-/Projects_Crypto
-/references IPTV
-/CGMiner-master
-/braiins-os-feeds-master
-/nx-master
-/software-templates-main
-/backstage-master
 /cuda-programming-guide.pdf
-/Pete
-/*.pdf
 __MACOSX/
 
 # Vendored design reference for the image page restyle
-/stable-diffusion-webui-master
+
+# ---- Third-party engines we build and ship (contrib) vs read-only material ----
+# contrib/ holds source we compile and run; references/ holds material we only read.
+/contrib
+
+# ---- Reference material, all third-party, consolidated under one directory ----
+# Everything here is somebody else's code or a saved document kept for reference.
+# ~8.5 GB, none of it ours, none of it tracked.
+/references

@@ -22,7 +22,7 @@ WorkingDirectory=@@ROOT@@
 # it is dead, so the next acquire would break it anyway -- but doing it here means the very
 # first request after a restart is not delayed by a stale-lock poll, and the rack does not
 # briefly show a holder that no longer exists.
-ExecStartPre=-/usr/bin/env bash -c '@@ROOT@@/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/gpu-governor.sh release image >/dev/null 2>&1 || true'
+ExecStartPre=-/usr/bin/env bash -c '@@ROOT@@/scripts/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/scripts/gpu-governor.sh release image >/dev/null 2>&1 || true'
 ExecStart=/usr/bin/python3 @@ROOT@@/api.py
 # Give in-flight generations a chance to finish rather than cutting a visitor off mid-answer.
 # Slightly above the 120 s job timeout so a job that is already doomed is not waited on twice.
@@ -31,7 +31,7 @@ KillMode=mixed
 KillSignal=SIGTERM
 # The engines are children in their own process groups; make sure nothing survives us
 # holding several gigabytes of VRAM.
-ExecStopPost=-/usr/bin/env bash -c 'pkill -f "[l]lama-server"; pkill -f "[s]d-cli"; @@ROOT@@/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/gpu-governor.sh release image >/dev/null 2>&1 || true'
+ExecStopPost=-/usr/bin/env bash -c 'pkill -f "[l]lama-server"; pkill -f "[s]d-cli"; @@ROOT@@/scripts/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/scripts/gpu-governor.sh release image >/dev/null 2>&1 || true'
 
 Restart=always
 RestartSec=3

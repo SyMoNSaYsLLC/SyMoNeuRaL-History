@@ -214,7 +214,7 @@ def manual_pairs(limit: int = 320) -> list[tuple[str, str]]:
     Only sections with real prose are used, and the answer is the source text rather than a
     paraphrase -- the point is for the model's technical claims to trace back to the manual.
     """
-    path = ROOT / "MIT_AI_Training.md"
+    path = ROOT / "symoneural-manual.md"
     if not path.exists():
         return []
     text = path.read_text(errors="ignore")

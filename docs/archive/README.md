@@ -9,7 +9,7 @@ The live hierarchy is stated in `CLAUDE.md`; the short version is:
 | Question | File |
 |---|---|
 | What are the rules? | `CLAUDE.md` |
-| What is the current state, what is left to do? | `HANDOVER.md` |
+| What is the current state, what is left to do? | `.claude/HANDOVER.md` |
 | What does the hardware actually do? | `MIT_AI_Training.md`, and `docs/` |
 | Why is the code like this? | `git log` — every commit states its reason |
 
@@ -22,7 +22,7 @@ at the repo root for months and are the single most likely thing for a fresh age
 for current material — which is exactly why they are now in here rather than there.
 
 ### `HANDOVER-2026-08-16-1910.md`
-The previous session's handover, written at 19:10 on 2026-08-16. Superseded by `HANDOVER.md`
+The previous session's handover, written at 19:10 on 2026-08-16. Superseded by `.claude/HANDOVER.md`
 in the repo root. Still worth reading for the archaeology of the CSS bugs (`.bar` collapsing
 the site header) and the reasoning behind the GPU governor's design, both of which remain
 true. Everything it says about paths is **wrong**, because `demo/` was flattened into the repo
@@ -32,8 +32,8 @@ root afterwards.
 A third state document that competed with the two handovers. Having three files that all
 claimed to describe "current state" caused real confusion; there is now exactly one.
 
-### `START-PROMPT.txt`
-The previous session's kickoff prompt. Replaced by `START-PROMPT.txt` in the repo root, which
+### `.claude/START-PROMPT.txt`
+The previous session's kickoff prompt. Replaced by `.claude/START-PROMPT.txt` in the repo root, which
 reflects the flattened layout and the current queue.
 
 ### `checkcoderswork.txt`

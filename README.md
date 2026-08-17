@@ -1,55 +1,149 @@
-# MIT AI Training
+# SyMoNeuRaL
 
-Consolidated manual and a native CUDA engine, both verified against this
-machine (NVIDIA GeForce RTX 5070 Ti, Blackwell `sm_120`, CUDA 13.3).
+Custom AI infrastructure that runs on hardware you own. This repo is **symoneural.com** and
+the machine behind it: the public site, the inference API, the CUDA engine, and the
+engineering manual every number on the site is drawn from.
 
-## The manual — three forms, same content
+The site is not a brochure with a demo bolted on. It is the machine, live — the rack on the
+front page is reading `/api/status` as you look at it, and the images in the band were
+rendered by the image surface below them, seed printed on each one.
 
-| Form | Path | Use it for |
-|---|---|---|
-| **Browsable page** | [`MIT_AI_Training.html`](MIT_AI_Training.html) | Reading. Sidebar nav, scroll-spy, collapsible READMEs, light/dark. Open it directly — no server, no network. |
-| **Single markdown** | [`MIT_AI_Training.md`](MIT_AI_Training.md) | Grepping, diffing, feeding to a tool. 8,415 lines. |
-| **Modular tree** | [`docs/`](docs/README.md) | Editing one topic without touching the rest. 19 files. |
+**One RTX 5070 Ti, 15.92 GiB.** Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB) cannot
+co-reside, so exactly one holds the card at a time and the rest queue. That constraint is the
+architecture, and the site says so rather than hiding it.
 
-All three are generated from the same source and carry identical content:
-the 11 playbooks plus all 34 CUDA Python sample documents, corrected and
-annotated with what actually happened when each was run here.
+---
 
-## What is here
-
-```
-MIT_AI_Training/
-├── MIT_AI_Training.html      browsable manual (420 KB, self-contained)
-├── MIT_AI_Training.md        the same manual as one markdown file
-├── docs/                     the same manual, sliced into 19 files
-│   ├── 01-hardware-dossier.md        measured specs + raw captures
-│   ├── 02-setup-environments.md      layout, venv policy, runnability matrix
-│   ├── 03-playbooks/                 the 11 playbooks, one file each
-│   ├── 04-cuda-curriculum/           34 samples, grouped by category
-│   └── 05-verification.md            what was proven vs carried over
-├── 00-MANUAL-INDEX.md …      the original 11 playbooks, unmodified
-├── cuda-samples/             the NVIDIA clone (python/ + cpp/ + build/)
-└── symoneural_reinforce/     native CUDA inference engine
-```
-
-## The five findings
-
-1. **PCIe is the bottleneck.** The GPU does Gen 5; the host caps it at **Gen 3 x8**. Measured ~6.9 GB/s up, ~7.2 GB/s down — about 1% of internal bandwidth.
-2. **Resident data is fast.** **752 GB/s** measured, 84% of the 896 GB/s peak, confirmed by three independent samples.
-3. **Stream overlap does nothing here** — 1.00 / 0.98 / 0.93x for 2 / 4 / 8 streams. Transfer dominates; there is nothing to hide it behind.
-4. **Attack launch overhead instead.** CUDA graphs **1.91x**; privatised atomics **89.5x**.
-5. **Keep `cuda-samples/python/.venv` pristine.** Isolate every extra dependency; `numba-cuda` silently downgrades numpy.
-
-## The engine
-
-[`symoneural_reinforce/`](symoneural_reinforce/README.md) — a from-scratch CUDA
-inference and compute engine on `cuda.core` and NVRTC-compiled C++ kernels. No
-third-party inference runtime is wrapped.
+## Quick start
 
 ```bash
-cd symoneural_reinforce
-./scripts/run_tests.sh --bench      # builds an isolated /tmp venv; never touches yours
+git clone <repo> symoneural && cd symoneural
+./scripts/setup.sh            # checks the machine, tells you what is missing
+./scripts/fetch-models.sh     # weights + their licences -> models/
+./scripts/symoneural.sh on    # API on 127.0.0.1:8800, serving site/ too
 ```
 
-67 tests pass, 1 waives (P2P needs a second GPU). Benchmarks land within 1–7% of
-the dossier figures for copy, reduction, transpose and host transfer.
+Then `http://127.0.0.1:8800/`.
+
+**Nothing here hardcodes its own location.** Clone it anywhere: scripts derive their root
+from their own path, `api.py` from `__file__`, the engine binaries from `$ORIGIN`, and the
+systemd unit is a template the installer fills in.
+
+Three steps need root, and `scripts/setup.sh` prints them rather than taking root itself:
+
+```bash
+sudo ./scripts/install-service.sh   # run the API under systemd
+sudo ./scripts/install-caddy.sh     # TLS + static serving, /api proxied to the API
+sudo ./scripts/deploy.sh                # publish site/ -> /var/www/symoneural
+```
+
+## Running it in a container
+
+The GPU is attached with CDI, and the repo is mounted at `/app` so the host location is
+irrelevant:
+
+```bash
+podman build -t symoneural-api -f ops/Containerfile .
+./scripts/container-run.sh --detach
+```
+
+The one flag that matters is the bind mount of the repo, because `scripts/gpu-governor.sh` is a
+**mkdir lock** on `run/gpu.lock.d` and that directory *is* the mutex. A container with its own
+copy would let the host and the container both acquire, both load weights, and put ~12 GB of
+models on a 16 GB card — a silent OOM that looks like a CUDA fault. `scripts/container-run.sh`
+explains every flag it passes.
+
+## Layout
+
+```
+api.py                  the API: chat, image, calc, remix, status, /api/gen
+symoneural              the CLI
+ravencalc.py            exact symbolic maths (SymPy, CPU, never takes the GPU lock)
+
+tools/                  the site generators, all idempotent
+  build_pages.py        chat/image/calc/remix pages   -> site/
+  build_rack.py         the live rack                 -> site/index.html
+  build_console.py      the control board             -> site/index.html
+  build_cost.py         Owned vs Rented               -> site/documentation.html
+  build_stack.py        Inference Architecture        -> site/documentation.html
+  build_training.py     the manual                    -> site/training.html
+  build_gallery.py      homepage artwork (uses the GPU, watermarks each render)
+
+.claude/                agent working material -- handover, kickoff prompt, permissions
+site/                   the deployable site
+scripts/                everything you execute
+  setup.sh              verify a fresh clone can run here
+  symoneural.sh         start/stop/status for the API
+  container-run.sh      run the API in a rootless container with the GPU
+  gpu-governor.sh       the GPU mutex -- one surface holds the card at a time
+  fetch-models.sh       weights and their licences -> models/
+  deploy.sh             site/ -> /var/www/symoneural            (root)
+  install-service.sh    run the API under systemd               (root)
+  install-caddy.sh      TLS + static serving                    (root)
+
+ops/                    config artifacts installed onto a system, not run from here
+  Caddyfile             -> /etc/caddy/Caddyfile
+  symoneural-api.service-> /etc/systemd/system/  (a @@ROOT@@ template)
+  Containerfile         the API image recipe
+
+contrib/                third-party source we build and run
+  llama.cpp/            the chat engine
+  stable-diffusion.cpp/ the image engine
+  cuda-samples/         NVIDIA samples + the pinned 7-package venv
+tests/frontend.mjs      drives the real pages in a real browser (9/9)
+training/               corpus, train_lora.py, adapter/, its own venv (torch cu128)
+apps/                   components with their own code, docs and lifecycle
+  reinforce/            the native CUDA engine
+  remix/                playlist client of the chat surface
+  miner/                GPU miner worker (not yet wired to the rack)
+docs/                   hardware dossier, environments, verification
+docs/archive/           superseded -- do not act on anything in here
+references/             third-party reference material, ~8.5 GB, none of it ours
+models/                 weights, 40 GB, fetched not committed
+```
+
+**Why `apps/` has three entries and chat/image/calc do not.** The surfaces on the rack are
+routes inside `api.py` — one process, one GPU lock, one deployment. The things under `apps/`
+are separate codebases with their own docs, dependencies and release cycle. That is a real
+distinction rather than a favourite, and it gives the next question a clear answer: if the
+IPTV player or the ASIC control panel arrive with their own dependencies and deploy story
+they belong in `apps/`; if they are just more routes, they belong in `api.py`.
+
+## The rules this project actually runs on
+
+Read `CLAUDE.md` before changing anything. The short version:
+
+- **Label every figure** — measured on this machine, vendor specification, or projected
+  arithmetic. A projection is never presented as a result.
+- **Never invent pricing.** Quotes depend on hardware and workload; a made-up number would be
+  the one dishonest thing on a site whose whole argument is measurement.
+- **No decorative indicators.** Every LED and gauge reflects a real reading.
+- **Layout changes must not drop data** — including CSS. `text-overflow: ellipsis` on a detail
+  line is data loss with extra steps.
+- **Publish negative results.** The PCIe Gen 3 ×8 ceiling is on the site deliberately.
+- **Generators must stay idempotent.** Run each twice and `diff` before committing.
+- **Test in a browser, not with curl.** A render once succeeded server-side and still showed
+  as a broken image to every visitor.
+
+## Where to look
+
+| Question | File |
+|---|---|
+| What are the rules? | `CLAUDE.md` |
+| What is the state, what is left to do? | `.claude/HANDOVER.md` |
+| What can we ship, and what must travel with it? | `LICENSES.md` |
+| What does the hardware actually do? | `symoneural-manual.md`, `docs/` |
+| Why is the code like this? | `git log` — every commit states its reason |
+
+## Licensing
+
+The stack is permissively licensed throughout — Apache-2.0 for the weights and Caddy, MIT for
+llama.cpp and stable-diffusion.cpp, BSD-3 for uvicorn and SymPy. **Nothing is copyleft**, so
+products built on this can be proprietary. What must travel with a build, and the obligations
+for each licence, are in `LICENSES.md`.
+
+Our own code, the LoRA adapter and the training corpus are proprietary to SymonSays LLC.
+
+---
+
+© SymonSays LLC · [symoneural.com](https://symoneural.com) · symonsayadmin@symoneural.com

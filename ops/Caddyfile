@@ -17,7 +17,7 @@
 #   3. The whole config is this file, and it is short enough to audit in one screen --
 #      which matters when the argument of the site is that its infrastructure is honest.
 #
-# Install with ops/install-caddy.sh (needs sudo; it disables apache2 first).
+# Install with scripts/install-caddy.sh (needs sudo; it disables apache2 first).
 
 symoneural.com, www.symoneural.com {
 	# Static frontend. This is the only thing served off disk.

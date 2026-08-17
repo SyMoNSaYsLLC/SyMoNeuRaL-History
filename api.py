@@ -56,9 +56,9 @@ RUN = HERE / "run"
 RUN.mkdir(exist_ok=True)
 sys.path.insert(0, str(ROOT))
 
-GOVERNOR = HERE / "gpu-governor.sh"
-LLAMA_SERVER = HERE / "llama.cpp" / "build" / "bin" / "llama-server"
-SD_CLI = HERE / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
+GOVERNOR = HERE / "scripts" / "gpu-governor.sh"
+LLAMA_SERVER = HERE / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
+SD_CLI = HERE / "contrib" / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
 MODELS = ROOT / "models"
 GALLERY = ROOT / "site"
 

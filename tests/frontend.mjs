@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const { chromium } = createRequire(import.meta.url)(
-  join(REPO, 'llama.cpp/tools/ui/node_modules/playwright'));
+  join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright'));
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8800';
 const SHOTS = process.env.SHOT_DIR || '/tmp/symoneural-shots';

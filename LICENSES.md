@@ -56,13 +56,13 @@ HTML, and the `art-*.png` renders. © SymonSays LLC. All rights reserved.
 | **FLUX.1-schnell** (+ VAE) | image | **Apache-2.0** | model card declares it; explicitly permits commercial use |
 | **T5-XXL**, **CLIP-L** | FLUX text encoders | **Apache-2.0** as redistributed | the GGUF repos we fetched from are Apache-2.0 tagged |
 
-Licence texts are saved to **`models/licenses/`** by `fetch-models.sh`. `models/` is gitignored
+Licence texts are saved to **`models/licenses/`** by `scripts/fetch-models.sh`. `models/` is gitignored
 (40 GB), so those files live on disk beside the weights rather than in git — **they must be
 included in any customer image.**
 
 > **FLUX.1-schnell only.** FLUX.1-**dev** is *not* Apache-2.0 — it is non-commercial. Never
 > substitute it into anything customer-facing. This is the single most dangerous swap in the
-> stack, and `fetch-models.sh` pulls schnell deliberately.
+> stack, and `scripts/fetch-models.sh` pulls schnell deliberately.
 
 > **Qwen licences vary by model size.** 7B, 14B and 0.5B are Apache-2.0 (verified). Other sizes
 > in the family ship under Qwen's own licence with extra terms. Check the specific model card
@@ -80,7 +80,7 @@ included in any customer image.**
 | **stable-diffusion.cpp** (`sd-cli`) | **MIT** | Copyright (c) 2023 leejet |
 
 MIT obliges only that the copyright line and permission notice travel with the code. Ship
-`llama.cpp/LICENSE` and `stable-diffusion.cpp/LICENSE` alongside the binaries.
+`contrib/llama.cpp/LICENSE` and `contrib/stable-diffusion.cpp/LICENSE` alongside the binaries.
 
 ---
 
@@ -123,7 +123,7 @@ clause first.** It is the only thing in this stack that can stop you shipping.
 Proprietary to SymonSays LLC, all rights reserved, and **not** covered by any licence above:
 
 - `api.py`, the `build_*.py` generators, `symoneural`, `ravencalc.py`, the shell tooling
-- `symoneural_reinforce/` (the CUDA engine) and `symoneural_remix/`
+- `apps/reinforce/` (the CUDA engine) and `apps/remix/`
 - **`training/corpus.jsonl`** and **`training/build_dataset.py`** — the authored identity
   corpus and the method that produces it
 - **`training/adapter/`** — the LoRA weights
@@ -162,7 +162,7 @@ recovered once disclosed. See the never-publish rule in `CLAUDE.md`.
 ## 9. Checklist for a customer build
 
 - [ ] `models/licenses/` included beside the weights
-- [ ] `llama.cpp/LICENSE` and `stable-diffusion.cpp/LICENSE` included beside the binaries
+- [ ] `contrib/llama.cpp/LICENSE` and `contrib/stable-diffusion.cpp/LICENSE` included beside the binaries
 - [ ] `site/swagger-ui-LICENSE.txt` and `site/swagger-ui-NOTICE.txt` present in the webroot
 - [ ] this file included
 - [ ] modifications stated (quantisation, fine-tuning) for every Apache-2.0 component
