@@ -1,42 +1,15 @@
-/* Header menus and documentation tabs.
+/* Documentation tabs, and the lightbox for the renders.
  *
- * Both are progressive enhancement. Without this file the menus are plain lists and
- * every documentation panel is visible, so the page degrades to a long document rather
- * than to eight empty boxes -- the same reason the rack ships a <noscript> unit.
+ * The header used to have two JavaScript dropdowns. They are gone: both opened onto a
+ * single destination anyway, and the menu -- z-index:60 inside a header that is itself a
+ * z-index:20 stacking context -- painted underneath the hero. A nav link cannot do that.
+ *
+ * The tabs are progressive enhancement. Without this file every documentation panel is
+ * visible, so the page degrades to a long document rather than to eight empty boxes --
+ * the same reason the rack ships a <noscript> unit.
  */
 (function () {
   'use strict';
-
-  // ---- header dropdowns ---------------------------------------------------
-  var items = [].slice.call(document.querySelectorAll('.navitem.has-menu'));
-
-  function closeAll(except) {
-    items.forEach(function (it) {
-      if (it === except) return;
-      it.classList.remove('open');
-      var b = it.querySelector('.navlink');
-      if (b) b.setAttribute('aria-expanded', 'false');
-    });
-  }
-
-  items.forEach(function (it) {
-    var btn = it.querySelector('.navlink');
-    if (!btn) return;
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
-      var open = it.classList.contains('open');
-      closeAll(it);
-      it.classList.toggle('open', !open);
-      btn.setAttribute('aria-expanded', String(!open));
-    });
-  });
-
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest || !e.target.closest('.navitem.has-menu')) closeAll(null);
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeAll(null);
-  });
 
   // ---- documentation tabs -------------------------------------------------
   var tabs = [].slice.call(document.querySelectorAll('.tab[role="tab"]'));
@@ -85,7 +58,7 @@
  */
 (function () {
   'use strict';
-  var links = [].slice.call(document.querySelectorAll('.band a.art'));
+  var links = [].slice.call(document.querySelectorAll('a.art'));
   if (!links.length) return;
 
   var box, img, cap, meta, opener;

@@ -136,6 +136,36 @@ try {
          buildLinks >= 2 && buildTxt.includes('Tell us what you want to run'),
          `${buildLinks} links -> ${buildRes.status()}`);
 
+  // ---- the band is four renders in a row, and the constellation moved -------
+  // Both halves matter. On the front page the constellation's absolutely-positioned
+  // renders collapsed into a vertical column in narrow gutters, which is what a visitor
+  // actually saw; it now lives on /build.html where there is room. If .sky ever reappears
+  // on the front page, or the row ever stops being a row, this fails.
+  const bandShape = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('.band .bcell')];
+    const tops = new Set(cells.map(c => Math.round(c.getBoundingClientRect().top)));
+    return { n: cells.length, rows: tops.size, sky: !!document.querySelector('.sky') };
+  });
+  record('the band is four renders side by side',
+         bandShape.n === 4 && bandShape.rows === 1 && !bandShape.sky,
+         `${bandShape.n} cells on ${bandShape.rows} row(s)` +
+         (bandShape.sky ? ', but .sky is still on the front page' : ''));
+
+  record('the constellation moved to the order page',
+         buildTxt.includes('class="sky"') && (buildTxt.match(/class="art"/g) || []).length >= 19,
+         `${(buildTxt.match(/class="art"/g) || []).length} renders on /build.html`);
+
+  // ---- the header is links, not JavaScript menus ---------------------------
+  // The two dropdowns painted underneath the hero: the menu was z-index:60 inside a header
+  // that is itself a z-index:20 stacking context, so 60 only ever competed with the header's
+  // own children. Both opened onto a single destination, so they are plain links now.
+  const nav = await page.evaluate(() => ({
+    menus: document.querySelectorAll('.navitem, .menu, nav button').length,
+    links: [...document.querySelectorAll('header nav a')].map(a => a.getAttribute('href')),
+  }));
+  record('the header has no dropdowns left', nav.menus === 0,
+         nav.menus ? `${nav.menus} menu element(s) remain` : nav.links.join(' '));
+
   // ---- stale CSS can never be served for new markup ------------------------
   const unstamped = await page.$$eval(
     'link[rel=stylesheet][href^="/"], script[src^="/"]',

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL RavenCalc — exact mathematics</title>
 <meta name="description" content="SymPy-powered symbolic computation that checks its own work.">
-<link rel="stylesheet" href="/symoneural.css?v=80e9529244">
+<link rel="stylesheet" href="/symoneural.css?v=5b4ce38455">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
@@ -22,29 +22,10 @@
     </a>
     <nav>
       <a class="navlink" href="/">Live stack</a>
-      <div class="navitem has-menu">
-        <button class="navlink" aria-expanded="false" aria-haspopup="true">Documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="menu">
-          <a href="/documentation.html#cost">Owned vs Rented<small>a $1,000 card vs a rented 48 GB server</small></a>
-          <a href="/documentation.html#stack">Inference Architecture<small>mapped onto the NVIDIA stack</small></a>
-          <a href="/documentation.html#hardware">Hardware<small>the card, measured</small></a>
-          <a href="/documentation.html#interconnect">Interconnect<small>PCIe Gen 3 x8, host capped</small></a>
-          <a href="/documentation.html#kernels">Kernels<small>occupancy, atomics, graph replay</small></a>
-          <a href="/documentation.html#inference">Inference<small>decode rates and batching</small></a>
-          <a href="/documentation.html#architecture">Architecture<small>how the surfaces fit together</small></a>
-          <a href="/documentation.html#environment">Environment<small>the 7-package base and its isolates</small></a>
-        </div>
-      </div>
+      <a class="navlink" href="/documentation.html">Documentation</a>
       <a class="navlink" href="/training.html">Manuals</a>
       <a class="navlink" href="/docs">API</a>
-      <div class="navitem has-menu">
-        <button class="navlink" aria-expanded="false" aria-haspopup="true">Account <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="menu">
-          <a href="/account.html">Subscription<small>not open yet</small></a>
-          <a href="/account.html#billing">Billing<small>not open yet</small></a>
-          <a href="/account.html#support">Support<small>talk to a person</small></a>
-        </div>
-      </div>
+      <a class="navlink" href="/account.html">Account</a>
       <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
       <a class="cta" href="/build.html">Have one built</a>
     </nav>
@@ -163,7 +144,7 @@ async function api(path, payload) {
 }
 </script>
 <script src="/console.js?v=9c9663ee79" defer></script>
-<script src="/ui.js?v=4c2f9c1edb" defer></script>
+<script src="/ui.js?v=a1fb83921b" defer></script>
 <script>
 const form = $('#form'), out = $('#out'), op = $('#op');
 op.addEventListener('change', () =>

@@ -22,29 +22,10 @@ SITE = ROOT / "site"
 
 NAV = """    <nav>
       <a class="navlink" href="/">Live stack</a>
-      <div class="navitem has-menu">
-        <button class="navlink" aria-expanded="false" aria-haspopup="true">Documentation <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="menu">
-          <a href="/documentation.html#cost">Owned vs Rented<small>a $1,000 card vs a rented 48 GB server</small></a>
-          <a href="/documentation.html#stack">Inference Architecture<small>mapped onto the NVIDIA stack</small></a>
-          <a href="/documentation.html#hardware">Hardware<small>the card, measured</small></a>
-          <a href="/documentation.html#interconnect">Interconnect<small>PCIe Gen 3 x8, host capped</small></a>
-          <a href="/documentation.html#kernels">Kernels<small>occupancy, atomics, graph replay</small></a>
-          <a href="/documentation.html#inference">Inference<small>decode rates and batching</small></a>
-          <a href="/documentation.html#architecture">Architecture<small>how the surfaces fit together</small></a>
-          <a href="/documentation.html#environment">Environment<small>the 7-package base and its isolates</small></a>
-        </div>
-      </div>
+      <a class="navlink" href="/documentation.html">Documentation</a>
       <a class="navlink" href="/training.html">Manuals</a>
       <a class="navlink" href="/docs">API</a>
-      <div class="navitem has-menu">
-        <button class="navlink" aria-expanded="false" aria-haspopup="true">Account <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-        <div class="menu">
-          <a href="/account.html">Subscription<small>not open yet</small></a>
-          <a href="/account.html#billing">Billing<small>not open yet</small></a>
-          <a href="/account.html#support">Support<small>talk to a person</small></a>
-        </div>
-      </div>
+      <a class="navlink" href="/account.html">Account</a>
       <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
       <a class="cta" href="/build.html">Have one built</a>
     </nav>"""
