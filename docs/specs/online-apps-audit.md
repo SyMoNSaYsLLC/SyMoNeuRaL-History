@@ -322,11 +322,20 @@ system and needs its own evidence.** Both halves, every time — that it goes re
 
 ---
 
-## 7. The tuner video failure — measured, not yet solved
+## 7. The tuner video failure — silent failure fixed, transcode still to build
 
 Reported during this pass: *"you video isnt working"*, then *"ive noticed most the issues are with
-the adult live tv"*. **The tuner is another session's file and none of it was edited here.** What
-follows is measurement handed to that session.
+the adult live tv"*.
+
+**The tuner is another session's file and, in the end, none of it was changed here.** This audit
+did commit a fix to it (`e0eb087`) after announcing the exact lines; that collided with better
+work already in the main checkout and was reverted in `3444ad5`. See below — the collision is
+recorded rather than tidied away, because what the audit got wrong is the useful part.
+
+What this section is, then: the measurement that located the failure, plus the NVENC numbers the
+transcode work needs. The repair itself belongs to the tuner's own session, which has since
+completed the Tuner+Guide merge as well (11 rack units, `tests/frontend.mjs` 28/28 against a
+throwaway uvicorn with the change loaded).
 
 ### The pipeline is sound; the failure is channel-specific
 
@@ -360,9 +369,47 @@ zero frames decoded, and **a page with nothing to warn about because it never se
 codec**. That is this repo's recurring shape — a diagnosis that exists, is correct, and is
 unreachable on the one axis that was left unpublished.
 
-**Not confirmed**, and the reason is worth recording: a session is reaped 12 s after the tab goes
-idle and its temporary directory goes with it, so a probe arriving later finds nothing. One
-`ffprobe` on a segment from a failing channel held open ~30 s settles it.
+**Still not confirmed against a failing channel**, and the reason is worth recording: a session is
+reaped 12 s after the tab goes idle and its temporary directory goes with it, so a probe arriving
+later finds nothing. One `ffprobe` on a segment from a failing channel held open ~30 s settles it.
+
+**Fixed — by the peer session that owns the tuner, not here.** `Session.public()` now publishes
+`acodec`, under the same argument that makes `vcodec` safe: the value is a token matched against
+`AUDIO_CODECS`, never ffmpeg's text, so a hostile stream cannot push arbitrary content or a
+URL-embedded credential into the public document.
+
+This audit independently reached the same diagnosis and committed the same fix (`e0eb087`), twenty
+minutes later and worse. **That commit was reverted in `3444ad5`, and the reason is worth keeping
+rather than burying**, because it is a case of the audit itself nearly shipping the thing the
+repo's honesty rules exist to prevent:
+
+- The peer's page **asks the browser** — `MediaSource.isTypeSupported()` against both `video/mp2t`
+  and fMP4, since the box serves TS and hls.js remuxes. This audit's version hardcoded
+  `UNPLAYABLE_AUDIO = {ac3, eac3, mp2, dts, truehd}`.
+- **That table was already wrong about MP2.** Measured on Chrome 151: h264, aac, mp2 and mp3 are
+  accepted; hevc, mpeg2video, vc1, av1, vp9, ac3, eac3, dts and truehd are refused. The static
+  list would have told visitors that channels which play perfectly cannot play. A false warning on
+  a working channel is a decorative status indicator by another route, and it teaches people to
+  ignore the banner that is telling the truth.
+- The peer found the **larger bug underneath**: `play()` tested
+  `video.canPlayType('application/vnd.apple.mpegurl')` first, and Chrome returns the truthy string
+  `'maybe'`, so every Chrome visitor took the native path and the whole hls.js block was dead code
+  — no `liveSyncDurationCount: 1` (31 s to first frame instead of 2.5 s), no fatal-error handler,
+  no level or throughput readings. The statistics panel reading *"the browser's own HLS"* with
+  bitrate at `-` is what exposed it. A correct codec warning layered on a player silently running
+  the wrong path would have been a fix that measured nothing.
+- Also theirs: the codec panel is now sticky, because the fatal hls.js error an undecodable stream
+  *causes* was overwriting *"This stream is H.265 / HEVC"* with *"Playback stopped — could not
+  fetch the next part"* — replacing the cause with the symptom.
+
+The honest status line: **the silent-failure mode is fixed** — a channel that cannot play now says
+why. Whether the specific adult channels Garrett reported are the AC-3 case is what the next
+failing session confirms for free, now that the field is published.
+
+The generalisable lesson, which is the same one §6 of this document is about: **this audit's three
+false findings and this reverted commit all came from reasoning about a system instead of
+measuring it.** A hardcoded codec table is a claim about a browser, and the browser was available
+to ask the whole time.
 
 ### GPU transcode — approved, and the hardware says it need not take the lock
 
@@ -390,17 +437,90 @@ It does still falsify the page's *"Tuner does not use the GPU"*. The honest repl
 uses the **video engine**, not the compute the models share — which is both true and a better
 claim.
 
-**No throughput number was taken, deliberately.** The card was busy with another session's image
-work throughout, and a contended measurement is a contaminated one. The clean run, to be labelled
-`measured` and taken before anything is promised on a page:
+#### The throughput numbers — taken 14:41, card otherwise idle, under a governor lease
 
-```bash
-ffmpeg -hwaccel cuda -hwaccel_output_format cuda -c:v hevc_cuvid -i <sample.ts> \
-       -c:v h264_nvenc -preset p4 -b:v 6M -c:a aac -f null -
-nvidia-smi --query-gpu=memory.used,utilization.encoder,utilization.decoder --format=csv -l 1
+Everything below is **measured** on this box (RTX 5070 Ti, 16303 MiB), not projected. The earlier
+revision of this section deferred these deliberately because the card was busy with another
+session's image work and a contended measurement is a contaminated one. It was free at 14:40 —
+14792 MiB free, encoder and decoder both at 0% — and the table below is from that run.
+
+**How to tell a contaminated run, because one happened.** The VRAM column is a delta of
+*whole-card* memory, not per-process, so another tenant allocating mid-run is billed to whichever
+row is executing. Re-running this at 14:51 with ~8 GB already resident reported `all-CPU libx264
+veryfast … VRAM +6576 MiB`, which is impossible — libx264 never touches the card. That row is the
+canary: **if the pure-CPU case shows more than a few MiB, discard the entire run.** Holding a
+governor lease does not prevent this, because a surface can be resident without holding the lock.
+The clean run's pure-CPU rows read +8 MiB and +0 MiB, which is what a trustworthy run looks like.
+
+**Engine separation, confirmed directly rather than inferred.** Sampled five times during a live
+GPU transcode:
+
+```
+GPU compute  2%      encoder  50%      decoder  28-31%
 ```
 
-Report it as **x-realtime and MB of VRAM per stream**; that settles the concurrency ceiling.
+The earlier finding stands and is now measured from the other direction: a transcode drives the
+video engines hard while leaving compute essentially untouched. It does not contend with model
+inference for anything except VRAM.
+
+**Video transcode.** The synthetic source is `testsrc2` at 1080p25, which is high-entropy and
+near-worst-case for rate control — read it as a **floor on throughput, not a prediction** for any
+particular channel. The real source is six consecutive 2 s segments pulled from a live 720p
+channel earlier the same day, concatenated: real broadcast bytes.
+
+| Case | Source | Throughput | VRAM |
+|---|---|---|---|
+| `hevc_cuvid` → `h264_nvenc` | synthetic 1080p25 | **19.4× realtime** | +515 MiB |
+| `hevc_cuvid` → `h264_nvenc`, audio copied | synthetic 1080p25 | 21.1× realtime | +515 MiB |
+| all-CPU `libx264 veryfast` | synthetic 1080p25 | 11.5× realtime | +8 MiB |
+| `h264_cuvid` → `h264_nvenc` | real 720p IPTV | **17.0× realtime** | +364 MiB |
+| CPU decode → `h264_nvenc` | real 720p IPTV | 17.1× realtime | +290 MiB |
+| all-CPU `libx264 veryfast` | real 720p IPTV | 13.4× realtime | +0 MiB |
+
+Two things fall out. Hardware decode buys almost nothing at 720p — 17.0× against 17.1× is noise,
+so the encoder is the bottleneck and `-hwaccel cuda` is not the load-bearing flag. And all-CPU
+`libx264 veryfast` clears realtime by more than 10×, so the GPU is a **CPU-saving** choice here,
+not an enabling one; the box could serve two transcodes on CPU alone if it had to.
+
+**Concurrency.** The ceiling matters more than the single-stream figure:
+
+```
+2 concurrent HEVC->H.264   35.8x aggregate realtime   ~512 MiB each
+4 concurrent HEVC->H.264   39.8x aggregate realtime   ~513 MiB each
+```
+
+NVENC saturates near **40× realtime aggregate**. `MAX_SESSIONS = 2` needs 2× and has 35.8× — about
+18× headroom. Per-session VRAM is flat at ~515 MiB regardless of how many run, so the budget is
+linear and the two-session ceiling costs about **1 GiB**.
+
+#### This changes the design Garrett approved, and the change should be surfaced
+
+Garrett chose "full GPU transcode" over "audio-only on CPU" when neither option had a number
+attached. Now they do, and the audio-only repair turns out to cost **nothing measurable**:
+
+```
+-c:v copy -c:a aac    34.4x realtime (real 720p)    92x (synthetic)    +0 MiB VRAM, CPU only
+```
+
+If the dominant failure is AC-3 — which the evidence in this section supports — then the correct
+repair is remuxing the soundtrack and copying the picture through untouched. No GPU, no governor
+lease, no VRAM budget, and no need to weaken `_spawn`'s stream-copy guarantee for the majority of
+channels. The honest design is two-tier:
+
+| Failure | Repair | Cost |
+|---|---|---|
+| soundtrack undecodable, picture fine | `-c:v copy -c:a aac` | CPU, ~34× realtime, 0 MiB |
+| picture undecodable (HEVC, MPEG-2, VC-1) | `hevc_cuvid` → `h264_nvenc` | ~19× realtime, ~515 MiB |
+
+This is not a reversal of Garrett's decision — the GPU path is still built, and it is still the
+right answer for the HEVC and MPEG-2 channels the `UNPLAYABLE` map exists for. It is a narrowing:
+**reserve the GPU for the case that actually needs it**, because the common case does not.
+
+**Not yet implemented.** One design constraint for whoever does it: codecs are only known *after*
+ffmpeg starts and prints them, so `_spawn`'s unconditional `-c copy` cannot choose up front — the
+repair needs detect-then-respawn. And `_spawn`'s comment currently promises *"it never quietly
+re-encodes, because the GPU belongs to inference and the CPU has a site to serve"*. That comment
+has to be rewritten with the measurements above as its justification, not quietly contradicted.
 
 ### yuki-iptv and VLC — references to read, not code to port
 
@@ -437,7 +557,17 @@ python3 -m unittest discover -s backend/apps/ravencalc -p 'test_*.py'
 # browser, both origins -- these must agree
 node tests/frontend.mjs
 node tests/frontend.mjs https://symoneural.com
+
+# the transcode numbers in section 7. Takes a governor lease and releases it even on crash;
+# runs in about two minutes. Re-take them on a card that is otherwise idle -- a contended
+# measurement is a contaminated one, which is why they were not taken on the first attempt.
+scripts/gpu-governor.sh with tuner -- tools/bench_nvenc.sh
 ```
+
+`bench_nvenc.sh` measures its real-source cases against `seg-*.ts` files sitting beside it, which
+are live segments captured from a channel and are deliberately not committed. Without them it
+reports the synthetic cases only and says so; §7's real-720p rows came from six consecutive
+segments pulled off a working channel with `tools/probe_tuner_stream.sh`.
 
 The link/orphan crawler used here was a scratch probe and was not kept; it is ~60 lines of
 `fetch` over the eighteen-page list, and §6 item 1 is the only subtlety in writing another.
