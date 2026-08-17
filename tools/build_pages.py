@@ -211,153 +211,243 @@ def page(name: str, gpu: bool | None = None, surface: str = "", **kw) -> None:
 
 
 # ---------------------------------------------------------------- chat
-CHAT_BODY = """    <div class="pgwrap">
-      <div class="stage">
-        <div class="head" id="chead"><s></s>SyMoNeuRaL Chat
-          <span class="grow">idle</span></div>
-        <div class="body" id="log">
-          <div class="turn bot">
-            <div class="who">SyMoNeuRaL</div>
-            <div class="msg">Ask me about this machine, what we build, or local AI engineering \
-generally. I run on the RTX 5070 Ti described on the home page &mdash; nothing you type here \
-leaves the box.</div>
-          </div>
+CHAT_BODY = """    <div class="cu">
+
+      <!-- Left rail. A <div role=navigation>, NOT a <nav>: the sitewide rule
+           `nav a:not(.cta){display:none}` hides nav links below 820px, which would delete
+           every link in here on a phone. -->
+      <div class="cu-rail" id="cu-rail" role="navigation" aria-label="Conversations">
+        <div class="cu-railtop">
+          <button type="button" class="cu-new" id="cu-new">+ New chat</button>
+          <button type="button" class="cu-collapse" id="cu-collapse"
+                  aria-label="Hide conversations">&#8942;</button>
         </div>
-        <form class="composer" id="form">
-          <textarea id="prompt" rows="1" maxlength="1200" placeholder="Why is decode memory-bandwidth bound?"></textarea>
-          <button class="cta" id="send" type="submit">Send</button>
-        </form>
+        <p class="cu-railhead">Conversations</p>
+        <ul class="cu-hist" id="cu-hist"></ul>
+        <p class="cu-railfoot">Kept in this browser only.<br>Nothing is stored on the box.</p>
       </div>
 
-      <aside class="panel">
-        <h3>Parameters</h3>
-        <div class="ctl">
-          <label for="temp">Temperature <b id="tempv">0.7</b></label>
-          <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.7">
+      <div class="cu-main">
+        <!-- Empty state: centred, and it goes away once there is a transcript. -->
+        <div class="cu-empty" id="cu-empty">
+          <h2 class="cu-greet">Ask the box.</h2>
+          <p class="cu-sub">A 7B at Q4 on the RTX 5070 Ti in this room. Nothing you type
+            leaves the machine.</p>
         </div>
-        <div class="ctl">
-          <label for="toks">Max tokens <b id="toksv">320</b></label>
-          <input type="range" id="toks" min="16" max="512" step="16" value="320">
-        </div>
-        <p class="hint">
-          Low temperature keeps it factual; high makes it wander. Both are clamped server-side
-          &mdash; the sliders describe the range, they do not define it.
-        </p>
-        <p class="hint" id="stat">&nbsp;</p>
-      </aside>
-    </div>"""
+
+        <div class="cu-log" id="log"></div>
+
+        <form class="cu-composer" id="form">
+          <textarea id="prompt" rows="1" maxlength="1200"
+                    placeholder="How can I help?"></textarea>
+          <div class="cu-tools">
+            <label class="cu-attach" title="Attach a text file">
+              <input type="file" id="cu-file" accept=".txt,.md,.csv,.json,.log,.py,.js,.html,.css,.yaml,.yml,.toml,.ini,.sh">
+              <span>&#43;</span>
+            </label>
+            <span class="cu-file-name" id="cu-filename"></span>
+            <span class="cu-spacer"></span>
+            <span class="cu-model" id="cu-model">SymonChat S1-7B</span>
+            <button class="cu-send" id="send" type="submit" aria-label="Send">&#8593;</button>
+          </div>
+        </form>
+        <p class="cu-hint" id="stat">&nbsp;</p>
+      </div>
+    </div>
+"""
+
 
 CHAT_JS = """<script>
-const log = $('#log'), form = $('#form'), promptEl = $('#prompt'), send = $('#send');
-const head = $('#chead');
-for (const [id, out] of [['temp','tempv'],['toks','toksv']])
-  $('#'+id).addEventListener('input', e => $('#'+out).textContent = e.target.value);
+(function () {
+  'use strict';
+  var log = document.getElementById('log'), form = document.getElementById('form');
+  var box = document.getElementById('prompt'), send = document.getElementById('send');
+  var empty = document.getElementById('cu-empty'), stat = document.getElementById('stat');
+  var histEl = document.getElementById('cu-hist'), fileEl = document.getElementById('cu-file');
+  var fileName = document.getElementById('cu-filename');
+  var K = 'symoneural.chat.v1';
+  var chats = [], cur = null, attached = null, busy = false;
 
-promptEl.addEventListener('input', () => {
-  promptEl.style.height = 'auto';
-  // Cap raised with the box: min-height is 80px in CSS, so a 150px ceiling left only
-  // a couple of lines of growth. Matches max-height on .composer textarea.
-  promptEl.style.height = Math.min(260, promptEl.scrollHeight) + 'px';
-});
-promptEl.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
-});
+  // ---------------------------------------------------------------- storage
+  // Conversations live in THIS BROWSER and nowhere else. There is no history endpoint and
+  // no conversation id on the server, which is not a gap -- it is the same promise the rest
+  // of the site makes about your data. The transcript is replayed to /api/chat on each turn
+  // so the model can follow along, and the server keeps none of it.
+  function load() {
+    try { chats = JSON.parse(localStorage.getItem(K) || '[]'); }
+    catch (e) { chats = []; }
+    if (!Array.isArray(chats)) chats = [];
+  }
+  function save() {
+    try { localStorage.setItem(K, JSON.stringify(chats.slice(0, 50))); }
+    catch (e) { /* private mode, or full -- the chat still works, it just will not persist */ }
+  }
+  function title(t) { return (t || 'New chat').replace(/\\s+/g, ' ').trim().slice(0, 42); }
 
-function turn(who, cls) {
-  const d = document.createElement('div');
-  d.className = 'turn ' + cls;
-  d.innerHTML = '<div class="who"></div><div class="msg"></div>';
-  $('.who', d).textContent = who;
-  log.appendChild(d); log.scrollTop = log.scrollHeight;
-  return d;
-}
-
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const text = promptEl.value.trim();
-  if (!text) return;
-  promptEl.value = ''; promptEl.style.height = 'auto';
-  send.disabled = true;
-  turn('You', 'you').querySelector('.msg').textContent = text;
-
-  const bot = turn('SyMoNeuRaL', 'bot');
-  const msg = $('.msg', bot);
-  msg.innerHTML = '<span class="caret"></span>';
-  status(head, 'generating', true);
-
-  try {
-    const r = await fetch('/api/chat', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        prompt: text,
-        temperature: parseFloat($('#temp').value),
-        max_tokens: parseInt($('#toks').value, 10)
-      })
+  function renderHist() {
+    histEl.innerHTML = '';
+    chats.forEach(function (c, i) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cu-histbtn' + (cur === i ? ' on' : '');
+      b.textContent = c.title;
+      b.addEventListener('click', function () { open(i); });
+      var d = document.createElement('button');
+      d.type = 'button'; d.className = 'cu-del'; d.textContent = '×';
+      d.setAttribute('aria-label', 'Delete this conversation');
+      d.addEventListener('click', function (e) {
+        e.stopPropagation();
+        chats.splice(i, 1);
+        if (cur === i) { cur = null; log.innerHTML = ''; empty.hidden = false; }
+        else if (cur !== null && cur > i) cur--;
+        save(); renderHist();
+      });
+      li.appendChild(b); li.appendChild(d); histEl.appendChild(li);
     });
-    if (!r.ok) {
-      const b = await r.json().catch(() => ({}));
-      throw new Error(b.error || ('HTTP ' + r.status));
+    if (!chats.length) {
+      var p = document.createElement('li');
+      p.className = 'cu-histnone'; p.textContent = 'No conversations yet.';
+      histEl.appendChild(p);
     }
-    // The stream is the point: tokens land as the card produces them.
-    const reader = r.body.getReader(), dec = new TextDecoder();
-    let buf = '', out = '';
-    for (;;) {
-      const {done, value} = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, {stream:true});
-      const lines = buf.split('\\n\\n'); buf = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const ev = JSON.parse(line.slice(5));
-        if (ev.delta) { out += ev.delta; msg.innerHTML = ''; msg.append(out);
-          msg.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
-          log.scrollTop = log.scrollHeight; }
-        if (ev.assist) {
-          // RavenCalc got there first. Show its exact result above the model's answer --
-          // the point is that the algebra was computed, not predicted.
-          const a = ev.assist, c = a.check || {};
-          const box = document.createElement('div');
-          box.className = 'assist';
-          box.innerHTML =
-            '<div class="who">RavenCalc &middot; answered before the model loaded</div>' +
-            '<div class="rows"></div>';
-          const rows = $('.rows', box);
-          const add = (k, v, cls) => {
-            const d = document.createElement('div');
-            d.innerHTML = '<span class="k"></span><span class="' + (cls||'v') + '"></span>';
-            d.querySelector('.k').textContent = k;
-            d.querySelector('span:last-child').textContent = v;
-            rows.appendChild(d);
-          };
-          add('in',  a.input);
-          add('out', a.result);
-          add('chk', c.passed === true ? 'verified \u2014 ' + (c.how || '')
-                   : c.performed ? 'unconfirmed' : 'not checked',
-                   c.passed === true ? 'v' : 'bad');
-          add('cpu', a.ms + ' ms, while the GPU was still loading');
-          bot.parentNode.insertBefore(box, bot);
-        }
-        if (ev.done) {
-          msg.textContent = out;
-          const m = document.createElement('div');
-          m.className = 'meta';
-          m.textContent = `${ev.tokens} tok \\u00b7 ${ev.seconds}s \\u00b7 ${ev.tok_per_s} tok/s \\u00b7 ${ev.model}` +
-                          (ev.adapter ? ' \\u00b7 symoneural adapter' : '');
-          bot.appendChild(m);
-          $('#stat').textContent = `last: ${ev.tok_per_s} tok/s`;
-        }
-      }
-    }
-  } catch (err) {
-    msg.innerHTML = '';
-    msg.append(err.message);
-    msg.style.color = 'var(--amber)';
-  } finally {
-    send.disabled = false; status(head, 'idle', false);
+  }
+
+  function open(i) {
+    cur = i; log.innerHTML = '';
+    chats[i].turns.forEach(function (t) { paint(t.role, t.content); });
+    empty.hidden = chats[i].turns.length > 0;
+    renderHist();
     log.scrollTop = log.scrollHeight;
   }
-});
+
+  document.getElementById('cu-new').addEventListener('click', function () {
+    cur = null; log.innerHTML = ''; empty.hidden = false; box.value = ''; clearFile();
+    renderHist(); box.focus();
+  });
+  document.getElementById('cu-collapse').addEventListener('click', function () {
+    document.getElementById('cu-rail').classList.toggle('shut');
+  });
+
+  // ---------------------------------------------------------------- transcript
+  function paint(role, text) {
+    var wrap = document.createElement('div');
+    wrap.className = 'cu-turn ' + (role === 'user' ? 'you' : 'bot');
+    var who = document.createElement('div');
+    who.className = 'cu-who';
+    who.textContent = role === 'user' ? 'You' : 'SyMoNeuRaL';
+    var msg = document.createElement('div');
+    msg.className = 'cu-msg';
+    msg.textContent = text;
+    wrap.appendChild(who); wrap.appendChild(msg);
+    log.appendChild(wrap);
+    return msg;
+  }
+
+  // ---------------------------------------------------------------- attachments
+  // TEXT ONLY, and the accept list says so. The chat model is Qwen2.5-7B-Instruct with no
+  // vision projector -- it cannot see an image, so an image picker here would be a control
+  // that can never work. The file is read in the browser and its text is prepended to the
+  // prompt; it is never uploaded, because there is no upload endpoint and none is needed.
+  fileEl.addEventListener('change', function () {
+    var f = fileEl.files && fileEl.files[0];
+    if (!f) return clearFile();
+    if (f.size > 200000) {
+      fileName.textContent = f.name + ' is too large (200 KB max)';
+      fileEl.value = ''; attached = null; return;
+    }
+    var r = new FileReader();
+    r.onload = function () {
+      attached = {name: f.name, text: String(r.result).slice(0, 24000)};
+      fileName.textContent = f.name + '  ×';
+    };
+    r.readAsText(f);
+  });
+  fileName.addEventListener('click', clearFile);
+  function clearFile() { attached = null; fileEl.value = ''; fileName.textContent = ''; }
+
+  // ---------------------------------------------------------------- send
+  box.addEventListener('input', function () {
+    box.style.height = 'auto';
+    box.style.height = Math.min(260, box.scrollHeight) + 'px';
+  });
+  box.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (busy) return;
+    var q = box.value.trim();
+    if (!q) return;
+    var sent = q;
+    if (attached) sent = 'File: ' + attached.name + '\\n\\n' + attached.text + '\\n\\n' + q;
+
+    if (cur === null) {
+      chats.unshift({title: title(q), turns: []});
+      cur = 0;
+    }
+    empty.hidden = true;
+    paint('user', attached ? (attached.name + '  —  ' + q) : q);
+    chats[cur].turns.push({role: 'user', content: sent});
+    box.value = ''; box.style.height = 'auto'; clearFile();
+    log.scrollTop = log.scrollHeight;
+
+    var out = paint('assistant', '');
+    busy = true; send.disabled = true; stat.textContent = 'thinking…';
+
+    // Everything before this turn, replayed. The cap matches the server's, so a long chat
+    // is trimmed here rather than refused there.
+    var prior = chats[cur].turns.slice(0, -1).slice(-19);
+
+    fetch('/api/chat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: sent, history: prior,
+                            temperature: 0.7, max_tokens: 512})
+    }).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) {
+        throw new Error(j.detail || j.error || ('HTTP ' + r.status));
+      });
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = '', text = '';
+      return (function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return text;
+          buf += dec.decode(res.value, {stream: true});
+          var parts = buf.split('\\n\\n'); buf = parts.pop();
+          parts.forEach(function (block) {
+            block.split('\\n').forEach(function (line) {
+              if (line.indexOf('data:') !== 0) return;
+              var j; try { j = JSON.parse(line.slice(5)); } catch (e) { return; }
+              if (j.delta) { text += j.delta; out.textContent = text; log.scrollTop = log.scrollHeight; }
+              if (j.done) {
+                // Measured, not claimed -- the server times the card and sends the rate.
+                stat.textContent = j.tokens + ' tokens in ' + j.seconds + 's  ·  '
+                                 + j.tok_per_s + ' tok/s measured on the card'
+                                 + (j.adapter ? '  ·  persona adapter loaded' : '');
+              }
+              if (j.error) throw new Error(j.error);
+            });
+          });
+          return pump();
+        });
+      })();
+    }).then(function (text) {
+      chats[cur].turns.push({role: 'assistant', content: text});
+      if (chats[cur].turns.length === 2) chats[cur].title = title(q);
+      save(); renderHist();
+    }).catch(function (err) {
+      out.textContent = String(err.message || err);
+      out.parentElement.classList.add('failed');
+      stat.textContent = '';
+    }).then(function () {
+      busy = false; send.disabled = false; box.focus();
+    });
+  });
+
+  load(); renderHist();
+})();
 </script>"""
+
+
 
 # ---------------------------------------------------------------- image
 IMAGE_BODY = """    <div class="pgwrap">
