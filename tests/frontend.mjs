@@ -298,12 +298,22 @@ try {
   // happened, because `<section id="console" style=...>` did not match a pattern expecting
   // `">`), the clean URL must actually be served, and the section must fit its viewport
   // with no internal scroll at the size Garrett actually uses.
-  const SPLIT = [['overview', 'hero'], ['livestack', 'rack'],
-                 ['controlboard', 'console'], ['receipts', 'more']];
+  // Two viewports, and the second is the one that constrains the design: 1301x740 is the
+  // tightest the gate allows (584px of panel), so it is where the rack's height budget is
+  // actually decided. Checking only a roomy window would let a regression sit unnoticed
+  // until someone resized -- which is how Live stack came to overflow by 49-77px between
+  // 1301 and 1366 while every measurement taken at 1440 and above looked fine.
+  const SPLIT = [];
+  for (const [w, h] of [[1855, 745], [1301, 740]]) {
+    for (const [slug, keep] of [['overview', 'hero'], ['livestack', 'rack'],
+                                ['controlboard', 'console'], ['receipts', 'more']]) {
+      SPLIT.push([slug, keep, w, h]);
+    }
+  }
   const split = [];
-  for (const [slug, keep] of SPLIT) {
+  for (const [slug, keep, vw, vh] of SPLIT) {
     const probe = await ctx.newPage();
-    await probe.setViewportSize({ width: 1855, height: 745 });
+    await probe.setViewportSize({ width: vw, height: vh });
     const resp = await probe.goto(new URL('/' + slug, BASE).href, { waitUntil: 'networkidle' });
     const m = await probe.evaluate((k) => {
       const ids = ['hero', 'rack', 'console', 'more'];
@@ -313,7 +323,7 @@ try {
                fits: e ? e.scrollHeight <= e.clientHeight + 1 : false,
                content: e ? e.scrollHeight : 0, panel: e ? e.clientHeight : 0 };
     }, keep);
-    split.push({ slug, status: resp ? resp.status() : 0, ...m });
+    split.push({ slug: `${slug}@${vw}x${vh}`, status: resp ? resp.status() : 0, ...m });
     await probe.close();
   }
   record('each section has its own URL, carrying only itself, fitting one screen',

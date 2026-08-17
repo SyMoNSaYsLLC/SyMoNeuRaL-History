@@ -1786,26 +1786,38 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      The rest has to come from spacing, and ONLY from spacing -- every word stays.
      Measured budget: 8 units x 47 = 376 + chassis 71 = 447, so the heading, the footnote
      and the padding have to fit in ~140px between them. */
-  html.ns :is(#rack,#console,#more){padding-top:14px; padding-bottom:12px}
+  html.ns :is(#rack,#console,#more){padding-top:12px; padding-bottom:6px}
   html.ns :is(#rack,#console,#more) > .wrap > .shead{margin-top:0}
-  html.ns #rack .units{gap:3px}
+  html.ns #rack .units{gap:2px}
   /* A unit's height floor is not its text -- it is the 27px power glyph plus padding
      (27 + 2px border + 18px padding = 47px), which is why an earlier padding-only trim
      moved nothing. Both come down together, and only in this layout. */
   html.ns #rack .unit{padding:7px 14px}
   html.ns #rack .pwr{width:21px; height:21px}
   html.ns #rack .pwr svg{width:13px; height:13px}
-  html.ns #rack .rackrow{margin-top:6px}
+  html.ns #rack .rackrow{margin-top:3px}
   /* The rack frame's own chrome: 34px of margin above it, 18px of padding top and bottom,
      and the chassis strip's 15px lead. None of it is content, and together it is ~100px of
      a 589px budget. The frame, the rails and the etched traces all survive at these values
      -- it reads as a rack, just a shallower one. */
-  html.ns #rack .rack{margin-top:8px; padding:8px 0}
-  html.ns #rack .chassis{margin-top:6px; padding:8px 28px 2px}
+  html.ns #rack .rack{margin-top:6px; padding:6px 0}
+  html.ns #rack .chassis{margin-top:4px; padding:6px 22px 2px}
+  /* Below ~1400px the chassis strip's readings wrap to a second line -- 68px at 1440,
+     119px at 1366 -- and that 51px was the whole reason Live stack overflowed there. The
+     units are not the problem: they are a constant 37px at every width.
+
+     So the rack column gets the width back. The gutters are 236px of fixed column holding
+     renders capped at 268px, and narrowing them to 190px hands the rack ~92px without
+     removing a render or a word of its provenance line. The renders get shorter with the
+     column (367px -> ~295px), which costs nothing: the row's height is set by the rack,
+     which is taller than either of them. A tighter gap on the strip buys the rest. */
+  html.ns #rack .rackrow{grid-template-columns:190px minmax(0,1fr) 190px; gap:24px}
+  html.ns #rack .rackrow .gart{max-width:190px}
+  html.ns #rack .chassis{gap:18px}
   /* The lede is the one long paragraph in each heading. It stays on the page and stays
      whole -- it just sits beside the title (see the inline rules above) at a size that
      does not cost three rows. */
-  html.ns :is(#rack,#console,#more) > .wrap > .sub{font-size:12.4px; line-height:1.5}
+  html.ns :is(#rack,#console,#more) > .wrap > .sub{font-size:12px; line-height:1.45}
   html.ns :is(#rack,#console,#more) > .wrap > .sub::after{height:6px}
   html.ns #rack > .wrap:last-child{margin-top:4px}
   html.ns #rack .tnote{margin:0}
