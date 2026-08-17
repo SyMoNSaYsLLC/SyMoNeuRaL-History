@@ -1289,3 +1289,53 @@
   overflow-wrap:break-word;
 }
 .mn-note:empty{display:none}
+
+/* ---- SyMoNeuRaL Tuner ------------------------------------------------------
+   `tn-` prefixed, all grepped against both stylesheets first: zero prior definitions.
+   These were missing entirely when the page shipped, so the form rendered as raw
+   unstyled HTML -- inputs and buttons on one run-together line. */
+.tn-tabs{display:flex; gap:8px; margin:0 0 16px}
+.tn-tab{
+  padding:8px 14px; cursor:pointer; font:600 12.5px/1 inherit; color:var(--dim);
+  background:var(--panel2); border:1px solid var(--line); border-radius:999px;
+  transition:color .14s ease, border-color .14s ease;
+}
+.tn-tab:hover{color:var(--fg)}
+.tn-tab.on{color:var(--accent); border-color:rgba(46,224,138,.45); background:var(--panel)}
+.tn-tab:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+.tn-load{display:block}
+.tn-fields{display:grid; gap:10px; margin-bottom:16px}
+.tn-fields label{
+  display:block; margin-bottom:-4px; color:var(--faint);
+  font:600 11px/1 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.07em;
+  text-transform:uppercase;
+}
+.tn-fields input{
+  width:100%; padding:11px 13px; background:var(--bg); color:var(--fg);
+  border:1px solid var(--line); border-radius:9px;
+  font:14px/1.4 ui-monospace,Menlo,Consolas,monospace;
+}
+.tn-fields input:focus{outline:none; border-color:rgba(46,224,138,.5)}
+.tn-fields[hidden]{display:none}
+
+.tn-note{
+  margin:16px 0 0; color:var(--dim); font-size:13px; line-height:1.6;
+  overflow-wrap:break-word;
+}
+.tn-list{
+  list-style:none; margin:18px 0 0; padding:0; max-height:420px; overflow-y:auto;
+  border-top:1px solid var(--line);
+}
+.tn-list:empty{border-top:0}
+.tn-list li{
+  display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+  padding:9px 2px; border-bottom:1px solid var(--line);
+}
+.tn-list b{color:var(--fg); font-size:13.5px; font-weight:600; overflow-wrap:anywhere}
+/* The group wraps rather than truncating: it is the only thing distinguishing two
+   channels with the same name, so an ellipsis here loses the distinction. */
+.tn-list span{
+  flex:0 1 auto; text-align:right; color:var(--faint);
+  font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:anywhere;
+}

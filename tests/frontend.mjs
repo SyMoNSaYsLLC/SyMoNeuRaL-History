@@ -181,6 +181,41 @@ try {
   });
   record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
 
+  // ---- the tuner form is styled, and posts to routes that exist ----------
+  // Two bugs shipped together on this page. The `tn-` CSS was never written, so the form
+  // rendered as raw unstyled HTML; and the JS posted to /api/tuner/channels, which no
+  // router serves, so it fell through to the static mount at "/" and came back 405 Method
+  // Not Allowed -- a confusing way to be told the URL is wrong. This asserts the styling
+  // exists AND that every endpoint the page names is really served.
+  await page.goto(new URL('/tuner.html', BASE).href, { waitUntil: 'networkidle' });
+  const tuner = await page.evaluate(async () => {
+    const tab = document.querySelector('.tn-tab');
+    const inp = document.querySelector('.tn-fields input');
+    if (!tab || !inp) return { ok: false, why: 'tuner form markup missing' };
+    const styled = parseFloat(getComputedStyle(tab).borderRadius) > 0
+                && parseFloat(getComputedStyle(inp).paddingLeft) > 0;
+    // The endpoints are READ OUT OF THE PAGE'S OWN SCRIPT, not hardcoded here. An earlier
+    // version of this test listed the two correct paths and probed the API directly --
+    // which passed happily while the page went on posting to a path that did not exist,
+    // so it did not catch the bug it was written for. What matters is that whatever the
+    // page actually calls is routed.
+    const src = [...document.querySelectorAll('script')].map(s => s.textContent).join('\n');
+    const paths = [...new Set([...src.matchAll(/['"](\/api\/tuner\/[a-z\/]+)['"]/g)].map(m => m[1]))];
+    if (!paths.length) return { ok: false, why: 'the page names no /api/tuner endpoint' };
+    const codes = {};
+    for (const name of paths) {
+      const r = await fetch(name, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      codes[name] = r.status;
+    }
+    const routed = Object.values(codes).every(c => c !== 405 && c !== 404);
+    return { ok: styled && routed,
+             why: `styled=${styled}, ` + Object.entries(codes)
+                   .map(([k, v]) => `${k.replace('/api/tuner', '')}=${v}`).join(' ') };
+  });
+  record('the tuner form is styled and its endpoints are routed', tuner.ok, tuner.why);
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+
   // ---- .card is not redefined out from under the rest of the site ---------
   // `.card` was defined twice: the general card near the top of the stylesheet, and the
   // homepage receipts grid written as a bare `.card` further down, which therefore won

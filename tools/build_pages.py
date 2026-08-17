@@ -937,9 +937,13 @@ TUNER_JS = """<script>
     try { localStorage.setItem(K, JSON.stringify(c)); } catch (e2) { /* private mode */ }
     st.textContent = 'loading'; list.innerHTML = ''; note.textContent = 'Fetching\u2026';
 
+    // Two different endpoints, not one. Posting to a path the router does not serve
+    // falls through to the static mount at "/", which answers 405 Method Not Allowed --
+    // a confusing way to be told the URL is wrong.
+    var url  = c.mode === 'm3u' ? '/api/tuner/playlist' : '/api/tuner/xtream/channels';
     var body = c.mode === 'm3u' ? {url: c.url}
-             : {server: c.host, username: c.user, password: c.pass};
-    fetch('/api/tuner/channels', {
+             : {server: c.host, username: c.user, password: c.pass, kinds: ['live']};
+    fetch(url, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body)
     }).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
@@ -947,8 +951,10 @@ TUNER_JS = """<script>
         if (!res.ok) throw new Error(res.j.error || res.j.detail || 'load failed');
         var ch = res.j.channels || [];
         st.textContent = ch.length ? ch.length + ' channels' : 'empty';
-        note.textContent = ch.length ? 'Loaded from your playlist. Nothing was stored here.'
-                                     : 'That playlist parsed but contained no channels.';
+        var notes = (res.j.notes || []).join(' ');
+        note.textContent = (ch.length ? 'Loaded from your playlist. Nothing was stored here.'
+                                      : 'That playlist parsed but contained no channels.')
+                           + (notes ? '  ' + notes : '');
         list.innerHTML = ch.slice(0, 400).map(function (c2) {
           return '<li><b></b><span></span></li>'; }).join('');
         list.querySelectorAll('li').forEach(function (li, i) {
