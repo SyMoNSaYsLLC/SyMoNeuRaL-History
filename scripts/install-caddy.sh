@@ -33,7 +33,18 @@ say "Preflight"
 [ -f "$ROOT/ops/Caddyfile" ] || { echo "FAIL: $ROOT/ops/Caddyfile missing"; exit 1; }
 echo "  webroot   $WEBROOT ($(find "$WEBROOT" -maxdepth 1 -type f | wc -l) files)"
 
-if curl -fsS -m 5 "http://$API/api/status" >/dev/null 2>&1; then
+# Retried, not probed once. `systemctl restart symoneural-api` returns as soon as systemd
+# has forked the unit, several seconds BEFORE uvicorn binds the port -- so the obvious
+# invocation, `systemctl restart ... && ./install-caddy.sh`, reliably raced this check and
+# printed "api DOWN" about an API that answered 200 later in the same run. That is not a
+# harmless false alarm: this branch offers a 5-second abort, so it invites the operator to
+# cancel a healthy deployment.
+api_up=0
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS -m 3 "http://$API/api/status" >/dev/null 2>&1; then api_up=1; break; fi
+  sleep 1
+done
+if [ "$api_up" = 1 ]; then
   echo "  api       up on $API"
 else
   echo "  api       DOWN on $API -- the static site will serve, but every surface will 502."
