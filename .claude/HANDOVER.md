@@ -214,7 +214,45 @@ to start.
 7. **`references/nx-master/`** as the server frontend reference.
 8. **Audit the other agent's CUDA work** against the cuda-samples layout, the Python tooling,
    the cpp libraries and `references/reading/cuda-programming-guide.pdf`.
-9. **Containerise the serving stack with Podman + CDI.** Garrett asked for this explicitly
+12. **Split `api.py` by concern, and put the engines behind an interface.** Garrett asked
+    for this and the shape is agreed; it was deferred only because it would have been the
+    seventh structural move of one long session.
+
+    `api.py` is 1,573 lines and the mass is not where you would guess: roughly 1,060 lines
+    of GPU/engine lifecycle, 186 of rate limiting, 92 of schemas, 91 of routes, 87 of
+    websocket. So a thin `main.py -> server.py -> api.py` chain would produce three files
+    and the same monolith. Split by concern instead, which is what llama.cpp does — its
+    `main.cpp` is five lines and the work lives in `server-context`, `server-http`,
+    `server-queue`, `server-task`, `server-chat` (all readable in
+    `contrib/llama.cpp/tools/server/`).
+
+    Target shape:
+    ```
+    backend/main.py        uvicorn entrypoint
+    backend/app.py         FastAPI app, middleware, the static mount
+    backend/engines/       llamacpp.py, sdcpp.py -- behind ONE interface
+    backend/gpu.py         governor integration, eviction, residency
+    backend/routes/        chat, image, calc, remix, status, gen
+    backend/limits.py      throttling
+    backend/schemas.py     pydantic models
+    backend/live.py        the websocket hub
+    ```
+
+    **`backend/engines/` is the part with commercial value**, and it is the reason to do
+    this at all. `LLAMA_SERVER` and `SD_CLI` are currently hardcoded paths, so supporting
+    vLLM means editing the API. A customer with an A100 wants vLLM's throughput; a customer
+    with a consumer card wants llama.cpp. The rack, the governor and the routes should not
+    know which is running.
+
+    **Do it with the test suite as the safety net**: `node tests/frontend.mjs` passes 9/9
+    today, and it asserts on rendered DOM rather than on endpoints, so it will catch a
+    broken split. Run it after every extraction, not at the end.
+
+    Note when moving `api.py`: `HERE`/`ROOT` are derived from `__file__`, and `GOVERNOR`,
+    `LLAMA_SERVER`, `SD_CLI`, `MODELS` and `GALLERY` all hang off it. That calculation has
+    been wrong four times in this repo. Assert the root, as the generators and scripts now do.
+
+10. **Fix the `deploy.sh` subshell bug** (§1). Garrett asked for this explicitly
    and his reasoning is sound: the whole project is NVIDIA-bound, so learning the container
    path now is better than learning it under delivery pressure. He saved a reference at
    `Support for Container Device Interface — NVIDIA Container Toolkit.mhtml`.
