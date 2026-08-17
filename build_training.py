@@ -102,7 +102,10 @@ def main() -> int:
         (r"\bMIT AI Training\b", "SyMoNeuRaL Training"),
         (r"\bConsolidated manual\b", "Local AI engineering"),
         (r"\bConsolidated Manual\b", "Local AI Engineering"),
-        (r"/home/google/MIT_AI_Training/MIT_AI_Training", "/opt/symoneural"),
+        # Scrub whatever absolute path this checkout happens to live at, rather than a
+        # hardcoded one -- hardcoding meant the scrub silently stopped working the
+        # moment the repo moved, which is exactly when a dev path would leak.
+        (re.escape(str(ROOT)), "/opt/symoneural"),
         (r"~/MIT_AI_Training/MIT_AI_Training", "~/symoneural"),
         (r"\bMIT_AI_Training\b", "symoneural"),
     ]

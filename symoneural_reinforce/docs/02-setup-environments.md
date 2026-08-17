@@ -11,8 +11,8 @@ Repository layout, the pristine-vs-isolated venv policy, and the per-sample runn
 Every command in this document uses these two variables. Set them once:
 
 ```bash
-export CUDA_SAMPLES=/home/google/MIT_AI_Training/MIT_AI_Training/cuda-samples
-export VENVS=/home/google/MIT_AI_Training/MIT_AI_Training/venvs   # isolated environments
+export CUDA_SAMPLES=/home/google/Symoneural/cuda-samples
+export VENVS=/home/google/Symoneural/venvs   # isolated environments
 ```
 
 ## Repository layout — and what changed

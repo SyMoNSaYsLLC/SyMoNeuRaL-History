@@ -2,7 +2,7 @@ Paste this to the fresh agent as its first message.
 
 Start the session from the project directory:
 
-    cd /home/google/MIT_AI_Training/MIT_AI_Training && claude --dangerously-skip-permissions
+    cd /home/google/Symoneural && claude --dangerously-skip-permissions
 
 ------------------------------------------------------------------------------
 PROMPT — copy everything below this line

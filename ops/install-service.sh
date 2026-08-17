@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the SyMoNeuRaL API as a system service.
 #
-#     sudo /home/google/MIT_AI_Training/MIT_AI_Training/ops/install-service.sh
+#     sudo ./ops/install-service.sh    (from the repo root)
 #
 # After this the API starts on boot, restarts on crash, and is managed with systemctl
 # rather than a shell script. It replaces symoneural.sh for anything production (that script stays for manual control).
@@ -15,7 +15,14 @@ ROTATE=/etc/logrotate.d/symoneural
 [ "$(id -u)" -eq 0 ] || { echo "run me with sudo" >&2; exit 1; }
 
 echo "installing unit -> $UNIT"
-install -m 644 -o root -g root "$HERE/symoneural-api.service" "$UNIT"
+# The unit in the repo is a template: systemd cannot express a relative path, so the
+# repo root is substituted at install time from where this script actually lives. That
+# is what lets the checkout be cloned anywhere and still produce a correct unit.
+ROOT="$(cd "$HERE/.." && pwd)"
+sed "s|@@ROOT@@|$ROOT|g" "$HERE/symoneural-api.service" > "$UNIT.tmp"
+install -m 644 -o root -g root "$UNIT.tmp" "$UNIT"
+rm -f "$UNIT.tmp"
+echo "  unit points at $ROOT"
 
 # The app writes its own log alongside the journal; rotate it so a busy night cannot fill
 # the disk the site is served from.

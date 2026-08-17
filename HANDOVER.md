@@ -268,7 +268,7 @@ to start.
    The fix is one flag once you get there — bind-mount the run directory so both sides see the
    same lock:
    ```bash
-   -v /home/google/MIT_AI_Training/MIT_AI_Training/run:/app/run
+   -v /home/google/Symoneural/run:/app/run
    ```
    Simplest correct design is one container holding every GPU surface, which matches the
    one-tenant-at-a-time architecture anyway. If surfaces are ever split across containers, the

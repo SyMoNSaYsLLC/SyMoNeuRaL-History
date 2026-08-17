@@ -163,7 +163,7 @@ CUDA driver version (user-mode): 13.3
 CUDA driver version (kernel-mode): 610.57.4
 NVML version: (13, 610, 57, 4)
 Driver branch: r610_85
-Current process: /home/google/MIT_AI_Training/MIT_AI_Training/cuda-samples/python/.venv/bin/python
+Current process: /home/google/Symoneural/cuda-samples/python/.venv/bin/python
 
 ======================================================================
 Devices detected: 1

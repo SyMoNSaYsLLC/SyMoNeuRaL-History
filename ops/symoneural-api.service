@@ -1,4 +1,7 @@
 [Unit]
+# TEMPLATE. @@ROOT@@ is replaced with the repo root by ops/install-service.sh at
+# install time. systemd has no notion of a relative path, so this is the only way the
+# unit can live in a repo that gets cloned anywhere.
 Description=SyMoNeuRaL inference API (chat, image, calc, remix)
 Documentation=https://symoneural.com/docs
 # The GPU has to be there before we start; nvidia-persistenced keeps the driver initialised
@@ -13,14 +16,14 @@ Before=caddy.service
 Type=exec
 User=google
 Group=google
-WorkingDirectory=/home/google/MIT_AI_Training/MIT_AI_Training
+WorkingDirectory=@@ROOT@@
 
 # A crash or an unclean shutdown leaves the governor lock directory behind. The pid inside
 # it is dead, so the next acquire would break it anyway -- but doing it here means the very
 # first request after a restart is not delayed by a stale-lock poll, and the rack does not
 # briefly show a holder that no longer exists.
-ExecStartPre=-/usr/bin/env bash -c '/home/google/MIT_AI_Training/MIT_AI_Training/gpu-governor.sh release chat >/dev/null 2>&1; /home/google/MIT_AI_Training/MIT_AI_Training/gpu-governor.sh release image >/dev/null 2>&1 || true'
-ExecStart=/usr/bin/python3 /home/google/MIT_AI_Training/MIT_AI_Training/api.py
+ExecStartPre=-/usr/bin/env bash -c '@@ROOT@@/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/gpu-governor.sh release image >/dev/null 2>&1 || true'
+ExecStart=/usr/bin/python3 @@ROOT@@/api.py
 # Give in-flight generations a chance to finish rather than cutting a visitor off mid-answer.
 # Slightly above the 120 s job timeout so a job that is already doomed is not waited on twice.
 TimeoutStopSec=140
@@ -28,7 +31,7 @@ KillMode=mixed
 KillSignal=SIGTERM
 # The engines are children in their own process groups; make sure nothing survives us
 # holding several gigabytes of VRAM.
-ExecStopPost=-/usr/bin/env bash -c 'pkill -f "[l]lama-server"; pkill -f "[s]d-cli"; /home/google/MIT_AI_Training/MIT_AI_Training/gpu-governor.sh release chat >/dev/null 2>&1; /home/google/MIT_AI_Training/MIT_AI_Training/gpu-governor.sh release image >/dev/null 2>&1 || true'
+ExecStopPost=-/usr/bin/env bash -c 'pkill -f "[l]lama-server"; pkill -f "[s]d-cli"; @@ROOT@@/gpu-governor.sh release chat >/dev/null 2>&1; @@ROOT@@/gpu-governor.sh release image >/dev/null 2>&1 || true'
 
 Restart=always
 RestartSec=3

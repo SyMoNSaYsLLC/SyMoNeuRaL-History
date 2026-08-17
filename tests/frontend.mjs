@@ -8,7 +8,14 @@
 //
 // Uses the system Chrome (channel: 'chrome') so no browser download is needed.
 
-import { chromium } from '/home/google/MIT_AI_Training/MIT_AI_Training/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
+// Playwright lives in the llama.cpp web UI's node_modules, installed when that UI was
+// built. Resolved relative to this file so the repo can be cloned anywhere.
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
+const { chromium } = createRequire(import.meta.url)(
+  join(REPO, 'llama.cpp/tools/ui/node_modules/playwright'));
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8800';
 const SHOTS = process.env.SHOT_DIR || '/tmp/symoneural-shots';

@@ -210,8 +210,8 @@ The practical ceiling on this card is a **14B at Q4/Q6, or a 32B at IQ2**.
 Every command in this document uses these two variables. Set them once:
 
 ```bash
-export CUDA_SAMPLES=/home/google/MIT_AI_Training/MIT_AI_Training/cuda-samples
-export VENVS=/home/google/MIT_AI_Training/MIT_AI_Training/venvs   # isolated environments
+export CUDA_SAMPLES=/home/google/Symoneural/cuda-samples
+export VENVS=/home/google/Symoneural/venvs   # isolated environments
 ```
 
 ## Repository layout — and what changed
@@ -7675,7 +7675,7 @@ CUDA driver version (user-mode): 13.3
 CUDA driver version (kernel-mode): 610.57.4
 NVML version: (13, 610, 57, 4)
 Driver branch: r610_85
-Current process: /home/google/MIT_AI_Training/MIT_AI_Training/cuda-samples/python/.venv/bin/python
+Current process: /home/google/Symoneural/cuda-samples/python/.venv/bin/python
 
 ======================================================================
 Devices detected: 1

@@ -31,6 +31,7 @@ import random
 import re
 
 HERE = pathlib.Path(__file__).resolve().parent
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 ROOT = HERE.parent.parent
 
 IDENTITY = (
@@ -233,7 +234,9 @@ def manual_pairs(limit: int = 320) -> list[tuple[str, str]]:
         # Drop MIT-era branding from anything that reaches the model.
         title = re.sub(r"\bMIT AI Training\b", "SyMoNeuRaL Training", title)
         body = re.sub(r"\bMIT AI Training\b", "SyMoNeuRaL Training", body)
-        body = re.sub(r"/home/google/MIT_AI_Training/MIT_AI_Training", "/opt/symoneural", body)
+        # Whatever path this checkout lives at, not a hardcoded one: the corpus is
+        # what the model repeats back, so a leaked dev path becomes a leaked answer.
+        body = re.sub(re.escape(str(REPO_ROOT)), "/opt/symoneural", body)
         body = body[:1600].rsplit("\n", 1)[0]
 
         clean = title.rstrip(":").strip()

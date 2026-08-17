@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install or repair the web server for symoneural.com.
 #
-#   sudo /home/google/MIT_AI_Training/MIT_AI_Training/ops/install-caddy.sh
+#   sudo ./ops/install-caddy.sh      (from the repo root)
 #
 # NOTE: this already ran on this box on 2026-08-16. Caddy is serving symoneural.com and
 # apache2 is disabled. This script is kept because it is idempotent and is what you would

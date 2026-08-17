@@ -2,7 +2,7 @@
 # Publish the staged site to /var/www/symoneural.
 #
 # Needs root because the webroot is www-data owned. Run it with sudo:
-#     sudo /home/google/MIT_AI_Training/MIT_AI_Training/deploy.sh
+#     sudo ./deploy.sh          (from the repo root)
 #
 # Backs up the current index.html to a fresh timestamped name every time. It never touches
 # index.backup-20260816-141604.html -- that is the 419 KB original training page and the only
