@@ -205,6 +205,18 @@ still open — two different `site/reinforce.html` files exist, the LoRA trainin
 and whatever `worktree-reinforce-rl` carries. Somebody has to say which surface Reinforce is
 before that lands.**
 
+**A fifth branch appeared mid-merge and is NOT merged: `tuner-transcode`.** It is
+`worktree-online-apps-audit` *rebased* (`a84800e`, "Rebase onto the committed tuner work"), and
+since the pre-rebase branch is already in `main` as part of `5662390`, merging it replays the
+same work against a moved base. It conflicts in `docs/specs/README.md` and 7 hunks of
+`docs/specs/online-apps-audit.md` — every one of them that-session-vs-that-session. **Left
+alone deliberately: that session should say whether its rebased branch supersedes what landed,
+or whether the two are the same content twice.** Attempted, inspected, `git merge --abort`ed;
+`main` is untouched by it.
+
+`worktree-project-page` also pushed one more commit after its first merge (`0ea9cb8`, a
+cache-bust assertion) and that one merged clean — `852d24c`.
+
 #### Three things learned doing it, that the next merger will otherwise re-learn
 
 - **Merge in a temp worktree, never in `main`'s working copy.** `git worktree add
