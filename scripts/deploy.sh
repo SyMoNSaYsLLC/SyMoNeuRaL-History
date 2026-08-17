@@ -63,6 +63,56 @@ find "$SRC" -maxdepth 1 -type f -regex "$PUBLISH" \
 # the API, which is the thing this deployment is not supposed to do.
 echo "deployed to $DST"
 
+
+# --- orphans -----------------------------------------------------------------
+# This script copies; it has never deleted. So every rename leaves its old file in the
+# webroot forever: 19 generated renders (13 MB) that moved to backend/output/, six
+# superseded index backups, and a static docs/ directory that Caddy now shadows by
+# proxying /docs to FastAPI. Report them every time, delete only when asked.
+echo
+echo "checking for files in the webroot that are no longer in site/:"
+orphans=0
+orphan_list="$(mktemp)"
+# An orphan is a webroot file that this deploy would not have published -- tested against
+# the same PUBLISH filter, not merely against "does it exist in site/". Those differ now
+# that site/ is allowed to hold files the webroot must not: openapi.json is proxied to
+# FastAPI, and the art-*.json are build-time metadata. Testing presence alone would leave
+# every already-published copy of them in the webroot forever, never updated, never removed.
+#
+# The backup taken at the top of this run is exempt. It is written into the webroot and has
+# no counterpart in site/, so a naive check prunes the one file that exists to undo a bad
+# deploy, in the same run that created it.
+find "$DST" -maxdepth 1 -type f -printf '%f\n' | sort | while read -r f; do
+  [ "$f" = "index.prev-$STAMP.html" ] && continue
+  if [ -f "$SRC/$f" ] && printf '%s\n' "$SRC/$f" | grep -qx -e "$PUBLISH"; then
+    continue
+  fi
+  echo "$f"
+done > "$orphan_list"
+orphans="$(wc -l < "$orphan_list")"
+
+if [ "$orphans" -eq 0 ] && [ ! -d "$DST/docs" ]; then
+  echo "  none"
+else
+  sed 's/^/  orphan  /' "$orphan_list"
+  [ -d "$DST/docs" ] && echo "  orphan  docs/            (a directory -- /docs is proxied to the API now)"
+  if [ "${1:-}" = "--prune" ]; then
+    echo
+    while read -r f; do rm -f -- "$DST/$f"; done < "$orphan_list"
+    [ -d "$DST/docs" ] && rm -rf -- "$DST/docs"
+    echo "  pruned $orphans file(s)$([ -d "$DST/docs" ] || echo ' and docs/')"
+  else
+    echo
+    echo "  left in place. Remove them with:  sudo $0 --prune"
+  fi
+fi
+rm -f "$orphan_list"
+
+# Orphans are removed BEFORE the reference check, not after. The check tests $DST, so a
+# page referencing a file that lives only in the webroot would be reported "ok" and then
+# deleted by the prune in the same run -- the check passing on a state that no longer
+# exists by the time the script exits. Pruning first means it verifies what is actually
+# being served.
 echo
 echo "verifying every local asset reference resolves on disk:"
 # Fragment links (href="/#build") are in-page anchors, not files -- excluding '#' keeps
@@ -88,39 +138,13 @@ while read -r ref; do
   else
     printf '  MISSING %s\n' "$ref"; missing=$((missing + 1))
   fi
+#
+# The `?v=<hash>` cache-busting suffix is stripped before the file is looked up. Without
+# that, every stylesheet and script reference became "MISSING symoneural.css?v=90b254cb57"
+# and the script exited 1 on a deploy that was completely correct -- a verification step
+# that fails on healthy input gets switched off, and then it protects nothing.
 done < <(grep -ohE '(src|href)="/[^"#]+"' "$DST"/*.html \
-         | sed 's/.*"\/\(.*\)"/\1/' | sort -u)
-
-# --- orphans -----------------------------------------------------------------
-# This script copies; it has never deleted. So every rename leaves its old file in the
-# webroot forever: 19 generated renders (13 MB) that moved to backend/output/, six
-# superseded index backups, and a static docs/ directory that Caddy now shadows by
-# proxying /docs to FastAPI. Report them every time, delete only when asked.
-echo
-echo "checking for files in the webroot that are no longer in site/:"
-orphans=0
-orphan_list="$(mktemp)"
-find "$DST" -maxdepth 1 -type f -printf '%f\n' | sort | while read -r f; do
-  [ -f "$SRC/$f" ] || echo "$f"
-done > "$orphan_list"
-orphans="$(wc -l < "$orphan_list")"
-
-if [ "$orphans" -eq 0 ] && [ ! -d "$DST/docs" ]; then
-  echo "  none"
-else
-  sed 's/^/  orphan  /' "$orphan_list"
-  [ -d "$DST/docs" ] && echo "  orphan  docs/            (a directory -- /docs is proxied to the API now)"
-  if [ "${1:-}" = "--prune" ]; then
-    echo
-    while read -r f; do rm -f -- "$DST/$f"; done < "$orphan_list"
-    [ -d "$DST/docs" ] && rm -rf -- "$DST/docs"
-    echo "  pruned $orphans file(s)$([ -d "$DST/docs" ] || echo ' and docs/')"
-  else
-    echo
-    echo "  left in place. Remove them with:  sudo $0 --prune"
-  fi
-fi
-rm -f "$orphan_list"
+         | sed 's/.*"\/\(.*\)"/\1/' | sed 's/?.*$//' | sort -u)
 
 echo
 if [ "$missing" -gt 0 ]; then

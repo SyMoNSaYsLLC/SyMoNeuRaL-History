@@ -26,26 +26,29 @@ conversation, so every number, path and decision you need is stated here.
 
 ---
 
-## 0b. DO THIS FIRST — the live calc surface is broken
+## 0b. DO THIS FIRST — the site on disk is ahead of the site being served
 
 ```bash
-sudo systemctl restart symoneural-api
 sudo /home/google/Symoneural/scripts/deploy.sh --prune
 ```
+Then reload symoneural.com with **Ctrl-Shift-R**. The stale copy already in a browser was
+fetched before assets were cache-busted, so its HTML still points at unstamped URLs and it
+will keep using the cached stylesheet until it is forced past it. Every deploy after this
+one updates by itself.
 
-`https://symoneural.com/api/ravencalc` currently returns `RavenCalc is unavailable.` The
-service has been running since 00:19, and `ravencalc.py` moved to
-`backend/apps/ravencalc/` after that — so the process is holding a `sys.path` that no
-longer points anywhere. The code on disk is correct: a fresh container returns exact
-SymPy for the same request. **A restart fixes it; nothing needs editing.**
+`--prune` matters here: the webroot holds 34 files this deploy will not publish — 19
+generated renders (13 MB) that moved to `backend/output/`, six superseded index backups,
+`calc.html` from before the ravencalc rename, and `openapi.json` plus six `art-*.json`
+that are build-time metadata Caddy has no business serving. `deploy.sh` prunes before it
+verifies, so the reference check reports on what is actually being served.
 
-The deploy publishes the new constellation band and prunes 26 orphaned files from the
-webroot.
+**The API is current.** The service was restarted at 01:03 (PID 170388) and
+`/api/ravencalc` returns exact SymPy. `tests/frontend.mjs` is 13/13 against it.
 
-**The general lesson, which bit twice tonight:** a running Python process pins its
-import paths and its resolved `pathlib` constants at start. Moving files under a live
-service leaves it working until it touches the moved thing, which is the worst way to
-find out. After any move, restart the service and hit the surface you moved.
+**The general lesson, which bit twice:** a running Python process pins its import paths
+and its resolved `pathlib` constants at start. Moving files under a live service leaves it
+working until it touches the moved thing, which is the worst way to find out. After any
+move, restart the service and hit the surface you moved.
 
 ## 1. The deploy blocker — resolved, and it was not the password
 
