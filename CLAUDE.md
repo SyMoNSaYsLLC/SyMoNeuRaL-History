@@ -91,6 +91,32 @@ These are the product, not decoration. The site's entire argument is that its nu
   `built on Qwen2.5-7B-Instruct` down to `…7B-Ins…`, and that attribution is an Apache-2.0
   licence condition. Every ellipsis rule has been removed. Do not add one back; let it wrap.
 
+## What is SyMoNeuRaL's, and must never be published
+
+The stack is off-the-shelf and permissively licensed, so nothing here is protected by a
+licence. Two artefacts are protected only by not being public, and trade secret — unlike
+copyright — exists only while reasonable measures are taken to keep it that way. Once it is
+out, it cannot be pulled back.
+
+- **`training/corpus.jsonl`** — 327 hand-authored examples: the company voice, what the model
+  may claim, and what it must refuse to invent (the pricing refusal is trained in, not
+  prompted).
+- **`training/build_dataset.py`** — the method that produces it.
+- **`training/adapter/`** weights — already gitignored (`*.safetensors`, `*.gguf`).
+
+**Never copy any of these into `site/`, never serve them from an endpoint, and never quote
+their contents into a page or a commit message.** An agent asked to "publish the manual" could
+reasonably mistake the corpus for documentation. It is not: it is the recipe for the product.
+`MIT_AI_Training.md` is the manual and is publishable; the corpus is not.
+
+The line that resolves this against the site's transparency argument: **publish the numbers,
+keep the methods.** "151 tok/s on a 7B Q4_K_M, measured here" is the sales argument and gives
+away nothing. How the adapter was built is the asset. The site promises measurement, not open
+source, and has never promised the recipe.
+
+There is currently **no git remote** — history never leaves this box, which is doing a lot of
+the protecting. If one is ever added, audit what is tracked first.
+
 ## Build and deploy
 
 ```bash
