@@ -59,6 +59,16 @@ RACK = f"""{BEGIN}
       A unit reading offline is telling you the truth as well: nothing here is lit for effect.
     </p>
 
+    <!-- The fold control for the one-screen layout. It is a real <button> with aria-pressed
+         rather than a CSS-only checkbox trick, because the state has to be announced. It is
+         only shown when the one-screen layout is on: on a scrolling page there is nothing to
+         save and hiding the attribution would be pure loss. console.js owns the behaviour
+         and remembers the choice. -->
+    <p class="rk-tools">
+      <button type="button" class="rk-fold" id="rk-fold" aria-pressed="false"
+              aria-controls="units">Show what each unit is running</button>
+    </p>
+
   </div>
 
   <div class="rackrow">

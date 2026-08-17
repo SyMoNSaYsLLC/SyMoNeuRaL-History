@@ -263,5 +263,33 @@
     }
   });
 
+  // ---- the rack's fold control -------------------------------------------
+  // In the one-screen layout the rack cannot fit with every unit's attribution on screen
+  // (units 611px + chassis 71px against 584-589px of panel), so that line is collapsed by
+  // default there and this puts it back. It is a fold, not a truncation: the text is intact
+  // in the DOM and one click away, and the control is hidden entirely below the gate, where
+  // the page scrolls and there is nothing to save.
+  //
+  // This attaches even though renderRack() rewrites #units on every update -- the class
+  // lives on #rack, the container, which is never rewritten. Toggling a descendant's class
+  // here would be undone by the next status push.
+  var FOLD_KEY = 'symoneural.rack.detail';
+  var foldBtn = el('rk-fold'), rackSec = document.getElementById('rack');
+  if (foldBtn && rackSec) {
+    var setFold = function (open) {
+      rackSec.classList.toggle('rk-open', open);
+      foldBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+      foldBtn.textContent = open ? 'Hide what each unit is running'
+                                 : 'Show what each unit is running';
+      try { localStorage.setItem(FOLD_KEY, open ? '1' : '0'); } catch (e) {}
+    };
+    var remembered = '0';
+    try { remembered = localStorage.getItem(FOLD_KEY) || '0'; } catch (e) {}
+    setFold(remembered === '1');
+    foldBtn.addEventListener('click', function () {
+      setFold(!rackSec.classList.contains('rk-open'));
+    });
+  }
+
   if (el('units') || el('m-vram')) connect();
 })();

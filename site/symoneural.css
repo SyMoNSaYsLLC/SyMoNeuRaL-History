@@ -405,6 +405,7 @@
   .pwr svg{width:13px; height:13px; display:block}
 
   .uname{min-width:0}
+  .rk-tools{display:none}
   .uname b{display:block; font-size:12.8px; font-weight:620; letter-spacing:-.005em; color:var(--fg)}
   .uname span{
     display:block; margin-top:3px; color:var(--faint);
@@ -1729,6 +1730,77 @@
   /* The control board: 19 modules at six columns is four rows. auto-fit takes it to three
      rows on any in-gate width and to two on a wide monitor. */
   html.ns .console{grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+
+  /* The rack, without hiding anything. A unit's name and its attribution are stacked --
+     `b` is display:block -- which costs a second line on all eight. Put them on ONE row
+     and the unit drops from ~76px to ~44px, saving ~256px across the rack, with every
+     character still on screen.
+
+     That distinction matters here rather than being a nicety: this line carries
+     `built on Qwen2.5-7B-Instruct`, which is an Apache-2.0 attribution condition. Geometry
+     can buy the space, so the licence obligation does not go behind a click. It also stays
+     honest at narrow widths -- the attribution simply wraps to a second line, as it does
+     today, because nothing here truncates.
+
+     Scoped to the .uname column only. The rack's LEDs, bus plate and state readout are
+     siblings and keep their own layout. */
+  html.ns .rack .uname{display:flex; flex-wrap:wrap; align-items:baseline; gap:0 10px}
+  html.ns .rack .uname b{display:inline}
+
+  /* ---- the fold, which is the only thing left that closes the gap ----------
+     Geometry runs out here. The rack's floor with every attribution on screen is units 611
+     + chassis 71 = 682px, against 589px at Garrett's own window and 584px at the tightest
+     in-gate viewport. Nothing short of hiding something fits, so per-unit detail folds
+     behind a control -- collapsed by default in this layout, one click from being back,
+     never truncated. That is the fold `.claude/CLAUDE.md` permits; the ellipsis it forbids
+     would have destroyed the same text instead of parking it.
+
+     THE ATTRIBUTION IS THE THING BEING FOLDED, so weigh it before changing this: the line
+     carries `built on Qwen2.5-7B-Instruct`, an Apache-2.0 condition. A disclosure control
+     keeps it published and reachable; it is not the same as dropping it. If that reading is
+     ever judged too thin, the fallback is to raise the gate's min-height so the rack always
+     fits expanded, and accept a scrolling page on short windows.
+
+     Only inside the one-screen layout. On a scrolling page there is nothing to save and
+     this would be pure loss, which is why .rk-tools is display:none below the gate. */
+  html.ns .rk-tools{display:block; margin:10px 0 0}
+  html.ns .rk-fold{
+    cursor:pointer; border:1px solid var(--line); background:var(--panel2); color:var(--dim);
+    border-radius:999px; padding:6px 14px; font:600 11.5px/1 inherit; letter-spacing:.01em;
+  }
+  html.ns .rk-fold:hover{color:var(--fg); border-color:var(--accent)}
+  html.ns .rk-fold:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  html.ns .rk-fold[aria-pressed="true"]{color:var(--accent); border-color:var(--accent)}
+  /* Collapsed is the default in this layout; console.js adds .rk-open when the operator
+     asks for detail, and remembers it. */
+  html.ns .rack .uname > span{display:none}
+  html.ns #rack.rk-open .rack .uname > span{display:inline}
+
+  /* ---- density, once folding has done what it can ---------------------------
+     Folding flattens a unit to one line (47px) but cannot go further, and at 1855x745 the
+     rack was still 824px against 589px: heading 136, rackrow 576, footnote 38, padding 48.
+     The rest has to come from spacing, and ONLY from spacing -- every word stays.
+     Measured budget: 8 units x 47 = 376 + chassis 71 = 447, so the heading, the footnote
+     and the padding have to fit in ~140px between them. */
+  html.ns :is(#rack,#console,#more){padding-top:18px; padding-bottom:16px}
+  html.ns :is(#rack,#console,#more) > .wrap > .shead{margin-top:0}
+  html.ns #rack .units{gap:5px}
+  html.ns #rack .unit{padding:9px 14px}
+  html.ns #rack .rackrow{margin-top:10px}
+  /* The rack frame's own chrome: 34px of margin above it, 18px of padding top and bottom,
+     and the chassis strip's 15px lead. None of it is content, and together it is ~100px of
+     a 589px budget. The frame, the rails and the etched traces all survive at these values
+     -- it reads as a rack, just a shallower one. */
+  html.ns #rack .rack{margin-top:12px; padding:10px 0}
+  html.ns #rack .chassis{margin-top:8px; padding:10px 28px 2px}
+  /* The lede is the one long paragraph in each heading. It stays on the page and stays
+     whole -- it just sits beside the title (see the inline rules above) at a size that
+     does not cost three rows. */
+  html.ns :is(#rack,#console,#more) > .wrap > .sub{font-size:12.4px; line-height:1.5}
+  html.ns :is(#rack,#console,#more) > .wrap > .sub::after{height:8px}
+  /* The fold control goes on the heading row rather than under it: at wide widths the
+     units are already one line, so the button saved nothing and cost its own 40px. */
+  html.ns .rk-tools{display:inline; margin:0 0 0 12px}
 
   /* The receipts: eight cards, and the minimum is set so all eight reach ONE row on a wide
      screen. At minmax(228px,...) a 1855px window fitted seven, putting one card on a
