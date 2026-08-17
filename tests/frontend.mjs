@@ -146,6 +146,64 @@ try {
   });
   record('the watermark is readable as text without opening the render', prov.ok, prov.why);
 
+  // ---- the lightbox's provenance claim tracks the file, not the page ------
+  // It says "the strip along the bottom is printed into the file". Only build_gallery.py
+  // burns a strip; a render from /api/gen has none. Asserting it unconditionally would put
+  // a false provenance claim on the one feature whose entire purpose is provenance, so the
+  // claim is derived from the file's own shape -- the bar makes it taller than it is wide.
+  // A square stand-in stands for an API render here; the real thing is 768x768 too.
+  const claim = await page.evaluate(async () => {
+    const a = document.querySelector('a.gart, a.art');
+    if (!a) return { ok: false, why: 'no lightbox-able render' };
+    const href = a.getAttribute('href');
+    const read = async () => {
+      a.click();
+      const im = document.querySelector('.lightbox img');
+      await new Promise(r => im.complete ? r() : im.addEventListener('load', r, { once: true }));
+      await new Promise(r => setTimeout(r, 120));
+      const t = document.querySelector('.lb-meta').textContent;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await new Promise(r => setTimeout(r, 80));
+      return { t, w: im.naturalWidth, h: im.naturalHeight };
+    };
+    const tall = await read();
+    // a 2x2 square PNG: same shape as an unstamped API render, no network needed
+    a.setAttribute('href', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAAB'
+      + 'ytg0kAAAAEklEQVR42mP8z8BQz0AEYBxVSF+FABJADveWkH6oAAAAAElFTkSuQmCC');
+    const square = await read();
+    a.setAttribute('href', href);
+    const said = s => s.includes('printed into the file');
+    return {
+      ok: said(tall.t) && !said(square.t) && /seconds, start to finish/.test(square.t),
+      why: `${tall.w}x${tall.h} claims the strip: ${said(tall.t)}; `
+         + `${square.w}x${square.h} claims it: ${said(square.t)} (must be false, timing kept)`,
+    };
+  });
+  record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
+
+  // ---- .card is not redefined out from under the rest of the site ---------
+  // `.card` was defined twice: the general card near the top of the stylesheet, and the
+  // homepage receipts grid written as a bare `.card` further down, which therefore won
+  // everywhere. Eleven cards on documentation.html were silently wearing the receipts
+  // styling. This asserts the two components stay distinguishable, which is the property
+  // that broke -- not the specific values.
+  await page.goto(new URL('/documentation.html', BASE).href, { waitUntil: 'networkidle' });
+  const genCards = await page.evaluate(() => {
+    const out = { outside: null, n: 0 };
+    for (const el of document.querySelectorAll('.card')) {
+      if (el.closest('.cards')) continue;
+      const cs = getComputedStyle(el);
+      out.n++;
+      out.outside = out.outside || { display: cs.display, padding: cs.padding };
+    }
+    return out;
+  });
+  record('a .card outside the receipts grid keeps its own styling',
+         genCards.n > 0 && genCards.outside?.display === 'block',
+         genCards.n ? `${genCards.n} general cards, display:${genCards.outside.display} `
+                    + `padding:${genCards.outside.padding}` : 'no general .card found');
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+
   // ---- the receipts grid, and the order page it feeds ----------------------
   const cards = await page.$$eval('#more .card', els => els.map(e => ({
     tag: e.querySelector('.ctag')?.textContent.trim(),

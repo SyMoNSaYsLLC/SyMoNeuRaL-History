@@ -62,6 +62,7 @@
   if (!links.length) return;
 
   var box, img, cap, meta, opener;
+  var generation = 0;   // bumped per open, so a stale image load cannot rewrite the caption
 
   function build() {
     box = document.createElement('div');
@@ -95,11 +96,31 @@
     // burned into the PNG by tools/build_gallery.py and already names the model, size,
     // steps, seed and seconds; printing the same line underneath would read as a page
     // caption *about* the image rather than as something the file itself carries.
+    //
+    // Whether there IS a strip is measured, not assumed. Only build_gallery.py burns one;
+    // a render that came back from /api/gen has none, and telling a visitor to look at a
+    // strip that is not there would be a false provenance claim on the one feature whose
+    // entire purpose is provenance. Every render the lightbox is currently bound to
+    // (a.art, a.gart -- all art-*.png) does carry one, so this is a guard against the
+    // claim becoming false rather than a fix for it being false today. The signal is the
+    // file's own shape: the bar makes it taller than it is wide, where an unstamped render
+    // is square. That survives a rename, which a path check would not.
     var secs = a.getAttribute('data-secs');
-    meta.textContent = secs
-      ? 'The strip along the bottom is printed into the file, not added by this page. '
-        + secs + ' seconds, start to finish, on the card in the rack below.'
-      : '';
+    // `open` can run again before a slow image has loaded, and a {once:true} listener that
+    // never fired stays attached -- so without this token a stale listener would later
+    // write the previous render's caption over the current one.
+    var mine = ++generation;
+    var say = function () {
+      if (mine !== generation) return;
+      var stamped = img.naturalWidth > 0 && img.naturalHeight > img.naturalWidth;
+      meta.textContent = !secs ? ''
+        : stamped
+          ? 'The strip along the bottom is printed into the file, not added by this page. '
+            + secs + ' seconds, start to finish, on the card in the rack below.'
+          : secs + ' seconds, start to finish, on the card in the rack below.';
+    };
+    meta.textContent = '';
+    if (img.complete) say(); else img.addEventListener('load', say, { once: true });
     box.classList.add('on');
     document.documentElement.style.overflow = 'hidden';
     box.querySelector('.lb-close').focus();
