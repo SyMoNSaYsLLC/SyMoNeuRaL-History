@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""SyMoNeuRaL -- one command over the whole local stack.
+
+Three surfaces share one workstation, and they do not share it equally:
+
+    chat    llama.cpp + Qwen2.5-14B Q4_K_M     ~9 GB of VRAM, needs the card
+    image   stable-diffusion.cpp + FLUX.1-schnell q4_k   ~7 GB, needs the card
+    calc    ravencalc + sympy                  exact, CPU only, needs nothing
+
+The first two cannot be resident at the same time in 15.92 GiB, so every GPU
+operation here goes through the governor, which serialises them and -- more
+importantly -- waits for the driver to actually return the memory between
+tenants. The third does not touch the GPU at all and therefore never queues:
+that asymmetry is a fact about the work, not an implementation detail, and the
+CLI is shaped to make it visible.
+
+Deliberately stdlib-only apart from sympy, which the system interpreter already
+carries. Nothing here may be installed into the pinned base environment.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+MODELS = ROOT / "models"
+RUN = HERE / "run"
+GOVERNOR = HERE / "gpu-governor.sh"
+
+LLAMA_BIN = HERE / "llama.cpp" / "build" / "bin"
+SD_BUILD = HERE / "stable-diffusion.cpp" / "build" / "bin"
+
+# The resident workhorse, and the base the SyMoNeuRaL adapter is trained against. The 14B is
+# the heavy tier -- better answers, ~98 tok/s instead of ~170, and no adapter.
+CHAT_MODEL = MODELS / "llm" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+CHAT_MODEL_HEAVY = MODELS / "llm" / "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+# Present once the fine-tune has run; served as an adapter rather than merged so the base
+# weights stay shared and reverting is a flag rather than a redeploy.
+CHAT_ADAPTER = HERE / "training" / "adapter" / "symoneural-lora.gguf"
+FLUX_UNET = MODELS / "image" / "flux1-schnell-q4_k.gguf"
+FLUX_VAE = MODELS / "image" / "ae.safetensors"
+FLUX_CLIP = MODELS / "image" / "clip_l.safetensors"
+FLUX_T5 = MODELS / "image" / "t5xxl-Q8_0.gguf"
+
+CHAT_PORT = 8081
+CHAT_PIDFILE = RUN / "chat.pid"
+
+# Measured on this machine. Everything derived below uses these rather than
+# vendor figures -- see the site's hardware section for the provenance.
+MEASURED_DRAM_GBS = 752.0
+MEASURED_H2D_GBS = 6.94
+KV_RESERVE = 0.35  # held back from the weights budget for KV cache + activations
+
+BOLD, DIM, GREEN, AMBER, OFF = "\033[1m", "\033[2m", "\033[32m", "\033[33m", "\033[0m"
+
+
+def _tty() -> bool:
+    return sys.stdout.isatty()
+
+
+def c(text: str, colour: str) -> str:
+    return f"{colour}{text}{OFF}" if _tty() else text
+
+
+def smi(field: str) -> str:
+    """One field out of nvidia-smi, or '' if the driver will not say."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", f"--query-gpu={field}", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return out.stdout.strip().splitlines()[0].strip()
+    except Exception:
+        return ""
+
+
+def sd_binary() -> Path | None:
+    """stable-diffusion.cpp renamed its CLI mid-flight; accept either name."""
+    for name in ("sd-cli", "sd"):
+        candidate = SD_BUILD / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def governor(*args: str, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run([str(GOVERNOR), *args], text=True, check=False)
+
+
+# --------------------------------------------------------------------------
+# status / residency
+# --------------------------------------------------------------------------
+
+def cmd_status(_args) -> int:
+    total = smi("memory.total") or "?"
+    used = smi("memory.used") or "?"
+    free = smi("memory.free") or "?"
+    resident = (RUN / "resident").read_text().strip() if (RUN / "resident").exists() else "none"
+    locked = (RUN / "gpu.lock.d").exists()
+
+    print(f"{c('device', DIM)}             {smi('name') or 'unknown'}")
+    print(f"{c('vram', DIM)}               {used} / {total} MiB used, {c(free + ' MiB free', GREEN)}")
+    print(f"{c('power', DIM)}              {smi('power.draw') or '?'} W   {smi('temperature.gpu') or '?'} C")
+    print(f"{c('resident surface', DIM)}   {resident}")
+    print(f"{c('gpu lock', DIM)}           {c('HELD', AMBER) if locked else 'free'}")
+    print()
+    print(f"{c('chat', DIM)}   {'built' if (LLAMA_BIN / 'llama-server').exists() else c('not built', AMBER)}"
+          f"   {'weights present' if CHAT_MODEL.exists() else c('weights missing', AMBER)}")
+    sdb = sd_binary()
+    print(f"{c('image', DIM)}  {'built' if sdb else c('not built', AMBER)}"
+          f"   {'weights present' if FLUX_UNET.exists() else c('weights missing', AMBER)}")
+    print(f"{c('calc', DIM)}   always available {c('(cpu, no gpu, never queues)', DIM)}")
+    return 0
+
+
+def cmd_residency(_args) -> int:
+    """The residency plan, computed rather than asserted.
+
+    Every figure here comes from the device or from a measured constant. Load
+    times are weight bytes over the *measured* 6.94 GB/s pinned H2D rate, not
+    the 7.88 GB/s the Gen 3 x8 link is theoretically worth.
+    """
+    free_mib = float(smi("memory.free") or 0)
+    total_mib = float(smi("memory.total") or 0)
+    free_gib = free_mib / 1024
+    budget_gib = (total_mib / 1024) * (1 - KV_RESERVE)
+    resident = (RUN / "resident").read_text().strip() if (RUN / "resident").exists() else "none"
+
+    print(f"free                 {c(f'{free_gib:.1f} GiB', GREEN)}")
+    print(f"weights budget       {c(f'{budget_gib:.1f} GiB', GREEN)}   "
+          f"{c(f'({int(KV_RESERVE * 100)}% reserved for KV + activations)', DIM)}")
+    print(f"resident surface     {c(resident, GREEN)}")
+    print(f"headroom             {c(f'{max(0.0, free_gib - budget_gib):.1f} GiB', GREEN)}")
+    print()
+
+    costs = []
+    for label, path in (("chat", CHAT_MODEL), ("image", FLUX_UNET)):
+        if path.exists():
+            gb = path.stat().st_size / 1e9
+            costs.append(f"{label} {c(f'{gb / MEASURED_H2D_GBS * 1000:.0f} ms', AMBER)}")
+    if costs:
+        print("swap cost            " + "   ".join(costs) +
+              f"   {c(f'(over the measured {MEASURED_H2D_GBS} GB/s host link)', DIM)}")
+    print(f"resident : host      {c(f'{MEASURED_DRAM_GBS / MEASURED_H2D_GBS:.0f}x', GREEN)}"
+          f"   {c(f'({MEASURED_DRAM_GBS:.0f} GB/s on-card vs {MEASURED_H2D_GBS} GB/s across PCIe)', DIM)}")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# chat
+# --------------------------------------------------------------------------
+
+SYSTEM_PROMPT = (
+    "You are SyMoNeuRaL, running locally on the workstation you are being asked about. "
+    "Answer concisely and concretely. These are the machine's measured figures, and you may "
+    "cite them: NVIDIA RTX 5070 Ti, Blackwell sm_120, 70 SMs x 128 = 8,960 CUDA cores, "
+    "15.92 GiB VRAM (15,858 MB), 256-bit bus at 14,001 MHz, 896.1 GB/s theoretical DRAM "
+    "bandwidth, ~752 GB/s measured (~84% of peak), 48 MB L2, PCIe Gen 3 x8 host cap "
+    "(device supports Gen 5) giving ~6.94 GB/s H2D and ~7.20 GB/s D2H pinned. Decode is "
+    "memory-bandwidth bound: every token reads the full weight set once, so tokens/second "
+    "is roughly bandwidth divided by weight bytes. Do not invent numbers you were not given."
+)
+
+
+def chat_running() -> bool:
+    if not CHAT_PIDFILE.exists():
+        return False
+    try:
+        os.kill(int(CHAT_PIDFILE.read_text().strip()), 0)
+        return True
+    except Exception:
+        return False
+
+
+def cmd_stop_chat(_args) -> int:
+    if CHAT_PIDFILE.exists():
+        try:
+            os.kill(int(CHAT_PIDFILE.read_text().strip()), 15)
+        except Exception:
+            pass
+        CHAT_PIDFILE.unlink(missing_ok=True)
+    subprocess.run(["pkill", "-f", "llama-server"], check=False)
+    return 0
+
+
+def cmd_chat(args) -> int:
+    server = LLAMA_BIN / "llama-cli"
+    if not server.exists():
+        print("chat engine is not built yet -- run the build first", file=sys.stderr)
+        return 1
+    prompt = args.prompt or sys.stdin.read().strip()
+    if not prompt:
+        print("nothing to say", file=sys.stderr)
+        return 2
+
+    model = CHAT_MODEL_HEAVY if args.heavy else CHAT_MODEL
+    if not model.exists():
+        print(f"weights missing: {model}", file=sys.stderr)
+        return 1
+
+    cmd = [
+        str(server), "-m", str(model),
+        "-ngl", "99", "--no-warmup",
+        "-sys", SYSTEM_PROMPT,
+        "-p", prompt,
+        "-n", str(args.max_tokens), "--temp", str(args.temperature),
+        # -st exits after one turn. -no-cnv alone still drops into the interactive UI in
+        # this build and waits on stdin, which is an unbounded hang inside a governor hold.
+        "-no-cnv", "-st",
+    ]
+    # The adapter only matches the 7B base it was trained on; asking llama.cpp to apply it to
+    # the 14B would be a rank/shape error, so it is simply not offered there.
+    if not args.heavy and not args.no_adapter and CHAT_ADAPTER.exists():
+        cmd += ["--lora", str(CHAT_ADAPTER)]
+    started = time.time()
+    rc = subprocess.run([str(GOVERNOR), "with", "chat", "--", *cmd], check=False).returncode
+    print(f"\n{c(f'{time.time() - started:.1f}s wall clock', DIM)}", file=sys.stderr)
+    return rc
+
+
+# --------------------------------------------------------------------------
+# image
+# --------------------------------------------------------------------------
+
+def cmd_image(args) -> int:
+    sdb = sd_binary()
+    if not sdb:
+        print("image engine is not built yet -- run the build first", file=sys.stderr)
+        return 1
+    missing = [str(p) for p in (FLUX_UNET, FLUX_VAE, FLUX_CLIP, FLUX_T5) if not p.exists()]
+    if missing:
+        print("weights missing:\n  " + "\n  ".join(missing), file=sys.stderr)
+        return 1
+
+    out = Path(args.output).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        str(sdb),
+        "--diffusion-model", str(FLUX_UNET),
+        "--vae", str(FLUX_VAE),
+        "--clip_l", str(FLUX_CLIP),
+        "--t5xxl", str(FLUX_T5),
+        "-p", args.prompt,
+        "--cfg-scale", "1.0",          # schnell is distilled; cfg above 1 degrades it
+        "--sampling-method", "euler",
+        "--steps", str(args.steps),
+        "-W", str(args.size), "-H", str(args.size),
+        "-o", str(out),
+        "--seed", str(args.seed),
+    ]
+    if args.clip_on_cpu:
+        # --clip-on-cpu is deprecated in current sd.cpp; te=cpu is the replacement. Tiling
+        # and flash attention are what make 768x768 fit at all on 15.92 GiB.
+        cmd += ["--backend", "te=cpu"]
+    cmd += ["--vae-tiling", "--diffusion-fa"]
+
+    started = time.time()
+    rc = subprocess.run([str(GOVERNOR), "with", "image", "--", *cmd], check=False).returncode
+    elapsed = time.time() - started
+    if rc == 0 and out.exists():
+        print(f"{c(str(out), GREEN)}  {out.stat().st_size / 1024:.0f} KB  "
+              f"{args.size}x{args.size}  {args.steps} steps  seed {args.seed}  "
+              f"{c(f'{elapsed:.1f}s', AMBER)}")
+    return rc
+
+
+# --------------------------------------------------------------------------
+# calc -- no GPU, no lock, no queue
+# --------------------------------------------------------------------------
+
+def cmd_calc(args) -> int:
+    sys.path.insert(0, str(ROOT))
+    try:
+        import ravencalc
+    except ImportError as exc:
+        print(f"ravencalc is not importable: {exc}", file=sys.stderr)
+        return 1
+
+    doc = {"schema": "ravencalc/request/v1", "operation": args.operation,
+           "expression": args.expression}
+    if args.variable:
+        doc["variable"] = args.variable
+    if args.point:
+        doc["point"] = args.point
+
+    try:
+        result = ravencalc.run_request(doc)
+    except ravencalc.RavenCalcError as exc:
+        print(json.dumps(exc.as_record(), indent=2) if args.json else f"refused: {exc}",
+              file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    print(f"{c('in ', DIM)} {result['input'].get('text')}")
+    print(f"{c('out', DIM)} {c(str(result['result'].get('text')), GREEN)}")
+    check = result.get("check") or {}
+    if check.get("performed"):
+        verdict = {True: c("verified", GREEN), False: c("FAILED", AMBER)}.get(
+            check.get("passed"), c("unconfirmed", AMBER))
+        print(f"{c('chk', DIM)} {verdict} {c('-- ' + str(check.get('how', '')), DIM)}")
+    print(f"{c('eng', DIM)} {result.get('engine')}  {c('exact' if result.get('exact') else 'symbolic', DIM)}")
+    return 0
+
+
+# --------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="symoneural", description="One command over the local SyMoNeuRaL stack.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("status", help="device, surfaces and lock state").set_defaults(fn=cmd_status)
+    sub.add_parser("residency", help="the residency plan, computed live").set_defaults(fn=cmd_residency)
+
+    p = sub.add_parser("chat", help="ask the local model (takes the GPU)")
+    p.add_argument("prompt", nargs="?")
+    p.add_argument("-n", "--max-tokens", type=int, default=512)
+    p.add_argument("-t", "--temperature", type=float, default=0.7)
+    p.add_argument("--heavy", action="store_true", help="use the 14B tier instead of the 7B")
+    p.add_argument("--no-adapter", action="store_true", help="serve the stock base model")
+    p.set_defaults(fn=cmd_chat)
+
+    p = sub.add_parser("image", help="generate an image (takes the GPU)")
+    p.add_argument("prompt")
+    p.add_argument("-o", "--output", default=str(RUN / "out.png"))
+    p.add_argument("--steps", type=int, default=4)
+    p.add_argument("--size", type=int, default=768, choices=(512, 768, 1024))
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--clip-on-cpu", action="store_true", default=True)
+    p.set_defaults(fn=cmd_image)
+
+    p = sub.add_parser("calc", help="exact mathematics (cpu, never queues)")
+    p.add_argument("operation", choices=sorted(
+        ("differentiate", "integrate", "limit", "series", "solve", "simplify", "evaluate")))
+    p.add_argument("expression")
+    p.add_argument("-v", "--variable")
+    p.add_argument("--point")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_calc)
+
+    sub.add_parser("_stop-chat").set_defaults(fn=cmd_stop_chat)
+
+    args = parser.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

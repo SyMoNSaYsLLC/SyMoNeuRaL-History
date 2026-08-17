@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL Chat — talk to the box</title>
+<meta name="description" content="A 7B running locally on an RTX 5070 Ti. Nothing leaves the machine.">
+<link rel="stylesheet" href="/symoneural.css">
+<link rel="stylesheet" href="/rack-detail.css">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0e100f">
+</head>
+<body>
+
+<div class="status">
+  <div class="wrap">
+    <b><s></s>Under Construction</b>
+    <span>Active infrastructure development in progress. This playground runs on one
+    consumer GPU &mdash; be kind to it.</span>
+  </div>
+</div>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <a class="live" href="/chat.html"><s></s>Talk to the box</a>
+      <a class="live" href="/image.html"><s></s>Make it draw</a>
+      <a href="/calc.html">RavenCalc</a>
+      <a href="/remix.html">Remix</a>
+      <a href="/#build">Build</a>
+      <a href="/#hardware">Hardware</a>
+      <a class="cta ghost" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" style="padding:56px 0 26px">
+  <div class="wrap">
+    <p class="eyebrow"><img src="/chat-64.png" alt="" width="20" height="20"
+       style="display:inline-block;vertical-align:-4px;margin-right:8px">Live surface</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">Talk to the box.</h1>
+    <p class="lede" style="font-size:16.5px">This is a 7B at Q4 on the RTX 5070 Ti described on the home page, streaming tokens as the card produces them. The tokens-per-second under each answer is measured, not claimed.</p>
+  </div>
+</div>
+
+<section style="border-top:0;padding-top:0">
+  <div class="wrap">
+    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="chead"><s></s>SyMoNeuRaL Chat
+          <span class="grow">idle</span></div>
+        <div class="body" id="log">
+          <div class="turn bot">
+            <div class="who">SyMoNeuRaL</div>
+            <div class="msg">Ask me about this machine, what we build, or local AI engineering generally. I run on the RTX 5070 Ti described on the home page &mdash; nothing you type here leaves the box.</div>
+          </div>
+        </div>
+        <form class="composer" id="form">
+          <textarea id="prompt" rows="1" maxlength="1200" placeholder="Why is decode memory-bandwidth bound?"></textarea>
+          <button class="cta" id="send" type="submit">Send</button>
+        </form>
+      </div>
+
+      <aside class="panel">
+        <h3>Parameters</h3>
+        <div class="ctl">
+          <label for="temp">Temperature <b id="tempv">0.7</b></label>
+          <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.7">
+        </div>
+        <div class="ctl">
+          <label for="toks">Max tokens <b id="toksv">320</b></label>
+          <input type="range" id="toks" min="16" max="512" step="16" value="320">
+        </div>
+        <p class="hint">
+          Low temperature keeps it factual; high makes it wander. Both are clamped server-side
+          &mdash; the sliders describe the range, they do not define it.
+        </p>
+        <p class="hint" id="stat">&nbsp;</p>
+      </aside>
+    </div>
+
+    <div class="callout" style="margin-top:34px">
+      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <p>
+        Chat and image never run at the same time here. A lock hands the GPU to exactly one
+        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
+        once &mdash; and when they swap, we wait for the driver to actually hand the memory
+        back before the next one starts. If you are queued behind someone, that is not a bug;
+        it is one card doing one thing at a time.
+      </p>
+      <p>
+        <strong>RavenCalc is the exception</strong> &mdash; it is SymPy on the CPU, so it never
+        touches the GPU and never queues. Everything here is a demonstration of the stack on
+        the smallest machine we would ever ship, not a statement of capacity. A server we spec
+        for you would not be sharing one GPU with itself.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+      <img src="/mark-32.png" alt="" width="22" height="22">
+      <b style="font-size:14.5px;color:var(--fg)">SyMoNeu<i style="font-style:normal;color:var(--accent)">RaL</i></b>
+    </a>
+    <span>&copy; SymonSays LLC &middot; <a href="mailto:symonsayadmin@symoneural.com"
+      style="color:var(--dim);text-decoration:none">symonsayadmin@symoneural.com</a></span>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/training.html">Training</a>
+      <a href="/#hardware">Hardware</a>
+      <a href="/#inference">Inference</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Shared helpers. Every bound below is also enforced on the server -- these exist to make
+// the UI honest about the limits, not to be the limits.
+const $ = (s, r=document) => r.querySelector(s);
+function status(el, text, busy) {
+  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
+  const grow = $('.grow', el); if (grow) grow.textContent = text;
+}
+async function api(path, payload) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
+  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+  return body;
+}
+</script>
+<script src="/console.js" defer></script>
+<script>
+const log = $('#log'), form = $('#form'), promptEl = $('#prompt'), send = $('#send');
+const head = $('#chead');
+for (const [id, out] of [['temp','tempv'],['toks','toksv']])
+  $('#'+id).addEventListener('input', e => $('#'+out).textContent = e.target.value);
+
+promptEl.addEventListener('input', () => {
+  promptEl.style.height = 'auto';
+  promptEl.style.height = Math.min(150, promptEl.scrollHeight) + 'px';
+});
+promptEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+});
+
+function turn(who, cls) {
+  const d = document.createElement('div');
+  d.className = 'turn ' + cls;
+  d.innerHTML = '<div class="who"></div><div class="msg"></div>';
+  $('.who', d).textContent = who;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = promptEl.value.trim();
+  if (!text) return;
+  promptEl.value = ''; promptEl.style.height = 'auto';
+  send.disabled = true;
+  turn('You', 'you').querySelector('.msg').textContent = text;
+
+  const bot = turn('SyMoNeuRaL', 'bot');
+  const msg = $('.msg', bot);
+  msg.innerHTML = '<span class="caret"></span>';
+  status(head, 'generating', true);
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        prompt: text,
+        temperature: parseFloat($('#temp').value),
+        max_tokens: parseInt($('#toks').value, 10)
+      })
+    });
+    if (!r.ok) {
+      const b = await r.json().catch(() => ({}));
+      throw new Error(b.error || ('HTTP ' + r.status));
+    }
+    // The stream is the demo: tokens land as the card produces them.
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = '', out = '';
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split('\n\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const ev = JSON.parse(line.slice(5));
+        if (ev.delta) { out += ev.delta; msg.innerHTML = ''; msg.append(out);
+          msg.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+          log.scrollTop = log.scrollHeight; }
+        if (ev.assist) {
+          // RavenCalc got there first. Show its exact result above the model's answer --
+          // the point of the demo is that the algebra was computed, not predicted.
+          const a = ev.assist, c = a.check || {};
+          const box = document.createElement('div');
+          box.className = 'assist';
+          box.innerHTML =
+            '<div class="who">RavenCalc &middot; answered before the model loaded</div>' +
+            '<div class="rows"></div>';
+          const rows = $('.rows', box);
+          const add = (k, v, cls) => {
+            const d = document.createElement('div');
+            d.innerHTML = '<span class="k"></span><span class="' + (cls||'v') + '"></span>';
+            d.querySelector('.k').textContent = k;
+            d.querySelector('span:last-child').textContent = v;
+            rows.appendChild(d);
+          };
+          add('in',  a.input);
+          add('out', a.result);
+          add('chk', c.passed === true ? 'verified — ' + (c.how || '')
+                   : c.performed ? 'unconfirmed' : 'not checked',
+                   c.passed === true ? 'v' : 'bad');
+          add('cpu', a.ms + ' ms, while the GPU was still loading');
+          bot.parentNode.insertBefore(box, bot);
+        }
+        if (ev.done) {
+          msg.textContent = out;
+          const m = document.createElement('div');
+          m.className = 'meta';
+          m.textContent = `${ev.tokens} tok \u00b7 ${ev.seconds}s \u00b7 ${ev.tok_per_s} tok/s \u00b7 ${ev.model}` +
+                          (ev.adapter ? ' \u00b7 symoneural adapter' : '');
+          bot.appendChild(m);
+          $('#stat').textContent = `last: ${ev.tok_per_s} tok/s`;
+        }
+      }
+    }
+  } catch (err) {
+    msg.innerHTML = '';
+    msg.append(err.message);
+    msg.style.color = 'var(--amber)';
+  } finally {
+    send.disabled = false; status(head, 'idle', false);
+    log.scrollTop = log.scrollHeight;
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL API — Reference</title>
+<meta name="description" content="REST and WebSocket reference for the SyMoNeuRaL local inference API.">
+<link rel="stylesheet" href="/swagger-ui.css">
+<link rel="stylesheet" href="/symoneural.css">
+<link rel="stylesheet" href="/rack-detail.css">
+<link rel="stylesheet" href="/swagger-dark.css">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0e100f">
+</head>
+<body>
+
+<div class="status">
+  <div class="wrap">
+    <b><s></s>Under Construction</b>
+    <span>Active infrastructure development in progress. This API runs on one consumer GPU.</span>
+  </div>
+</div>
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL"
+           width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <a class="live" href="/chat.html"><s></s>Talk to the box</a>
+      <a class="live" href="/image.html"><s></s>Make it draw</a>
+      <a href="/calc.html">RavenCalc</a>
+      <a href="/#rack">Stack</a>
+      <a class="cta ghost" href="/openapi.json">openapi.json</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap" style="padding-top:26px">
+  <p class="eyebrow"><img src="/terminal-64.png" alt="" width="20" height="20"
+     style="display:inline-block;vertical-align:-4px;margin-right:8px">API Reference</p>
+  <h1 style="margin:0;font-size:clamp(26px,3.4vw,38px);letter-spacing:-.022em;font-weight:680">
+    SyMoNeuRaL API</h1>
+
+  <div class="console" style="margin-top:20px">
+    <div class="mod" data-src="live"><div class="tag"><s></s>VRAM free</div>
+      <div class="val" id="m-vram">&mdash;</div><div class="sub">of 15.92 GiB</div>
+      <div class="meter" id="m-vrambar"><i style="width:0%"></i></div></div>
+    <div class="mod" data-src="live"><div class="tag"><s></s>Power draw</div>
+      <div class="val" id="m-pwr">&mdash;</div><div class="sub">300 W limit</div>
+      <div class="meter" id="m-pwrbar"><i style="width:0%"></i></div></div>
+    <div class="mod" data-src="live"><div class="tag"><s></s>Resident</div>
+      <div class="val sm" id="m-holder">idle</div><div class="sub">one surface at a time</div></div>
+    <div class="mod" data-src="live"><div class="tag"><s></s>Queue</div>
+      <div class="val" id="m-queue">0</div><div class="sub">jobs waiting</div></div>
+    <div class="mod" data-src="measured"><div class="tag"><s></s>Rate limit</div>
+      <div class="val">6<u>/min</u></div><div class="sub">60/hour &middot; per address</div></div>
+    <div class="mod" data-src="measured"><div class="tag"><s></s>Prompt cap</div>
+      <div class="val">1,200</div><div class="sub">chars &middot; refused, not truncated</div></div>
+  </div>
+
+  <div class="callout" style="margin-top:22px">
+    <h3>Prefer the socket to the poller</h3>
+    <p>
+      <code style="color:var(--dim)">GET /api/ws</code> upgrades to a WebSocket and then stays
+      quiet until the machine actually changes &mdash; one handshake, one baseline snapshot,
+      then patches of a few dozen bytes. Polling <code style="color:var(--dim)">/api/status</code>
+      works too and supports <code style="color:var(--dim)">If-None-Match</code>, so an
+      unchanged rack costs a bare <code style="color:var(--dim)">304</code> with no body.
+    </p>
+    <p>
+      <strong>Frames.</strong> Server sends <code style="color:var(--dim)">welcome</code> &rarr;
+      <code style="color:var(--dim)">rack</code> (full) &rarr;
+      <code style="color:var(--dim)">patch</code> (deltas, units addressed by id) and
+      <code style="color:var(--dim)">bus</code> (an agent announcing what it did).
+      Client may send <code style="color:var(--dim)">ping</code>,
+      <code style="color:var(--dim)">rack</code>,
+      <code style="color:var(--dim)">chat</code>, <code style="color:var(--dim)">calc</code>,
+      <code style="color:var(--dim)">remix</code> &mdash; rate limited exactly like the REST
+      routes, because holding a socket open is not a way around the caps.
+    </p>
+  </div>
+</div>
+
+<div id="swagger-ui"></div>
+<script src="/swagger-ui-bundle.js"></script>
+<script>
+// Served entirely from this box: the bundle, the stylesheet and the schema are all local
+// files. Nothing on this page reaches an external host, which is the same promise the rest
+// of the site makes about your prompts.
+//
+// The schema is a build-time snapshot rather than a live fetch from the API, so the
+// reference renders whether or not inference is currently running -- but "Try it out"
+// posts to the real /api endpoints, so the examples execute against the actual machine.
+window.ui = SwaggerUIBundle({
+  url: '/openapi.json',
+  dom_id: '#swagger-ui',
+  deepLinking: true,
+  presets: [SwaggerUIBundle.presets.apis],
+  layout: 'BaseLayout',
+  tryItOutEnabled: true,
+  defaultModelsExpandDepth: 1,
+  docExpansion: 'list'
+});
+</script>
+<script src="/console.js" defer></script>
+</body>
+</html>

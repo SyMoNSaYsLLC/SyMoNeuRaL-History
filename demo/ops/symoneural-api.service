@@ -1,0 +1,67 @@
+[Unit]
+Description=SyMoNeuRaL inference API (chat, image, calc, remix)
+Documentation=https://symoneural.com/docs
+# The GPU has to be there before we start; nvidia-persistenced keeps the driver initialised
+# so the first request after a reboot does not pay driver-load latency.
+After=network-online.target nvidia-persistenced.service
+Wants=network-online.target
+# Apache proxies /api, /docs and /openapi.json to us. It can start without us -- the static
+# site must serve whether or not inference is up -- so this is a soft ordering only.
+Before=apache2.service
+
+[Service]
+Type=exec
+User=google
+Group=google
+WorkingDirectory=/home/google/MIT_AI_Training/MIT_AI_Training/demo
+
+# A crash or an unclean shutdown leaves the governor lock directory behind. The pid inside
+# it is dead, so the next acquire would break it anyway -- but doing it here means the very
+# first request after a restart is not delayed by a stale-lock poll, and the rack does not
+# briefly show a holder that no longer exists.
+ExecStartPre=-/usr/bin/env bash -c '/home/google/MIT_AI_Training/MIT_AI_Training/demo/gpu-governor.sh release >/dev/null 2>&1 || true'
+ExecStart=/usr/bin/python3 /home/google/MIT_AI_Training/MIT_AI_Training/demo/api.py
+# Give in-flight generations a chance to finish rather than cutting a visitor off mid-answer.
+# Slightly above the 120 s job timeout so a job that is already doomed is not waited on twice.
+TimeoutStopSec=140
+KillMode=mixed
+KillSignal=SIGTERM
+# The engines are children in their own process groups; make sure nothing survives us
+# holding several gigabytes of VRAM.
+ExecStopPost=-/usr/bin/env bash -c 'pkill -f "[l]lama-server"; pkill -f "[s]d-cli"; /home/google/MIT_AI_Training/MIT_AI_Training/demo/gpu-governor.sh release >/dev/null 2>&1 || true'
+
+Restart=always
+RestartSec=3
+# If it is crash-looping, stop rather than thrashing the GPU. Five failures in two minutes
+# means something is wrong that restarting will not fix.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+Environment=PYTHONUNBUFFERED=1
+Environment=SYMONEURAL_PORT=8800
+
+# Logs go to the journal; see ops/symoneural-api.logrotate for the app's own file.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=symoneural-api
+
+# --- hardening -------------------------------------------------------------------------
+# Deliberately moderate. The service needs /dev/nvidia*, the model directory and the site
+# directory it writes generated images into, so the aggressive presets are not usable here.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=no
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# The image surface runs the T5 text encoder on the CPU (te=cpu) precisely to keep it out of
+# VRAM, so system RAM use is legitimately large. This is a backstop against a leak, not a
+# working limit.
+MemoryMax=24G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

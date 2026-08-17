@@ -1,0 +1,208 @@
+/* SyMoNeuRaL theme for Swagger UI.
+   Stock Swagger is a white page with a green header, and it looks like a tool someone
+   bolted on. This is the same palette as the rest of the site so /docs reads as part of
+   the product rather than an afterthought. */
+
+:root{
+  --bg:#0e100f; --panel:#161a18; --panel2:#1c221e; --line:#28302b;
+  --fg:#f2f6f3; --dim:#a8b3ac; --faint:#77837b;
+  --accent:#2ee08a; --accent-ink:#06170f; --amber:#ffab3d; --blue:#7fb8d8;
+}
+body{background:var(--bg); margin:0}
+.swagger-ui{color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif}
+.swagger-ui .topbar{display:none}                     /* we supply our own header */
+.swagger-ui .info{margin:26px 0 22px}
+.swagger-ui .info .title,
+.swagger-ui .info h1,.swagger-ui .info h2,.swagger-ui .info h3,
+.swagger-ui .info h4,.swagger-ui .info h5{color:var(--fg)}
+.swagger-ui .info .title small.version-stamp{background:var(--accent); color:var(--accent-ink)}
+.swagger-ui .info .title small{background:var(--panel2); border:1px solid var(--line)}
+.swagger-ui .info li,.swagger-ui .info p,.swagger-ui .info table{color:var(--dim)}
+.swagger-ui .info a{color:var(--accent)}
+.swagger-ui .info code,.swagger-ui code{
+  background:var(--panel2); border:1px solid var(--line); border-radius:4px;
+  color:var(--accent); padding:1px 5px;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+.swagger-ui .scheme-container{background:var(--panel); box-shadow:none;
+  border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin:0 0 24px}
+.swagger-ui select{background:var(--bg); color:var(--fg); border:1px solid var(--line)}
+
+/* operation blocks: flat, bordered, brand-tinted by verb */
+.swagger-ui .opblock{
+  background:var(--panel); border:1px solid var(--line); border-radius:11px;
+  box-shadow:none; margin:0 0 11px;
+}
+.swagger-ui .opblock .opblock-summary{border-color:var(--line)}
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary-path__deprecated,
+.swagger-ui .opblock .opblock-summary-operation-id{color:var(--fg);
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.swagger-ui .opblock .opblock-summary-description{color:var(--dim)}
+.swagger-ui .opblock-description-wrapper p,
+.swagger-ui .opblock-external-docs-wrapper p,
+.swagger-ui .opblock-title_normal p,
+.swagger-ui .response-col_description__inner p,
+.swagger-ui .markdown p,.swagger-ui .markdown li,.swagger-ui .renderedMarkdown p{color:var(--dim)}
+.swagger-ui .opblock .opblock-section-header{background:var(--panel2); box-shadow:none;
+  border-top:1px solid var(--line)}
+.swagger-ui .opblock .opblock-section-header h4,
+.swagger-ui .tab li,.swagger-ui .parameter__name,.swagger-ui table thead tr td,
+.swagger-ui table thead tr th{color:var(--fg)}
+.swagger-ui .parameter__type,.swagger-ui .parameter__in,.swagger-ui .prop-format{color:var(--faint)}
+.swagger-ui .parameter__name.required span{color:var(--amber)}
+
+.swagger-ui .opblock.opblock-post{background:rgba(46,224,138,.05); border-color:rgba(46,224,138,.35)}
+.swagger-ui .opblock.opblock-post .opblock-summary-method{background:var(--accent); color:var(--accent-ink)}
+.swagger-ui .opblock.opblock-get{background:rgba(127,184,216,.05); border-color:rgba(127,184,216,.32)}
+.swagger-ui .opblock.opblock-get .opblock-summary-method{background:var(--blue); color:#06170f}
+.swagger-ui .opblock.opblock-delete .opblock-summary-method{background:var(--amber); color:var(--accent-ink)}
+
+/* schema / model panes */
+.swagger-ui .model-box,.swagger-ui section.models,
+.swagger-ui .responses-inner,.swagger-ui .body-param{background:transparent}
+.swagger-ui section.models{border:1px solid var(--line); border-radius:11px}
+.swagger-ui section.models .model-container{background:var(--panel2); border-radius:8px}
+.swagger-ui section.models h4{color:var(--fg)}
+.swagger-ui .model-title,.swagger-ui .model{color:var(--dim)}
+.swagger-ui .prop-type{color:var(--blue)}
+.swagger-ui .model .property.primitive{color:var(--faint)}
+
+/* code samples and responses */
+.swagger-ui .highlight-code>.microlight,
+.swagger-ui .responses-inner pre,
+.swagger-ui textarea,.swagger-ui input[type=text],.swagger-ui input[type=number]{
+  background:#0a0c0b !important; color:#cfe0d6 !important;
+  border:1px solid var(--line); border-radius:8px;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+.swagger-ui table.headers td{color:var(--dim)}
+.swagger-ui .response-col_status{color:var(--fg)}
+
+/* buttons */
+.swagger-ui .btn{border-radius:999px; border-color:var(--line); color:var(--fg); box-shadow:none}
+.swagger-ui .btn:hover{background:var(--panel2)}
+.swagger-ui .btn.execute{background:var(--accent); color:var(--accent-ink); border-color:transparent;
+  font-weight:650}
+.swagger-ui .btn.execute:hover{background:#4af09e}
+.swagger-ui .btn.authorize{color:var(--accent); border-color:var(--accent)}
+.swagger-ui .btn.authorize svg{fill:var(--accent)}
+.swagger-ui .opblock-tag{color:var(--fg); border-bottom:1px solid var(--line)}
+.swagger-ui .opblock-tag small{color:var(--faint)}
+.swagger-ui .opblock-tag:hover{background:transparent}
+.swagger-ui svg:not(:root){fill:var(--dim)}
+.swagger-ui .expand-methods svg,.swagger-ui .expand-operation svg{fill:var(--faint)}
+.swagger-ui .loading-container .loading:after{color:var(--dim)}
+.swagger-ui .errors-wrapper{background:rgba(255,171,61,.08); border-color:rgba(255,171,61,.4)}
+.swagger-ui .errors-wrapper .errors h4,.swagger-ui .errors-wrapper hgroup h4{color:var(--amber)}
+
+/* ==================================================================
+   /docs layout + dark-theme corrections
+   ------------------------------------------------------------------
+   Swagger UI ships Tachyons utility classes (.bg-white, .bg-light-gray)
+   and black-on-transparent SVG icons. Both assume a white page, so on
+   our palette they render as glaring pills and invisible arrows. The
+   fixes below are defensive on purpose -- matching every stock selector
+   one at a time is how this drifted in the first place.
+   ================================================================== */
+
+/* 1. The sticky header must win. Swagger's content was painting over it,
+      and a translucent bar over scrolling text is unreadable anyway. */
+/* This stylesheet is loaded by /docs/ and nothing else, so a bare `header`
+   selector is safe and avoids depending on :has() support. */
+header{
+  z-index:400;
+  background:var(--bg);
+  backdrop-filter:none;
+}
+
+/* 2. Match Swagger's column to the site's 1120px measure so the reference
+      lines up with the header and the panels above it. */
+.swagger-ui .wrapper{max-width:1120px; padding:0 28px}
+#swagger-ui{padding-bottom:56px}
+
+/* 3. Kill the duplicated title. Our own branded <h1> already says
+      "SyMoNeuRaL API"; Swagger then renders its own title, version pills
+      and schema link underneath. Keep the description, drop the header. */
+.swagger-ui .info hgroup.main{display:none}
+.swagger-ui .info{margin:0 0 8px}
+
+/* 4. The servers box is empty on this API (one origin, no variables), so
+      stock Swagger leaves a tall white slab. Remove it rather than
+      styling an empty container. */
+.swagger-ui .scheme-container{display:none}
+
+/* 5. Light utility classes -> transparent. These are what produced the
+      white pills behind the schema names. */
+.swagger-ui [class*="bg-white"],
+.swagger-ui .bg-light-gray,
+.swagger-ui .bg-near-white,
+.swagger-ui .model-box,
+.swagger-ui section.models .model-container{
+  background:transparent !important;
+}
+.swagger-ui section.models .model-container{
+  border:1px solid var(--line); border-radius:8px; margin:0 14px 10px;
+}
+.swagger-ui section.models .model-container:hover{border-color:rgba(46,224,138,.3)}
+
+/* 6. Icons are black SVGs meant for a white page: invert them. */
+.swagger-ui .model-toggle:after,
+.swagger-ui .copy-to-clipboard button{filter:invert(1); opacity:.55}
+.swagger-ui .model-toggle:after:hover,
+.swagger-ui .copy-to-clipboard button:hover{opacity:.9}
+
+/* 7. Tighten the vertical rhythm -- stock margins are built for a page
+      with a big white topbar, and left ~90px of dead space per section. */
+.swagger-ui section.models{margin:22px 0; border-color:var(--line)}
+.swagger-ui .opblock-tag{padding:12px 10px; margin:0 0 6px; font-size:19px}
+.swagger-ui .opblock-tag-section{margin-bottom:8px}
+.swagger-ui .information-container{padding:0}
+.swagger-ui .information-container .info{padding:0}
+
+/* 8. Focus rings: stock uses `outline:auto`, which paints a white halo. */
+.swagger-ui .model-box-control:focus,
+.swagger-ui .models-control:focus,
+.swagger-ui .opblock-summary-control:focus{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+/* 9. Schemas. This Swagger build renders schemas with the JSON Schema
+      2020-12 component tree (.json-schema-2020-12-*), not the legacy
+      .model-box tree -- so the older overrides above never reached it.
+      Its accordion rows are bare <button> elements, which inherit the
+      browser's default buttonface grey (rgb(239,239,239)) and read as
+      white pills on a dark page. Confirmed by computed style, not guessed. */
+.swagger-ui .json-schema-2020-12-accordion,
+.swagger-ui .json-schema-2020-12-expand-deep-button,
+.swagger-ui .json-schema-2020-12-accordion:hover,
+.swagger-ui .json-schema-2020-12-accordion:focus{
+  background:transparent !important;
+  border:none;
+}
+.swagger-ui .json-schema-2020-12{
+  background-color:transparent !important;
+  border:1px solid var(--line); border-radius:9px;
+  margin:0 16px 9px; padding:11px 0 11px 18px;
+}
+.swagger-ui .json-schema-2020-12--embedded{border:none; margin:0; padding-left:14px}
+.swagger-ui .json-schema-2020-12__title{color:var(--fg) !important; font-size:13px}
+.swagger-ui .json-schema-2020-12-property .json-schema-2020-12__title{color:var(--fg) !important}
+.swagger-ui .json-schema-2020-12-expand-deep-button{color:var(--faint) !important}
+.swagger-ui .json-schema-2020-12-expand-deep-button:hover{color:var(--accent) !important}
+.swagger-ui .json-schema-2020-12__attribute{color:var(--faint)}
+.swagger-ui .json-schema-2020-12__attribute--primary{color:var(--blue)}
+.swagger-ui .json-schema-2020-12-keyword__name--primary,
+.swagger-ui .json-schema-2020-12-keyword__value--primary{color:var(--fg)}
+.swagger-ui .json-schema-2020-12-keyword__name--secondary,
+.swagger-ui .json-schema-2020-12-keyword__value--secondary,
+.swagger-ui .json-schema-2020-12-keyword__value,
+.swagger-ui .json-schema-2020-12-keyword--description{color:var(--dim)}
+.swagger-ui .json-schema-2020-12-keyword__value--const{border-color:var(--line); color:var(--accent)}
+.swagger-ui .json-schema-2020-12__constraint{background-color:var(--panel2); color:var(--accent)}
+.swagger-ui .json-schema-2020-12__constraint--string{background-color:rgba(255,171,61,.16); color:var(--amber)}
+.swagger-ui .json-schema-2020-12-accordion__icon svg,
+.swagger-ui .json-schema-2020-12-accordion svg{fill:var(--dim)}
+
+/* Any other bare button Swagger leaves unstyled would show the same grey. */
+.swagger-ui section.models button{background-color:transparent}

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL RavenCalc — exact mathematics</title>
+<meta name="description" content="SymPy-powered symbolic computation that checks its own work.">
+<link rel="stylesheet" href="/symoneural.css">
+<link rel="stylesheet" href="/rack-detail.css">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0e100f">
+</head>
+<body>
+
+<div class="status">
+  <div class="wrap">
+    <b><s></s>Under Construction</b>
+    <span>Active infrastructure development in progress. This playground runs on one
+    consumer GPU &mdash; be kind to it.</span>
+  </div>
+</div>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <a class="live" href="/chat.html"><s></s>Talk to the box</a>
+      <a class="live" href="/image.html"><s></s>Make it draw</a>
+      <a href="/calc.html">RavenCalc</a>
+      <a href="/remix.html">Remix</a>
+      <a href="/#build">Build</a>
+      <a href="/#hardware">Hardware</a>
+      <a class="cta ghost" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" style="padding:56px 0 26px">
+  <div class="wrap">
+    <p class="eyebrow"><img src="/calc-64.png" alt="" width="20" height="20"
+       style="display:inline-block;vertical-align:-4px;margin-right:8px">Live surface · CPU</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">Mathematics, computed rather than predicted.</h1>
+    <p class="lede" style="font-size:16.5px">RavenCalc is SymPy underneath, not a language model guessing at algebra. It runs on the CPU, so it is the one surface here that never waits for the GPU.</p>
+  </div>
+</div>
+
+<section style="border-top:0;padding-top:0">
+  <div class="wrap">
+    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="rhead"><s class="on"></s>SyMoNeuRaL RavenCalc
+          <span class="grow">cpu &middot; never queues</span></div>
+        <div class="body">
+          <div class="readout" id="out" style="color:var(--faint)">
+            Exact symbolic mathematics. Not a language model guessing at algebra &mdash; SymPy
+            computing it, and checking its own answer where checking is cheap.
+          </div>
+        </div>
+        <form class="composer" id="form">
+          <input type="text" id="expr" maxlength="1000" placeholder="x**2*sin(x)">
+          <button class="cta" id="send" type="submit">Compute</button>
+        </form>
+      </div>
+
+      <aside class="panel">
+        <h3>Operation</h3>
+        <div class="ctl">
+          <select id="op">
+            <option value="integrate">integrate</option>
+            <option value="differentiate">differentiate</option>
+            <option value="simplify">simplify</option>
+            <option value="solve">solve</option>
+            <option value="limit">limit</option>
+            <option value="series">series</option>
+            <option value="evaluate">evaluate</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <label for="var">Variable</label>
+          <input type="text" id="var" value="x" maxlength="16">
+        </div>
+        <div class="ctl" id="ptwrap" style="display:none">
+          <label for="pt">Point</label>
+          <input type="text" id="pt" value="0" maxlength="32">
+        </div>
+        <p class="hint">
+          Symbolic in, symbolic out &mdash; you get an exact answer rather than a float that
+          already lost the argument. An antiderivative is differentiated back and simplified
+          against zero before you see it, and if that check cannot confirm the result it says
+          so rather than rounding up to &ldquo;verified&rdquo;.
+        </p>
+      </aside>
+    </div>
+
+    <div class="callout" style="margin-top:34px">
+      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <p>
+        Chat and image never run at the same time here. A lock hands the GPU to exactly one
+        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
+        once &mdash; and when they swap, we wait for the driver to actually hand the memory
+        back before the next one starts. If you are queued behind someone, that is not a bug;
+        it is one card doing one thing at a time.
+      </p>
+      <p>
+        <strong>RavenCalc is the exception</strong> &mdash; it is SymPy on the CPU, so it never
+        touches the GPU and never queues. Everything here is a demonstration of the stack on
+        the smallest machine we would ever ship, not a statement of capacity. A server we spec
+        for you would not be sharing one GPU with itself.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+      <img src="/mark-32.png" alt="" width="22" height="22">
+      <b style="font-size:14.5px;color:var(--fg)">SyMoNeu<i style="font-style:normal;color:var(--accent)">RaL</i></b>
+    </a>
+    <span>&copy; SymonSays LLC &middot; <a href="mailto:symonsayadmin@symoneural.com"
+      style="color:var(--dim);text-decoration:none">symonsayadmin@symoneural.com</a></span>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/training.html">Training</a>
+      <a href="/#hardware">Hardware</a>
+      <a href="/#inference">Inference</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Shared helpers. Every bound below is also enforced on the server -- these exist to make
+// the UI honest about the limits, not to be the limits.
+const $ = (s, r=document) => r.querySelector(s);
+function status(el, text, busy) {
+  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
+  const grow = $('.grow', el); if (grow) grow.textContent = text;
+}
+async function api(path, payload) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
+  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+  return body;
+}
+</script>
+<script src="/console.js" defer></script>
+<script>
+const form = $('#form'), out = $('#out'), op = $('#op');
+op.addEventListener('change', () =>
+  $('#ptwrap').style.display = op.value === 'limit' ? '' : 'none');
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const expression = $('#expr').value.trim();
+  if (!expression) return;
+  out.style.color = 'var(--fg)';
+  out.textContent = 'computing\u2026';
+  try {
+    const payload = {expression, operation: op.value, variable: $('#var').value.trim()};
+    if (op.value === 'limit') payload.point = $('#pt').value.trim();
+    const r = await api('/api/calc', payload);
+    const c = r.check || {};
+    const verdict = c.performed
+      ? (c.passed === true ? '<span class="v">verified</span>'
+         : c.passed === false ? '<span class="bad">CHECK FAILED</span>'
+         : '<span class="bad">unconfirmed</span>')
+      : '<span class="k">not checked</span>';
+    out.innerHTML =
+      `<div><span class="k">in</span> ${esc(r.input.text)}</div>` +
+      `<div><span class="k">out</span> <span class="v">${esc(r.result.text)}</span></div>` +
+      `<div><span class="k">chk</span> ${verdict}` +
+        (c.how ? ` <span class="k">&mdash; ${esc(c.how)}</span>` : '') + `</div>` +
+      `<div><span class="k">eng</span> <span class="k">${esc(r.engine)} \u00b7 ${r.seconds}s \u00b7 ` +
+        `${r.exact ? 'exact' : 'symbolic'}</span></div>`;
+  } catch (err) {
+    out.innerHTML = '<span class="bad">' + esc(err.message) + '</span>';
+  }
+});
+function esc(s){ const d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+</script>
+</body>
+</html>

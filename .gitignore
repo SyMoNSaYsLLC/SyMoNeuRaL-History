@@ -1,0 +1,38 @@
+# ---- Model weights (40 GB) — fetched by demo/fetch-models.sh, never committed ----
+models/
+
+# ---- Vendored third-party checkouts (each carries its own .git) ----
+cuda-samples/
+skills/                      # NVIDIA/skills
+demo/llama.cpp/
+demo/stable-diffusion.cpp/
+Nemotron-main/
+RavenCalcServer_Christmas_*/
+
+# ---- Virtualenvs ----
+demo/training/.venv/
+**/.venv/
+
+# ---- Runtime output: logs, screenshots, generated images ----
+demo/run/
+site/gen-*.png
+
+# ---- Vendored Swagger UI assets ----
+site/swagger-ui-bundle.js
+site/swagger-ui.css
+
+# ---- Junk ----
+__pycache__/
+*.pyc
+*.bak
+*.log
+
+# ---- Trained adapter weights (244 MB) — artifacts, not source ----
+*.safetensors
+*.gguf
+demo/training/adapter/tokenizer.json
+
+# ---- Nested third-party checkouts (belt and braces: these carry their own .git) ----
+/skills
+/cuda-samples
+/Nemotron-main
