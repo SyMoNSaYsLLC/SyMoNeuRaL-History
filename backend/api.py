@@ -74,6 +74,8 @@ sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 # in backend/apps/asicminer/.venv, which this interpreter must never import from.
 sys.path.insert(0, str(HERE / "apps"))
 import asicminer  # noqa: E402
+import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
+from apps import tuner  # noqa: E402  -- IPTV surface, brings its own APIRouter
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
@@ -1007,6 +1009,9 @@ async def lifespan(_: FastAPI):
     ticker.cancel()
     if asic:
         asic.cancel()
+    # Without this a reload leaks one ffmpeg per live stream: the sessions outlive the
+    # process that spawned them and nothing else knows their pids.
+    tuner.sessions.MANAGER.shutdown()
     await stop_llama()
 
 
@@ -1181,6 +1186,7 @@ def build_status() -> Status:
     # Disabled is the default and costs nothing: `unit_state` short-circuits on the env
     # switches, so no subprocess is spawned unless an operator has turned the surface on.
     asic_state, asic_detail = asicminer.unit_state(_asic_cache.get())
+    gateway_state, gateway_detail = gateway.unit_state()
 
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
@@ -1226,6 +1232,16 @@ def build_status() -> Status:
                  state=asic_state, bus="asic", href="/miner.html",
                  spec="Antminer + MicroBT · pyasic 0.75.0",
                  detail=asic_detail),
+            # Stream copy, not transcode: the work is network I/O and muxing, so it never
+            # contends for the card. `ready` is honest here -- unlike the mining surfaces
+            # this one is functional right now; it holds no content of its own because the
+            # visitor supplies the playlist and nothing is stored on the box.
+            Unit(**{**tuner.status(), "bus": "net"}),
+            # Designed, not deployed: no contract, no wallet, no daemon, no key material.
+            Unit(id="gateway", label="SyMoNeuRaL Gateway", slot="1U",
+                 state=gateway_state, bus="net", href="/gateway.html",
+                 spec="TRON TVM · USDT (TRC-20) licensing",
+                 detail=gateway_detail),
         ],
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
@@ -1659,6 +1675,13 @@ async def remix(body: RemixRequest,
 # and neither works when the pages are served from a different port than the API.
 # Testing the surfaces with curl proves the endpoints answer; it proves nothing
 # about the JavaScript that has to render them.
+# The tuner brings its own router rather than having its routes written here. It must be
+# included BEFORE the static mount below, for the same reason every other API route is
+# declared before it: StaticFiles at "/" matches everything, so anything mounted after it
+# is unreachable. Prefix matches the Backstage shape the backend is heading towards
+# (§5 item 13) -- a surface answers at /api/<id>.
+app.include_router(tuner.router, prefix="/api/tuner", tags=["tuner"])
+
 if SITE.is_dir():
     app.mount("/", StaticFiles(directory=str(SITE), html=True), name="site")
 

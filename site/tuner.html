@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL Tuner — your playlist, your credentials</title>
+<meta name="description" content="IPTV over ffmpeg stream copy. Credentials stay in your browser.">
+<link rel="stylesheet" href="/symoneural.css?v=74692800ef">
+<link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
+<link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0823a86bfe">
+<meta name="theme-color" content="#0e100f">
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png?v=ded4e8a102" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <a class="navlink" href="/">Live stack</a>
+      <a class="navlink" href="/documentation.html">Documentation</a>
+      <a class="navlink" href="/training.html">Manuals</a>
+      <a class="navlink" href="/docs">API</a>
+      <a class="navlink" href="/account.html">Account</a>
+      <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="cta" href="/build.html">Have one built</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" style="padding:56px 0 26px">
+  <div class="wrap">
+    <p class="eyebrow"><img src="/terminal-64.png?v=439ec988d7" alt="" width="20" height="20"
+       style="display:inline-block;vertical-align:-4px;margin-right:8px">Live surface · network</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">Bring your own playlist.</h1>
+    <p class="lede" style="font-size:16.5px">Load an M3U or Xtream Codes subscription and the box will copy the stream rather than re-encode it. Your credentials stay in this browser and are never written to disk here — which is the same promise the rest of this site makes about your data.</p>
+  </div>
+</div>
+
+<section style="border-top:0;padding-top:0">
+  <div class="wrap">
+    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="tnhead"><s></s>SyMoNeuRaL Tuner
+          <span class="grow" id="tnstate">idle</span></div>
+        <div class="body" id="tnbody">
+          <form class="tn-load" id="tnform">
+            <div class="tn-tabs">
+              <button type="button" class="tn-tab on" data-mode="m3u">M3U playlist</button>
+              <button type="button" class="tn-tab" data-mode="xtream">Xtream Codes</button>
+            </div>
+            <div class="tn-fields" id="tn-m3u">
+              <label for="tn-url">Playlist URL</label>
+              <input id="tn-url" type="url" placeholder="https://example.com/playlist.m3u"
+                     autocomplete="off" spellcheck="false">
+            </div>
+            <div class="tn-fields" id="tn-xtream" hidden>
+              <label for="tn-host">Server</label>
+              <input id="tn-host" type="url" placeholder="http://example.com:8080"
+                     autocomplete="off" spellcheck="false">
+              <label for="tn-user">Username</label>
+              <input id="tn-user" type="text" autocomplete="off" spellcheck="false">
+              <label for="tn-pass">Password</label>
+              <input id="tn-pass" type="password" autocomplete="off">
+            </div>
+            <button class="cta" id="tn-go" type="submit">Load channels</button>
+          </form>
+          <p class="tn-note" id="tnnote">Your playlist is yours. It is held in this
+            browser&rsquo;s localStorage, sent per request, and never stored on this
+            machine.</p>
+          <ul class="tn-list" id="tnlist"></ul>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="callout">
+          <h3>Where your credentials go</h3>
+          <p><b>Nowhere.</b> They stay in this browser&rsquo;s localStorage and travel with
+            each request. The server holds them only for the life of a stream and keeps
+            them out of process arguments and error text. Nothing is written to disk.</p>
+        </div>
+        <div class="callout">
+          <h3>How the stream is handled</h3>
+          <p>ffmpeg copies the stream rather than re-encoding it, so it costs muxing and
+            network rather than compute &mdash; this surface never queues behind the GPU.
+            The upstream socket is opened in Python against a pinned, validated address and
+            the bytes are piped in; <b>ffmpeg is never handed a URL</b>, so it cannot make
+            its own DNS lookup or follow its own redirect.</p>
+        </div>
+        <div class="callout">
+          <h3>Known gaps, stated rather than hidden</h3>
+          <p>Playback needs <code>hls.js</code>, which is <b>not vendored here yet</b>:
+            Chrome and Firefox cannot play an <code>.m3u8</code> natively, so channels list
+            and stream, but in-page playback currently works only in Safari. The Xtream
+            client is written to the protocol and <b>has never been tested against a live
+            panel</b>. Series episodes list without URLs rather than with guessed ones, and
+            AES-encrypted HLS is refused rather than decrypted.</p>
+        </div>
+      </aside>
+    </div>
+
+
+    <div class="callout" style="margin-top:34px">
+      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <p>
+        Chat and image never run at the same time here. A lock hands the GPU to exactly one
+        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
+        once &mdash; and when they swap, we wait for the driver to actually hand the memory
+        back before the next one starts. If you are queued behind someone, that is not a bug;
+        it is one card doing one thing at a time.
+      </p>
+      <p>
+        <strong>RavenCalc is the exception</strong> &mdash; it is SymPy on the CPU, so it never
+        touches the GPU and never queues. Everything here is a demonstration of the stack on
+        the smallest machine we would ever ship, not a statement of capacity. A server we spec
+        for you would not be sharing one GPU with itself.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+      <img src="/mark-32.png?v=fc9400dc9f" alt="" width="22" height="22">
+      <b style="font-size:14.5px;color:var(--fg)">SyMoNeu<i style="font-style:normal;color:var(--accent)">RaL</i></b>
+    </a>
+    <span>&copy; SymonSays LLC &middot; <a href="mailto:symonsayadmin@symoneural.com"
+      style="color:var(--dim);text-decoration:none">symonsayadmin@symoneural.com</a></span>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/training.html">Training</a>
+      <a href="/#hardware">Hardware</a>
+      <a href="/#inference">Inference</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Shared helpers. Every bound below is also enforced on the server -- these exist to make
+// the UI honest about the limits, not to be the limits.
+const $ = (s, r=document) => r.querySelector(s);
+function status(el, text, busy) {
+  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
+  const grow = $('.grow', el); if (grow) grow.textContent = text;
+}
+async function api(path, payload) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
+  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+  return body;
+}
+</script>
+<script src="/console.js?v=ee2d468781" defer></script>
+<script src="/ui.js?v=ab7363f237" defer></script>
+<script>
+(function () {
+  'use strict';
+  var K = 'symoneural.tuner';
+  var form = document.getElementById('tnform'), list = document.getElementById('tnlist');
+  var note = document.getElementById('tnnote'), st = document.getElementById('tnstate');
+  var mode = 'm3u';
+
+  document.querySelectorAll('.tn-tab').forEach(function (b) {
+    b.addEventListener('click', function () {
+      mode = b.dataset.mode;
+      document.querySelectorAll('.tn-tab').forEach(function (x) {
+        x.classList.toggle('on', x === b); });
+      document.getElementById('tn-m3u').hidden = mode !== 'm3u';
+      document.getElementById('tn-xtream').hidden = mode !== 'xtream';
+    });
+  });
+
+  // Restore whatever this browser last used. This is the only place it is kept.
+  try {
+    var saved = JSON.parse(localStorage.getItem(K) || 'null');
+    if (saved) {
+      mode = saved.mode || 'm3u';
+      document.querySelector('.tn-tab[data-mode="' + mode + '"]').click();
+      ['url', 'host', 'user', 'pass'].forEach(function (f) {
+        if (saved[f]) document.getElementById('tn-' + f).value = saved[f]; });
+    }
+  } catch (e) { /* corrupt entry -- ignore and start clean */ }
+
+  function creds() {
+    if (mode === 'm3u') return {mode: 'm3u', url: document.getElementById('tn-url').value.trim()};
+    return {mode: 'xtream',
+            host: document.getElementById('tn-host').value.trim(),
+            user: document.getElementById('tn-user').value,
+            pass: document.getElementById('tn-pass').value};
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var c = creds();
+    try { localStorage.setItem(K, JSON.stringify(c)); } catch (e2) { /* private mode */ }
+    st.textContent = 'loading'; list.innerHTML = ''; note.textContent = 'Fetching…';
+
+    var body = c.mode === 'm3u' ? {url: c.url}
+             : {server: c.host, username: c.user, password: c.pass};
+    fetch('/api/tuner/channels', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.j.error || res.j.detail || 'load failed');
+        var ch = res.j.channels || [];
+        st.textContent = ch.length ? ch.length + ' channels' : 'empty';
+        note.textContent = ch.length ? 'Loaded from your playlist. Nothing was stored here.'
+                                     : 'That playlist parsed but contained no channels.';
+        list.innerHTML = ch.slice(0, 400).map(function (c2) {
+          return '<li><b></b><span></span></li>'; }).join('');
+        list.querySelectorAll('li').forEach(function (li, i) {
+          li.querySelector('b').textContent = ch[i].name || '(unnamed)';
+          li.querySelector('span').textContent = ch[i].group || '';
+        });
+      })
+      .catch(function (err) {
+        st.textContent = 'failed';
+        note.textContent = String(err.message || err);
+      });
+  });
+})();
+</script>
+</body>
+</html>

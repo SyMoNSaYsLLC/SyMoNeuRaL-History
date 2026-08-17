@@ -638,6 +638,215 @@ MINER_JS = """<script>
 </script>"""
 
 
+# ---------------------------------------------------------------- gateway (TRON)
+# No fee figures anywhere on this page, and that is not an oversight. Prices are quoted,
+# not published, and a licensing surface is the worst possible place to break that rule.
+GATEWAY_BODY = """    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="gwhead"><s></s>SyMoNeuRaL Gateway
+          <span class="grow" id="gwstate">reading&hellip;</span></div>
+        <div class="body" id="gwbody">
+          <p class="gw-note" id="gwdetail">Reading the surface state from
+            <code>/api/status</code>&hellip;</p>
+          <h3>How a licence would clear</h3>
+          <ol class="gw-steps">
+            <li><b>Contract (on-chain).</b> A licensing contract on the TRON Virtual
+              Machine, denominated in USDT (TRC-20) rather than a native token.</li>
+            <li><b>Daemon (off-chain).</b> Runs on the operator&rsquo;s own machine. It
+              hashes the build logs into a reviewable tree and <b>pauses for a human to
+              approve the configuration</b> before anything is broadcast. No blind script
+              touches a rig.</li>
+            <li><b>Energy.</b> TRON meters execution as Bandwidth and Energy rather than a
+              gas auction. Renting Energy moves the execution cost off the end user.</li>
+            <li><b>Settlement.</b> The daemon broadcasts the validation state and the
+              payment; DPoS confirmation unlocks the compiled workspace.</li>
+          </ol>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="callout">
+          <h3>Every figure here is someone else&rsquo;s</h3>
+          <p><b>~3 second confirmation</b> and <b>27 Super Representatives</b> are
+            <b>vendor</b> figures &mdash; published parameters of the TRON network, not
+            timings taken on this machine. Block times are a target, not a guarantee.</p>
+          <p>&ldquo;Effectively zero fee&rdquo; is <b>projected</b>. Energy rental does not
+            make execution free; it moves the cost from the end user to whoever rents the
+            Energy. Calling that zero would describe an accounting choice as a physical
+            property.</p>
+          <p><b>Nothing here is measured</b>, because nothing has run.</p>
+        </div>
+        <div class="callout">
+          <h3>Pricing</h3>
+          <p>Licence fees are quoted, not published &mdash; the same answer this site gives
+            for hardware, and for the same reason. Ask
+            <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>.</p>
+        </div>
+        <div class="callout">
+          <h3>Why it reads offline</h3>
+          <p>There is no deployed contract, no wallet, no daemon and <b>no key material on
+            this box</b>. Signing belongs on the operator&rsquo;s own machine, never in the
+            environment of a public-facing web process.</p>
+        </div>
+      </aside>
+    </div>
+"""
+
+GATEWAY_JS = """<script>
+(function () {
+  'use strict';
+  var st = document.getElementById('gwstate'), d = document.getElementById('gwdetail');
+  fetch('/api/status', {headers: {'Accept': 'application/json'}})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (s) {
+      var u = s && (s.units || []).filter(function (x) { return x.id === 'gateway'; })[0];
+      if (!u) { st.textContent = 'not present'; d.textContent =
+        'The gateway surface is not present in this API build.'; return; }
+      st.textContent = u.state;
+      d.textContent = u.detail;   // the API's own words, not a rewrite of them
+    })
+    .catch(function () { st.textContent = 'unreachable';
+      d.textContent = 'Could not reach /api/status.'; });
+})();
+</script>"""
+
+
+# ---------------------------------------------------------------- tuner (IPTV)
+# The credentials never reach this box. They live in the visitor's localStorage and are
+# sent per request; the backend registers them for the life of a stream session and scrubs
+# them from every error path. Nothing is written to disk and nothing is logged.
+TUNER_BODY = """    <div class="pgwrap">
+      <div class="stage">
+        <div class="head" id="tnhead"><s></s>SyMoNeuRaL Tuner
+          <span class="grow" id="tnstate">idle</span></div>
+        <div class="body" id="tnbody">
+          <form class="tn-load" id="tnform">
+            <div class="tn-tabs">
+              <button type="button" class="tn-tab on" data-mode="m3u">M3U playlist</button>
+              <button type="button" class="tn-tab" data-mode="xtream">Xtream Codes</button>
+            </div>
+            <div class="tn-fields" id="tn-m3u">
+              <label for="tn-url">Playlist URL</label>
+              <input id="tn-url" type="url" placeholder="https://example.com/playlist.m3u"
+                     autocomplete="off" spellcheck="false">
+            </div>
+            <div class="tn-fields" id="tn-xtream" hidden>
+              <label for="tn-host">Server</label>
+              <input id="tn-host" type="url" placeholder="http://example.com:8080"
+                     autocomplete="off" spellcheck="false">
+              <label for="tn-user">Username</label>
+              <input id="tn-user" type="text" autocomplete="off" spellcheck="false">
+              <label for="tn-pass">Password</label>
+              <input id="tn-pass" type="password" autocomplete="off">
+            </div>
+            <button class="cta" id="tn-go" type="submit">Load channels</button>
+          </form>
+          <p class="tn-note" id="tnnote">Your playlist is yours. It is held in this
+            browser&rsquo;s localStorage, sent per request, and never stored on this
+            machine.</p>
+          <ul class="tn-list" id="tnlist"></ul>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="callout">
+          <h3>Where your credentials go</h3>
+          <p><b>Nowhere.</b> They stay in this browser&rsquo;s localStorage and travel with
+            each request. The server holds them only for the life of a stream and keeps
+            them out of process arguments and error text. Nothing is written to disk.</p>
+        </div>
+        <div class="callout">
+          <h3>How the stream is handled</h3>
+          <p>ffmpeg copies the stream rather than re-encoding it, so it costs muxing and
+            network rather than compute &mdash; this surface never queues behind the GPU.
+            The upstream socket is opened in Python against a pinned, validated address and
+            the bytes are piped in; <b>ffmpeg is never handed a URL</b>, so it cannot make
+            its own DNS lookup or follow its own redirect.</p>
+        </div>
+        <div class="callout">
+          <h3>Known gaps, stated rather than hidden</h3>
+          <p>Playback needs <code>hls.js</code>, which is <b>not vendored here yet</b>:
+            Chrome and Firefox cannot play an <code>.m3u8</code> natively, so channels list
+            and stream, but in-page playback currently works only in Safari. The Xtream
+            client is written to the protocol and <b>has never been tested against a live
+            panel</b>. Series episodes list without URLs rather than with guessed ones, and
+            AES-encrypted HLS is refused rather than decrypted.</p>
+        </div>
+      </aside>
+    </div>
+"""
+
+TUNER_JS = """<script>
+(function () {
+  'use strict';
+  var K = 'symoneural.tuner';
+  var form = document.getElementById('tnform'), list = document.getElementById('tnlist');
+  var note = document.getElementById('tnnote'), st = document.getElementById('tnstate');
+  var mode = 'm3u';
+
+  document.querySelectorAll('.tn-tab').forEach(function (b) {
+    b.addEventListener('click', function () {
+      mode = b.dataset.mode;
+      document.querySelectorAll('.tn-tab').forEach(function (x) {
+        x.classList.toggle('on', x === b); });
+      document.getElementById('tn-m3u').hidden = mode !== 'm3u';
+      document.getElementById('tn-xtream').hidden = mode !== 'xtream';
+    });
+  });
+
+  // Restore whatever this browser last used. This is the only place it is kept.
+  try {
+    var saved = JSON.parse(localStorage.getItem(K) || 'null');
+    if (saved) {
+      mode = saved.mode || 'm3u';
+      document.querySelector('.tn-tab[data-mode="' + mode + '"]').click();
+      ['url', 'host', 'user', 'pass'].forEach(function (f) {
+        if (saved[f]) document.getElementById('tn-' + f).value = saved[f]; });
+    }
+  } catch (e) { /* corrupt entry -- ignore and start clean */ }
+
+  function creds() {
+    if (mode === 'm3u') return {mode: 'm3u', url: document.getElementById('tn-url').value.trim()};
+    return {mode: 'xtream',
+            host: document.getElementById('tn-host').value.trim(),
+            user: document.getElementById('tn-user').value,
+            pass: document.getElementById('tn-pass').value};
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var c = creds();
+    try { localStorage.setItem(K, JSON.stringify(c)); } catch (e2) { /* private mode */ }
+    st.textContent = 'loading'; list.innerHTML = ''; note.textContent = 'Fetching\u2026';
+
+    var body = c.mode === 'm3u' ? {url: c.url}
+             : {server: c.host, username: c.user, password: c.pass};
+    fetch('/api/tuner/channels', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.j.error || res.j.detail || 'load failed');
+        var ch = res.j.channels || [];
+        st.textContent = ch.length ? ch.length + ' channels' : 'empty';
+        note.textContent = ch.length ? 'Loaded from your playlist. Nothing was stored here.'
+                                     : 'That playlist parsed but contained no channels.';
+        list.innerHTML = ch.slice(0, 400).map(function (c2) {
+          return '<li><b></b><span></span></li>'; }).join('');
+        list.querySelectorAll('li').forEach(function (li, i) {
+          li.querySelector('b').textContent = ch[i].name || '(unnamed)';
+          li.querySelector('span').textContent = ch[i].group || '';
+        });
+      })
+      .catch(function (err) {
+        st.textContent = 'failed';
+        note.textContent = String(err.message || err);
+      });
+  });
+})();
+</script>"""
+
+
 def main() -> int:
     print("building surface pages:")
     page("chat.html",
@@ -688,6 +897,28 @@ def main() -> int:
               "are attached to this machine, so it reports offline — which is the reading, "
               "not a placeholder.",
          body=MINER_BODY, script=MINER_JS)
+
+    page("gateway.html",
+         title="SyMoNeuRaL Gateway — stablecoin licensing, honestly labelled",
+         desc="A TRON/USDT licensing and validation gateway. Designed, not yet deployed.",
+         icon="/terminal-64.png", eyebrow="Surface · designed, not deployed",
+         heading="Licensing that clears in seconds, and says whose number that is.",
+         lede="A licensing gateway on the TRON Virtual Machine, settling in USDT, with a "
+              "local daemon that makes a human approve the configuration before anything "
+              "is broadcast. Nothing is deployed yet, so this page reports offline and "
+              "labels every figure it quotes as vendor or projected.",
+         body=GATEWAY_BODY, script=GATEWAY_JS)
+
+    page("tuner.html",
+         title="SyMoNeuRaL Tuner — your playlist, your credentials",
+         desc="IPTV over ffmpeg stream copy. Credentials stay in your browser.",
+         icon="/terminal-64.png", eyebrow="Live surface · network",
+         heading="Bring your own playlist.",
+         lede="Load an M3U or Xtream Codes subscription and the box will copy the stream "
+              "rather than re-encode it. Your credentials stay in this browser and are "
+              "never written to disk here — which is the same promise the rest of this "
+              "site makes about your data.",
+         body=TUNER_BODY, script=TUNER_JS)
     return 0
 
 

@@ -1,0 +1,298 @@
+"""The HTTP surface. Mounted at `/api/tuner` by `api.py`; nothing here assumes that prefix.
+
+**Every credential arrives in a POST body and never in a URL.** That is not fussiness: uvicorn's
+access log records the full request line, so a password in a query string or a path segment is a
+password written to `run/api.log` on every request. There is consequently no `GET` route on this
+router that takes a credential, and there never may be.
+
+**Nothing is stored.** There is no server-side notion of "the visitor's playlist" -- the browser
+holds the playlist and the credentials in localStorage and sends what it needs per request. The
+one piece of server state is an active `Session`, which holds an upstream URL in memory for as
+long as it is playing and takes it to the grave when it is reaped.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
+
+from . import safefetch, xtream
+from .m3u import MAX_CHANNELS, parse_m3u
+from .safefetch import BlockedURL, FetchError, Policy, Scrubber
+from .sessions import (MANAGER, MAX_SESSIONS, PLAYLIST_NAME, SEGMENT_RE, FFMPEG,
+                       TunerBusy, TunerError)
+from .xtream import XtreamCreds, XtreamError
+
+log = logging.getLogger("symoneural.tuner")
+
+router = APIRouter(tags=["tuner"])
+
+#: A pasted playlist. Generous, because provider exports genuinely are megabytes, and bounded,
+#: because an unbounded POST body is a memory bug with a friendly name.
+MAX_PASTE = 24 * 1024 * 1024
+
+
+# ---------------------------------------------------------------- models
+#
+# Every credential-bearing field has a default. That is deliberate and it is a leak fix, not
+# laziness: a *missing* required field makes pydantic raise a ValidationError whose `input` is
+# the whole request body, and FastAPI serialises that into the 422 response -- so omitting
+# `server` would echo the password back inside an error document. With defaults there is no
+# validation path that can touch these values, and the handlers check them by hand and answer
+# with a message we wrote.
+
+class PlaylistBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    url: str = ""
+    text: str = ""
+
+
+class XtreamBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    server: str = ""
+    username: str = ""
+    password: str = ""
+    kinds: list[str] = Field(default_factory=lambda: ["live"])
+
+
+class TuneBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    url: str = ""
+    label: str = ""
+    # Optional, and only ever used to prime the scrubber so this session's own credentials can
+    # be recognised inside ffmpeg's stderr. Not stored, not echoed.
+    username: str = ""
+    password: str = ""
+
+
+def _creds(body: XtreamBody) -> XtreamCreds:
+    if not body.server.strip():
+        raise HTTPException(400, "no server address given")
+    if not body.username or not body.password:
+        raise HTTPException(400, "username and password are both required")
+    if len(body.server) > 512 or len(body.username) > 256 or len(body.password) > 256:
+        raise HTTPException(400, "credentials are implausibly long")
+    return XtreamCreds(server=body.server.strip(), username=body.username,
+                       password=body.password)
+
+
+# ---------------------------------------------------------------- playlist
+
+@router.post("/playlist", summary="Parse an M3U playlist supplied by URL or pasted text")
+async def load_playlist(body: PlaylistBody) -> dict:
+    """Turn a playlist into a channel list. Nothing is kept.
+
+    The whole parsed list comes back in one response rather than being paged, because paging
+    would require the server to remember the playlist between requests -- and the entire
+    credential design here rests on the server remembering nothing. The browser holds it.
+    `MAX_CHANNELS` bounds the parse and `truncated` says plainly when it bit.
+    """
+    text = body.text
+    source = "pasted"
+    if body.url.strip():
+        source = "url"
+        try:
+            raw, _ctype, target = await asyncio.to_thread(
+                safefetch.fetch, body.url.strip(), Policy())
+        except BlockedURL as exc:
+            raise HTTPException(400, f"that playlist URL was refused: {exc}") from None
+        except FetchError as exc:
+            raise HTTPException(502, f"could not fetch that playlist: {exc}") from None
+        text = raw.decode("utf-8", "replace")
+    if not text.strip():
+        raise HTTPException(400, "supply either a playlist URL or the playlist text")
+    if len(text) > MAX_PASTE:
+        raise HTTPException(413, "playlist is too large")
+
+    channels, truncated = await asyncio.to_thread(parse_m3u, text)
+    groups: list[str] = []
+    seen = set()
+    for c in channels:
+        if c.group and c.group not in seen:
+            seen.add(c.group)
+            groups.append(c.group)
+    return {
+        "source": source,
+        "count": len(channels),
+        "truncated": truncated,
+        "limit": MAX_CHANNELS,
+        "groups": groups,
+        "channels": [c.__dict__ for c in channels],
+    }
+
+
+# ---------------------------------------------------------------- xtream
+
+@router.post("/xtream/info", summary="Check an Xtream Codes account")
+async def xtream_info(body: XtreamBody) -> dict:
+    creds = _creds(body)
+    try:
+        return await asyncio.to_thread(xtream.panel_info, creds, Policy())
+    except XtreamError as exc:
+        raise HTTPException(400, str(exc)) from None
+
+
+@router.post("/xtream/channels", summary="Fetch an Xtream Codes catalogue")
+async def xtream_channels(body: XtreamBody) -> dict:
+    creds = _creds(body)
+    kinds = tuple(k for k in body.kinds if k in ("live", "vod", "series")) or ("live",)
+    try:
+        entries, notes = await asyncio.to_thread(xtream.load_channels, creds, kinds, Policy())
+    except XtreamError as exc:
+        raise HTTPException(400, str(exc)) from None
+    groups: list[str] = []
+    seen = set()
+    for e in entries:
+        if e["group"] and e["group"] not in seen:
+            seen.add(e["group"])
+            groups.append(e["group"])
+    return {"count": len(entries), "groups": groups, "notes": notes, "channels": entries}
+
+
+# ---------------------------------------------------------------- tuning
+
+@router.post("/tune", summary="Start a tuning session for one stream URL")
+async def tune(body: TuneBody) -> dict:
+    """Open the upstream, start ffmpeg, and wait briefly for a playable playlist.
+
+    The wait is the honest part. `POST /tune` could return the moment the process is spawned,
+    but ffmpeg on a source it cannot stream-copy exits a few seconds later -- so an immediate
+    "ok" would be a status the box has not yet earned. This waits up to ten seconds for a real
+    `.m3u8` to appear on disk and reports what actually happened.
+    """
+    url = body.url.strip()
+    if not url:
+        raise HTTPException(400, "no stream URL given")
+    if not FFMPEG:
+        raise HTTPException(503, "ffmpeg is not installed on this machine")
+    scrub = Scrubber([body.username, body.password])
+    try:
+        session = await asyncio.to_thread(
+            MANAGER.start, url, body.label[:120], Policy(), scrub)
+    except TunerBusy as exc:
+        raise HTTPException(503, str(exc)) from None
+    except TunerError as exc:
+        raise HTTPException(400, str(exc)) from None
+
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline:
+        if session.ready:
+            session.state = "live" if session.state == "starting" else session.state
+            break
+        if session.state == "failed":
+            MANAGER.stop_session(session.id)
+            raise HTTPException(502, session.error or "the stream could not be opened")
+        await asyncio.sleep(0.25)
+    else:
+        # Still nothing. Do not claim it is playing; hand back the session so the client can
+        # keep polling, and say which state it is actually in.
+        return {**session.public(), "note": "no playable output yet; poll the session"}
+    session.last_seen = time.monotonic()
+    return session.public()
+
+
+@router.get("/session/{sid}", summary="State of one tuning session")
+async def session_state(sid: str) -> dict:
+    s = MANAGER.touch(sid)
+    if not s:
+        raise HTTPException(404, "no such session")
+    return s.public()
+
+
+@router.delete("/session/{sid}", summary="Stop a tuning session")
+async def session_stop(sid: str) -> dict:
+    if not MANAGER.stop_session(sid):
+        raise HTTPException(404, "no such session")
+    return {"stopped": sid}
+
+
+@router.get("/stream/{sid}/{name}", summary="HLS playlist and segments for a session")
+async def stream_file(sid: str, name: str) -> Response:
+    """Serve one file out of a session directory.
+
+    `name` is checked against an allow-list of the exact filenames ffmpeg was told to write.
+    It is never joined to a path before that check, so `..%2f..%2fetc%2fpasswd` fails on being
+    an unrecognised name rather than on a traversal check that has to be got right.
+
+    This is also the session's heartbeat: `touch` here is what keeps it alive, so a closed tab
+    stops requesting and the reaper takes the slot back.
+    """
+    if name != PLAYLIST_NAME and not SEGMENT_RE.match(name):
+        raise HTTPException(404, "no such file")
+    s = MANAGER.touch(sid)
+    if not s:
+        raise HTTPException(404, "no such session")
+    path = s.dir / name
+    if not path.is_file():
+        raise HTTPException(404, "not ready")
+    media = ("application/vnd.apple.mpegurl" if name.endswith(".m3u8")
+             else "video/mp2t" if name.endswith(".ts") else "video/iso.segment")
+    return FileResponse(
+        path, media_type=media,
+        # A live playlist that a browser caches is a live playlist that stops updating.
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"})
+
+
+# ---------------------------------------------------------------- state
+
+@router.get("/state", summary="Tuner capacity and live sessions")
+async def state() -> dict:
+    """Real readings only: how many slots exist, how many are in use, what they are doing.
+
+    There is no channel count here and no "signal" figure, because with nothing loaded this
+    box genuinely holds no channels -- the playlist lives in the visitor's browser. Reporting
+    a number the server does not have would be exactly the decorative indicator the house
+    rules forbid.
+    """
+    MANAGER.reap()
+    sessions = MANAGER.list()
+    return {
+        "ffmpeg": bool(FFMPEG),
+        "max_sessions": MAX_SESSIONS,
+        "active": len(sessions),
+        "sessions": [s.public() for s in sessions],
+        "channels_stored": 0,
+        "note": "no playlist or credential is stored on this box",
+    }
+
+
+def status() -> dict:
+    """The rack unit, as a plain dict. Called on every rack poll -- synchronous and cheap.
+
+    Deliberately **not** built from `api.py`'s `Unit` model: importing it would put this module
+    inside `api.py`'s import graph and outside the scope this module was built in. The keys
+    match `Unit`'s fields so the wiring engineer can splat it into `Unit(**tuner.status())`.
+
+    The state is a reading, not a decoration:
+      * `offline` when ffmpeg is absent -- the surface genuinely cannot work;
+      * `busy` when a session holds a slot;
+      * `ready` otherwise, meaning the box can accept a source.
+    It is never `ready` on the strength of the module merely being importable, and the detail
+    line says outright that the box holds no channels of its own, because it does not.
+    """
+    active = len(MANAGER.list())
+    if not FFMPEG:
+        state_ = "offline"
+        detail = "ffmpeg not installed"
+    elif active:
+        state_ = "busy"
+        detail = (f"{active}/{MAX_SESSIONS} slots streaming · "
+                  f"stream copy, no GPU · no channels stored on this box")
+    else:
+        state_ = "ready"
+        detail = (f"0/{MAX_SESSIONS} slots in use · "
+                  f"visitor supplies the playlist; none is stored here")
+    return {
+        "id": "tuner",
+        "label": "SyMoNeuRaL Tuner",
+        "slot": "1U",
+        "state": state_,
+        "bus": "cpu",
+        "href": "/tuner.html",
+        "spec": "ffmpeg stream copy → HLS",
+        "detail": detail,
+    }
