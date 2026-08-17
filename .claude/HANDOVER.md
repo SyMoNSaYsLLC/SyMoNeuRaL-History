@@ -240,6 +240,34 @@ textarea's auto-grow cap raised 150 → 260 to match its new floor.
 - hls.js is the **light** build: no subtitles, no alternate audio.
 - Series episodes list without URLs; AES-encrypted HLS is refused rather than decrypted.
 
+## 2c-ter. The GPU panel beside every prompt (last change, ~06:20)
+
+**Not deployed at the time of writing.** On chat, image, ravencalc, remix and tuner.
+
+**It adds no second data path, and that is the thing to preserve.** `console.js` connects
+when it finds `#units` **or** `#m-vram` on a page (`console.js:266`) and then writes
+`m-vram`, `m-pwr`, `m-temp`, `m-holder`, `m-queue`, `con-link`. Carrying those ids *is* the
+whole integration — same websocket, same readings, same polling fallback. Its `txt()`/
+`meter()` helpers no-op on absent ids, so the rack's own ids are unaffected. The stack in the
+panel is `#units`, the same element console.js renders the rack into, restyled compact with
+every rule scoped under `.gpu-panel`.
+
+If you add another surface page, pass `gpu=True/False` and `surface="Name"` to `page()` in
+`tools/build_pages.py` and the panel appears. `gpu=False` still shows the card — it is
+shared and worth seeing — but says outright that the page does not wait for it, which is why
+RavenCalc (CPU/SymPy) and Tuner (network) get that variant.
+
+`.gbar`, not `.bar`. Redefining `.bar` collapsed the site header to 7px once; this is the
+**fifth** time that bug class has had to be designed around in this stylesheet.
+
+Verified against a real render rather than by eye: `holder` went `idle -> image` with
+*SyMoNeuRaL Image* showing busy in the stack, and power differs between reads, which is what
+rules out a cached value. The assertion checks **values, not markup** — renaming the panel's
+ids leaves the layout intact, the socket live and the stack at eight units, and it still
+fails on `vram="" temp=""`. A panel that renders and never receives data is precisely the
+decorative gauge this site argues against, and it is indistinguishable from a working one in
+a screenshot.
+
 ## 2d. The dev fee — `backend/apps/licensing/`
 
 Garrett set the standard rate at **2.5% (250 bps)**, matching Braiins' headline. Modelled on
