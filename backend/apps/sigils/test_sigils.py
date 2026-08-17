@@ -159,32 +159,68 @@ class TestMatte(unittest.TestCase):
             self.assertEqual(rgba[3][(h // 2) * w + w // 2], 255, name)
             self.assertEqual(stats["key"], name)
 
-    def test_despill_pulls_the_field_colour_out_of_the_edge(self) -> None:
-        """A subject pixel touching a magenta field picks the field up. On a white message
-        bubble that reads as a coloured halo, so it is removed in straight colour."""
-        w = h = 16
-        n = w * h
+    @staticmethod
+    def _block(colour: tuple[int, int, int], w: int, h: int,
+               span: range) -> list[bytes]:
+        """A magenta field with one solid square of `colour` in it."""
         key = matte.KEYS["magenta"]
-        planes = [bytearray(bytes([key[c]]) * n) for c in range(3)]
-        for y in range(4, 12):
-            for x in range(4, 12):
-                # A subject wearing heavy magenta spill: red and blue lifted together,
-                # close enough to the field to be plainly contamination, and far enough
-                # from it on the green channel not to be keyed out as field.
-                planes[0][y * w + x], planes[1][y * w + x], planes[2][y * w + x] = 230, 100, 225
-        # A second subject block that merely *is* warm, far from the field colour. It is
-        # the case an unscaled despill ruins, and with a hot pink field that is most of a
-        # sticker, so it is asserted here rather than discovered on a render.
-        for y in range(4, 12):
-            for x in range(12, 14):
-                planes[0][y * w + x], planes[1][y * w + x], planes[2][y * w + x] = 190, 90, 60
-        rgba, _ = matte.cut(w, h, [bytes(p) for p in planes], "magenta")
-        i = 4 * w + 4                      # the spilled corner, inside the edge band
+        planes = [bytearray(bytes([key[c]]) * (w * h)) for c in range(3)]
+        for y in span:
+            for x in span:
+                for c in range(3):
+                    planes[c][y * w + x] = colour[c]
+        return [bytes(p) for p in planes]
+
+    def test_despill_pulls_the_field_colour_out_of_the_edge(self) -> None:
+        """A subject pixel near a magenta field picks the field up. On a white message
+        bubble that reads as a coloured halo, so it is removed in straight colour.
+
+        **This asserts on the first pixel that is actually visible, and that is the whole
+        subtlety.** `CHOKE = 1` discards the outermost ring of subject rather than
+        correcting it, because that ring is a blend of subject and field and no arithmetic
+        recovers what was mixed. So the literal corner of the block is left at its input
+        colour *and given alpha 0* -- untouched RGB under a transparent alpha cannot show a
+        halo, so there is nothing there to fix. The despill applies one pixel further in,
+        which is where the first pixel a viewer can see lives.
+
+        An earlier revision of this test asserted on the choked corner and read as an
+        off-by-one in the despill threshold (`230 not less than 230`). It was not: the
+        despill was never reached for that pixel by design. Measured on this input, the
+        first opaque pixel goes 230 -> 105 on red, which is the full correction. The fix
+        was to assert on the pixel that can carry a halo, not to move the threshold.
+        """
+        w = h = 16
+        # Heavy magenta spill: red and blue lifted together, close enough to the field to be
+        # plainly contamination, far enough from it on green not to be keyed out as field.
+        planes = self._block((230, 100, 225), w, h, range(4, 12))
+        rgba, _ = matte.cut(w, h, planes, "magenta")
+
+        choked = 4 * w + 4                 # the outermost ring: discarded, not corrected
+        self.assertEqual(rgba[3][choked], 0,
+                         "the choked ring must be transparent -- that is why its RGB stands")
+
+        i = 5 * w + 5                      # the first opaque pixel, inside the edge band
+        self.assertGreater(rgba[3][i], 0, "this pixel must be visible for the test to mean anything")
         self.assertLess(rgba[0][i], 230, "red was not despilled at the edge")
         self.assertLess(rgba[2][i], 225, "blue was not despilled at the edge")
         self.assertEqual(rgba[1][i], 100, "the non-key channel must not be touched")
-        j = 4 * w + 13                     # warm, but not spill
-        self.assertEqual((rgba[0][j], rgba[1][j], rgba[2][j]), (190, 90, 60),
+
+    def test_a_merely_warm_subject_is_not_despilled(self) -> None:
+        """The case an unscaled despill ruins, and it gets its own render deliberately.
+
+        A red-orange lifts *one* of the field's strong channels and leaves the other where
+        it was, so the colour-difference measure comes out negative and the correction never
+        fires. Asserted on its own image rather than as a second block in the spill test,
+        because in one image the warm block sat entirely inside the choked ring: it was
+        transparent, its RGB was untouched for that reason rather than for the right one,
+        and the assertion passed while testing nothing.
+        """
+        w = h = 16
+        planes = self._block((190, 90, 60), w, h, range(4, 12))
+        rgba, _ = matte.cut(w, h, planes, "magenta")
+        i = 5 * w + 5
+        self.assertGreater(rgba[3][i], 0, "this pixel must be visible for the test to mean anything")
+        self.assertEqual((rgba[0][i], rgba[1][i], rgba[2][i]), (190, 90, 60),
                          "a warm subject colour was desaturated as if it were spill")
 
     def test_a_solid_field_is_reported_degenerate(self) -> None:

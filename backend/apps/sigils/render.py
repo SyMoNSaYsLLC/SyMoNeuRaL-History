@@ -104,10 +104,32 @@ SUFFIX = ("sticker illustration, single subject, centred, thick clean outline, "
 
 KEY_HEX = {"magenta": "FF00FF", "green": "00FF00"}
 
+#: The suffix for img2img, and it deliberately does **not** name a field colour.
+#:
+#: Measured on this box 2026-08-17, 768x768, seeds fixed, two photographic uploads, at
+#: 4/8/12 steps and strengths 0.55-0.60: the engine never painted the requested magenta
+#: field. The border came back grey every time (measured: 38,38,38 / 55,58,59 / 64,71,76 /
+#: 67,71,71 / 151,154,149) because at the strengths where the upload still influences the
+#: result, the upload's own background wins. Asking for a colour that never arrives would
+#: put a promise in the prompt that the page then has to explain away, so the field clause
+#: is dropped and the matte measures whatever background actually came out.
+#:
+#: "plain flat background" stays, because a plainer background keys better and that much the
+#: engine does respond to.
+REDRAW_SUFFIX = ("sticker illustration, single subject, centred, thick clean outline, "
+                 "flat vector shading, no scene, no shadow, no text, "
+                 "plain flat background, no gradient")
+
 
 def compose(subject: str, key_name: str) -> str:
     """The prompt actually sent to the engine, exactly as the page displays it."""
     return f"{subject.strip()}, {SUFFIX.format(key=key_name, hex=KEY_HEX[key_name])}"
+
+
+def compose_redraw(subject: str) -> str:
+    """The img2img prompt. `subject` may be empty -- the upload is then the only subject."""
+    subject = subject.strip()
+    return f"{subject}, {REDRAW_SUFFIX}" if subject else REDRAW_SUFFIX
 
 
 def weights_present() -> bool:
@@ -137,7 +159,9 @@ def raw_name(stamp_ms: int, seed: int) -> str:
     return f"sigil-raw-{stamp_ms}-{seed}.png"
 
 
-def build_argv(prompt: str, out: pathlib.Path, seed: int, steps: int, size: int) -> list[str]:
+def build_argv(prompt: str, out: pathlib.Path, seed: int, steps: int, size: int,
+               init: pathlib.Path | None = None,
+               strength: float | None = None) -> list[str]:
     """The engine command line. Copied from `backend/api.py:1736-1747`, with its reasons.
 
     `--cfg-scale 1.0` and `--sampling-method euler` are what this distilled model wants;
@@ -146,14 +170,29 @@ def build_argv(prompt: str, out: pathlib.Path, seed: int, steps: int, size: int)
     step -- and `--vae-tiling` decodes in tiles. Without those two a 768x768 render dies in
     VAE decode: it wants a 3.7 GB compute buffer, and with the text encoder also resident
     there is nothing left.
+
+    `init` and `strength` turn this into img2img for the image surface. Two measured facts
+    about that pair, both surprising enough to be worth carrying here:
+
+    * The engine quantises to `int(steps * strength)` denoise steps, so at four steps
+      strengths 0.55 and 0.70 are the *same render* (both round to two) and 0.85 and 0.95
+      are the same as each other. Verified by sha256 on the outputs.
+    * At 0.85 the init image stops contributing at all: two entirely different uploads
+      produced byte-identical PNGs. `upload.MAX_STRENGTH` caps below that, and the cap
+      exists to stop the surface claiming to use a picture it is ignoring.
     """
-    return [str(SD_CLI),
+    argv = [str(SD_CLI),
             "--diffusion-model", str(WEIGHTS["unet"]), "--vae", str(WEIGHTS["vae"]),
             "--clip_l", str(WEIGHTS["clip"]), "--t5xxl", str(WEIGHTS["t5"]),
             "-p", prompt, "--cfg-scale", "1.0", "--sampling-method", "euler",
             "--steps", str(steps), "-W", str(size), "-H", str(size),
             "--seed", str(seed), "-o", str(out),
             "--backend", "te=cpu", "--vae-tiling", "--diffusion-fa"]
+    if init is not None:
+        argv += ["-i", str(init)]
+        if strength is not None:
+            argv += ["--strength", str(strength)]
+    return argv
 
 
 #: How long a render may wait for the card before giving up, mirroring the governor's own

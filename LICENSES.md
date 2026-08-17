@@ -71,8 +71,32 @@ HTML, and the `art-*.png` renders. © SymonSays LLC. All rights reserved.
 | **Qwen2.5-0.5B-Instruct** | speculative draft | **Apache-2.0** | identical SHA-256 to the above |
 | **FLUX.1-schnell** (+ VAE) | image | **Apache-2.0** | model card declares it; explicitly permits commercial use |
 | **T5-XXL**, **CLIP-L** | FLUX text encoders | **Apache-2.0** as redistributed | the GGUF repos we fetched from are Apache-2.0 tagged |
+| **ggml-base.en** (Whisper) | speech → text for Stickers | **MIT** | `ggerganov/whisper.cpp` model card declares `license: mit`; it is a conversion of `openai/whisper`, whose repo `LICENSE` is MIT (both texts fetched) |
+| **u2net.onnx** (U²-Net) | photograph cut-out for Stickers | **Apache-2.0** | see the provenance note below — the text is the source repo's, not the file's |
 
-Licence texts are saved to **`backend/models/licenses/`** by `scripts/fetch-models.sh`. `models/` is gitignored
+> **u2net's provenance, stated precisely rather than flattened to "verified".** The `.onnx`
+> we fetch is a **release asset republished by rembg** and carries no licence file of its own.
+> The Apache-2.0 grant lives in the architecture's source repository, `xuebinqin/U-2-Net`,
+> whose `LICENSE` was fetched and read on 2026-08-17. So the honest claim is *"upstream
+> U-2-Net is Apache-2.0 and rembg redistributes these weights"* — not *"the artefact we
+> downloaded declares Apache-2.0"*, which it does not. Same measured/vendor/projected
+> discipline the site applies to numbers.
+
+> **Two rembg models were checked and rejected**, and the reasons are worth keeping because
+> the next person will see them in rembg's list and wonder. **`bria-rmbg-2.0` is CC BY-NC 4.0**
+> — non-commercial, and the best-known model rembg offers, so it is the likeliest wrong
+> choice in the whole surface. **`isnet-general-use`** comes from `xuebinqin/DIS`, which has
+> **no `LICENSE` file at all** and whose README scopes Apache-2.0 to "our code and evaluation
+> metric" while sending the DIS5K *dataset* — what those weights are trained on — to a
+> separate terms-of-use PDF. **`silueta`** is a third-party derivative with no licensed source
+> repo this box could find. The last two are not asserted to be non-permissive; they are
+> **unverified**, which inside a licence gate is worse. The allowed set in
+> `backend/apps/sigils/cutout_worker.py` is therefore `u2net` and `u2netp` only, and
+> `scripts/fetch-cutout.sh` refuses anything else.
+
+Licence texts are saved to **`backend/models/licenses/`** by `scripts/fetch-models.sh`,
+`scripts/fetch-whisper.sh` and `scripts/fetch-cutout.sh` — all three write to the one
+directory so a customer build has a single place to look. `models/` is gitignored
 (40 GB), so those files live on disk beside the weights rather than in git — **they must be
 included in any customer image.**
 
@@ -94,9 +118,40 @@ included in any customer image.**
 |---|---|---|
 | **llama.cpp** (`llama-server`, and 100+ binaries) | **MIT** | Copyright (c) 2023-2026 The ggml authors |
 | **stable-diffusion.cpp** (`sd-cli`) | **MIT** | Copyright (c) 2023 leejet |
+| **whisper.cpp** (`whisper-cli`) | **MIT** | Copyright (c) 2023-2026 The ggml authors |
 
 MIT obliges only that the copyright line and permission notice travel with the code. Ship
-`contrib/llama.cpp/LICENSE` and `contrib/stable-diffusion.cpp/LICENSE` alongside the binaries.
+`contrib/llama.cpp/LICENSE`, `contrib/stable-diffusion.cpp/LICENSE` and
+`contrib/whisper.cpp/LICENSE` alongside the binaries.
+
+> whisper.cpp is built here with `-DGGML_CUDA=OFF`. That is a performance decision, not a
+> licence one, but it is a **modification of build configuration only** — no source is
+> patched, so there is nothing to declare beyond the MIT notice.
+
+### The Stickers cut-out venv — also redistributed
+
+`backend/apps/sigils/.venv` is reached across a subprocess boundary by `cutout_worker.py` and
+is **not** part of the serving interpreter. It is listed here rather than in §5 for one
+concrete reason: §5 is explicitly *informational, not redistributed*, and these packages **are**
+redistributed if a customer box does photograph cut-outs. Populated by `scripts/fetch-cutout.sh`.
+
+| Package | Licence |
+|---|---|
+| rembg | **MIT** — Copyright (c) 2020 Daniel Gatis |
+| onnxruntime | **MIT** — Copyright (c) Microsoft Corporation |
+| pymatting | MIT |
+| Pillow | MIT-CMU |
+| numpy | BSD-3-Clause (with 0BSD, MIT, Zlib, CC0-1.0 components) |
+| scikit-image, pooch | BSD-3-Clause |
+
+`rembg.LICENSE.txt` and `onnxruntime.LICENSE.txt` are fetched to `backend/models/licenses/`.
+The remainder are ordinary MIT/BSD wheels whose texts ship inside their own `dist-info`, which
+is where a customer image will find them.
+
+> **`backend/apps/asicminer/.venv` exists and is not documented anywhere in this file.** It
+> predates the Stickers work and was found while writing this section. Noted rather than
+> quietly covered: if that surface ships on a customer box, its packages need the same
+> treatment as the table above.
 
 ---
 
@@ -109,7 +164,12 @@ image bundles it, include `/usr/share/doc/caddy/copyright`.
 
 ## 5. Serving stack — informational, not redistributed
 
-Debian OS packages on the system interpreter. There is no virtualenv in the serving path.
+Debian OS packages on the system interpreter. **The serving interpreter still has no
+virtualenv, and nothing below is reached through one** — but that sentence used to read "there
+is no virtualenv in the serving path", and Stickers made it misleading. A *request* for a
+photograph cut-out does now cross into `backend/apps/sigils/.venv`; it crosses by
+`subprocess`, which is exactly what keeps this interpreter pinned. Those packages are in §3,
+because unlike the ones below they are redistributed.
 
 | Package | Licence |
 |---|---|
@@ -157,17 +217,23 @@ recovered once disclosed. See the never-publish rule in `.claude/CLAUDE.md`.
 
 ## 8. Obligations by licence, in one place
 
-**Apache-2.0** (Qwen2.5, FLUX.1-schnell, T5-XXL, CLIP-L, Swagger UI, Caddy)
+**Apache-2.0** (Qwen2.5, FLUX.1-schnell, T5-XXL, CLIP-L, **u2net**, Swagger UI, Caddy)
 - ship the licence text; preserve copyright, patent, trademark and attribution notices
 - include upstream's `NOTICE` file if there is one, and carry its contents forward
 - **state that you modified files, if you did** — quantising a model counts; say so
 - grants patent rights, which **terminate if you initiate patent litigation** against a contributor
 - grants **no trademark rights**: build on Qwen and FLUX, do not brand as them
 
-**MIT** (llama.cpp, stable-diffusion.cpp, FastAPI, core-js, normalize.css, Pillow)
+**MIT** (llama.cpp, stable-diffusion.cpp, **whisper.cpp**, **Whisper ggml weights**, **rembg**,
+**onnxruntime**, **pymatting**, FastAPI, core-js, normalize.css, Pillow)
 - reproduce the copyright line and the permission notice. That is the entire obligation.
 
-**BSD-3-Clause** (uvicorn, SymPy)
+**CC BY-NC 4.0** — nothing in this stack, and that is deliberate
+- **`bria-rmbg-2.0` would have put it here.** It is non-commercial, it is the default many
+  rembg examples reach for, and it is blocked at two layers (§2). If a future change makes
+  this heading non-empty, the product has a problem, not a footnote.
+
+**BSD-3-Clause** (uvicorn, SymPy, numpy, scikit-image, pooch)
 - as MIT, plus: do not use the authors' names to endorse or promote your product.
 
 **NVIDIA EULA** (CUDA)
@@ -178,7 +244,12 @@ recovered once disclosed. See the never-publish rule in `.claude/CLAUDE.md`.
 ## 9. Checklist for a customer build
 
 - [ ] `models/licenses/` included beside the weights
-- [ ] `contrib/llama.cpp/LICENSE` and `contrib/stable-diffusion.cpp/LICENSE` included beside the binaries
+- [ ] `contrib/llama.cpp/LICENSE`, `contrib/stable-diffusion.cpp/LICENSE` and
+      `contrib/whisper.cpp/LICENSE` included beside the binaries
+- [ ] if the box does Stickers cut-outs: `backend/apps/sigils/.venv` packages carried with
+      their `dist-info`, and `rembg`/`onnxruntime` texts present in `models/licenses/`
+- [ ] confirm the cut-out model in use is **`u2net`** or **`u2netp`** — never **`bria-rmbg-2.0`**,
+      which is non-commercial. This is the Stickers equivalent of the schnell/dev trap below
 - [ ] `site/swagger-ui-LICENSE.txt` and `site/swagger-ui-NOTICE.txt` present in the webroot
 - [ ] this file included
 - [ ] modifications stated (quantisation, fine-tuning) for every Apache-2.0 component
