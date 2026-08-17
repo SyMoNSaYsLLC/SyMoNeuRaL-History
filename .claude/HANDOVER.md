@@ -3,7 +3,7 @@
 **Last updated 2026-08-17 01:40. Written for a fresh agent with zero prior context.**
 
 > **If you read nothing else:** nothing is broken, nothing is blocked. Run
-> `node tests/frontend.mjs https://symoneural.com` (expect 18/18), read `git log`, then
+> `node tests/frontend.mjs https://symoneural.com` (expect 21/21), read `git log`, then
 > pick up §5. The one thing you cannot do yourself is deploy — see §0b.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
@@ -18,7 +18,7 @@ conversation, so every number, path and decision you need is stated here.
 ## 0. Sixty-second version
 
 - **Nothing is broken and nothing is blocked.** The site is deployed, the API is current,
-  and `node tests/frontend.mjs https://symoneural.com` passes **18/18 against the public
+  and `node tests/frontend.mjs https://symoneural.com` passes **21/21 against the public
   site** — including generating a real image on the real card mid-test.
 - The repo is at `/home/google/Symoneural`, branch `main`, no remote. **Every commit
   states its reason**; `git log` is genuinely worth twenty minutes before you touch
@@ -31,12 +31,18 @@ conversation, so every number, path and decision you need is stated here.
   reintroduce a second thing that routes.
 - **One RTX 5070 Ti, 15.92 GiB, one tenant at a time**, arbitrated by a `mkdir` lock at
   `<root>/run/gpu.lock.d`. That constraint is the architecture. See §4.
+- **Eight rack units now**, not five. Three were added on 2026-08-17: `asicminer` (ASIC
+  mining control, operator-gated, offline), `tuner` (IPTV, ready) and `gateway` (TRON
+  licensing, designed-not-deployed). §2c has the shape; §2d the dev fee; §2e firmware and
+  the QEMU emulator.
+- **The queue in §5 was rewritten** at the end of that session. Read §5, not §5b — the
+  latter is the original list kept only for reference and much of it is done.
 
 ## 0b. First moves
 
 ```bash
-node tests/frontend.mjs                 # 18/18 against the local API on :8800
-node tests/frontend.mjs https://symoneural.com   # 18/18 against production
+node tests/frontend.mjs                 # 21/21 against the local API on :8800
+node tests/frontend.mjs https://symoneural.com   # 21/21 against production
 git log --oneline -25
 ```
 
@@ -53,7 +59,7 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
-## 1. State of the machine, verified 2026-08-17 03:15
+## 1. State of the machine, verified 2026-08-17 05:35
 
 | Thing | State |
 |---|---|
@@ -62,7 +68,8 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 | `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
 | `symoneural-api.service` | active, restarted 01:03, PID 170388 |
 | Caddy | serving, TLS auto-renew |
-| `tests/frontend.mjs` | **18/18 local, 18/18 production** |
+| `tests/frontend.mjs` | **21/21 local, 21/21 production** |
+| Rack units | **8** — chat, image, remix, ravencalc, train, asicminer, tuner, gateway |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | 9, all idempotent, hash-verified across two runs |
 | Podman container `symoneural-api` | **running but unreachable** — 8800/tcp is not published, and the image predates today's changes. It is inert, not a live server. It exists because the user wanted to learn CDI. Stop it or rebuild it; do not debug against it. |
@@ -132,6 +139,123 @@ still set on the PNG, but the URL now changes whenever the file does.
   watermark change made wrong in two generators at once.
 - **An 18th assertion**, `the watermark is readable as text without opening the render`. It
   was verified to fail: injecting `text-overflow:ellipsis` into `.gprov` turns it red.
+
+## 2c. Second session, 2026-08-17 — three new surfaces, and the mining stack
+
+All of this is **deployed and verified live** (21/21 against production at 05:35).
+
+### The rack went from five units to eight
+
+| Unit | Bus | State | Why |
+|---|---|---|---|
+| `asicminer` | `asic` | **offline** | No mining hardware attached. Operator-gated; see below. |
+| `tuner` | `net` | **ready** | IPTV. Genuinely ready — it holds no content, the visitor brings the playlist. |
+| `gateway` | `net` | **offline** | TRON/USDT licensing. Designed, not deployed: no contract, no wallet, no daemon. |
+
+`Unit.bus` gained `asic` and `net`. **This exposed a live bug**: `console.js` rendered
+`u.bus === 'cpu' ? 'CPU' : 'GPU'`, so an ASIC surface would have printed "GPU" — the wrong
+hardware on the one plate the page asks you to trust. It is a lookup now, printing `--` for
+anything unrecognised.
+
+### Subsystems added
+
+- **`backend/apps/asicminer/`** — the ASIC control panel. `probe.py` (pyasic telemetry),
+  `scan.py` (discovery), `fwcheck.py` (firmware pre-flight). Off unless `SYM_ASIC_ENABLED=1`
+  **and** `SYM_ASIC_TOKEN` are both set, so a misconfiguration fails closed on a public box.
+- **`backend/apps/tuner/`** — IPTV over ffmpeg stream-copy to HLS. 57 tests.
+- **`backend/apps/gateway/`** — TRON licensing surface.
+- **`backend/apps/licensing/`** — the dev fee. 21 tests. See §11.
+- **`scripts/qemu-antminer.sh`** — boots real Antminer firmware under QEMU. See §12.
+
+### Three API routes, all operator-gated
+
+```
+GET  /api/asicminer/firmware    what firmware is actually on this machine
+POST /api/asicminer/scan        discover rigs on a PRIVATE range only
+POST /api/asicminer/emulator    start / stop / status
+```
+
+`X-Sym-Token`, constant-time compared, 503 when the surface is off. **The scanner refuses any
+globally routable CIDR before sending a packet** — this box has a public IP, and a scanner
+that takes an arbitrary range is one someone can aim at the internet from our address. The
+check is on the parsed network, not the string. Prefixes wider than /20 are refused too.
+
+The emulator starts **by package id, never by a caller-supplied path**.
+
+### Bugs fixed, both found by audit rather than by anyone noticing
+
+- **`.card` was defined twice** (`symoneural.css:118` and the receipts block). The later rule
+  won every `.card` on the site — measured: eleven cards on `documentation.html` were
+  rendering `display:flex` with the wrong padding and a gradient. The receipts block is now
+  scoped to `.cards`. **This was the fourth instance of that bug class** after `.bar`,
+  `.live` and `#console .sub`.
+- **The lightbox asserted a burned-in watermark strip** that only `build_gallery.py` produces.
+  It was *true* for every render it was bound to, so it was a trap rather than a falsehood —
+  it becomes false the moment the lightbox is reused on the image page, which
+  `docs/specs/image-spec.md` proposes. It now derives the claim from the file's own shape.
+- **The tuner page posted to `/api/tuner/channels`**, which no router serves, so it fell
+  through to the static mount and returned 405. The real routes are `/api/tuner/playlist` and
+  `/api/tuner/xtream/channels`. Its `tn-` CSS had also never been written, so the form
+  rendered as raw HTML.
+
+## 2d. The dev fee — `backend/apps/licensing/`
+
+Garrett set the standard rate at **2.5% (250 bps)**, matching Braiins' headline. Modelled on
+the shape in `bos-plus-api`'s `license.proto`; none of their code is used.
+
+**`STANDARD_FEE_BPS` lives in `issue.py`, the minting tool, and NOT in `__init__.py`, the half
+that runs on a rig.** The verifier carries no rate at all: a machine reads its fee from a
+signed contract or has no fee. A default in the verifier would be a number a tampered or
+missing contract could silently fall back to. A test walks the AST to enforce this.
+
+Contract keys are `SYMN1.<b64url payload>.<b64url ed25519 sig>`, verified **offline** by
+`openssl` exec — so a rig with no route to us still knows if its licence is valid, and we
+learn nothing about when or where a customer runs.
+
+> **THE PRIVATE SIGNING KEY WAS IN `/tmp` AND IS GONE AFTER THE 2026-08-17 REBOOT.** The
+> public half is committed at `backend/apps/licensing/contract-signing.pub`. **No contracts
+> were ever issued to anyone**, so this is harmless — regenerate and replace the public half:
+> ```bash
+> python3 backend/apps/licensing/issue.py keygen --out ~/symoneural-signing
+> cp ~/symoneural-signing.pub backend/apps/licensing/contract-signing.pub
+> ```
+> Keep the `.key` off every rig and out of git. `*.key` is gitignored; `issue.py` chmods 0600.
+
+**It does not collect.** No hashrate diversion, no pool substitution. Collection belongs in a
+mining engine and this box has none; `disclosure()` says so in every state. Two facts checked
+rather than assumed: Braiins is **2–2.5% depending on hardware model**, not a flat 2.5%; and
+**stock Bitmain firmware has no dev fee at all** — `bmminer` extracted from the S17 Pro rootfs
+has no hardcoded pool and no devfee strings. The comparison is against Braiins, not Bitmain.
+
+## 2e. Firmware and the QEMU emulator
+
+Full detail in `docs/antminer-firmware-upgrade.md`,
+`docs/custom-antminer-firmware-options.md` and
+`docs/symoneural-miner-firmware-strategy.md`. The short version:
+
+**Antminer packages open.** A plain signed tarball. `runme.sh` is a signature gate (exits 1–5)
+wrapping an inner one that does a version gate (exit 7 blocks downgrades) then `flash_erase` +
+`nandwrite` with no rollback. **Three gates run in `upgrade.cgi` before `runme.sh` is even
+reached**: symlinks rejected, `runme.sh.sig` verified against `/etc/bitmain-pub.pem` *by the
+CGI*, and `md5sum runme.sh` checked against `/etc/blacklist` (27 entries — a revocation list).
+
+**`scripts/qemu-antminer.sh` boots S17 Pro, S17+ and T17 to a shell.** Four things it knows:
+`ramdisk_size=131072` (the default 4 MB buffer silently truncates a 100 MB rootfs into a fake
+"corrupt firmware" symptom), a devicetree must be supplied, `-nic` not `-device cadence_gem`,
+and pflash is exactly 64 MB. **QEMU does not emulate the hashboards**, so lighttpd and
+`upgrade.cgi` run and `bmminer` does not — good for the flash path, useless for telemetry.
+
+**MicroBT firmware is encrypted and cannot be emulated.** `Whatsminer-all-20260416.14` (41 MB)
+has a readable header — magic `0xae640a3f`, control board `h616` as ASCII — and a payload at
+**7.999 bits/byte of entropy** across all 41 MB. You cannot extract a kernel from ciphertext.
+Independently: `h616` is Allwinner and `qemu-system-arm` has machines only for H3, A10, R40.
+`fwcheck.py` validates the container header, size consistency and declared board.
+
+**The Braiins decision, already made:** do **not** fork their firmware. Everything that drives
+an Antminer hashboard is GPLv3, so a fork must ship GPLv3 with source. `bos-plus-api` is a
+public gRPC surface covering auth, telemetry, cooling, performance tuning, pools and upgrade —
+so SyMoNeuRaL Miner is a proprietary control plane over it, which is a separate program and
+carries no GPL obligation. `backend/apps/asicminer/` already is that.
 
 ## 3. What changed structurally (do not re-learn this the hard way)
 
@@ -277,6 +401,68 @@ cascade.** The tooling for that is in §6.
 ---
 
 ## 5. Still to do
+
+> **Updated 2026-08-17 05:35, end of the second session.** Items 3, 4 and 5 are now
+> substantially built — see §2c, §11 and §12. What follows is what is genuinely left.
+
+### Open findings nobody has acted on
+
+These were each found by audit and verified, and none is fixed. They are listed first
+because they are the cheapest real work available.
+
+1. **The SyMoN_ML DRM fails open, and that is the most serious item here.**
+   `auth_daemon.py` in the blueprint calls `_check_local_sandbox_state()` as a *fallback*
+   when the TRON lookup does not match, and that function is `return True` unconditionally.
+   So **blocking `api.trongrid.io` grants a licence** — `iptables -j DROP` defeats the entire
+   IP moat. It is why the auth daemon was NOT built. A licence check that fails open is worse
+   than none, because the surface around it claims the weights are protected. Needs a
+   fail-closed redesign *and* a real answer to key exchange (a blockchain is public; the key
+   cannot live there). Full write-up: `docs/specs/symon-ml-review.md`.
+2. **The Akash figure has an unstated assumption.** $1.68/hr x 8 GPUs x 24 x 30 = $9,677 at
+   100% utilisation; the pitch's $5,800/mo implies ~60%. That is a reasonable number and the
+   document never says so, which is the first thing a sceptical reader attacks.
+3. **The blueprint installs the wrong torch.** Part 2 says `--index-url .../cu121`. Blackwell
+   `sm_120` needs **cu128**. Following it verbatim installs a torch that cannot run here.
+4. **CUDA engine findings** — `docs/specs/cuda-audit.md`. Chiefly `context.py:149`, the only
+   `_attr` call without an explicit default (so a name mismatch silently yields zero SMs), and
+   several honest-labelling allegations that **should be reproduced before anyone edits on
+   their say-so** because they touch the argument the site rests on.
+5. **Four hover captions on `/build.html`** hang 13–71px off the left edge at 1440px.
+   Pre-existing, measured identically on production. Hover-only, clips nothing.
+
+### Queued work
+
+6. **Image page restyle** — `docs/specs/image-spec.md`, 527 lines, ready to implement.
+   Includes a measured diagnosis (the composer sits at y=760 desktop / y=1712 on a phone
+   because `.stage` never scrolls) and a verified list of free class names.
+7. **Chat page restyle** — `docs/specs/chat-spec.md`, 501 lines. Reference measured at three
+   widths. Two traps documented: a `<nav>` rail would hit `nav a:not(.cta){display:none}` and
+   vanish on phones, and deleting `#stat` makes a *successful* generation render as an error.
+8. **SyMoNeuRaL Miner GPU (Ravencoin)** — `backend/apps/cryptominer/`, still untouched and
+   still a **separate surface from the ASIC panel**. Do not conflate them. The governor has no
+   concept of a tenant everything else evicts; design that tenant class explicitly.
+9. **Generate Python stubs from `bos-plus-api`** into `backend/apps/asicminer/` so the panel
+   drives Braiins OS+ natively rather than through pyasic's lowest-common-denominator model.
+   This is the real "Braiins as an SDK" step and it is an API dependency, not a code fork.
+10. **S9 under QEMU** — the package unpacks (JFFS2 via emulated MTD) but produces no console
+    output; the older kernel and its devicetree do not match QEMU's zynq machine.
+11. **Split `api.py` by concern** and **compose the backend as plugins** — the original items
+    12 and 13, still the right shape, and now with three more surfaces arguing for it. Adding
+    a unit still means editing the Unit list, a generator and the routes.
+
+### Blocked on hardware, not on work
+
+- **Telemetry cannot be tested.** The emulator will never run `bmminer` — no hashboards. A
+  real rig, or a BOS+ rig, is the only way. No download substitutes for it.
+- MicroBT emulation is **settled as impossible** (encrypted payload, §12). The control plane
+  over btminer/4028 works today and is the viable route.
+
+---
+
+## 5b. The original queue, for reference
+
+### Original items (many now done — see §2c)
+
 
 Roughly in the order the user asked for it. **Nothing here is blocked and nothing is
 broken** — this is a queue of new work, not a repair list.
