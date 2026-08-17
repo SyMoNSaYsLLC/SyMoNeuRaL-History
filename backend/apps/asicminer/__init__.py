@@ -45,6 +45,8 @@ import os
 import pathlib
 
 HERE = pathlib.Path(__file__).resolve().parent
+# backend/apps/asicminer -> repo root is three levels up.
+ROOT_HINT = HERE.parent.parent.parent
 VENV_PY = HERE / ".venv" / "bin" / "python"
 PROBE = HERE / "probe.py"
 SCAN = HERE / "scan.py"
@@ -176,3 +178,147 @@ def unit_state(result: dict | None) -> tuple[str, str]:
     return "ready", (f"{len(found)} rig{'s' if len(found) != 1 else ''} answering"
                      + (f" · {th:.1f} TH/s measured" if th else "")
                      + (f" · {', '.join(vendors)}" if vendors else ""))
+
+
+# --------------------------------------------------------------- firmware inventory
+
+# Where firmware packages are looked for. Both are gitignored trees, so this is operator
+# data on the operator's box -- nothing here is ever published or served as a file.
+FW_DIRS = [
+    ROOT_HINT / "references" / "Projects_Crypto",
+    pathlib.Path.home() / "Downloads",
+]
+
+# A package is one of two shapes, and the difference decides whether it can be emulated:
+#   .tar.gz  browser-upgrade package -- cert/fw/runme, what upgrade.cgi accepts
+#   .zip     SD recovery package     -- per-file signatures, boots the card directly
+FW_SUFFIXES = (".tar.gz", ".zip")
+
+
+def _fw_id(p: pathlib.Path) -> str:
+    """A stable id derived from the path, so the API never takes a filesystem path.
+
+    The emulator is started by id, never by a caller-supplied path. That is the whole
+    reason this exists: an endpoint that spawns a process against an arbitrary path is a
+    remote file-read at best and worse than that at worst.
+    """
+    import hashlib
+    return hashlib.sha256(str(p.resolve()).encode()).hexdigest()[:16]
+
+
+def packages() -> list[dict]:
+    """Every firmware package actually present, with what we know about each.
+
+    Read from disk rather than hardcoded, so the model list on the page cannot claim
+    firmware that is not there -- or miss firmware that is.
+    """
+    out = []
+    for d in FW_DIRS:
+        if not d.is_dir():
+            continue
+        for f in sorted(d.iterdir()):
+            if not f.is_file() or not f.name.endswith(FW_SUFFIXES):
+                continue
+            n = f.name.lower()
+            vendor = ("antminer" if "antminer" in n
+                      else "microbt" if ("whatsminer" in n or "microbt" in n)
+                      else None)
+            if vendor is None:
+                continue
+            out.append({
+                "id": _fw_id(f),
+                "name": f.name,
+                "vendor": vendor,
+                "bytes": f.stat().st_size,
+                "kind": "sd" if f.name.endswith(".zip") else "browser",
+            })
+    return out
+
+
+def package_by_id(pid: str) -> pathlib.Path | None:
+    for d in FW_DIRS:
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            if f.is_file() and f.name.endswith(FW_SUFFIXES) and _fw_id(f) == pid:
+                return f
+    return None
+
+
+# --------------------------------------------------------------- emulator control
+
+QEMU_SCRIPT = ROOT_HINT / "scripts" / "qemu-antminer.sh"
+EMU_PID = ROOT_HINT / "run" / "qemu-antminer.pid"
+
+
+def emulator_status() -> dict:
+    """Is an emulator running, and which package. Reads the pidfile, never guesses."""
+    out = {"running": False, "pid": None, "package": None, "web": None}
+    if not EMU_PID.is_file():
+        return out
+    try:
+        raw = EMU_PID.read_text().split("\n")
+        pid = int(raw[0].strip())
+        os.kill(pid, 0)                      # signal 0: does it exist, are we allowed
+    except (ValueError, IndexError, ProcessLookupError, PermissionError, OSError):
+        # Stale pidfile -- the process died without cleaning up. Say not running rather
+        # than reporting a pid that is gone.
+        EMU_PID.unlink(missing_ok=True)
+        return out
+    out.update(running=True, pid=pid,
+               package=(raw[1].strip() if len(raw) > 1 else None),
+               web="http://127.0.0.1:8080")
+    return out
+
+
+def emulator_start(pid_str: str) -> dict:
+    """Boot one firmware package under QEMU.
+
+    Started BY ID, never by a path the caller supplies. An endpoint that execs against an
+    arbitrary path is a remote file-read at best; `package_by_id` resolves only to files
+    already enumerated from the two known directories.
+    """
+    if not enabled():
+        return {"ok": False, "error": "surface disabled"}
+    if not QEMU_SCRIPT.is_file():
+        return {"ok": False, "error": "scripts/qemu-antminer.sh not found"}
+    cur = emulator_status()
+    if cur["running"]:
+        return {"ok": False, "error": f"already running (pid {cur['pid']}) — stop it first"}
+
+    pkg = package_by_id(pid_str)
+    if pkg is None:
+        return {"ok": False, "error": "no such firmware package"}
+    if pkg.name.endswith(".zip"):
+        return {"ok": False, "error": "SD recovery packages are not bootable this way; "
+                                      "the emulator takes a browser-upgrade .tar.gz"}
+
+    import subprocess
+    log = ROOT_HINT / "run" / "qemu-antminer.log"
+    try:
+        proc = subprocess.Popen(
+            [str(QEMU_SCRIPT), str(pkg), "--shell", "--serve"],
+            stdout=log.open("wb"), stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
+    EMU_PID.write_text(f"{proc.pid}\n{pkg.name}\n")
+    return {"ok": True, "pid": proc.pid, "package": pkg.name,
+            "web": "http://127.0.0.1:8080",
+            "note": "booting to a shell; the guest web UI needs lighttpd started by hand"}
+
+
+def emulator_stop() -> dict:
+    st = emulator_status()
+    if not st["running"]:
+        return {"ok": True, "note": "nothing was running"}
+    import signal as _sig
+    try:
+        # The script execs qemu, and start_new_session puts it in its own process group,
+        # so signal the group -- killing only the pid can leave qemu orphaned.
+        os.killpg(os.getpgid(st["pid"]), _sig.SIGTERM)
+    except Exception as e:
+        return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
+    EMU_PID.unlink(missing_ok=True)
+    return {"ok": True, "stopped": st["pid"]}

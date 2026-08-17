@@ -1683,6 +1683,60 @@ async def remix(body: RemixRequest,
 # and neither works when the pages are served from a different port than the API.
 # Testing the surfaces with curl proves the endpoints answer; it proves nothing
 # about the JavaScript that has to render them.
+# ------------------------------------------------------------------ asicminer control
+#
+# Operator routes. Every one requires SYM_ASIC_TOKEN in X-Sym-Token, compared in constant
+# time, and the surface has to be switched on at all -- so a box with the env unset serves
+# nothing here rather than serving an unauthenticated scanner. The scan itself refuses any
+# range that is not private; see backend/apps/asicminer/scan.py.
+
+def _asic_auth(request: Request) -> None:
+    if not asicminer.enabled():
+        raise HTTPException(503, "the miner surface is disabled on this installation")
+    if not asicminer.token_ok(request.headers.get("X-Sym-Token")):
+        raise HTTPException(401, "bad or missing X-Sym-Token")
+
+
+class ScanBody(BaseModel):
+    cidr: str = ""
+
+
+class EmuBody(BaseModel):
+    action: Literal["start", "stop", "status"] = "status"
+    package: str = ""          # an id from /api/asicminer/firmware, never a path
+
+
+@app.get("/api/asicminer/firmware", tags=["asicminer"],
+         summary="Firmware packages actually present on this machine")
+async def asic_firmware(request: Request) -> dict:
+    _asic_auth(request)
+    # Read off disk rather than from a list in the page, so the model picker cannot claim
+    # firmware that is not there, or miss firmware that is.
+    return {"packages": asicminer.packages()}
+
+
+@app.post("/api/asicminer/scan", tags=["asicminer"],
+          summary="Discover rigs on a private network")
+async def asic_scan(request: Request, body: ScanBody) -> dict:
+    _asic_auth(request)
+    if not body.cidr.strip():
+        raise HTTPException(400, "give a CIDR, e.g. 10.0.0.0/24")
+    return await asicminer.discover(body.cidr.strip())
+
+
+@app.post("/api/asicminer/emulator", tags=["asicminer"],
+          summary="Start, stop or query the QEMU emulator")
+async def asic_emulator(request: Request, body: EmuBody) -> dict:
+    _asic_auth(request)
+    if body.action == "status":
+        return asicminer.emulator_status()
+    if body.action == "stop":
+        return asicminer.emulator_stop()
+    if not body.package:
+        raise HTTPException(400, "no package id given")
+    return asicminer.emulator_start(body.package)
+
+
 # The tuner brings its own router rather than having its routes written here. It must be
 # included BEFORE the static mount below, for the same reason every other API route is
 # declared before it: StaticFiles at "/" matches everything, so anything mounted after it

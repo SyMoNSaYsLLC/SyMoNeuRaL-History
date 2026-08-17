@@ -651,34 +651,38 @@ MINER_BODY = """    <div class="pgwrap">
 MINER_JS = """<script>
 (function () {
   'use strict';
-  // `have` is what this machine can ACTUALLY do, not a guess. "ok" = firmware is in
-  // references/ and has been booted under QEMU to a shell; "part" = firmware present but
-  // does not boot yet; "no" = no firmware here. Listing a model because the hardware exists
-  // would be the same lie as a decorative status light.
-  var CATALOG = {
-    antminer: [
-      {id: 'S17 Pro', have: 'ok',   note: 'Zynq-7007 \u2014 boots to a shell, lighttpd runs'},
-      {id: 'S17+',    have: 'ok',   note: 'same package generation as the S17 Pro'},
-      {id: 'T17',     have: 'ok',   note: 'same package generation as the S17 Pro'},
-      {id: 'S9',      have: 'part', note: 'JFFS2 rootfs unpacks; the older kernel gives no console under QEMU yet'},
-      {id: 'S19j',    have: 'part', note: 'SD recovery image only, and it fails its own SHA-256 manifest'},
-      {id: 'S17',     have: 'no',   note: 'only the unsigned MD package is here, with no fw.tar.gz'},
-      {id: 'T9',      have: 'no',   note: 'unsigned dual-variant package; the c5 half is an Altera Cyclone V'},
-      {id: 'S19',     have: 'no',   note: 'no firmware on this machine'},
-      {id: 'S19 Pro', have: 'no',   note: 'no firmware on this machine'},
-      {id: 'S21',     have: 'no',   note: 'no firmware on this machine'}
-    ],
-    microbt: [
-      {id: 'M30 series', have: 'no', note: 'the .bin here is a 4,983-byte HTML page, not firmware'},
-      {id: 'M50 series', have: 'no', note: 'the .bin here is 0 bytes'},
-      {id: 'M20 series', have: 'no', note: 'no firmware on this machine'},
-      {id: 'M60 series', have: 'no', note: 'no firmware on this machine'}
-    ]
-  };
-
-  var state = {src: null, vendor: null, model: null};
+  var state = {src: null, vendor: null, pkg: null, packages: null};
   var note = document.getElementById('mnnote');
   var stEl = document.getElementById('mnstate');
+
+  // The operator token. sessionStorage, not localStorage: this authorises scanning and
+  // starting processes, so it should not outlive the tab. It is never sent anywhere but
+  // this origin's own /api/asicminer routes.
+  function token() {
+    var t = sessionStorage.getItem('sym.asic.token');
+    if (!t) {
+      t = window.prompt('Operator token (SYM_ASIC_TOKEN)');
+      if (t) sessionStorage.setItem('sym.asic.token', t);
+    }
+    return t || '';
+  }
+  function api(path, body) {
+    return fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: {'Content-Type': 'application/json', 'X-Sym-Token': token()},
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.status === 401) sessionStorage.removeItem('sym.asic.token');
+        return {ok: r.ok, status: r.status, j: j};
+      });
+    });
+  }
+  function say(t) { note.textContent = t; }
+  function fail(res, what) {
+    say(what + ' failed (' + res.status + '): '
+        + (res.j.detail || res.j.error || 'no reason given'));
+  }
 
   function show(n) {
     for (var i = 1; i <= 3; i++) {
@@ -693,54 +697,102 @@ MINER_JS = """<script>
   document.querySelectorAll('[data-src]').forEach(function (b) {
     b.addEventListener('click', function () {
       state.src = b.dataset.src;
-      if (state.src === 'scan') {
-        note.textContent = 'The IP scanner needs the surface switched on and a private '
-          + 'range to sweep. It refuses any range that is not private, so it cannot be '
-          + 'aimed at the internet from this host.';
-        show(1);
-        return;
-      }
-      note.textContent = '';
-      show(2);
+      if (state.src === 'scan') { runScan(); return; }
+      say(''); show(2);
     });
   });
+
+  function runScan() {
+    var cidr = window.prompt('Private range to sweep', '192.168.1.0/24');
+    if (!cidr) return;
+    say('scanning ' + cidr + ' …');
+    api('/api/asicminer/scan', {cidr: cidr}).then(function (res) {
+      if (!res.ok) return fail(res, 'scan');
+      var d = res.j;
+      if (d.error) { say('scan refused: ' + d.error); return; }
+      var found = (d.rigs || []).filter(function (r) { return r.identified; });
+      say('swept ' + d.swept + ' addresses, ' + d.responded + ' answered on port '
+          + d.port + ', ' + found.length + ' identified'
+          + (found.length ? ': ' + found.map(function (r) {
+               return r.host + ' ' + (r.vendor || '?') + ' ' + (r.model || ''); }).join(', ')
+             : '. Nothing on this network is a rig.'));
+    });
+  }
 
   document.querySelectorAll('[data-vendor]').forEach(function (b) {
     b.addEventListener('click', function () {
       state.vendor = b.dataset.vendor;
-      renderModels();
+      loadPackages();
       show(3);
     });
   });
-
   document.querySelectorAll('.mn-back').forEach(function (b) {
     b.addEventListener('click', function () { show(Number(b.dataset.to)); });
   });
 
+  // The model list is READ OFF DISK, not hardcoded. A list written into this page goes
+  // stale the moment firmware is added or removed, and would claim images that are not
+  // there -- the same failure as a status light that is not wired to anything.
+  function loadPackages() {
+    var host = document.getElementById('mn-models');
+    host.textContent = 'reading firmware on this machine…';
+    api('/api/asicminer/firmware').then(function (res) {
+      if (!res.ok) { host.textContent = ''; return fail(res, 'firmware listing'); }
+      state.packages = res.j.packages || [];
+      renderModels();
+    });
+  }
+
   function renderModels() {
     var host = document.getElementById('mn-models');
+    var list = (state.packages || []).filter(function (p) {
+      return p.vendor === state.vendor;
+    });
     host.innerHTML = '';
-    (CATALOG[state.vendor] || []).forEach(function (m) {
+    if (!list.length) {
+      host.textContent = 'No ' + state.vendor + ' firmware is present on this machine.';
+      return;
+    }
+    list.forEach(function (m) {
+      var bootable = (m.kind === 'browser');
       var el = document.createElement('button');
       el.type = 'button';
-      el.className = 'mn-model ' + m.have;
-      el.disabled = (m.have === 'no');
-      var d = document.createElement('i'); d.className = 'mn-dot ' + m.have;
-      var b = document.createElement('b'); b.textContent = m.id;
-      var sp = document.createElement('span'); sp.textContent = m.note;
+      el.className = 'mn-model ' + (bootable ? 'ok' : 'part');
+      var d = document.createElement('i'); d.className = 'mn-dot ' + (bootable ? 'ok' : 'part');
+      var b = document.createElement('b'); b.textContent = m.name;
+      var sp = document.createElement('span');
+      sp.textContent = (m.bytes / 1048576).toFixed(1) + ' MB · '
+        + (bootable ? 'browser-upgrade package — bootable'
+                    : 'SD recovery package — not bootable this way');
       el.appendChild(d); el.appendChild(b); el.appendChild(sp);
       el.addEventListener('click', function () {
-        state.model = m.id;
-        host.querySelectorAll('.mn-model').forEach(function (x) {
-          x.classList.remove('sel');
-        });
+        state.pkg = m;
+        host.querySelectorAll('.mn-model').forEach(function (x) { x.classList.remove('sel'); });
         el.classList.add('sel');
-        note.textContent = m.have === 'ok'
-          ? m.id + ' selected. Start it with  scripts/qemu-antminer.sh <package> --shell '
-            + '--serve  \u2014 the guest web UI lands on http://127.0.0.1:8080'
-          : m.id + ' cannot be emulated here: ' + m.note + '.';
+        if (!bootable) { say(m.name + ' is an SD recovery package; the emulator takes a '
+                             + 'browser-upgrade .tar.gz.'); return; }
+        startEmulator(m);
       });
       host.appendChild(el);
+    });
+  }
+
+  function startEmulator(m) {
+    say('starting ' + m.name + ' …');
+    api('/api/asicminer/emulator', {action: 'start', package: m.id}).then(function (res) {
+      if (!res.ok) return fail(res, 'emulator');
+      if (!res.j.ok) { say('emulator: ' + res.j.error); return; }
+      say('booted ' + res.j.package + ' (pid ' + res.j.pid + '). ' + res.j.note
+          + '  Guest web UI: ' + res.j.web);
+      refreshEmu();
+    });
+  }
+
+  function refreshEmu() {
+    api('/api/asicminer/emulator', {action: 'status'}).then(function (res) {
+      if (res.ok && res.j.running) {
+        stEl.textContent = 'emulating ' + (res.j.package || '');
+      }
     });
   }
 
@@ -749,7 +801,7 @@ MINER_JS = """<script>
     .then(function (s) {
       var u = s && (s.units || []).filter(function (x) { return x.id === 'asicminer'; })[0];
       stEl.textContent = u ? u.state : 'not present';
-      if (u && u.state === 'offline') note.textContent = u.detail;
+      if (u && u.state === 'offline') say(u.detail);
     })
     .catch(function () { stEl.textContent = 'unreachable'; });
 })();
