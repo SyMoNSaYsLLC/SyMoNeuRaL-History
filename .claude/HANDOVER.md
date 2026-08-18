@@ -215,7 +215,11 @@ route fails the suite rather than quietly landing a directory walk on the live p
   that mounted it, which is the tripwire behaving correctly rather than being silenced.
 
 Suite after this change: **890 passed** (871 baseline + 19 new), same two mandatory `--ignore`s.
-**Now 991** — 51 more from `apps/rackpower/`.
+**Now 941** — 51 more from `apps/rackpower/` (890 + 51). Re-run and counted 2026-08-18:
+`941 passed in 103.41s`. An earlier revision of this line, and the message of commit
+`d6028f1` itself, said **991**; that was a transposition, never a measurement. 890 + 51 is
+941 and the suite agrees. The commit message is left as written rather than rewritten —
+this line is the correction.
 
 ---
 
