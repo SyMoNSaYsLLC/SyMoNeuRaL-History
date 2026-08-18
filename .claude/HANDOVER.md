@@ -491,16 +491,39 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | `POST /api/ravencalc` | exact SymPy, `check.passed: true` |
 | `symoneural-api.service` | active, restarted 01:03, PID 170388 |
 | Caddy | serving, TLS auto-renew |
-| `tests/frontend.mjs` | **26/26 local, 26/26 production** |
+| `tests/frontend.mjs` | **35/35 against `https://symoneural.com`, 2026-08-17 15:35** — production, not local. The five `400`/`404` lines it prints under "failed requests" are the tuner-routing assertion probing its own endpoints on purpose; they are the test working, not a fault. |
 | `https://symoneural.com/` | **302 -> /overview** |
 | `https://www.symoneural.com/` | 200, its own Let's Encrypt cert (Caddy issues per name, so the apex cert's SAN list is apex-only — that is correct, not a fault) |
-| Rack units | **12** — chat, image, remix, ravencalc, train, asicminer, gpuminer, tuner, coder, gateway, guide, project (read from `/api/status`, 2026-08-17) |
+| Rack units | **10** — chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project (read from `/api/status` on the **running** API, 2026-08-17 15:30). Down from 12 by two deliberate merges, not by anything breaking: `guide` folded into `tuner` (§2h), and `asicminer`+`gpuminer` folded into one `miner` unit. `train` now points at `/reinforce.html`, not the manual. |
 | Webroot orphans | 0 (35 pruned across two deploys) |
-| Generators | **11**, all idempotent, hash-verified across two runs |
+| Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
-| Pending deploy | **two, both for the tuner Movies fix** — `sudo systemctl restart symoneural-api` (backend) and `sudo scripts/deploy.sh --prune` (page). See §2c-bis. |
+| Pending deploy | **none as of 15:35.** Garrett ran both at 15:23/15:24 and ran them **in the right order** — webroot files stamped 15:23, `ActiveEnterTimestamp` 15:24:07 — so the Movies fix, the Tuner+Guide merge, the merged `miner` unit and Reinforce are all live. Verified, not assumed: `/reinforce.html` `/reinforce.js` `/miner.html` `/project.html` `/gateway.html` all **200** on `https://symoneural.com`. **When the next backend change lands, the order is `sudo scripts/deploy.sh --prune` FIRST, then `sudo systemctl restart symoneural-api`** — see the box below. |
 | Backend suites | **679 passed, 1 failed** at `f9f3546` (14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. The one red is the tuner codec test, and it belongs to a live writer — see below. |
 | Uncommitted | **16 paths at 14:43, and every one of them is the tuner session's live work** (`epg.py`, `sessions.py`, `tuner.html`, `tuner-watch.html`, `build_pages.py`, `build_masthead.py`, `api.py`, `frontend.mjs`, …). The ~100-path backlog is gone: `8e835cb`, `e38f463` and `f9f3546` landed it. **Still no git remote** — history never leaves this box. |
+
+### The two deploy commands have an order, and the natural one is wrong
+
+```bash
+sudo scripts/deploy.sh --prune            # FIRST  -- site/ -> /var/www/symoneural
+sudo systemctl restart symoneural-api     # SECOND -- the API picks up the new rack
+```
+
+Reversed, there is a window in which the rack advertises a page the webroot does not have yet
+and every visitor who clicks that unit gets a 404. That is not hypothetical for this fleet:
+Reinforce, Project and Gateway all had their rack `href` changed in the same hour their page
+was first written, and `train` moved from `/training.html` to `/reinforce.html`.
+
+**`deploy.sh`'s reference check cannot catch this, so the order is the only protection.** The
+check greps the deployed HTML for `src=`/`href=` attributes, but a rack `href` arrives as JSON
+from `/api/status` and is written into the DOM by `console.js` at view time — it is never in
+the markup to be grepped. A green deploy proves nothing about the rack.
+
+`sudo ./scripts/install-caddy.sh` is a **third** command and is not part of this pair. It is
+needed only for a new top-level *section* path (the `/overview /livestack /controlboard
+/receipts` class). A new `.html` page and a new `/api/*` subtree need neither a Caddyfile change
+nor an `is_route()` change — `handle /api/*` delegates the whole subtree and `is_route()` checks
+a new page as a file. Verified by reading both.
 
 ### Three red tests — two settled in `f9f3546`, one belongs to a live writer
 
@@ -1353,9 +1376,9 @@ answers directly and the Caddyfile is not exercised at all. `tests/frontend.mjs`
    in the same run — passing on a state that no longer existed when the script exited.
 
 
-### 3.0d Five verification steps have failed on healthy input. Read this before writing one.
+### 3.0d Seven verification steps have failed on healthy input. Read this before writing one.
 
-In two days, all five of these printed FAILED or MISSING while the system was correct:
+In two days, all seven of these printed FAILED or MISSING while the system was correct:
 
 1. `deploy.sh`'s reference counter, incremented inside a piped `while read` — a subshell,
    so the count was discarded and the script exited 0 while printing MISSING lines.
@@ -1368,6 +1391,21 @@ In two days, all five of these printed FAILED or MISSING while the system was co
    `systemctl restart symoneural-api` — systemd returns before uvicorn binds the port. That
    branch offers a five-second abort, so it invited the operator to cancel a healthy
    deploy. It retries for ten seconds now.
+6. **`tools/build_reinforce.py` asserting no `text-overflow` reached the page** — against a
+   page that was entirely correct. `backend/apps/reinforce/page.html` opens its stylesheet
+   with a comment in capitals stating that there is no `text-overflow:ellipsis` in it and
+   there must never be one, and a substring search cannot tell a rule from a promise not to
+   write one. Fixed with a `without_comments()` helper, and verified in **both** directions:
+   comment-only → False, a real rule → True.
+7. **A layout probe calling 23 elements "overflowing" on `/reinforce.html` at 390px** — the
+   page was fine. It compared each element's `getBoundingClientRect().right` against
+   `documentElement.clientWidth`, which counts every element inside a horizontally scrollable
+   box as spilling off the page. The wide preset and model tables sit in a `div.rf-scroll`
+   with `overflow-x:auto` (clientW 334, scrollW 640) and the body measured 390/390 — the
+   readings are all reachable, which is the whole test. **A wide table that scrolls inside its
+   own box is the correct pattern here, not a bug**; the thing CLAUDE.md forbids is *clipping*
+   it. Any overflow check must walk up the ancestor chain and stop at the first
+   `overflow-x: auto|scroll`, or read `document.body.scrollWidth` instead of element rects.
 
 Every one encoded an assumption about the deployment that later stopped being true, and
 every one shouted. The damage is cumulative: a check that cries wolf trains the reader to
@@ -1939,9 +1977,12 @@ broken** — this is a queue of new work, not a repair list.
 ./scripts/symoneural.sh off         # stops everything, frees the card
 ```
 
-### The build chain — eleven generators, and the order matters at both ends
+### The build chain — fourteen generators, and the order matters at both ends
 ```bash
 python3 tools/build_pages.py       # chat/image/ravencalc/remix surfaces -> site/*.html
+python3 tools/build_reinforce.py   # the training bay      -> site/reinforce.html + .js
+python3 tools/build_project.py     # the project surface   -> site/project.html
+python3 tools/build_sigils.py      # the sigils page       -> site/sigils.html
 python3 tools/build_masthead.py    # pitch + hero side by side           -> site/index.html
 python3 tools/build_rack.py        # live rack + 2 gutter renders        -> site/index.html
 python3 tools/build_console.py     # control board                       -> site/index.html
@@ -1957,8 +1998,19 @@ python3 tools/build_cachebust.py   # <-- ALWAYS LAST. stamps ?v=<hash> on every 
 ```
 Two ordering constraints, not one. `build_split.py` **reads** the assembled `index.html`
 and writes four pages from it, so anything that edits `index.html` must run before it or
-those pages ship stale. And `build_cachebust.py` stays last, now stamping 16 pages rather
-than 12 — if that count drops, a generator has stopped emitting something.
+those pages ship stale. And `build_cachebust.py` stays last.
+
+**The stamped-page count is a tripwire, and it has to be re-read as the site grows.** It was
+12, then 16; as of 2026-08-17 15:35 **all 21 pages in `site/` carry `?v=` stamps and none is
+unstamped**, which is the real assertion — a *count* only tells you something changed, whereas
+"zero unstamped" tells you the chain is complete however many pages exist:
+
+```bash
+for f in site/*.html; do grep -q '?v=' "$f" || echo "UNSTAMPED $f"; done   # expect no output
+```
+
+The three generators added since the count of 11 each write one file they own outright, so
+they slot in anywhere before the stamper; they are listed early above only for tidiness.
 `tools/build_gallery.py` is separate, and which flag you use decides whether it touches the
 card at all:
 
