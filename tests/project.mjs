@@ -151,6 +151,20 @@ rec('readings agree with the workspaces listed',
     readWorkspaces === shownProjects && shownProjects > 0,
     `reading=${readWorkspaces} listed=${shownProjects}`);
 
+// This page shipped with all ten asset links bare, because `tools/build_project.py` borrows
+// `SHELL` from `build_pages` and that emits plain `href="/symoneural.css"` --
+// `tools/build_cachebust.py` adds the stamps and has to run last. Nothing downstream catches
+// it: `scripts/deploy.sh` strips `?v=` before resolving references, so a destamped page
+// deploys quietly and green, and the Caddyfile then lets a visitor hold the old stylesheet
+// for a week against new markup. The equivalent assertion in `tests/frontend.mjs` only ever
+// examines the page it happens to have loaded, so it never covered this one.
+const unstamped = await p.$$eval(
+  'link[rel=stylesheet][href^="/"], script[src^="/"]',
+  els => els.map(e => e.getAttribute('href') || e.getAttribute('src'))
+           .filter(u => !/\?v=[0-9a-f]{6,}$/.test(u)));
+rec('every local asset on this page is cache-busted', unstamped.length === 0,
+    unstamped.join(', ') || 'all stamped');
+
 // `.claude/CLAUDE.md`: every ellipsis rule has been removed sitewide and none may come
 // back. text-overflow on a detail line is data loss with extra steps.
 const ell = await p.evaluate(() => {

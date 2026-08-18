@@ -183,44 +183,74 @@ the same hour. Rules that follow from that, and they are not optional:
 Merges have worked so far: the tuner session's `ac3`/`aac` fixture cases and this session's
 `emptylive` case coexist and `node tests/tuner_failpaths.mjs` is **27/27** with both in.
 
-### 1c. THE MERGE — nine branches, four bases, and one file everybody edited (14:59)
+### 1c. THE MERGE — four clean branches are IN. Four remain. (2026-08-17 15:4x)
 
-`git branch` shows **nine `worktree-*` branches**, one per fleet session, forked from **four
-different base commits** (`595835d`, `2f285a5`, `8e835cb`, `e38f463`). Nobody merging one of them
-can see this list, so it is recorded here. Measured with `git merge-tree --write-tree --name-only
-main <branch>`, which trial-merges without touching the working tree — re-run it, do not trust
-the table's age:
+Garrett's instruction was "merge the four clean branches first". Done, as `5662390`:
 
-| Branch | Base | Merges into `main` |
-|---|---|---|
-| `worktree-project-page` | `e38f463` | **clean** |
-| `worktree-site-typography-tlc` | `2f285a5` | **clean** (and it rewrites 12 `site/*.html`) |
-| `worktree-docs-accuracy` | `2f285a5` | **clean** |
-| `worktree-online-apps-audit` | `8e835cb` | **clean** |
-| `worktree-stickers` | `8e835cb` | empty — 0 commits |
-| `worktree-miner-online` | `e38f463` | conflicts in `.claude/HANDOVER.md` only |
-| `worktree-gateway-online` | `595835d` | 5: `apps/gateway/__init__.py`, `site/gateway.html`, `tests/frontend.mjs`, `tools/build_pages.py`, a spec |
-| `worktree-coder-online` | `595835d` | 8, including `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py`, `tests/frontend.mjs` |
-| `worktree-reinforce-rl` | `595835d`, now merged up to `f257af8` | **0 — it merged `main` in twice (`dd9107d`, `c9dba85`) and resolved all ten.** Was 10: `backend/api.py` plus every file in `backend/apps/reinforce/` |
+| Branch | What arrived |
+|---|---|
+| `worktree-docs-accuracy` | 22 files — nineteen dead pointers in `docs/`, README counts |
+| `worktree-project-page` | `site/project.html`, `tools/build_project.py`, `tests/project.mjs` |
+| `worktree-site-typography-tlc` | type and spacing across 18 pages, `symoneural.css`, `build_cost.py` |
+| `worktree-online-apps-audit` | the audit document, ravencalc fixes, two probe scripts |
 
-**Merge in that order — clean first.** Each merge changes `main` and can turn a clean branch
-dirty, so the four that cost nothing should land before the four that cost something.
+`worktree-miner-online` landed separately (its own session merged it) and is now 0 ahead.
+**Verified on the merged tree:** `api.py` parses, **696 backend tests pass**, 940 links across
+21 pages resolve, 108 render checks (9 pages × 6 viewports) show zero overflow and zero
+ellipsis violations.
 
-Three things will save the person doing it real time:
+**What remains, re-measured after the merge — the numbers moved, so re-measure again:**
 
-- **A conflict in `site/*.html` is not a conflict.** Eleven of those pages are generator output.
-  Resolve by taking either side, then re-running the generator and committing what it emits —
-  `site/gateway.html` conflicting while `tools/build_pages.py` also conflicts means there is
-  exactly one real conflict, in the generator. Hand-merging the HTML produces a page that no
-  generator will reproduce, and the next build silently reverts it.
-- **`.claude/HANDOVER.md` conflicts are append-vs-append.** Keep both sides. That is the whole
-  resolution, and it is why `worktree-miner-online` is listed as conflicting at all.
-- **`backend/api.py` is the one file with a real merge.** Four branches edit it: coder, miner and
-  reinforce add units or mounts, and the miner session has already merged the two miner rows into
-  one `Unit(id="miner")` carrying `sub: list[SubUnit]` with `gpuminer`/`asicminer` one level down.
-  **Anything that looks up a unit by id must search the top level and then `sub`** — the site
-  deploys before the API restarts, so both shapes are live at once for a while. `ast.parse`
-  after every resolution.
+| Branch | Conflicts with `main` now |
+|---|---|
+| `worktree-reinforce-rl` | **0** — it has merged `main` into itself three times (`dd9107d`, `c9dba85`, and the catch-up that resolved this row). Was 10, then 1: that last one was `site/reinforce.html`, which is generator output. |
+| `worktree-stickers` | 3 — `backend/api.py`, `apps/sigils/test_sigils.py`, `site/sigils.html` |
+| `worktree-coder-online` | 8 — incl. `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py` |
+| `worktree-gateway-online` | 7 — incl. `apps/gateway/__init__.py`, `site/gateway.html`, `build_pages.py` |
+
+Reinforce collapsing from 10 conflicts to 1 is the whole argument for merging in this order:
+the session that owned it committed its working-copy work (`8770676`) while these ran, so nine
+of its ten conflicts dissolved on their own. **That last conflict looked like a product question and is not
+one — answered below, and it needed no decision from anybody.** There are not two surfaces.
+`tools/build_reinforce.py` (from `main`) generates `site/reinforce.html` FROM
+`apps/reinforce/page.html` (from the branch), so both sides of that conflict are build output
+of the same generator over different inputs, and §1c's own rule applies verbatim: take either
+side, re-run the generator, commit what it emits. The RL bay is not a rival product to the
+LoRA bay, it is a superset — `presets.METHODS` offers supervised, preference and
+reinforcement, and the supervised objective **is** the LoRA training bay unchanged.
+
+**A fifth branch appeared mid-merge and is NOT merged: `tuner-transcode`.** It is
+`worktree-online-apps-audit` *rebased* (`a84800e`, "Rebase onto the committed tuner work"), and
+since the pre-rebase branch is already in `main` as part of `5662390`, merging it replays the
+same work against a moved base. It conflicts in `docs/specs/README.md` and 7 hunks of
+`docs/specs/online-apps-audit.md` — every one of them that-session-vs-that-session. **Left
+alone deliberately: that session should say whether its rebased branch supersedes what landed,
+or whether the two are the same content twice.** Attempted, inspected, `git merge --abort`ed;
+`main` is untouched by it.
+
+`worktree-project-page` also pushed one more commit after its first merge (`0ea9cb8`, a
+cache-bust assertion) and that one merged clean — `852d24c`.
+
+#### Three things learned doing it, that the next merger will otherwise re-learn
+
+- **Merge in a temp worktree, never in `main`'s working copy.** `git worktree add
+  /home/google/symoneural-merge -b <branch> main`. At the time of these merges `main`'s index
+  held another session's *staged* reinforce work, and a merge commit made here would have
+  swallowed it into a commit that had nothing to do with it. With eleven sessions live, assume
+  the index is dirty and not yours.
+- **Seventeen of eighteen conflicts in the catch-up merge were `?v=<hash>`.**
+  `tools/build_cachebust.py` stamps a content hash into 284 asset links across 21 pages, so any
+  two branches that both touch `site/symoneural.css` conflict on *every page that references
+  it*. That is the generator working. Resolve **hunk-wise and then re-run the generator** —
+  `git checkout --theirs` replaces the whole *file* and would have discarded the typography
+  merge that auto-merged cleanly elsewhere in those same files. Re-running is also the only
+  thing that makes the hashes *correct* rather than merely conflict-free; it is idempotent, so
+  check by running it twice and diffing.
+- **A conflict can be two sessions fixing the same bug from opposite ends.** The one real
+  conflict in the audit merge was `test_tuner.py`: that branch *deleted* the stale
+  `assertLess(TUNE_WAIT_SECONDS, IDLE_TIMEOUT + 1)` and wrote the docstring explaining why the
+  coupling was wrong, while `main` had already *replaced* it with a test of the actual mechanism.
+  git cannot know a deletion and a replacement are one intent. Both were kept.
 
 **RESOLVED 16:09 — the training-bay page has an owner, and Reinforce no longer exists in two
 places.** Both warnings below are kept because the reasoning still applies to the next collision
@@ -310,7 +340,7 @@ Built as `<details class="tn-stats">` on `/tuner.html` and as the `s` panel on
 screen. See §2h. Every figure is read from the player or the session document, and a figure the
 player has not reported yet renders `-`, which is itself the reading.
 
-### 4. Five surfaces to bring online — ONE SESSION EACH, IN FLIGHT (see §1b)
+### 4. Five surfaces to bring online — 1 of 5 DONE (Miner); the rest ONE SESSION EACH, IN FLIGHT (see §1b)
 
 **Do not start these from a general session.** As of 14:55 there is a dedicated background
 session per surface and they are already writing: `site/reinforce.html` and
@@ -329,9 +359,10 @@ import router, status"` imports clean on the **system** interpreter (7 routes) �
 torch into the serving path.
 
 
-In his order: **Reinforce** as a real tuning/training studio, **Miner** online, **Coder** online,
-**Gateway** online, **Project** online ("this is like cowork"). All five already have rack units
-and backend apps; "online" means a working page and route, not a new surface. (An earlier
+In his order: **Reinforce** as a real tuning/training studio, **~~Miner~~ DONE — see below**,
+**Coder** online, **Gateway** online, **Project** online ("this is like cowork"). All five
+already have rack units and backend apps; "online" means a working page and route, not a new
+surface. (An earlier
 revision said Reinforce carried a red test and an alpha/rank question for Garrett. It carries
 neither — that was stale bytecode, settled in `f9f3546`. See §1.)
 
@@ -356,6 +387,77 @@ What each one actually needs, established by reading the code rather than assumi
 change** — verified by reading both. `handle /api/*` delegates the whole subtree, and
 `is_route()` in `scripts/deploy.sh` checks a new page as a *file*. Only a new top-level *section*
 path (the `/overview /livestack /controlboard /receipts` class) costs four files.
+
+#### Miner — DONE on disk 2026-08-17 ~15:00, branch `worktree-miner-online`, NOT deployed
+
+The gap was not the ASIC page: it was that the `gpuminer` rack unit — the surface that actually
+hashes — linked to a page that only talked about Antminer rigs. `/miner.html` now carries **both**
+units, kept visibly distinct (`#mg-stage` GPU, `#mn-stage` ASIC; separate routes, separate
+tokens, and the page says so).
+
+- **Public rows** come from `/api/status` via the same `unit_state()` the rack uses, so the page
+  and the home page cannot disagree. **Numeric telemetry stays behind `SYM_MINER_TOKEN`** and
+  reads `token required` rather than showing a number — withheld, never faked.
+- **No second poller.** `site/console.js`'s single `render()` now dispatches a `sym:status`
+  event; the miner page listens. Its deliberate quiet-while-hidden behaviour is preserved.
+- **Two-click arm on Start**, re-labelled inline — *not* `window.confirm`, because a modal dialog
+  blocks every subsequent event in the page.
+- **Verified live on the card, twice**, through `POST /api/gpuminer/control` — the button's own
+  route. The page showed `52.32 MH/s · measured, reported by the miner binary (4s ago)`; after
+  stop, no `kawpowminer`, 876 MiB / 19.4 W, and the queued `image` tenant took the lock. Runs 3–4
+  are in `backend/apps/cryptominer/README.md`; steady state is now **52.3 – 53.2 MH/s across four
+  runs** and the ~0.9 MH/s spread has **no established cause**.
+- **Tests:** `tests/frontend.mjs` **32/32** — six new value-based miner assertions, each watched
+  go red against a copy with the status wiring cut, the panel's VRAM row deleted, and a fabricated
+  `53.01 MH/s` written into a gated row (27/32). Backend, run on the rebased tree:
+  `cryptominer` **72/72**, and `pytest backend/apps` **618 passed, 23 skipped, 4 failed**. None
+  of the four is mine — `reinforce` and `sigils` are the two red tests already recorded in §1,
+  plus a second `sigils` failure (`UnboundLocalError: doc`) and a timing assertion in
+  `tuner` (`25.0 not less than 13`), all in files this commit does not touch. `reinforce/tests`
+  and `remix/tests` do not collect at all without their venvs (`cupy`, `symoneural_dj`) and were
+  excluded from that run.
+- **`docs/specs/miner-preemption.md` now exists** — it was cited twice here, once in the
+  cryptominer README and once in the module docstring while missing. It specifies the yield
+  protocol; its §7 says why it is still **not** implemented: it changes the hot path of the only
+  arbitrator of the only contended resource on this box.
+- **The two miner rows are now ONE rack row.** Garrett saw `SyMoNeuRaL Miner` (ASIC, OFFLINE,
+  no rig attached) sitting above `SyMoNeuRaL Miner GPU` (READY, the only one that has ever
+  hashed) and read it as a single half-broken surface — the plain product name was on the dead
+  row while the working one wore a qualifier. His call was to merge them **if both halves have
+  working parts**, so that was verified on the real box first, not in the worktree: the ASIC
+  half has its venv and probe installed, **20 real firmware packages** on disk, both
+  `qemu-system-arm` and `qemu-system-aarch64` present, and 42 green tests. It is switched off,
+  not broken. So: one `Unit(id="miner", label="SyMoNeuRaL Miner", bus="gpu", slot="6U")`.
+- **The merge does not flatten the two states**, because that is where a merged row would start
+  lying — the halves fail independently. `Unit` gained an optional `sub: list[SubUnit]` (new
+  model, optional, so every other unit serialises exactly as before) carrying `gpuminer` and
+  `asicminer` with their own state, bus and detail. The row's state is the GPU half whenever it
+  is `busy`/`queued` (it is the half that takes the card, which every other surface feels),
+  `ready` if **either** half can be started, `offline` only when neither can. Its detail always
+  names both: `GPU: … · ASIC: …`.
+- **Both API shapes are read by the page and by the tests**, top level first, because the static
+  site deploys before the API restarts — for a while the browser talks to an API that still
+  publishes `gpuminer` as its own unit. Verified both ways: **33/33 against the merged API, and
+  33/33 against the live pre-merge one.**
+- **`tests/frontend.mjs` now has 33** — the new one is *no rack name is a prefix of another*,
+  which is stricter than a duplicate check on purpose. The old pair were two *distinct* strings,
+  so a duplicate check passed them; the defect was that one name read as the general case of the
+  other. Watched fail against the live API: `"SyMoNeuRaL Miner" is a prefix of "SyMoNeuRaL Miner
+  GPU"`, 32/33.
+- **This now needs an API restart as well as a deploy** (`backend/api.py` changed — it did not
+  in the first commit):
+  ```
+  sudo scripts/deploy.sh --prune && sudo systemctl restart symoneural-api
+  ```
+  Still no Caddyfile change — `/miner.html` is a static file Caddy already serves, not a new
+  top-level route.
+- **Two decisions are Garrett's, and neither was guessed:** whether `SYM_MINER_CMD` should point
+  at a real pool and wallet (it is `-U -M 500000` today — a benchmark that earns nothing and says
+  so on the page), and whether the miner should ever be left holding the card on a box that also
+  serves chat and image, given it is **not preemptible** (§5 item 8).
+- **Contention to know about:** at 15:00 the shared checkout had ~2,000 uncommitted lines of
+  *someone else's* work in `tools/build_pages.py`. My commit is rebased onto `e38f463` and does
+  not touch theirs, but whoever lands second in that file resolves the conflict.
 
 ### 5. Site-wide, and he repeated it twice
 
@@ -980,6 +1082,33 @@ whose test passes both with and without it is not a test.
    against the scripted provider: the record now carries `sid: "S1"`, and with the second call
    removed it is `sid: ""` again.
 
+### Writing the assertion found a fifth bug, in the readout that finds the others (~19:40)
+
+`tests/tuner_watch.mjs` is new: the watch page carries its **own** copy of `play()`, its own
+statistics panel and its own `#ps-eng`, deliberately duplicated from `TUNER_JS` — so duplicated
+code needs duplicated assertions or the identical bug can be reintroduced on the copy with
+every existing test still green. 8 assertions, self-contained against the scripted provider.
+
+It went 6/8 on the first run, and the second failure was real. **`#ps-eng` inferred the player
+from `hls` being non-null, so it lied in exactly the situation it exists to be read in.** On the
+watch page `statsStart()` is called at the *top* of `play()`, before the engine is chosen, and
+its first tick is synchronous — so a channel that dies inside a second (a dead channel, which is
+common) had `stopTimers()` clear the interval before any later tick, and the panel sat there
+reporting *"the browser's own HLS"* for a stream hls.js had in fact been handed. The same
+inference on `tuner.html` flips the readout the moment the instance is destroyed. Either way the
+one line that says which player is running is wrong precisely when the picture is black — which
+is how the original `canPlayType` bug stayed hidden for as long as it did.
+
+Both pages now record `engine` at the moment of the choice and print that, with `'-'` before a
+choice has been made. Removing the record takes the new suite to 7/8 with that assertion red.
+
+The other over-strict assertion is worth remembering as a pattern: the first version asserted
+the page reads *"live"*, and it got *"stopped"* — which is **true**, because the fixture serves
+a manifest and no segment data. Asserting it away would have been asserting that the page lies.
+It now asserts the page reaches a *definite* state and never sits on `opening…`, which is the
+real invariant. That is the second time this fixture has caught an assertion for being stricter
+than the truth; the first was the AAC control in `tuner_failpaths.mjs`.
+
 **And a build-order trap that nearly shipped, now written into `.claude/CLAUDE.md`.** Running
 `build_pages.py` **strips every `?v=` cache-bust stamp off the pages it writes**, because the
 generators emit plain hrefs and `tools/build_cachebust.py` stamps them afterwards. Seven pages
@@ -988,6 +1117,13 @@ opposite — committing there would have shipped HTML whose CSS and JS are cache
 with no way to invalidate them, which is the exact failure that made the stamper exist. The
 tell is a page you never touched showing as modified. **Regenerate, then stamp, then re-read
 `git status`.**
+
+It had already bitten somebody else: `site/project.html` was committed with **no stamps at all**,
+and running the stamper here put all ten back. Check your own surface page for `?v=` before you
+call it done — `grep -c '?v=' site/<page>.html` should be non-zero. And note **`deploy.sh` does
+not stamp** — it only strips `?v=` when checking that references resolve, so a destamped page
+deploys silently. `python3 tools/build_cachebust.py` has to run before `sudo scripts/deploy.sh`,
+not as part of it.
 
 ## 2g. Two open design questions Garrett raised (NOT decided, NOT built)
 
@@ -1664,6 +1800,15 @@ because they are the cheapest real work available.
     SyMoNeuRaL Chat.** Asked for by Garrett 2026-08-17. Nothing is built; this is a spec
     task first.
 
+    **The spec now exists: `docs/specs/voice-spec.md` (2026-08-17 15:30).** It settles the
+    two-way design question posed below by measurement, and the answer is the first bullet:
+    `contrib/whisper.cpp` is already built here with `GGML_CUDA:BOOL=OFF`, so ASR is CPU work
+    at 284 MiB peak RSS and 579 ms for a 3-second utterance — there is nothing for the
+    governor to arbitrate and option two is retired. **Do not implement a third governor
+    surface.** The TTS half is still unmeasured, deliberately: nothing that speaks is
+    installed and Piper needs its own venv, which is Garrett's call. Read the spec before
+    acting on the two bullets below; they predate the numbers.
+
     **The constraint that decides the whole design is VRAM, not model choice.** One RTX
     5070 Ti, 15.92 GiB, and chat (~5 GB) plus image (~7 GB) already cannot coexist — that
     is why the governor exists. Speech-to-speech is *two* extra models resident at once
@@ -1833,10 +1978,14 @@ broken** — this is a queue of new work, not a repair list.
    which must **not** be the same string as `SYM_ASIC_TOKEN` — this one gates a process that
    takes the card from every other surface.
    **KawPow hashrate is now measured on this machine, not vendor and not projected:
-   52.75 – 53.01 MH/s across two runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
-   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. The ~0.5%
-   run-to-run spread is quoted rather than the best run and **no cause has been established**
-   for it.
+   52.3 – 53.2 MH/s across four runs** — RTX 5070 Ti, 300 W limit, driver 610.57.04,
+   `kawpowminer 1.2.4+commit.8bd0d598.dirty`, command `-U -M 500000`, 2026-08-17. (Runs 3 and 4
+   were added later the same day and are the first driven through `POST /api/gpuminer/control`
+   rather than the CLI; the per-run table is in `backend/apps/cryptominer/README.md`. This line
+   read "52.75 – 53.01 across two runs" until then.) The spread is now ~0.9 MH/s, under two
+   percent, is quoted rather than the best run, and **no cause has been established** for it —
+   clocks, temperature and the benchmark's own variance are all candidates and none has been
+   isolated. Anyone quoting a single number should quote the low end.
    **That run is a benchmark against no pool: measured, and earning nothing.** A miner with
    nowhere to submit a share earns nothing whatever its hashrate says, so `pool()` and
    `benchmarking()` now detect the absence of a pool URL (kawpowminer's own rule — "when

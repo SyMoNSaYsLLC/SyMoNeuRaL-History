@@ -326,6 +326,26 @@ class RemixResult(BaseModel):
     note: str
 
 
+class SubUnit(BaseModel):
+    """One half of a surface that owns two kinds of hardware.
+
+    This exists for exactly one case and should not be spread further without a reason:
+    the miner is a single surface on the rack -- one row, one name -- but it is two pieces
+    of hardware with two independent states (KawPow on the RTX 5070 Ti, and Antminer /
+    MicroBT rigs reached over the network). Merging them into a single `state` would force
+    one of the two readings to become a lie, which is the one thing this rack may not do.
+    So the row carries the merged headline and this carries the parts.
+
+    `site/console.js` never reads it -- the rack renders the parent -- and `/miner.html`
+    reads it to give each half its own card and its own status chip.
+    """
+    id: str
+    label: str
+    state: Literal["ready", "busy", "queued", "offline"]
+    bus: Literal["gpu", "cpu", "asic", "net"]
+    detail: str
+
+
 class Unit(BaseModel):
     id: str
     label: str
@@ -340,6 +360,9 @@ class Unit(BaseModel):
     href: str
     spec: str
     detail: str
+    # Present only on a surface that owns two kinds of hardware; see SubUnit. Optional so
+    # every other unit serialises exactly as it did before.
+    sub: list[SubUnit] | None = None
 
 
 class GpuState(BaseModel):
@@ -1411,6 +1434,24 @@ def build_status() -> Status:
     gpuminer_state, gpuminer_detail = cryptominer.unit_state()
     coder_state, coder_detail = coder.unit_state()
 
+    # The two mining halves are one rack row (see the Unit below), so the row needs one
+    # state without either half's reading becoming a lie.
+    #
+    # The GPU half wins whenever it is doing something, and deliberately so: it is the only
+    # half that takes the card, so `busy` and `queued` there are facts every other surface
+    # on this box feels. Below that, a surface is `ready` if EITHER half can be started --
+    # anything else would report a startable miner as offline. `offline` only when neither
+    # can do anything, which is the truth about both.
+    if gpuminer_state in ("busy", "queued"):
+        miner_state = gpuminer_state
+    elif "ready" in (gpuminer_state, asic_state):
+        miner_state = "ready"
+    else:
+        miner_state = "offline"
+    # Both halves are always named, in that order, so the row can never imply that a
+    # reading from one is a reading from the other. No ellipsis: the rack wraps.
+    miner_detail = f"GPU: {gpuminer_detail} · ASIC: {asic_detail}"
+
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
         license=licensing.disclosure(),
@@ -1480,28 +1521,34 @@ def build_status() -> Status:
                  detail="fine-tune in progress — serving surfaces queue" if holder == "train"
                         else ("adapter loaded · for model/adapter tuning"
                               if CHAT_ADAPTER.exists() else "no adapter built")),
-            # Mining hardware, reached over the network rather than over PCIe -- so it never
-            # touches the GPU lock and cannot be evicted by a page view. Off unless both
-            # SYM_ASIC_ENABLED and SYM_ASIC_TOKEN are set, and `offline` until a rig
-            # actually answers: there is no demo rig and no placeholder hashrate. See
-            # backend/apps/asicminer/ for why that default is the honest one.
-            Unit(id="asicminer", label="SyMoNeuRaL Miner", slot="4U",
-                 state=asic_state, bus="asic", href="/miner.html",
-                 spec="Antminer + MicroBT · pyasic 0.75.0",
-                 detail=asic_detail),
-            # The GPU miner, and a SEPARATE surface from the ASIC panel above -- different
-            # hardware, different bus, different failure modes. Conflating them has already
-            # caused one round of confusion; see HANDOVER §5 item 8.
+            # ONE miner on the rack, two kinds of mining hardware under it.
             #
-            # This one DOES take the card, which makes it the only tenant that is the
-            # opposite of `train`: it yields to everything, because no hashrate is worth
-            # making a visitor wait. It never auto-starts. `offline` until a miner binary
-            # is configured -- there is none on this box and nothing here has ever hashed,
-            # so any hashrate figure would be invented.
-            Unit(id="gpuminer", label="SyMoNeuRaL Miner GPU", slot="2U",
-                 state=gpuminer_state, bus="gpu", href="/miner.html",
-                 spec="KawPow · Ravencoin · external miner binary",
-                 detail=gpuminer_detail),
+            # These were two rows until 2026-08-17: "SyMoNeuRaL Miner", OFFLINE on the ASIC
+            # bus with no rig attached, and "SyMoNeuRaL Miner GPU", READY and the only one
+            # that has ever hashed. The clean product name sat on the dead row while the
+            # working one wore a qualifier, which reads as one surface that is half broken.
+            # Garrett's call was to merge them, on the condition that both halves have
+            # working parts.
+            # Verified before merging, on this box and not in a worktree: the GPU half has
+            # hashed (52.3 - 53.2 MH/s measured across four runs), and the ASIC half has
+            # its venv and probe installed, 20 real firmware packages on disk, both QEMU
+            # binaries present and 42 green tests. It is switched off, not broken.
+            #
+            # The merge does NOT flatten the two states into one, because that is where a
+            # merged row would start lying: the halves fail independently and one of them
+            # can be hashing while the other has no rig attached. The row carries the
+            # headline; `sub` carries both readings, and /miner.html gives each its own
+            # card. `bus` is `gpu` because that is the only mining hardware physically in
+            # this box -- the ASIC half is remote by definition, and claiming an ASIC bus
+            # on a machine with no rig attached was always the overstatement.
+            Unit(id="miner", label="SyMoNeuRaL Miner", slot="6U",
+                 state=miner_state, bus="gpu", href="/miner.html",
+                 spec="KawPow on the RTX 5070 Ti · Antminer + MicroBT ops",
+                 detail=miner_detail,
+                 sub=[SubUnit(id="gpuminer", label="GPU · Ravencoin",
+                              state=gpuminer_state, bus="gpu", detail=gpuminer_detail),
+                      SubUnit(id="asicminer", label="ASIC · Antminer + MicroBT",
+                              state=asic_state, bus="asic", detail=asic_detail)]),
             # Stream copy, not transcode: the work is network I/O and muxing, so it never
             # contends for the card. `ready` is honest here -- unlike the mining surfaces
             # this one is functional right now; it holds no content of its own because the

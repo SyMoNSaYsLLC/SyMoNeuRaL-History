@@ -1288,6 +1288,27 @@ class PreflightTests(unittest.TestCase):
         self.assertIn("training format", r["message"])
 
     def test_preflight_refuses_the_corpus_as_a_dataset(self):
+        """The protection, reached THROUGH preflight rather than by calling the guard.
+
+        This one is contingent and the contingency is stated rather than left to fail
+        confusingly. `preflight()` checks preset, then model, then dataset, so on a box with no
+        `backend/models` this returns `unknown_model` and the assertion below reads
+        `'unknown_model' != 'dataset_protected'` -- which looks like the corpus guard is broken
+        and is not. That exact confusion cost another session time during the merge, in a temp
+        worktree created by `git worktree add`, which does not get the symlink.
+
+        The refusal is real either way: preflight returns before the dataset is opened on both
+        paths, so the corpus is never read. And the guard itself does NOT depend on any of this
+        -- `test_corpus_is_refused_from_any_working_directory`, `..._by_every_spelling` and
+        `test_a_symlink_to_the_corpus_is_refused` call `dataset_guard.admit()` with no model
+        involved, so the trade-secret invariant keeps its unconditional coverage on any box.
+        What is tested here is only that preflight is wired to that guard.
+        """
+        if registry.find(SEVEN_B) is None:
+            self.skipTest(f"{SEVEN_B} is not on this box -- preflight refuses on the model "
+                          "before it reaches the dataset, so this cannot test the wiring. "
+                          "`backend/models` is a symlink to the main checkout and a fresh "
+                          "worktree does not have it. The guard's own tests still run.")
         r = jobs.preflight(SEVEN_B, "smoke", "training/corpus.jsonl")
         self.assertFalse(r["ok"])
         self.assertEqual(r["reason"], "dataset_protected")

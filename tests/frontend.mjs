@@ -75,6 +75,24 @@ try {
   // the SyMoNeuRaL series, not a technique description.
   record('train unit carries a product name',
          units.some(u => u.name === 'SyMoNeuRaL Reinforce'));
+  // No rack name may be a prefix of another, which is a stricter rule than "no duplicates"
+  // and it is the stricter one that was needed here.
+  //
+  // The miner shipped as two rows: "SyMoNeuRaL Miner", OFFLINE on the ASIC bus with no rig
+  // attached, and "SyMoNeuRaL Miner GPU", READY and the only one that has ever hashed. Two
+  // distinct strings, so a duplicate check passes them both -- and Garrett still read the
+  // pair as one surface that was half broken, because the clean product name sat on the
+  // dead row while the working one wore a qualifier. That is the defect: not a collision,
+  // but a name that reads as the general case of the name beside it. They are now one row.
+  {
+    const names = units.map(u => u.name).filter(Boolean);
+    const bad = [];
+    names.forEach(a => names.forEach(b => {
+      if (a !== b && b.startsWith(a)) bad.push(`"${a}" is a prefix of "${b}"`);
+    }));
+    record('no rack name is a prefix of another', bad.length === 0,
+           bad.length ? bad.join('; ') : `${names.length} names, none a prefix of another`);
+  }
 
   // ---- one unit per surface ------------------------------------------------
   // Garrett: "you need to migrate tuner and guide to be 1". Tuner and Guide were two units
@@ -87,11 +105,14 @@ try {
   // no two tiles may claim the same page AND the same bus, because then they are one thing
   // shown twice. Tuner and Guide were exactly that -- both `cpu`, both /tuner.html.
   //
-  // Sharing a page is fine on its own and two live cases prove it, which is why this is not
-  // the blunter check: the two Miner units are ASIC and GPU -- different hardware, different
-  // readings, one page -- and Coder and Project both link to /documentation.html because
-  // neither has a page yet and that beats linking to a 404. A rule that failed those would
-  // be measuring the wrong thing.
+  // Sharing a page is fine on its own, which is why this is not the blunter check: Coder and
+  // Project both link to /documentation.html because neither has a page yet and that beats
+  // linking to a 404. A rule that failed that would be measuring the wrong thing.
+  //
+  // This comment used to cite the two Miner units -- ASIC and GPU, different hardware, one
+  // page -- as the second example. They were merged into a single `miner` row on 2026-08-17
+  // (the two halves now ride in its `sub` array), so that example no longer exists. The rule
+  // is unchanged and still correct; only the illustration was stale.
   const tiles = await page.$$eval('#units .unit', els => els.map(e => ({
     href: e.getAttribute('href'),
     bus: e.querySelector('.ubus')?.textContent?.trim() || '',
@@ -148,6 +169,45 @@ try {
   });
   record('nothing spills past the right edge at 390px', spill.length === 0,
          spill.join('; ') || 'clean');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // ---- the header holds its nav in the tablet band --------------------------
+  // Why this exists, and why the 390px check above could never have caught it. That one
+  // runs on /index.html, whose nav is five links plus the CTA; the four prompt surfaces and
+  // the operator pages carry SIX plus the CTA -- they add "Live stack". The hide rule at
+  // symoneural.css:123 is `max-width:780px`, and it was sized against the FIVE-link nav, so
+  // at 781px the longer nav became visible and immediately overflowed: measured 66px past
+  // `header .bar`'s right edge at 781px, 47px at 800px, 27px at 820px, clear only at 860px,
+  // with the wordmark squeezed 138px -> 108px across the whole band because flex shrinks
+  // `.logo` before it gives up on the nav. It was live on the site.
+  //
+  // Asserting on the six-link nav, at 781px because that is one pixel inside the hide rule
+  // and therefore the worst case by construction. Two separate things are checked: that no
+  // nav item extends past the bar, and that the wordmark keeps its natural width -- the
+  // second is what tells you the nav is being given room rather than taking it from the
+  // brand.
+  for (const bandW of [781, 800, 860]) {
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: bandW, height: 900 });
+    await probe.goto(new URL('/chat.html', BASE).href, { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(250);
+    const band = await probe.evaluate(() => {
+      const bar = document.querySelector('header .bar');
+      const nav = document.querySelector('header nav');
+      const logo = document.querySelector('header .logo');
+      const barR = bar.getBoundingClientRect().right;
+      const items = [...nav.children].filter(e => e.getBoundingClientRect().width > 0);
+      const past = Math.max(0, ...items.map(e => Math.round(e.getBoundingClientRect().right - barR)));
+      return { past, links: items.length, logoW: Math.round(logo.getBoundingClientRect().width),
+               spillX: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+    });
+    await probe.close();
+    // 130px is the wordmark's natural width at this size (measured 138px); anything much
+    // under it means flex has started eating the brand to pay for the nav.
+    record(`the header holds a six-link nav at ${bandW}px`,
+           band.past === 0 && band.spillX === 0 && band.links >= 7 && band.logoW >= 130,
+           `${band.links} items, ${band.past}px past the bar, logo ${band.logoW}px, page spill ${band.spillX}`);
+  }
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   // The gutter renders live in the masthead, which is the `hero` panel. Open it -- the
@@ -234,6 +294,113 @@ try {
     };
   });
   record('the lightbox only claims a burned-in strip when there is one', claim.ok, claim.why);
+
+  // ---- the miner page reads both of its units -----------------------------
+  // TWO rack units point at /miner.html -- `asicminer` and `gpuminer` -- and for a while
+  // the page only spoke about the first, so the surface that actually hashes on this box
+  // had no page at all.
+  //
+  // These assertions are on VALUES, not markup, because a card that renders perfectly and
+  // receives nothing is indistinguishable from a working one in a screenshot. Each was
+  // watched going red before being kept, against a copy of the site with the bug put back:
+  // cutting both status paths turns the first two red on `chip="not present"`; removing the
+  // shared GPU panel's VRAM row turns the third red on `vram=""` while the temperature
+  // beside it still reads; and writing a plausible `53.01 MH/s` into a gated row -- the
+  // dishonest-gauge case this whole site argues against -- turns the fourth red.
+  {
+    const probe = await ctx.newPage();
+    const perrs = [];
+    probe.on('pageerror', e => perrs.push(e.message));
+    await probe.goto(BASE + '/miner.html', { waitUntil: 'networkidle' });
+    // Wait for a reading to arrive, not for a timeout to expire.
+    await probe.waitForFunction(
+      () => !/^reading/.test(document.getElementById('mg-detail')?.textContent || 'reading'),
+      { timeout: 20000 }).catch(() => {});
+
+    const mg = await probe.evaluate(async () => {
+      const t = id => (document.getElementById(id)?.textContent || '').trim();
+      // The same public endpoint the page reads, so the assertion compares the DOM against
+      // the API rather than against a string written into this test.
+      const api = await fetch('/api/status').then(r => r.json()).catch(() => null);
+      // The two mining halves are one rack row with a `sub` array, so look in both places.
+      // Top level first, exactly as the page does: an API that has not restarted yet still
+      // publishes `gpuminer` as a unit of its own, and this assertion must pass against
+      // both shapes or it fails on the deploy gap rather than on a real defect.
+      const all = (api && api.units) || [];
+      const u = all.find(x => x.id === 'gpuminer')
+             || all.flatMap(x => x.sub || []).find(x => x.id === 'gpuminer');
+      return {
+        unit: t('mg-unit'), detail: t('mg-detail'), chip: t('mgstate'),
+        dot: document.getElementById('mgdot')?.className || '',
+        apiState: u && u.state, apiDetail: u && u.detail,
+        tel: ['mg-hr', 'mg-pool', 'mg-lock', 'mg-up'].map(t),
+        vram: t('m-vram'), temp: t('m-temp'), holder: t('m-holder'),
+        asicChip: t('mnstate'),
+        gpuHead: t('mghead'), asicHead: t('mnhead'),
+      };
+    });
+
+    const STATES = ['ready', 'busy', 'queued', 'offline'];
+    record('the miner page shows the gpuminer unit\'s own reading',
+           !!mg.apiState && mg.chip === mg.apiState && mg.detail === mg.apiDetail &&
+           mg.unit.includes('gpuminer') && STATES.includes(mg.apiState) &&
+           mg.detail.length > 0,
+           `chip="${mg.chip}" api="${mg.apiState}" detail="${mg.detail.slice(0, 70)}"`);
+    // The dot is not decoration: green only when the surface is usable, amber while it holds
+    // or waits for the card, grey when it is offline.
+    const wantDot = (mg.apiState === 'busy' || mg.apiState === 'queued') ? 'busy'
+                  : (mg.apiState === 'ready' ? 'on' : '');
+    record('the miner card\'s LED tracks the unit state', mg.dot === wantDot,
+           `state ${mg.apiState} -> class "${mg.dot}" (want "${wantDot}")`);
+    // The shared GPU panel, on a page that has no prompt. It arrives through console.js's
+    // existing socket, so this also proves the page did not grow a second data path.
+    record('the miner page\'s GPU panel carries live card readings',
+           /\d/.test(mg.vram) && /\d/.test(mg.temp) && mg.holder.length > 0,
+           `vram="${mg.vram}" temp="${mg.temp}" holding="${mg.holder}"`);
+    // Withheld, not faked. Every gated row must say a token is missing rather than show a
+    // number, and it must not show a stale one either.
+    record('operator telemetry is withheld rather than faked',
+           mg.tel.every(v => /token required/.test(v)), mg.tel.join(' | '));
+    // One page, two units, two different pieces of hardware. If a future edit merges them,
+    // one of the two states has to become a lie -- the GPU miner is configured here and the
+    // ASIC panel has no hardware attached.
+    //
+    // Asserted on the heads being DIFFERENT and the ASIC one naming ASIC, rather than on the
+    // GPU one matching a literal: the GPU unit is now just "SyMoNeuRaL Miner" (it is the
+    // miner on this box), so a test pinned to the old "Miner GPU" string would fail the
+    // rename while the page was perfectly correct -- and pinning it to the new string would
+    // pass even if BOTH heads said it.
+    record('the miner page keeps its GPU and ASIC units distinct',
+           /Miner/.test(mg.gpuHead) && !/ASIC/.test(mg.gpuHead) &&
+           /ASIC/.test(mg.asicHead) && mg.gpuHead !== mg.asicHead &&
+           STATES.includes(mg.asicChip) && perrs.length === 0,
+           `gpu head "${mg.gpuHead.slice(0, 34)}" chip "${mg.chip}", ` +
+           `asic head "${mg.asicHead.slice(0, 34)}" chip "${mg.asicChip}"` +
+           (perrs.length ? `, JS ERROR: ${perrs[0]}` : ''));
+
+    // Nothing on this page may be clipped, and it must not scroll sideways on a phone. The
+    // readings and the reason a reading is absent are the content; an ellipsis on either is
+    // data loss with extra steps.
+    await probe.setViewportSize({ width: 390, height: 900 });
+    await probe.waitForTimeout(250);
+    const clip = await probe.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('.mg-facts dd, .mg-facts dt, .mg-warn, .mg-lede')
+        .forEach(e => {
+          const cs = getComputedStyle(e);
+          if (cs.textOverflow === 'ellipsis') bad.push(`ellipsis on ${e.id || e.className}`);
+          if (e.scrollWidth > e.clientWidth + 1)
+            bad.push(`${e.id || e.className} clipped ${e.scrollWidth}>${e.clientWidth}`);
+        });
+      const vw = document.documentElement.clientWidth;
+      if (document.documentElement.scrollWidth > vw + 1)
+        bad.push(`page scrolls to ${document.documentElement.scrollWidth} at ${vw}`);
+      return bad;
+    });
+    record('the miner page clips nothing at 390px', clip.length === 0,
+           clip.join('; ') || 'clean');
+    await probe.close();
+  }
 
   // ---- no page throws a script error ------------------------------------
   // This exists because a generator shipped BROKEN JAVASCRIPT to production and the suite
@@ -574,6 +741,51 @@ try {
              .filter(u => !/\?v=[0-9a-f]{6,}$/.test(u)));
   record('every local asset is cache-busted', unstamped.length === 0,
          unstamped.join(', ') || 'all stamped');
+
+  // ---- the fleet table states its assumption, and loses nothing -------------
+  // Two separate risks, both worth a permanent guard.
+  //
+  // The honesty one first: every money column in that table is projected off an occupancy
+  // assumption, and docs/specs/symon-ml-review.md §5 exists because a pitch once quoted
+  // "~$5,800/month" whose arithmetic only closed at 59.9% occupancy that the document never
+  // stated. The generator prints the rate into the caption from a named constant. If someone
+  // later edits the copy and drops it, the table silently becomes the thing that review
+  // criticised -- so assert the caption still carries a percentage.
+  //
+  // The layout one second: it is a 7-column table, and the fluid scale takes cells to
+  // 18.75px at 2560px. CLAUDE.md forbids truncation outright -- the rack was cutting an
+  // Apache-2.0 attribution down to "...7B-Ins..." -- so check at the widest viewport that no
+  // cell is clipping and that the page itself never scrolls sideways. `.tw` scrolling
+  // internally is fine and expected; the body scrolling is not.
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  await page.goto(BASE + '/documentation.html', { waitUntil: 'networkidle' });
+  const fleet = await page.evaluate(() => {
+    const tws = [...document.querySelectorAll('#cost .tw')];
+    if (!tws.length) return { missing: true };
+    const t = tws[tws.length - 1].querySelector('table');
+    const clipped = [...t.querySelectorAll('th,td,span')].filter(e => {
+      const s = getComputedStyle(e);
+      return s.textOverflow === 'ellipsis' ||
+             (s.whiteSpace === 'nowrap' && e.scrollWidth > e.clientWidth + 1);
+    }).map(e => e.textContent.trim().slice(0, 40));
+    return {
+      caption: (t.querySelector('caption') || {}).textContent?.trim() || '',
+      cols: t.querySelectorAll('thead th').length,
+      rows: t.querySelectorAll('tbody tr').length,
+      clipped,
+      bodyScrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  record('the fleet table states its occupancy assumption',
+         !fleet.missing && /\d+\s*%/.test(fleet.caption),
+         fleet.missing ? 'no table found in #cost' : fleet.caption);
+  record('the fleet table loses no text at 2560px',
+         !fleet.missing && fleet.clipped.length === 0 && !fleet.bodyScrolls,
+         fleet.missing ? 'no table' :
+           `${fleet.cols} cols x ${fleet.rows} rows, ` +
+           (fleet.clipped.length ? `CLIPPED: ${fleet.clipped.join(' | ')}` : 'nothing clipped') +
+           `, body h-scroll ${fleet.bodyScrolls}`);
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   // ---- calc ----------------------------------------------------------------
   await page.goto(BASE + '/ravencalc.html', { waitUntil: 'networkidle' });

@@ -15,7 +15,7 @@
 <meta property="og:image" content="/mark.png">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0e100f">
-<link rel="stylesheet" href="/symoneural.css?v=3c8fa4fd4c">
+<link rel="stylesheet" href="/symoneural.css?v=69f47587b6">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 </head>
 <body>
@@ -130,6 +130,97 @@
       $0.15/kWh. We will not quote a number we have not either measured or shown the
       arithmetic for.
     </p>
+
+    <p class="shead" style="margin-top:58px">
+      <img src="/coin-64.png?v=27970e95e4" alt="" width="22" height="22">The rest of the ladder</p>
+    <h2>What the datacentre cards cost, draw, and earn</h2>
+    <p class="sub">
+      The five NVIDIA parts people actually deploy, beside the one this site was measured on.
+      Read the labels before the numbers: <b>none of this is measured here</b> &mdash; no H100
+      has ever been in this box. The specifications are <b>vendor</b>, off NVIDIA's own product
+      pages; the rates are <b>observed</b> market medians; every money column is
+      <b>projected</b> arithmetic from those two, and is shown with its assumptions.
+    </p>
+
+    <div class="tw">
+      <table>
+        <caption>
+          Vendor specifications and observed market rates, 17 August 2026 &mdash;
+          revenue projected at 60% occupancy
+        </caption>
+        <thead><tr>
+          <th style="min-width:216px">Card</th><th>Street price</th><th>Rate /hr</th>
+          <th>Gross/yr 24/7</th><th>Gross/yr at 60%</th>
+          <th>Power/yr</th><th>Payback at 60%</th>
+        </tr></thead>
+        <tbody>
+          <tr style="background:rgba(46,224,138,.06)"><td class="k" style="min-width:216px"><b>RTX 5070 Ti</b><span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">this machine &middot; 15.92 GiB &middot; 752 GB/s measured &middot; 300 W</span></td><td class="num"><b>$1,000</b></td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">$394</td><td class="num">not rentable&nbsp;&dagger;</td></tr>
+          <tr><td class="k" style="min-width:216px">L40S <span style="color:var(--faint);font-weight:400">PCIe</span><span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">48 GB GDDR6 &middot; 864 GB/s &middot; 350 W</span></td><td class="num">$7,569&ndash;$10,584</td><td class="num">$1.54<span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">$0.55&ndash;$3.00, 31 providers</span></td><td class="num"><em>$13,490</em></td><td class="num"><em>$8,094</em></td><td class="num">$460</td><td class="num">1.0&ndash;1.4 yr</td></tr>
+          <tr><td class="k" style="min-width:216px">A100 <span style="color:var(--faint);font-weight:400">SXM, 80 GB</span><span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">80 GB HBM2e &middot; 2,039 GB/s &middot; 400 W</span></td><td class="num">$7,000&ndash;$15,000</td><td class="num">$1.76<span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">$1.09&ndash;$4.03, 42 providers</span></td><td class="num"><em>$15,418</em></td><td class="num"><em>$9,251</em></td><td class="num">$526</td><td class="num">0.8&ndash;1.7 yr</td></tr>
+          <tr><td class="k" style="min-width:216px">H100 <span style="color:var(--faint);font-weight:400">SXM</span><span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">80 GB HBM3 &middot; 3.35 TB/s &middot; 700 W</span></td><td class="num">$25,000&ndash;$40,000</td><td class="num">$3.35<span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">$2.19&ndash;$14.19, 53 providers</span></td><td class="num"><em>$29,346</em></td><td class="num"><em>$17,608</em></td><td class="num">$920</td><td class="num">1.5&ndash;2.4 yr</td></tr>
+          <tr><td class="k" style="min-width:216px">H200 <span style="color:var(--faint);font-weight:400">SXM</span><span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">141 GB HBM3e &middot; 4.8 TB/s &middot; 700 W</span></td><td class="num">$30,000&ndash;$40,000</td><td class="num">$4.37<span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">$3.00&ndash;$7.91, 37 providers</span></td><td class="num"><em>$38,281</em></td><td class="num"><em>$22,969</em></td><td class="num">$920</td><td class="num">1.4&ndash;1.8 yr</td></tr>
+          <tr><td class="k" style="min-width:216px">B200 <span style="color:var(--faint);font-weight:400">HGX / DGX</span><span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">180 GB HBM3e &middot; ~8 TB/s &middot; 1000 W</span></td><td class="num">$37,500&ndash;$62,500&Dagger;</td><td class="num">$7.11<span style="display:block;margin-top:4px;color:var(--faint);font-size:var(--t7);font-weight:400;line-height:1.5">$3.75&ndash;$16.11, 28 providers</span></td><td class="num"><em>$62,284</em></td><td class="num"><em>$37,370</em></td><td class="num">$1,314</td><td class="num">1.0&ndash;1.7 yr</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="tnote">
+      <b>&dagger;</b> The 5070&nbsp;Ti is a consumer card and is not offered as a datacentre
+      SKU by any provider tracked here, so there is no rental median to quote. It is bought to
+      be used, not let out &mdash; which is the entire argument of the table above it.
+      <b>&Dagger;</b> NVIDIA publishes no standalone B200 street price; it ships in eight-GPU
+      HGX and DGX systems quoted at $300,000&ndash;$500,000. The buy figure on that row is that
+      system price divided by eight &mdash; <b>projected</b>, not an observed card price, and it
+      carries the host, NVSwitch fabric and chassis the other rows exclude. Its memory and
+      bandwidth are likewise NVIDIA's DGX&nbsp;B200 system figures (1,440&nbsp;GB, 64&nbsp;TB/s)
+      divided by eight.
+      Rates are on-demand medians from one aggregator across the provider counts shown, read on
+      17 August 2026, so the rows are comparable to each other; the spread beneath each median is
+      real and wide, and a single number would have hidden it. Street prices are observed
+      reseller listings, not quotes, and they move.
+      Power is card TDP at the same $0.15/kWh charged against this machine, so both halves are
+      like-for-like.
+    </p>
+
+    <div class="callout" style="margin-top:22px">
+      <h3>Four reasons the payback column is not a business plan</h3>
+      <p>
+        <strong>Occupancy is an assumption, not a measurement.</strong> Both columns are
+        printed for exactly that reason &mdash; at 60% an H100 grosses
+        <em>$17,608</em>, at 100% it grosses
+        <em>$29,346</em>, and nobody runs at 100%. Halve the occupancy and
+        every payback figure doubles.
+      </p>
+      <p>
+        <strong>That rate is what a provider charges, not what an owner receives.</strong>
+        Between the two sit marketplace commission, hosting, bandwidth, and the hours the card
+        sits idle waiting for a tenant. The gross columns are gross.
+      </p>
+      <p>
+        <strong>The wall draw is higher than the card draw.</strong> Power above is card TDP
+        only. NVIDIA rates a DGX&nbsp;B200 at <strong>14.3&nbsp;kW</strong> for its eight
+        GPUs &mdash; about 1,788&nbsp;W each against the 1,000&nbsp;W card figure in the table,
+        because the host, fans and cooling are real. Assume roughly 1.5&ndash;1.8&times; the
+        power line, and a commercial tariff rather than a domestic one.
+      </p>
+      <p>
+        <strong>The depreciation clock runs at the same speed as the payback.</strong> These
+        windows are one to two and a half years, and the hardware ages on that same schedule.
+        The A100 row is the evidence: NVIDIA's flagship datacentre part in 2020, and now the
+        second-cheapest card to rent on this list at $1.76/hr, with used ones listed at
+        $4,000&ndash;$9,000 against $7,000&ndash;$15,000 new. A card that pays for itself in two
+        years and has lost half its value in three has not made anyone rich.
+      </p>
+      <p>
+        Which is the honest conclusion, and it cuts both ways. If your workload fits in
+        16&nbsp;GB, the card at the top of this table does the job for a capital outlay
+        between <strong>7&times; and 62&times; smaller</strong> than anything below it, and the
+        rest of the ladder is money spent on memory you will not use. If it does not fit, none
+        of these rows is optional, no amount of cost-per-gigabyte arithmetic makes a 16&nbsp;GB
+        card run a 70B, and which side of that line you are on is the entire consultation.
+        We do not publish prices for that conversation &mdash;
+        <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>.
+      </p>
+    </div>
   </div>
 </section>
 <!-- ===== COST:END ===== -->

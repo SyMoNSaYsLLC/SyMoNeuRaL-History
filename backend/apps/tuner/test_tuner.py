@@ -1615,6 +1615,17 @@ class TestTuneDeadline(unittest.TestCase):
         """Measured on this machine: time to first playlist is 2.5 s at 8 Mb/s, 9.7 s at
         2 Mb/s and 24.1 s at 0.8 Mb/s, feeding the exact argv `_spawn` builds. The old 10 s
         missed an ordinary 2 Mb/s stream by a fraction of a second. See `routes.TUNE_WAIT_SECONDS`.
+
+        This deliberately does *not* assert the wait is shorter than `sessions.IDLE_TIMEOUT`.
+        It once did, and that assertion went stale the moment the wait grew past 20 s. The
+        invariant it was guarding -- the reaper must not drop a session while a request is still
+        waiting on it -- moved rather than disappeared: the wait loop calls `MANAGER.touch()` on
+        every poll (`routes.py:357`), which resets the `last_seen` the reaper reads
+        (`sessions.py:974`), so the wait is *designed* to outlive the idle timeout. Coupling the
+        two constants was also wrong on its own terms, because `IDLE_TIMEOUT` is env-tunable from
+        5 to 600: `SYMONEURAL_TUNER_IDLE_TIMEOUT=5` would have failed this test with no bug
+        present. The residual hazard -- a session that really did die during a long wait -- is
+        covered by the next test, which is where that coverage belongs.
         """
         self.assertGreaterEqual(routes.TUNE_WAIT_SECONDS, 20.0)
         self.assertLessEqual(routes.TUNE_WAIT_SECONDS, 60.0)
