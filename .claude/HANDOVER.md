@@ -498,7 +498,7 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
-| Pending deploy | **none as of 15:35.** Garrett ran both at 15:23/15:24 and ran them **in the right order** — webroot files stamped 15:23, `ActiveEnterTimestamp` 15:24:07 — so the Movies fix, the Tuner+Guide merge, the merged `miner` unit and Reinforce are all live. Verified, not assumed: `/reinforce.html` `/reinforce.js` `/miner.html` `/project.html` `/gateway.html` all **200** on `https://symoneural.com`. **When the next backend change lands, the order is `sudo scripts/deploy.sh --prune` FIRST, then `sudo systemctl restart symoneural-api`** — see the box below. |
+| Pending deploy | **none as of 15:35.** Garrett ran both at 15:23/15:24 and ran them **in the right order** — webroot files stamped 15:23, `ActiveEnterTimestamp` 15:24:07 — so the Movies fix, the Tuner+Guide merge, the merged `miner` unit and Reinforce are all live. Verified, not assumed: `/reinforce.html` `/reinforce.js` `/miner.html` `/project.html` `/gateway.html` all **200** on `https://symoneural.com`. **When the next backend change lands, the order is `sudo scripts/deploy.sh --prune` FIRST, then `sudo systemctl restart symoneural-api`** — see the box below. **That backend change has now landed:** `96e4ccb` mounts `/api/voice/*` in `backend/api.py`, so **`sudo systemctl restart symoneural-api` is owed** before those routes answer on the live service (they 404 until then; agents cannot run it, it needs a password). After the restart they answer **503 by design** until `SYM_VOICE_ENABLED=1` and `SYM_VOICE_TOKEN` are set on the service — a 503 there is the gate working, not a broken mount. It touched **no** file under `site/`, so `deploy.sh` is not required for this one — but if anything else in the queue did touch `site/`, run deploy first anyway and keep the order. |
 | Backend suites | **679 passed, 1 failed** at `f9f3546` (14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. The one red is the tuner codec test, and it belongs to a live writer — see below. |
 | Uncommitted | **16 paths at 14:43, and every one of them is the tuner session's live work** (`epg.py`, `sessions.py`, `tuner.html`, `tuner-watch.html`, `build_pages.py`, `build_masthead.py`, `api.py`, `frontend.mjs`, …). The ~100-path backlog is gone: `8e835cb`, `e38f463` and `f9f3546` landed it. **Still no git remote** — history never leaves this box. |
 
@@ -1588,8 +1588,10 @@ because they are the cheapest real work available.
     a unit still means editing the Unit list, a generator and the routes.
 
 12. **SyMoNeuRaL Voice — text-to-speech, speech-to-text, and speech-to-speech, wired into
-    SyMoNeuRaL Chat.** Asked for by Garrett 2026-08-17. Nothing is built; this is a spec
-    task first.
+    SyMoNeuRaL Chat.** Asked for by Garrett 2026-08-17. (This item opened "nothing is built;
+    this is a spec task first." The spec landed, and then **the input half was built** — see
+    the block below. The two bullets further down predate both and are kept for their
+    reasoning, not as instructions.)
 
     **The spec now exists: `docs/specs/voice-spec.md` (2026-08-17 15:30).** It settles the
     two-way design question posed below by measurement, and the answer is the first bullet:
@@ -1599,6 +1601,73 @@ because they are the cheapest real work available.
     surface.** The TTS half is still unmeasured, deliberately: nothing that speaks is
     installed and Piper needs its own venv, which is Garrett's call. Read the spec before
     acting on the two bullets below; they predate the numbers.
+
+    **The ASR half is built, mounted, gated and measured — `96e4ccb`.** Seven files in
+    `backend/apps/voice/` plus three additive lines in `backend/api.py` (an import, a rate-limit
+    row, and one `include_router`). Read `backend/apps/voice/README.md` first; it is the short
+    version of everything here. Times below are this box's clock (EDT); §1's `15:xx` entries are
+    on a different reference, so **order by commit hash, not by the timestamps.**
+
+    ```
+    GET  /api/voice/state        presence and absence — no token, once enabled
+    POST /api/voice/transcribe   multipart `audio` -> the reading — X-Sym-Token
+    POST /api/voice/speak        503 naming the missing engine — X-Sym-Token
+    ```
+
+    Off unless **both** `SYM_VOICE_ENABLED=1` (compared to the literal string, not truthiness)
+    and `SYM_VOICE_TOKEN` are set; `hmac.compare_digest` on the header; 503 when off. That is
+    the `SYM_ASIC_*` pattern from the last paragraph of item 13, which is where this belongs
+    given both surfaces are for the iPhone app.
+
+    **Measured through the route, not in a harness:** an 11-second WebM/Opus clip → **847 ms**
+    (67 ms transcode, 780 ms ASR), correct transcript, **0 VRAM**, and `run/gpu.lock.d`
+    unchanged across the call. No governor lease is taken and none should be added — the build
+    is `GGML_CUDA:BOOL=OFF`, so there is nothing to arbitrate. There is a test that asserts the
+    lock state is untouched by a real transcription; it asserts *behaviour*, because the first
+    version grepped the package for `gpu-governor` and went red on its own documentation.
+
+    Three things that will bite whoever picks this up:
+
+    - **`whisper-cli` exits 0 on a file it could not read**, and the browser's own recording
+      format is one of those files — this build's decoder is miniaudio with no Opus path, while
+      `--help` advertises ogg. A route trusting `returncode` returns an empty transcript as
+      success. `asr.transcribe` therefore treats **empty stdout as failure**, and
+      `ffmpeg -ar 16000 -ac 1` is unconditional at 66–72 ms. A content-type is a claim.
+    - **Empty stdout is safe to call failure because silence is not empty** — measured on three
+      seconds of `anullsrc`, the model prints ` you`. It invents a word. This was not in the
+      spec; it was found while verifying the spec. No filter is applied to it (house rule, and
+      it would also eat a legitimate one-word answer). What is published instead is `peak`, the
+      largest sample amplitude 0.0–1.0 read off the decoded audio: `0.0` on silence, `0.79` on
+      speech. A real reading rather than a guess, per the no-decorative-indicators rule.
+    - **Cost is flat inside a 30-second window and steps between windows** — `encode` measured
+      flat at 353–414 ms from 3 s to 22 s, then doubling at 33 s. Whisper encodes a padded
+      window, not the speech. Any progress indicator counts `windows`, never seconds, and no
+      page may promise per-second scaling.
+
+    `cd backend && python3 apps/voice/test_voice.py` → **31 tests**, and the suite in *Test in a
+    real browser* went 682 → **727 passed**. The engine tests **skip** on a fresh checkout
+    rather than fail: `contrib/whisper.cpp` and `backend/models/whisper` are both gitignored.
+    Nothing new was installed — `python-multipart` was already an OS package, so the serving
+    interpreter is untouched.
+
+    **Two pieces are deliberately not done, and both are one decision away:**
+
+    1. **No `voice` rack unit and no `site/voice.html`.** `status()` in
+       `backend/apps/voice/__init__.py` is written and correct but its `href` is `/voice.html`,
+       which does not exist — the page comes from `tools/build_pages.py`, which other sessions
+       were holding. A rack row pointing at a 404 is worse than no row, so the `Unit` was left
+       out of `api.py` on purpose. **Land the page and the unit in the same commit.**
+    2. **Speech out.** `tts.py` reports its own absence rather than faking it, and probes on
+       every call so an install changes the answer with no code change. It needs a Piper venv
+       at `backend/apps/voice/.venv` (beside the package, where `apps/asicminer/.venv` lives —
+       an earlier line in the spec said `voice/.venv` at the repo root and was corrected), plus
+       a voice model and its licence in `backend/models/licenses/`. That is Garrett's call.
+
+    **Not measured, and must not reach a page until it is: chat's time to first token.** The
+    80–92 tok/s recorded for chat elsewhere in this file is throughput; TTFT is what a spoken
+    turn actually feels like, and
+    measuring it needs the GPU lock on a quiet box. Every timing above was taken at load average
+    6.5–7.5 with a dozen sessions writing this repo, so they are **ceilings**.
 
     **The constraint that decides the whole design is VRAM, not model choice.** One RTX
     5070 Ti, 15.92 GiB, and chat (~5 GB) plus image (~7 GB) already cannot coexist — that
