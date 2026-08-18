@@ -173,10 +173,34 @@ route fails the suite rather than quietly landing a directory walk on the live p
   Nothing constrained the response shape, so it mirrors what `/api/train/models` already ships
   (a `models` array, each figure carrying its own label). If a real client turns up wanting
   different key names, renaming them is a small edit; the shape was chosen, not matched.
+- **It survives the gateway hop — verified, not assumed.** In the target stack Caddy hands all
+  of `/api/*` to `symon-gateway` on :8000, so a route table there would 404 a path it had not
+  been taught and the endpoint would be dead the moment the committed Caddyfile is deployed.
+  It is not a table: `symon-gateway/src/router.rs` registers `/api/{*path}` with `any()`, and
+  `proxy::proxy_api` forwards path *and* query verbatim with no allowlist. Nothing in the
+  gateway needs to change for this route, or for the next one added under `/api`.
+- **Public and unauthenticated, by decision.** Every row is a model name the site already
+  publishes plus a size, a quantisation and a parameter count — the numbers, which is what
+  this project publishes. `_require_surface()` on `/api/train/models` is a feature flag, not
+  an auth gate, so there was never an auth control here to copy.
+- **`path` is dropped at the validator and never reaches a client.** The file carries it and
+  `/api/train/models` publishes it, but that row reads
+  `backend/models/hf/hub/models--Qwen--…/snapshots/<hash>` — this repo's directory layout, a
+  fact about the box rather than about the model, on a route that answers anyone. `id` names
+  the model, `kind` says which loader reads it, and `reason` carries the "not fetched" story
+  the placeholder path was the only other witness to. It stays in `run/registry.json`, which is
+  local and gitignored, so an operator reading the file still gets it. Publish the numbers,
+  keep the layout.
+- **Metered under a `studio` bucket.** No limit is set — that was the 2026-08-17 call for every
+  surface — but `studio` is now in `_RATE_SUGGESTED`, which is what makes `SYM_RATE_STUDIO`
+  readable at all: `LIMITS` is built by iterating that dict and `check_rate` returns True for
+  any name it cannot find, so a surface absent from it is *unmeterable*, not unlimited by
+  choice. Verified both ways on a spare port: unset → 12/12 × 200; `SYM_RATE_STUDIO=3/10` →
+  200, 200, 200, then 429.
 - `grep -c include_router` is still **8** and there is still exactly **one** `app.mount`. Both
   are asserted by the new test file.
 
-Suite after this change: **887 passed** (871 baseline + 16 new), same two mandatory `--ignore`s.
+Suite after this change: **890 passed** (871 baseline + 19 new), same two mandatory `--ignore`s.
 
 ---
 

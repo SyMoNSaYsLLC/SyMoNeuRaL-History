@@ -169,6 +169,59 @@ class ValidatorRejectsJunk(unittest.TestCase):
         self.assertEqual(row["capabilities"], ["text-generation", "fine-tune:qlora"])
         self.assertEqual(row["bytes_on_disk"], 15231271888)
 
+    def test_the_on_disk_path_never_reaches_the_client(self):
+        """`path` is in the file and must stay out of the response.
+
+        The route is public: Caddy delegates all of `/api/*` and there is no surface flag in
+        front of this one, unlike `/api/train/models`, which publishes the same field behind
+        `_require_surface()`. The value is this repo's directory layout plus an HF snapshot
+        hash -- a fact about the box, not about the model -- and the client does not need it,
+        so the field is dropped at the validator rather than trusted not to be looked at.
+        """
+        ns = _extract("_studio_rows", "_STUDIO_FIELDS")
+        self.assertNotIn("path", ns["_STUDIO_FIELDS"])
+        row = ns["_studio_rows"]([{
+            "id": "x",
+            "path": "backend/models/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/deadbeef",
+        }])[0]
+        self.assertNotIn("path", row)
+
+
+class TheRouteIsMeterable(unittest.TestCase):
+    """`SYM_RATE_STUDIO` must be read by something.
+
+    No limit is set on any surface here today -- that was the operator's call on 2026-08-17 --
+    so this asserts the knob exists, not that it is turned. A surface missing from
+    `_RATE_SUGGESTED` is not "unlimited by choice", it is unmeterable: `LIMITS` is built by
+    iterating that dict and `check_rate` returns True for any name it cannot find, so the
+    environment variable would be read by nothing at all.
+    """
+
+    def test_the_route_declares_a_throttle(self):
+        for node in ast.walk(TREE):
+            if not isinstance(node, ast.AsyncFunctionDef) or node.name != "studio_models":
+                continue
+            deps = [
+                kw for dec in node.decorator_list if isinstance(dec, ast.Call)
+                for kw in dec.keywords if kw.arg == "dependencies"
+            ]
+            self.assertTrue(deps, "studio_models declares no dependencies")
+            self.assertIn("throttled_for(\"studio\")".replace('"', "'"),
+                          ast.unparse(deps[0].value).replace('"', "'"))
+            return
+        self.fail("studio_models not found")
+
+    def test_the_bucket_name_exists_in_the_suggested_table(self):
+        for node in ast.walk(TREE):
+            if isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "_RATE_SUGGESTED" for t in node.targets):
+                names = [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
+                self.assertIn("studio", names,
+                              "studio is absent from _RATE_SUGGESTED, so SYM_RATE_STUDIO "
+                              "would be read by nothing and the surface is unmeterable")
+                return
+        self.fail("_RATE_SUGGESTED not found")
+
 
 class TheRouteDoesNoWork(unittest.TestCase):
     """The decoupling rule, asserted against the source of the handler itself.

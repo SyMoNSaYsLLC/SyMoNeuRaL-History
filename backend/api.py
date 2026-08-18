@@ -192,6 +192,14 @@ _RATE_SUGGESTED = {
     # than RavenCalc. The key must exist even while unset -- throttled_for() reads LIMITS on
     # its deny path, and LIMITS is built from this dict.
     "voice": (60,  900),
+    # `/api/studio/models`. No GPU, no CPU to speak of -- one `read_text` and a validation
+    # pass -- so this bucket is not protecting the card, and today it is unset like every
+    # other one here. It is listed for the reason spelled out under "sigil": a surface absent
+    # from this dict is not unlimited by choice, it is *unmeterable*, and SYM_RATE_STUDIO
+    # would be read by nothing. This is a public, unauthenticated list that a client polls,
+    # which is exactly the shape where the operator may later want a ceiling, so the knob
+    # exists ahead of the need. Same numbers as voice: cheap, but not free.
+    "studio": (60,  900),
 }
 
 
@@ -2230,8 +2238,19 @@ STUDIO_REGISTRY_FILE = RUN / "registry.json"
 # `progress.json`: `run/` is world-readable state on a box that also runs a web server, and
 # trusting a field because we wrote it is how a validated field silently becomes an unvalidated
 # one the next time somebody edits the writer.
+#
+# `path` is deliberately NOT in this list, even though the file carries it. Caddy delegates the
+# whole `/api/*` subtree publicly and this route has no surface flag in front of it, so the
+# response is world-readable; the row in the file reads
+# `backend/models/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/<hash>`, which is this
+# repo's internal directory layout rather than a fact about the model. `/api/train/models` does
+# publish it, but that route is behind `_require_surface()`. Nothing needs it here: `id` names
+# the model, `kind` says which loader reads it, and `reason` carries the "not fetched" story
+# that the placeholder path was the only other witness to. Keeping it in `run/registry.json`
+# costs nothing -- that file is local and gitignored -- so an operator reading the file directly
+# still gets it. Publish the numbers, keep the layout.
 _STUDIO_FIELDS: dict[str, type | tuple[type, ...]] = {
-    "id": str, "name": str, "kind": str, "path": str,
+    "id": str, "name": str, "kind": str,
     "present": bool, "trainable": bool, "reason": str,
     "capabilities": list,
     "bytes_on_disk": int, "bytes_on_disk_label": str,
@@ -2267,7 +2286,8 @@ def _studio_rows(raw: object) -> list[dict]:
 
 
 @app.get("/api/studio/models", tags=["studio"],
-         summary="Models on this machine, read from a pre-computed file")
+         summary="Models on this machine, read from a pre-computed file",
+         dependencies=[Depends(throttled_for("studio"))])
 async def studio_models() -> dict:
     """The model list, as last written by `tools/build_registry.py`.
 
@@ -2281,6 +2301,13 @@ async def studio_models() -> dict:
     200 rather than a 404, because this is a list a client polls and an empty list keeps its
     decode path intact. `detail` then names the generator to run, which is the useful half of
     the 404 the section routes raise.
+
+    **Public and unauthenticated, deliberately.** Caddy delegates the whole `/api/*` subtree,
+    so this answers anyone. That is a decision, not an oversight: every row states a model name
+    the site already publishes, a size, a quantisation and a parameter count -- the numbers, and
+    the site's argument is that the numbers are real and checkable. What it does *not* state is
+    where any of it lives on disk; `path` is dropped at the validator above. Metered under the
+    `studio` bucket so a ceiling can be set without touching this file.
     """
     try:
         doc = json.loads(STUDIO_REGISTRY_FILE.read_text())
