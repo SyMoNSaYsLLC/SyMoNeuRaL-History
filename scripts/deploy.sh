@@ -4,9 +4,27 @@
 # Needs root because the webroot is www-data owned. Run it with sudo:
 #     sudo ./deploy.sh          (from the repo root)
 #
-# Backs up the current index.html to a fresh timestamped name every time. It never touches
-# index.backup-20260816-141604.html -- that is the 419 KB original training page and the only
-# copy of it.
+# Backs up the current index.html to a fresh timestamped name every time.
+#
+# THE ONLY FILE THIS SCRIPT PROTECTS IS THE BACKUP IT TOOK ON THIS RUN. Everything else in
+# the webroot without a counterpart in site/ is an orphan, and `--prune` deletes it. There is
+# no allowlist, and adding one is not the fix -- see below.
+#
+# This header used to promise something else: "it never touches index.backup-20260816-141604
+# .html -- that is the 419 KB original training page and the only copy of it." That was true
+# when the script only ever copied. `a344005` added the orphan scan and `--prune`, and the
+# exemption it names was never implemented -- the loop exempts `index.prev-$STAMP.html` and
+# nothing more. That file had no counterpart in site/ and was never tracked in git (checked:
+# `git log --all -- '*index.backup-20260816*'` is empty; it existed only in the webroot), so
+# it was listed as an orphan and a later `--prune` removed it. It is now gone from the
+# webroot, from site/ and from everywhere under /home/google. Confirmed 2026-08-17.
+#
+# Not restored, and not re-exempted, deliberately. It was the old MIT AI Training page, and
+# that branding is purged everywhere user-facing -- an exemption for a filename that no
+# longer exists is dead code that reads as a live guarantee. The lesson is the general one:
+# **a comment promising a file is safe is not a mechanism.** If a webroot file must survive
+# a prune, it belongs in the loop as code or outside the webroot entirely, and the only
+# reason this one was lost is that a sentence stood in for both.
 set -euo pipefail
 
 # Repo root, not its parent. This climbed one level when the script lived in demo/;
