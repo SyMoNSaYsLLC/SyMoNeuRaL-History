@@ -210,6 +210,32 @@ ok('the explanation blames this box, not the provider',
    /this box will load/.test(notes) && !/unavailable on this panel/.test(notes), notes);
 ok('an Xtream load is not described as a playlist', !/from your playlist/.test(notes), notes);
 
+// ---- case 7: the couple of questions write the prompt --------------------------------
+// "smart based off location and ask a couple questions". The assertion is on the PROMPT
+// BOX, not on an answer: the questions compose a sentence the visitor can read and edit
+// before anything is sent, so what must be true is that their answers -- including the
+// location they TYPED, because this box never looks one up -- come back visibly in the
+// question. A questionnaire that silently posted its own sentence would pass a test on
+// the response and still be the thing this page is not allowed to be.
+await page.click('#tnfgpill');
+await page.fill('#tnfgloc', 'UK');
+await page.click('#tnfgkeep .tn-fgchip:has-text("sports")');
+await page.click('#tnfgdrop .tn-fgchip:has-text("shopping")');
+await page.click('#tnfgwrite');
+const composed = await page.$eval('#tnfgq', el => el.value.trim());
+ok('the questions compose a prompt carrying the location that was typed',
+   /UK/.test(composed), composed);
+ok('and what to keep, and what to exclude as an exclusion',
+   /sports/.test(composed) && /not shopping/.test(composed), composed);
+// Answered once, folded thereafter: the form is in the way on every visit after the first.
+await page.reload({ waitUntil: 'domcontentloaded' });
+ok('the questions fold away once they have been answered',
+   (await page.$eval('#tnfgask', el => el.open)) === false,
+   await page.$eval('#tnfgask', el => el.open));
+ok('and the answers are still there to edit',
+   (await page.$eval('#tnfgloc', el => el.value)) === 'UK',
+   await page.$eval('#tnfgloc', el => el.value));
+
 // ---- house rules --------------------------------------------------------------------
 const ell = await page.$$eval('#tnfail, #tnfail *',
   els => els.filter(e => getComputedStyle(e).textOverflow === 'ellipsis').length);

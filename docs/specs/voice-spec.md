@@ -160,9 +160,12 @@ the machine that belongs to Garrett rather than to an agent working an unattende
 one word away. The command that closes the gap:
 
 ```bash
-python3 -m venv voice/.venv && voice/.venv/bin/pip install piper-tts
+# The venv goes beside the package, where backend/apps/asicminer/.venv already lives. An
+# earlier revision of this line said `voice/.venv` at the repo root; that would have been a
+# second convention for the same thing. backend/apps/voice/tts.py holds the corrected path.
+cd backend/apps/voice && python3 -m venv .venv && .venv/bin/pip install piper-tts
 # then, and this is the measurement that matters:
-#   time voice/.venv/bin/piper -m <voice>.onnx -f out.wav <<< "a one-sentence answer"
+#   time .venv/bin/piper -m <voice>.onnx -f out.wav <<< "a one-sentence answer"
 # report: wall clock, peak RSS, and audio seconds produced per second of compute.
 ```
 
