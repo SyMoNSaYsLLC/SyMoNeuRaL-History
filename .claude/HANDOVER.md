@@ -2,9 +2,11 @@
 
 **Last updated 2026-08-17 08:30. Written for a fresh agent with zero prior context.**
 
-> **If you read nothing else:** nothing is broken and nothing is blocked, but **one page IS
+> **If you read nothing else:** nothing is broken and nothing is blocked, but **two pages ARE
 > now waiting on a deploy** — `site/training.html` carries the 27B measurement (§0b-ter) and
-> `/var/www/symoneural/training.html` does not. `sudo scripts/deploy.sh --prune` is Garrett's
+> `site/documentation.html` carries the retraction of the old ceiling claim (`0a4892f`); the
+> deployed copies of both are stale. Until that deploy runs, production publishes the
+> correction nowhere and the retired claim on `documentation.html`. `sudo scripts/deploy.sh --prune` is Garrett's
 > to run; an agent cannot. Everything else in the repo and production agree. Run
 > `node tests/frontend.mjs` and `node tests/frontend.mjs https://symoneural.com`; the local
 > one says **43/43**. If they disagree, production is behind and only Garrett can fix that —
