@@ -26,6 +26,7 @@ __pycache__/
 *.safetensors
 *.gguf
 training/adapter/tokenizer.json
+training/adapter-qwen36/tokenizer.json
 
 # ---- Nested third-party checkouts (belt and braces: these carry their own .git) ----
 /cuda-samples

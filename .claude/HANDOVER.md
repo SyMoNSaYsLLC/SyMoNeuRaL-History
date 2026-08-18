@@ -263,6 +263,149 @@ The rack rows on the home page can be taken offline one at a time by an operator
 
 ---
 
+## 0b-quater. The 27B adapter TRAINS — measured, after four traps (2026-08-18)
+
+Garrett asked to *"upgrade the adapter to the 27B"*. It fits, it trains, and it took four
+non-obvious fixes to get there. **Full write-up: `docs/specs/qlora-27b-measured.md`** — that
+file is the measurement and is where the numbers live. This is the pointer and the caveats.
+
+`training/train_lora.py` now branches on `hybrid` (true when `text_config` has
+`full_attention_interval`). **The 7B/dense path is untouched** — it is what produced the
+shipped `training/adapter/`, and there was no reason to re-roll it. The 27B path writes to
+`training/adapter-qwen36/`, a *different directory*; the two are not interchangeable and
+`backend/api.py` serves `adapter/`.
+
+The measured fit, at seq 662 / answer 578 / r=16 / bf16 adapter / paged 8-bit:
+
+```
+peak allocated 14.26 GiB   peak reserved 14.44 GiB
+driver in use  14.31 GiB   of 15.49 GiB   ->  1.17 GiB headroom
+```
+
+`training/probe_27b.py` is the harness that proves it: nine self-asserting checks, writes
+`run/probe_27b.json`. **Run it before touching anything in the hybrid path** — it costs about
+40 seconds of card time and tells you which of the four traps you just walked into.
+
+The four traps, one line each (details in the spec):
+
+1. `AutoModelForCausalLM` matches **1 of 853** tensors on this checkpoint and random-initialises
+   the rest, silently. Use `AutoModelForImageTextToText`.
+2. A `device_map` entry of `"cpu"` is **not** streaming — accelerate copies the whole tensor
+   back per forward. The embedding is handled by a CPU shim instead.
+3. Quantising `lm_head` to NF4 saves 1.76 GiB of residency and costs a 2.37 GiB dequant
+   transient. Net loss; it OOMs at step 0.
+4. `prepare_model_for_kbit_training` upcasts **every** bf16 param to fp32, including the
+   248,320 × 5120 output embedding, and OOMs the load outright.
+
+And the thing that actually made it fit: **`lm_head` is not on the card during training.** It
+lives in pinned CPU bf16 and the loss streams over it a vocab slice at a time (`StreamedCE`).
+Two gotchas that cost real time:
+
+- Swapping in `nn.Identity()` and `del`-ing the local frees **nothing** — accelerate's hooks and
+  stale locals keep the storage alive. You have to empty `.data` in place.
+- Custom autograd Functions are **excluded from autocast**, so under `Trainer(bf16=True)` the
+  hidden states arrive fp32 against a bf16 head and the matmul raises. `StreamedCE` casts on
+  entry now, but any future custom Function here will hit the same wall.
+
+### The open question this does NOT answer
+
+The serving base is `Qwen3.6-27B-UD-Q2_K_XL` — **~2.5 bpw**. This adapter was trained against
+NF4. The 7B path is NF4 → Q4_K_M and roughly matched; this is a materially wider gap, and
+`UD-Q4_K_XL` at 17.61 GB does not fit the card, so it is structural rather than something a
+different quant fixes. **Nothing has been evaluated at serving quality yet.** Until the pricing
+refusal has been run with the adapter on versus off against the Q2_K_XL base, "the adapter is
+upgraded" is a claim about training, not about the product. Do not put it on the site.
+
+Serving it at all needs `CHAT_MODEL`/`CHAT_ADAPTER` changed in `backend/api.py`, which is
+under Garrett's standing *"do not alter `backend/api.py`"* instruction. **That is his call, not
+an agent's.**
+
+## 0b-ter. Qwen3.6-27B FITS — measured, and it retires a manual claim (2026-08-18)
+
+Garrett said *"that 27B was designed to run on 5070 Ti"* and *"bottom of the page if setup
+correctly under 12"*. He was right, and the manual was wrong. **Measured on this machine**,
+llama.cpp build `4df29be`, `llama-bench -p 512 -n 128`:
+
+| | Qwen3.6-27B UD-Q2_K_XL |
+|---|---|
+| weights | 11.03 GiB, 26.90 B params (11,849,779,424 bytes on disk — the "under 12") |
+| offload | `-ngl 99`, fully GPU-resident, no CPU offload |
+| prompt | **1537.77 ± 94.82 tok/s** (pp512) |
+| generation | **56.90 ± 0.22 tok/s** (tg128) |
+| largest context that loads | **64K at q8_0 KV, 14,288 MiB of 16,303** (load-and-idle; concurrency untested) |
+
+Context ceiling, each row a real `llama-server` load: 8K/f16 12,354 MiB · 16K/f16 12,874 ·
+32K/f16 13,914 · 32K/q8_0 13,040 · 64K/q8_0 14,288 · **128K/q8_0 FAILS** (`cudaMalloc failed:
+out of memory`, rs cache). KV slope measured at 63.5 MiB/1K at f16 and 38.1 MiB/1K at q8_0.
+
+**No engine work was needed.** The GGUF declares `general.architecture = qwen35` and
+`contrib/llama.cpp` already carries `LLM_ARCH_QWEN35`. The CUTLASS/CuTe work Garrett
+mentioned is not on the critical path for the GGUF route.
+
+Three things a later agent will otherwise get wrong:
+
+- **11,916 MiB is not the headroom figure.** That is peak during `llama-bench`, at its short
+  context. A real 8K session is already 12,354 MiB. Always quote VRAM with its context size.
+- **The bandwidth formula is ~11.5% optimistic**, now that there is one point to check it
+  against: 752 GB/s ÷ 11.85 GB predicts 63.46 tok/s, the card delivered 56.90. Every other
+  row of the predicted table in the manual should be read as an upper bound.
+- **NGC's 11.87 GB is a compressed image size**, not VRAM and not weights. Its near-identity
+  with the 11.85 GB GGUF is a coincidence. See the header of `scripts/nim-qwen36.sh`.
+
+Written up in `docs/symoneural-manual.md` (Part I, "Measured: Qwen3.6-27B fully resident"),
+which also strikes the old ceiling sentence — *"a 14B at Q4/Q6, or a 32B at IQ2"* — and
+annotates the two bullets in "Inferred, not directly measured" that had flagged exactly these
+claims as untested arithmetic. The projected table is left in place: the correction is the
+point, and deleting the wrong row would hide it.
+
+### What is NOT done here
+
+- **The NIM container is blocked on one thing:** `./scripts/nim-qwen36.sh login` with
+  Garrett's NGC API key. Anonymous manifest probes get 401. Preflight otherwise passes
+  (podman 5.4.2, CDI spec present, 870 GB free) but warns that this card is under the
+  ~18.6 GB reported for the NVFP4 profile, so NIM may still refuse. That refusal would be a
+  publishable negative result, not a bug.
+- **UD-Q4_K_XL (17.61 GB) with CPU offload** against the 94 GB of system RAM is the obvious
+  quality-vs-speed comparison and has not been run.
+- **Whether q8_0 KV hurts output quality is not measured** — only that it allocates.
+
+One real bug was fixed on the way: `training/train_lora.py` computed `ROOT = HERE.parent.parent`,
+which resolved to `/home/google` — the directory *containing* the repo — and pointed `HF_HOME`
+at `~/models/hf`. Any 27B base download would have landed outside the project, ungitignored
+and invisible. Now `HERE.parent`, with an assert on `backend/api.py` rather than trust in the
+arithmetic. Same failure mode as the repo-root bug in `scripts/fetch-models.sh`.
+
+`scripts/fetch-models.sh` gained an **opt-in** `SYM_FETCH_QWEN36=1` block — 12.8 GB should not
+land on a fresh clone silently.
+
+### TRAP: editing the manual's markdown does not change the site
+
+`tools/build_training.py` reads **`docs/symoneural-manual.html`**, not the `.md` — deliberately,
+because that file carries the long-form layout and 750-odd heading anchors that are already
+deep-linked. **There is no in-repo step that regenerates the `.html` from the `.md`, and pandoc
+is not installed on this box** (`command -v pandoc` → nothing). So the two files drift silently,
+and an agent that edits only the markdown will believe it has corrected the site when
+`site/training.html` still publishes the old claim. That is exactly what nearly happened here —
+`git status site/` was empty after the markdown edit, which looked like the all-clear and was
+not.
+
+Until pandoc exists here, edit **both**, matching pandoc's idiom (`<div class="tw"><table>` for
+tables, `<h3 id="slug">`). Then the full sequence, which is the one from `.claude/CLAUDE.md`:
+
+```bash
+python3 tools/build_training.py     # twice, and diff -- idempotency is the contract
+python3 tools/build_cachebust.py    # ALWAYS LAST
+git status --porcelain site/        # only the page you touched may be modified
+```
+
+Verified for this change: run1 == run2 byte-identical; **zero anchors lost** (diffed the `id="`
+set against `HEAD`, only the two new ones added); `node tests/frontend.mjs http://127.0.0.1:8875`
+→ **43/43 pass**, including "every local asset is cache-busted". The test API was started on
+8875 with `SYMONEURAL_PORT=8875` and stopped again; the systemd service on :8800 was never
+touched and still answers 200.
+
+---
+
 ## 0c. THE OVERNIGHT QUEUE — written 2026-08-17 ~12:45, Garrett asleep
 
 Garrett handed over a long list and went to bed, asking explicitly that the plan live here in
