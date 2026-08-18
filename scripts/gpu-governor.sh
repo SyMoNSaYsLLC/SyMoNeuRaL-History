@@ -88,6 +88,17 @@ evict() {
   case "$prev" in
     chat)  "$HERE/symoneural" _stop-chat >/dev/null 2>&1 || pkill -f 'llama-server' 2>/dev/null || true ;;
     image) pkill -f 'sd-cli' 2>/dev/null || true ;;
+    # Stickers. Same engine as image, so the same kill -- but the name has to be here
+    # anyway, because without a case of its own it falls to *) below, and *) pkills
+    # llama-server too and takes chat down as collateral. Registering a surface name
+    # and adding its case are one change, not two: the miner) arm exists because the
+    # *) arm was once found logging a successful eviction while the tenant kept the card.
+    #
+    # Known and deliberate: `pkill -f 'sd-cli'` cannot tell a sigil render from an image
+    # render, so evicting either kills both. The global lock serialises them and sd-cli
+    # is not resident between jobs, so the window is small -- but it is written down
+    # here rather than discovered by whoever next sees an image render die unexplained.
+    sigil) pkill -f 'sd-cli' 2>/dev/null || true ;;
     # A training run holds ~10-13 GB for hours. It is never killed to make room for a demo
     # request -- a half-finished fine-tune is not worth a page view. Serving surfaces queue
     # behind it instead, which is what the acquire timeout is for.

@@ -2284,3 +2284,189 @@ Tracked: 337 files, ~7 MB, plus the six `site/art-*.png`.
 
 **Watch out:** the user drops large reference trees into the repo root while you are working.
 Check `git status` before `git add -A`.
+
+---
+
+## 2h. SyMoNeuRaL Stickers — §5 item 13, built 2026-08-17, THREE ways in
+
+**Branch `worktree-stickers`, not merged.** Text → sticker, picture → sticker and speech →
+sticker all work end to end and are verified in a real browser. Two commands are needed to
+make any of it real and neither can be run by an agent:
+
+```bash
+sudo systemctl restart symoneural-api    # WITHOUT THIS EVERY STICKER ROUTE 404s
+sudo scripts/deploy.sh --prune           # site/sigils.html -> /var/www/symoneural
+```
+
+### The finding that matters most: the surface was never mounted
+
+`backend/apps/sigils/` existed and was complete for the typed path. **`backend/api.py`
+contained zero occurrences of the string `sigil`** — no import, no router, no rack unit, no
+rate-limit lane — while `site/sigils.html` was already live in production. Every route the
+page called had been 404ing since the day it shipped, and nothing said so, because the page
+degrades to "the surface did not answer".
+
+Four edits to `backend/api.py` (a *coordinate-first* file, so they were kept minimal):
+import at :94, rate-limit lane `"sigil"` at :178, `Unit(**sigils.status())` at :1532, router
+at :2080. The rack is 12 units → 13. `tests/stickers.mjs` asserts the mount first, so this
+cannot silently regress.
+
+Also `scripts/gpu-governor.sh`: `sigil` needed its own `evict()` case. Without one it fell to
+`*)`, which pkills `llama-server` and would have **taken chat down as collateral** every time
+somebody made a sticker.
+
+### What each input actually does — and one of them is not what it sounds like
+
+| Input | GPU? | Measured on this box, 2026-08-17, n=4 over HTTP |
+|---|---|---|
+| type it | yes | render 11.4–13.7 s, chroma matte 0.04 s |
+| upload → cut it out | **none at all** | segment 1.17–1.21 s, encode 0.01 s |
+| upload → re-draw it | yes | render 11.6–12.2 s at strength 0.60 |
+| say it | yes, after ASR | transcribe 0.73–0.90 s for 11.0 s of speech, then the typed path |
+
+**"Audio to sticker" is speech → text → the same render a typed subject gets.** Nothing
+listens to audio and draws from it. That sentence is in the API response (`path`), on the
+page, and in the module docstring, because dropping it would claim a capability this box does
+not have.
+
+### Three things were settled by measurement and would have shipped wrong otherwise
+
+- **`strength` is capped at 0.80, and the cap is not taste.** At 0.85 a photograph of a cat
+  and a photograph of a guitar produced stickers with **identical SHA-256 hashes** — the
+  engine had discarded the upload entirely. Above 0.80 "image to sticker" describes something
+  that is not happening. The API refuses rather than clamping. (`sd-cli` also *quantises*
+  strength into whole denoise steps, so at 4 steps 0.55 ≡ 0.70.)
+- **A photograph cannot use the chroma key.** Keying a tabby against a grey backdrop returned
+  88.75% transparent with `degenerate: false` — every number said success — while punching
+  holes through its chest fur, one ear and a leg. `docs/specs/sigils-spec.md` §3.6
+  pre-authorised the rembg fallback "by measurement, not taste"; this is that measurement.
+  The rule is now **key what we painted, segment what we did not**, and which matte ran is
+  reported per sticker, never assumed from the mode.
+- **The first cut after a restart takes 32.9 s.** Steady state is 1.2 s. Every request spawns
+  a fresh interpreter and re-reads a 168 MB model, so the fast figure holds only with a warm
+  page cache. **Both numbers are published**; quoting 1.2 s alone would be quoting a warm
+  cache as a guarantee. If it ever matters: warm the session at API startup, deliberately not
+  done for one event per reboot.
+
+### Licences — an obligation that was half-met and is now met
+
+Two fetch scripts promised entries "in the same commit". While writing them, **two of the
+four models in my own licence gate turned out to be unverified**: `isnet-general-use` comes
+from `xuebinqin/DIS`, which has **no LICENSE file**, and whose README scopes Apache-2.0 to
+"code and evaluation metric" while the DIS5K dataset the weights train on has separate terms;
+`silueta` is a third-party derivative with no licensed source. `ALLOWED` is now `u2net` and
+`u2netp` only. `bria-rmbg-2.0` remains blocked outright — **CC BY-NC 4.0**, and it is the
+model rembg examples reach for first, so it is the likeliest wrong choice on this surface.
+
+Apache-2.0 §4(a) needs the text to *travel with the work*, so both scripts now write into
+`backend/models/licenses/` alongside `fetch-models.sh`: u2net (Apache-2.0, from the U-2-Net
+repo — the `.onnx` is a rembg release asset carrying no licence of its own, and LICENSES.md
+says so rather than flattening it to "verified"), rembg + onnxruntime (MIT), whisper.cpp and
+openai/whisper (MIT).
+
+`LICENSES.md` §5 said **"there is no virtualenv in the serving path"**. Stickers made that
+misleading — a cut-out request now crosses into `backend/apps/sigils/.venv` by `subprocess`
+— so it is corrected, and those packages moved to §3 because unlike §5's they *are*
+redistributed. **Found while doing it: `backend/apps/asicminer/.venv` is documented nowhere
+in `LICENSES.md`.** Not mine to fix, flagged rather than quietly covered.
+
+### New files, and what is deliberately NOT committed
+
+```
+backend/apps/sigils/listen.py          whisper.cpp exec boundary (CPU, never takes the lock)
+backend/apps/sigils/upload.py          decode/normalise an upload with ffmpeg, no PIL
+backend/apps/sigils/segment.py         serving side of the photo matte, imports no ML
+backend/apps/sigils/cutout_worker.py   runs INSIDE the venv -- the far side of that boundary
+scripts/fetch-whisper.sh               whisper.cpp + ggml-base.en, -DGGML_CUDA=OFF
+scripts/fetch-cutout.sh                the venv + u2net + the licence texts
+tests/stickers.mjs                     25 browser assertions, all three inputs
+```
+
+`backend/apps/sigils/.venv`, `backend/models`, `backend/output` and `run` show as
+**untracked symlinks** in this worktree — `.gitignore` lists them with a trailing slash,
+which does not match a symlink. `git add -A` here would commit them. Files were added by
+explicit path.
+
+`tests/stickers.mjs` is a new file rather than an addition to `tests/frontend.mjs`, which the
+tuner/site agent holds (precedent: `tests/tuner_failpaths.mjs`).
+
+### Verified
+
+- `python3 -m pytest backend/apps/sigils/test_sigils.py -q` → **25 passed**
+- `node tests/stickers.mjs http://127.0.0.1:8877` → **25/25**
+- `node tests/frontend.mjs http://127.0.0.1:8877` → **26/26**, nothing sitewide regressed
+- `python3 tools/build_sigils.py` run twice, `diff` clean — still idempotent
+- An end-to-end HTTP suite over all three inputs → **37 passed, 0 failed**
+
+### Left open
+
+- **`upload.py`, `listen.py` and `segment.py` have no unit tests of their own.** They are
+  covered end to end by the browser and HTTP suites, not in isolation.
+- The `sigil` rack unit reports `offline` when only the CPU cut-out path works. That is
+  deliberate — it is a `bus: gpu` unit with no "reduced" state and flipping its contract was
+  the original author's call to make, not mine — but `/api/sigils/state` carries the nuance.
+- Recording needs a secure context. The page detects this and says so rather than offering a
+  microphone button that cannot work.
+
+### 2h-bis. The rate lane was half-wired, and the HTTP suite is now in the repo
+
+Two follow-ups after the commit above, both fixed and verified.
+
+**The `sigil` rate lane was built and never spent from.** Adding `"sigil": (20, 300)` to
+`_RATE_SUGGESTED` makes `LIMITS` carry the name and makes `SYM_RATE_SIGIL` parse — it does
+*not* make any route consult it. No sigils route depended on `throttled_for`, so an operator
+who set `SYM_RATE_SIGIL=20/300` would have got two live `RateLimiter` objects, no error, and
+no cap. **That is worse than being openly unmetered**, because the meter reads as present.
+Fixed at `backend/api.py:2091` by mounting the router with
+`dependencies=[Depends(throttled_for("sigil"))]` — applied at the include, not inside
+`apps/sigils/routes.py`, because `throttled_for` lives in `api.py` and `api.py` imports the
+app, so the dependency the other way is an import cycle.
+
+Router-wide on purpose: it covers `/packs` and `/state` as well as the three POSTs, so a
+route added to this surface later is metered by default rather than by somebody remembering.
+
+Worth knowing: **every surface is unmetered by default** at the operator's standing
+instruction (see the comment above `_RATE_SUGGESTED`), so this changes nothing until
+`SYM_RATE_SIGIL` is set. It changes what happens when he does.
+
+No other app router (`tuner`, `accounts`, `gateway`, `guide`, `project`) is throttled either.
+That is *not* flagged as a bug here — none of them spends the GPU. Stickers is the one that
+does, and the one aimed at a phone app.
+
+**`tests/sigils_http.py`** is the throwaway end-to-end suite, made durable. It covers what
+the browser cannot: every refusal path returns a status code no DOM ever sees.
+
+- No fixture image is committed. The photograph stand-in is **drawn by the test** — and that
+  is better than a real photo, not a compromise. It is an ellipse of known radii, so its true
+  area is `pi*rx*ry = 0.2614`, and the assertion compares the u2net matte against ground
+  truth instead of merely checking that some alpha exists. Measured: **0.2613, error 0.0001**.
+  A solid opaque square scores 1.0 and an empty matte scores 0.0; both fail.
+- The silent WAV is written in pure Python rather than shelled out to `ffmpeg`. Requiring a
+  media toolchain to assert that silence is refused is the tail wagging the dog.
+- The speech sample is `contrib/whisper.cpp/samples/jfk.wav`, which is behind a symlink and
+  untracked, so it is present here and absent from a fresh clone. Missing means **skip and
+  say so** — the run prints a skip list and never passes silently.
+- `SYM_RATE_SIGIL` set on the *API's* environment turns on the rate assertion. Set it
+  generously (`30/500`) — the functional assertions spend from the same bucket first.
+
+**Both browser suites take the base URL as `argv[2]` and default to `:8800`, which is the
+shared dev API and does not have this worktree's code in it.** Running `node tests/stickers.mjs`
+bare fails with `GET /api/sigils/state -> 404` and looks like a broken surface. Pass the port.
+
+The server-free guard for all of this is `TestMountedAndMetered` in
+`backend/apps/sigils/test_sigils.py`: it parses `backend/api.py` with `ast` rather than
+importing it (importing the serving module from a plug-in inverts the dependency) and asserts
+the router is included *and* that the include throttles against `"sigil"` specifically.
+Confirmed to fail when the kwarg is reverted — `AssertionError: [] is not true : the sigils
+router is mounted with no dependencies= at all`.
+
+Verified 2026-08-17, all against `:8877` running this worktree's code:
+
+- `python3 -m unittest discover -s backend/apps/sigils -t backend` → **27 passed** (was 25)
+- `SYM_RATE_SIGIL=30/500 python3 tests/sigils_http.py` → **35 passed, 0 failed, 0 skipped**,
+  including `the 30/500 lane actually denies past its budget` — the 429 is real, not inferred
+- `node tests/stickers.mjs http://127.0.0.1:8877` → **25/25**
+- `node tests/frontend.mjs http://127.0.0.1:8877` → **26/26**, 13 rack units
+
+Both browser suites pass *with the lane active*, which is the evidence that throttling
+`/state` router-wide does not disturb a real page session.

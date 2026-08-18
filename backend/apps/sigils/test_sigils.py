@@ -20,6 +20,7 @@ exactly the sort of assertion this project does not accept.
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import pathlib
 import re
@@ -159,50 +160,78 @@ class TestMatte(unittest.TestCase):
             self.assertEqual(rgba[3][(h // 2) * w + w // 2], 255, name)
             self.assertEqual(stats["key"], name)
 
-    def test_despill_pulls_the_field_colour_out_of_the_edge(self) -> None:
-        """A subject pixel touching a magenta field picks the field up. On a white message
-        bubble that reads as a coloured halo, so it is removed in straight colour."""
-        w = h = 16
-        n = w * h
+    @staticmethod
+    def _block(colour: tuple[int, int, int], w: int, h: int,
+               span: range) -> list[bytes]:
+        """A magenta field with one solid square of `colour` in it."""
         key = matte.KEYS["magenta"]
-        planes = [bytearray(bytes([key[c]]) * n) for c in range(3)]
-        for y in range(4, 12):
-            for x in range(4, 12):
-                # A subject wearing heavy magenta spill: red and blue lifted together,
-                # close enough to the field to be plainly contamination, and far enough
-                # from it on the green channel not to be keyed out as field.
-                planes[0][y * w + x], planes[1][y * w + x], planes[2][y * w + x] = 230, 100, 225
-        # A second subject block that merely *is* warm, far from the field colour. It is
-        # the case an unscaled despill ruins, and with a hot pink field that is most of a
-        # sticker, so it is asserted here rather than discovered on a render.
-        for y in range(4, 12):
-            for x in range(12, 14):
-                planes[0][y * w + x], planes[1][y * w + x], planes[2][y * w + x] = 190, 90, 60
-        rgba, _ = matte.cut(w, h, [bytes(p) for p in planes], "magenta")
+        planes = [bytearray(bytes([key[c]]) * (w * h)) for c in range(3)]
+        for y in span:
+            for x in span:
+                for c in range(3):
+                    planes[c][y * w + x] = colour[c]
+        return [bytes(p) for p in planes]
 
-        # The two blocks above are one contiguous subject spanning x 4..13, y 4..11. `CHOKE`
-        # throws the outermost ring of that away before anything else happens, so the edge
-        # band -- the only place despill and feather touch -- starts `CHOKE` pixels further
-        # in than the block does. These coordinates were `4` and `13` and went red the day
-        # the choke landed: the pixels they named had become background, so nothing was
-        # despilled there and nothing was supposed to be. Derived from `CHOKE` rather than
-        # rewritten to 5 and 12, so the next change to it moves the test with the code.
-        first, last = 4 + matte.CHOKE, 13 - matte.CHOKE
-        self.assertEqual(rgba[3][4 * w + 4], 0,
-                         "the choked outer ring must be transparent, not merely dimmed")
+    def test_despill_pulls_the_field_colour_out_of_the_edge(self) -> None:
+        """A subject pixel near a magenta field picks the field up. On a white message
+        bubble that reads as a coloured halo, so it is removed in straight colour.
 
-        i = (4 + matte.CHOKE) * w + first   # the spilled corner that survives the choke
+        **This asserts on the first pixel that is actually visible, and that is the whole
+        subtlety.** `CHOKE = 1` discards the outermost ring of subject rather than
+        correcting it, because that ring is a blend of subject and field and no arithmetic
+        recovers what was mixed. So the literal corner of the block is left at its input
+        colour *and given alpha 0* -- untouched RGB under a transparent alpha cannot show a
+        halo, so there is nothing there to fix. The despill applies one pixel further in,
+        which is where the first pixel a viewer can see lives.
+
+        An earlier revision of this test asserted on the choked corner and read as an
+        off-by-one in the despill threshold (`230 not less than 230`). It was not: the
+        despill was never reached for that pixel by design. Measured on this input, the
+        first opaque pixel goes 230 -> 105 on red, which is the full correction. The fix
+        was to assert on the pixel that can carry a halo, not to move the threshold.
+
+        The opaque index is derived from `CHOKE` rather than written as a literal `5`, so
+        the next change to the choke depth moves this test with the code instead of turning
+        it red on a pixel that has become background.
+        """
+        w = h = 16
+        # Heavy magenta spill: red and blue lifted together, close enough to the field to be
+        # plainly contamination, far enough from it on green not to be keyed out as field.
+        planes = self._block((230, 100, 225), w, h, range(4, 12))
+        rgba, _ = matte.cut(w, h, planes, "magenta")
+
+        choked = 4 * w + 4                 # the outermost ring: discarded, not corrected
+        self.assertEqual(rgba[3][choked], 0,
+                         "the choked ring must be transparent -- that is why its RGB stands")
+
+        edge = 4 + matte.CHOKE             # the first opaque pixel, inside the edge band
+        i = edge * w + edge
+        self.assertGreater(rgba[3][i], 0, "this pixel must be visible for the test to mean anything")
         self.assertLess(rgba[0][i], 230, "red was not despilled at the edge")
         self.assertLess(rgba[2][i], 225, "blue was not despilled at the edge")
         self.assertEqual(rgba[1][i], 100, "the non-key channel must not be touched")
 
-        # Warm, but not spill -- and genuinely inside the band, which is what stops this
-        # assertion passing vacuously. A 2px-wide block loses its outer column to the choke,
-        # so the column that survives is necessarily within `BAND` of the new background.
-        # Verified by deleting the `if spill > 0:` guard in `matte.cut`: this pixel then
-        # moves to (220, 90, 90), which it could not do from outside the band.
-        j = (4 + matte.CHOKE) * w + last
-        self.assertEqual((rgba[0][j], rgba[1][j], rgba[2][j]), (190, 90, 60),
+    def test_a_merely_warm_subject_is_not_despilled(self) -> None:
+        """The case an unscaled despill ruins, and it gets its own render deliberately.
+
+        A red-orange lifts *one* of the field's strong channels and leaves the other where
+        it was, so the colour-difference measure comes out negative and the correction never
+        fires. Asserted on its own image rather than as a second block in the spill test,
+        because in one image the warm block sat entirely inside the choked ring: it was
+        transparent, its RGB was untouched for that reason rather than for the right one,
+        and the assertion passed while testing nothing.
+
+        Verified by deleting the `if spill > 0:` guard in `matte.cut`: this pixel then moves
+        to (220, 90, 90), so it is genuinely inside the band and the assertion is not passing
+        by sitting somewhere the correction never reaches.
+        """
+        w = h = 16
+        planes = self._block((190, 90, 60), w, h, range(4, 12))
+        rgba, _ = matte.cut(w, h, planes, "magenta")
+        edge = 4 + matte.CHOKE
+        i = edge * w + edge
+        self.assertGreater(rgba[3][i], 0, "this pixel must be visible for the test to mean anything")
+        self.assertEqual((rgba[0][i], rgba[1][i], rgba[2][i]), (190, 90, 60),
                          "a warm subject colour was desaturated as if it were spill")
 
     def test_a_solid_field_is_reported_degenerate(self) -> None:
@@ -380,6 +409,70 @@ class TestSurface(unittest.TestCase):
         self.assertIn("ephemeral", doc["note"])
         self.assertFalse(written["raw"].exists(),
                          "the raw field render was left on disk")
+
+
+class TestMountedAndMetered(unittest.TestCase):
+    """`backend/api.py` is read as source, not imported.
+
+    Importing the serving module from inside a plug-in inverts the dependency -- api.py
+    imports this package -- and would also execute the whole app at test time. Both of the
+    facts asserted here are single lines in that file, and both have already been wrong.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.api_py = pathlib.Path(__file__).resolve().parents[2] / "api.py"
+        cls.tree = ast.parse(cls.api_py.read_text())
+
+    def _include_call(self) -> ast.Call:
+        """The `app.include_router(sigils.router, ...)` call node, or fail saying so."""
+        for node in ast.walk(self.tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr == "include_router"):
+                continue
+            first = node.args[0]
+            if (isinstance(first, ast.Attribute) and first.attr == "router"
+                    and isinstance(first.value, ast.Name) and first.value.id == "sigils"):
+                return node
+        self.fail(f"{self.api_py} never calls include_router on the sigils router")
+
+    def test_the_surface_is_mounted(self):
+        """The defect this whole surface shipped with.
+
+        `site/sigils.html` was live and reachable while api.py contained no occurrence of
+        the string 'sigil' anywhere in it, so every route the page called answered 404. The
+        page looked finished; nothing behind it was connected.
+        """
+        self.assertIn("sigils", self.api_py.read_text(),
+                      "api.py does not mention the sigils app at all")
+        self._include_call()
+
+    def test_the_rate_lane_is_actually_spent_from(self):
+        """Listing a surface in _RATE_SUGGESTED builds its buckets. It does not spend them.
+
+        Half of this was already true and was worse than being openly unmetered: with the
+        name listed but no dependency wired, `SYM_RATE_SIGIL=20/300` would be read, parsed,
+        validated and turned into two live RateLimiter objects that nothing ever consulted
+        -- so an operator who set it would believe a cap was in force when none was. This
+        is the surface that spends the GPU and the one aimed at a phone app, so an
+        imaginary limit is exactly the wrong thing to have.
+        """
+        src = self.api_py.read_text()
+        self.assertIn('"sigil"', src, "no sigil lane in _RATE_SUGGESTED")
+
+        call = self._include_call()
+        deps = [kw for kw in call.keywords if kw.arg == "dependencies"]
+        self.assertTrue(
+            deps, "the sigils router is mounted with no dependencies= at all, so the "
+                  "sigil rate lane is built and never consulted")
+        # Depends(throttled_for("sigil")) -- assert on the surface name too, because
+        # throttling this router against someone else's budget would still parse.
+        wired = ast.dump(deps[0].value)
+        self.assertIn("throttled_for", wired, f"dependencies= does not throttle: {wired}")
+        self.assertIn("'sigil'", wired,
+                      f"dependencies= throttles against the wrong surface: {wired}")
 
 
 if __name__ == "__main__":

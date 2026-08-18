@@ -91,6 +91,10 @@ from apps import guide  # noqa: E402  -- the library half: matching, clustering,
 from apps.guide import routes as guide_routes  # noqa: E402  -- question -> channel
 # filter. Imported as `routes` for the same reason accounts is: the package exports
 # bare names (catalogue, status, unit_state) that would shadow this module's own.
+from apps import sigils  # noqa: E402  -- the sticker surface. Bound to the package for
+# the same reason as guide: it exports `status`, `router` and `PACKS`, and a bare `status`
+# would shadow this module's own. It reaches the same sd-cli as /api/image but takes the
+# card under its own governor name, so the rack can say which of the two holds it.
 from apps.accounts import routes as accounts_routes  # noqa: E402  -- signup,
 # login and sessions. Imported as `routes` rather than the package so the package's
 # many bare names (verify, enabled, status) cannot shadow anything in this module.
@@ -171,6 +175,13 @@ _RATE_SUGGESTED = {
     "chat":  (120, 2000),       # ~1-3 s of GPU, and the queue is the real backstop
     "remix": (40,  600),        # a longer generation
     "image": (20,  300),        # ~9 s of exclusive GPU each
+    # Stickers. Same engine and the same exclusive GPU as image, so the same budget --
+    # the name is listed here for a reason that is not cosmetic: LIMITS is built by
+    # iterating this dict, and `check_rate` returns True for any surface it does not
+    # find. A name absent from here is not "unlimited by choice", it is *unmeterable*,
+    # and SYM_RATE_SIGIL would be read by nothing. This surface is the one aimed at a
+    # phone app, so leaving it unmeterable was the wrong default to inherit.
+    "sigil": (20,  300),
 }
 
 
@@ -1597,6 +1608,11 @@ def build_status() -> Status:
             # documentation rather than to a 404; unlike Coder it DOES carry a route,
             # because it stores nothing executable -- it is SQLite and text.
             Unit(**project.status()),
+            # Stickers. Its own unit rather than a mode of Image, because it takes the
+            # card under its own governor name and the rack's "who holds it" readout keys
+            # off that name -- folding them would make one of the two invisible in exactly
+            # the display this site exists to be honest about.
+            Unit(**sigils.status()),
         ],
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
@@ -2157,6 +2173,20 @@ app.include_router(project.router, prefix="/api/project", tags=["project"])
 # what exists under it. Only a new top-level path -- the /overview /livestack /controlboard
 # /receipts class -- has to be added there, and that has bitten before.
 app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
+
+# Stickers is the one app router that spends the GPU, so it is the one that needs the
+# meter actually connected. Listing "sigil" in _RATE_SUGGESTED builds the buckets; it does
+# not spend from them. Without this dependency SYM_RATE_SIGIL=20/300 would be read,
+# validated, turned into two RateLimiter objects -- and consulted by nothing, which is a
+# worse state than being openly unmetered because the operator would believe a cap was in
+# force. Applied here rather than in apps/sigils/routes.py because throttled_for lives in
+# this module and this module imports that one; the dependency the other way is a cycle.
+#
+# Router-wide, so it covers /packs and /state as well as the three POSTs. That is
+# deliberate: a new route added to this surface later is metered by default rather than by
+# remembering, and /state is exactly what a phone app polls.
+app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
+                   dependencies=[Depends(throttled_for("sigil"))])
 
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a
