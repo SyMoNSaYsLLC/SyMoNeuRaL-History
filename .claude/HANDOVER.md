@@ -196,7 +196,19 @@ route fails the suite rather than quietly landing a directory walk on the live p
   readable at all: `LIMITS` is built by iterating that dict and `check_rate` returns True for
   any name it cannot find, so a surface absent from it is *unmeterable*, not unlimited by
   choice. Verified both ways on a spare port: unset → 12/12 × 200; `SYM_RATE_STUDIO=3/10` →
-  200, 200, 200, then 429.
+  200, 200, 200, then 429. The ceiling is genuinely per-address behind the proxy chain: Caddy
+  *replaces* an inbound `X-Forwarded-For` (2.7 defaults `trusted_proxies` to none — tested, see
+  the note in `ops/Caddyfile`), the gateway's `forwarded_value()` appends its own hop under
+  `SYMON_TRUST_FORWARDED=1`, and `client_key()` reads the first entry, so FastAPI keys on the
+  real client rather than on Caddy's loopback.
+- **Adding a name to `_RATE_SUGGESTED` also makes it a valid meter key on the WebSocket** —
+  `api.py:1754` charges `kind if kind in LIMITS else "chat"`, keyed on the client-supplied `t`
+  field. So `{"t":"studio"}` now spends a studio token instead of a chat one. It buys nothing:
+  the dispatch below has no `studio` branch and answers `400 Unknown frame type`, so no GPU and
+  no CPU work is reachable under the name. Worth knowing before adding the *next* bucket, whose
+  name might collide with a frame type that does dispatch. All other `LIMITS` readers are inert
+  for a `(0,0)` entry — `_limiters` skips it, the lifespan log filters on `if p`, and
+  `throttled_for` only reads it on a deny — so no existing endpoint's response shape moved.
 - `grep -c include_router` is still **8** and there is still exactly **one** `app.mount`. Both
   are asserted by the new test file.
 
