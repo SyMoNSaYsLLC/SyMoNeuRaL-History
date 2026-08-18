@@ -266,7 +266,15 @@ CHAT_BODY = """    <div class="cu">
 """
 
 
-CHAT_JS = """<script>
+# The visualizer is loaded only on this page, not from SHELL, because it is the only surface
+# with a token stream to visualise -- on image.html or ravencalc.html it would have nothing
+# honest to show and would be pure decoration.
+#
+# `defer` so it never blocks the chat script below, and the chat script never checks whether
+# it loaded: site/visualizer.js installs a no-op `window.SymonVisualizer` before it does
+# anything that can fail, so every call below is safe on a machine with no WebGL.
+CHAT_JS = """<script src="/visualizer.js" defer></script>
+<script>
 (function () {
   'use strict';
   var log = document.getElementById('log'), form = document.getElementById('form');
@@ -426,12 +434,23 @@ CHAT_JS = """<script>
             block.split('\\n').forEach(function (line) {
               if (line.indexOf('data:') !== 0) return;
               var j; try { j = JSON.parse(line.slice(5)); } catch (e) { return; }
-              if (j.delta) { text += j.delta; out.textContent = text; log.scrollTop = log.scrollHeight; }
+              if (j.delta) {
+                text += j.delta; out.textContent = text; log.scrollTop = log.scrollHeight;
+                // One token landed, right now. `tick` rather than a guessed velocity: the
+                // rate is not measured until the server sends `done`, and inventing a
+                // number here to make the picture livelier is exactly the dishonest pixel
+                // the visualizer's header comment refuses.
+                window.SymonVisualizer.tick();
+              }
               if (j.done) {
                 // Measured, not claimed -- the server times the card and sends the rate.
                 stat.textContent = j.tokens + ' tokens in ' + j.seconds + 's  ·  '
                                  + j.tok_per_s + ' tok/s measured on the card'
                                  + (j.adapter ? '  ·  persona adapter loaded' : '');
+                // Generation is over, so the emitter stops. The particles already in flight
+                // finish their arcs and expire; nothing new is produced, because nothing new
+                // is being computed.
+                window.SymonVisualizer.setVelocity(0);
               }
               if (j.error) throw new Error(j.error);
             });
@@ -449,6 +468,11 @@ CHAT_JS = """<script>
       stat.textContent = '';
     }).then(function () {
       busy = false; send.disabled = false; box.focus();
+      // The one place that runs on every exit path. A stream that fails mid-answer never
+      // sends `done`, so without this the emitter would keep running after an error and the
+      // page would be showing activity that had stopped -- the failure mode this whole file
+      // is written to avoid.
+      window.SymonVisualizer.setVelocity(0);
     });
   });
 
