@@ -798,6 +798,35 @@ def media() -> pathlib.Path:
        "-f", "mpegts", str(d / "clean.ts"))
     ff(*src, "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
        "-c:a", "aac", "-f", "mpegts", str(d / "hevc.ts"))
+    # ---- fixtures for the codec repair, and they have to be LONGER than the others.
+    #
+    # 20 seconds, not 4, and the reason is a real constraint of the design rather than a test
+    # convenience. ffmpeg does not print its input dump -- the only place the codecs appear --
+    # until `-analyzeduration` (5M microseconds, so five seconds of content) or `-probesize` is
+    # satisfied. A four-second fixture reaches EOF first, so the codecs land *after* the final
+    # write, and since only the pump thread may touch `proc.stdin`, only a write can perform the
+    # swap. The repair then never fires.
+    #
+    # That is not a bug in production and it is worth being precise about why: an IPTV channel is
+    # continuous, so there is always a next write, and the swap happens a second or so in. It IS a
+    # bug in any test whose source runs out during the probe, and it cost a cycle here. A source
+    # that outlives the probe window is the honest model of a live stream.
+    long_src = ["-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10",
+                "-f", "lavfi", "-i", "sine=frequency=440", "-t", "20"]
+    # The measured common failure: the picture is ordinary h264 and plays anywhere, and the
+    # soundtrack is AC-3, which no MSE build in this repo's test path will decode. hls.js fails
+    # the whole media element rather than muting it, so this is a *black screen* caused by audio.
+    ff(*long_src, "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "ac3",
+       "-f", "mpegts", str(d / "ac3-long.ts"))
+    # The regression guard, and the reason it is a fixture rather than a unit assertion: mp2 IS
+    # playable, measured. A deny-list containing mp2 shipped briefly on another branch, and this
+    # file is where that must never come back -- a stream that plays must take the copy path.
+    ff(*long_src, "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "mp2",
+       "-f", "mpegts", str(d / "mp2-long.ts"))
+    ff(*long_src, "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+       "-f", "mpegts", str(d / "clean-long.ts"))
+    ff(*long_src, "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
+       "-c:a", "aac", "-f", "mpegts", str(d / "hevc-long.ts"))
 
     (d / "hls").mkdir()
     ff("-i", str(d / "clean.ts"), "-c", "copy", "-f", "hls", "-hls_time", "1",
@@ -1933,6 +1962,258 @@ class TestCatalogueSize(unittest.TestCase):
         general = src.index("except XtreamError as exc:", specific)
         self.assertLess(specific, general,
                         "the general XtreamError arm would swallow XtreamTooLarge")
+
+
+# ============================================ defect 9: playing what cannot be decoded
+
+class TestRepairPlan(unittest.TestCase):
+    """Which streams get re-encoded. Pure, so it can be asked directly instead of inferred.
+
+    The whole risk of this feature is in this table. Re-encoding too little leaves a black
+    rectangle; re-encoding too much burns CPU on channels that were fine and -- because
+    `public()["repair"]` drives the page's warning -- tells visitors a working stream was broken.
+    """
+
+    def test_a_stream_the_browser_can_already_play_is_left_alone(self):
+        self.assertIsNone(sessions.plan_repair("h264", "aac"))
+
+    def test_mp2_and_mp3_are_playable_and_must_not_be_touched(self):
+        """The reverted commit's bug, nailed down in both directions.
+
+        A deny-list of unplayable audio containing `mp2` would have re-encoded these and warned
+        about them. Chrome decodes both -- measured, not assumed -- so the only correct action is
+        nothing at all.
+        """
+        self.assertIsNone(sessions.plan_repair("h264", "mp2"))
+        self.assertIsNone(sessions.plan_repair("h264", "mp3"))
+        self.assertIn("mp2", sessions.PLAYABLE_AUDIO)
+        self.assertIn("mp3", sessions.PLAYABLE_AUDIO)
+
+    def test_ac3_is_repaired_on_the_cpu_with_the_picture_copied(self):
+        """The cheap tier: measured at 34.4x realtime for +0 MiB of VRAM."""
+        plan = sessions.plan_repair("h264", "ac3", nvenc=True)
+        self.assertIsNotNone(plan)
+        self.assertFalse(plan.uses_gpu, "an audio repair must never reach for the GPU")
+        self.assertEqual(plan.vargs, ("-c:v", "copy"))
+        self.assertIn("aac", plan.aargs)
+        self.assertIn("ac3", plan.reason)
+
+    def test_hevc_takes_the_video_engine_when_there_is_one(self):
+        plan = sessions.plan_repair("hevc", "aac", nvenc=True)
+        self.assertTrue(plan.uses_gpu)
+        self.assertIn("h264_nvenc", plan.vargs)
+        self.assertEqual(plan.aargs, ("-c:a", "copy"), "playable audio must still be copied")
+
+    def test_hevc_falls_back_to_the_cpu_rather_than_refusing(self):
+        """`libx264 veryfast` measured 13.4x realtime on real 720p, so this is a fallback and
+        not a degradation. A box with no NVENC still plays HEVC channels."""
+        plan = sessions.plan_repair("hevc", "aac", nvenc=False)
+        self.assertFalse(plan.uses_gpu)
+        self.assertIn("libx264", plan.vargs)
+
+    def test_both_broken_repairs_both(self):
+        plan = sessions.plan_repair("hevc", "ac3", nvenc=True)
+        self.assertIn("h264_nvenc", plan.vargs)
+        self.assertIn("aac", plan.aargs)
+        self.assertIn("hevc", plan.reason)
+        self.assertIn("ac3", plan.reason)
+
+    def test_an_undetected_codec_never_triggers_a_repair(self):
+        """"" means the input dump has not arrived, not "unplayable". Guessing from absence would
+        re-encode every stream for the first second of its life."""
+        self.assertIsNone(sessions.plan_repair("", ""))
+        self.assertIsNone(sessions.plan_repair("h264", ""))
+        self.assertIsNone(sessions.plan_repair("", "aac"))
+
+    def test_the_reason_cannot_carry_ffmpegs_text(self):
+        """`reason` is published, so it is built from this module's vocabulary plus an allow-listed
+        token -- never from the stderr line the codec was found in."""
+        plan = sessions.plan_repair("hevc", "ac3", nvenc=False)
+        for token in plan.reason.replace(",", " ").split():
+            self.assertNotIn("/", token)
+            self.assertNotIn("://", token)
+
+
+class TestRepairIsAnnounced(unittest.TestCase):
+    def test_public_publishes_what_was_repaired(self):
+        s = sessions.Session(id="x", label="L", dir=pathlib.Path("/nonexistent"), created=0.0,
+                             scrub=Scrubber(), policy=Policy())
+        self.assertEqual(s.public()["repair"], "")
+        s.repair = "soundtrack re-encoded from ac3 to aac"
+        self.assertEqual(s.public()["repair"], "soundtrack re-encoded from ac3 to aac")
+
+    def test_the_kill_switch_exists(self):
+        """A new re-encode path in a working tuner needs an off switch that is not an edit."""
+        self.assertIn(sessions.REPAIR_MODE, ("auto", "cpu", "off"))
+        src = pathlib.Path(sessions.__file__).read_text()
+        self.assertIn("SYMONEURAL_TUNER_REPAIR", src)
+
+    def test_the_spawn_comment_no_longer_promises_what_the_code_does_not_do(self):
+        """House rule, and the reason it is a test: the old comment read "it never quietly
+        re-encodes, because the GPU belongs to inference". The code now re-encodes, and a comment
+        that contradicts its function is worse than no comment. Both measurements that replaced
+        that reasoning have to still be stated where the decision is made."""
+        src = pathlib.Path(sessions.__file__).read_text()
+        self.assertNotIn("it never quietly\n            # re-encodes", src)
+        spawn = src[src.index("def _spawn"):src.index("def _drain_stderr")]
+        # Comment markers stripped, then whitespace collapsed: these justifications are prose in a
+        # wrapped `#` comment, so a sentence continuing onto the next line reads as "13.4x #
+        # realtime" to a naive join. A test that breaks when a comment rewraps is a test that
+        # punishes editing the comment, which is the opposite of what this one is for.
+        flat = " ".join(ln.lstrip().lstrip("#").strip() for ln in spawn.splitlines())
+        flat = " ".join(flat.split())
+        self.assertIn("dedicated ASIC", flat)
+        self.assertIn("13.4x realtime", flat)
+
+
+def continuous(body: bytes, repeats: int = 8, chunk: int = 32768, gap: float = 0.02):
+    """A route that keeps delivering, the way a live channel does. Returns a Provider callable.
+
+    The repair tests need this and the reason is worth stating, because a fixed body looked like it
+    would do and did not. A repair is decided by the thread reading ffmpeg's stderr but applied by
+    the pump thread, because only the pump may touch `proc.stdin` -- so the swap happens on the
+    **next write**. Hand the tuner a 576 KB file and ffmpeg drains all of it before it has finished
+    announcing its codecs: the plan is made with no writes left to apply it, and the session ends
+    having never repaired. Measured exactly that way here, with `bytes_in` equal to the file size
+    at the moment the plan appeared.
+
+    That is a property of a source that runs out, not of the design: an IPTV channel never stops
+    mid-broadcast, so there is always a next write and the swap lands a second or so in. A
+    continuous feeder is therefore the honest fixture, and it exercises the mid-stream join --
+    `ts_sync_offset` on a fresh ffmpeg handed the middle of a transport stream -- which a
+    play-once file never reaches.
+    """
+    def route(h):
+        h.send_response(200)
+        h.send_header("Content-Type", "video/mp2t")
+        # No Content-Length, so the client reads until close. That is what a live stream is.
+        h.end_headers()
+        try:
+            for _ in range(repeats):
+                for i in range(0, len(body), chunk):
+                    h.wfile.write(body[i:i + chunk])
+                    h.wfile.flush()
+                    time.sleep(gap)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass            # the tuner stopped watching. That is how every one of these ends.
+    return route
+
+
+@needs_ffmpeg
+class TestRepairEndToEnd(unittest.TestCase):
+    """Real media, real ffmpeg, real respawn. The unit table above says what should happen; this
+    says it actually does, which is the only version that counts for a feature whose failure mode
+    is a stream that still does not play."""
+
+    def _watch(self, name: str, timeout: float = 60.0) -> sessions.Session:
+        """Run a continuous channel until it settles, and report what it settled as.
+
+        "Settled" cannot be `ready` alone here, which is the trap this helper exists to avoid. An
+        HEVC stream copies into MPEG-TS perfectly, so the *unrepaired* attempt publishes a playlist
+        within a second or two -- a test that stops at the first playlist therefore catches the
+        broken stream every time and reports `repaired == False` on a feature that works. So:
+        `repaired and ready` is a result, and `ready` with no plan pending and none arriving during
+        a grace period is the other result.
+        """
+        body = (media() / name).read_bytes()
+        with Provider({"/s.ts": continuous(body)}) as p:
+            mgr = sessions.SessionManager(
+                root=pathlib.Path(tempfile.mkdtemp(prefix="tuner-repair-")))
+            s = mgr.start(p.url("/s.ts"), "Harness", LOCAL)
+            try:
+                deadline = time.monotonic() + timeout
+                quiet_since = None
+                while time.monotonic() < deadline:
+                    if s.state == "failed":
+                        break
+                    if s.repaired and s.ready:
+                        break
+                    if s.ready and s.pending_repair is None and not s.repaired:
+                        # Possibly a stream that needs nothing. Give a late decision -- ffmpeg can
+                        # still be printing -- a moment to show up before concluding that.
+                        quiet_since = quiet_since or time.monotonic()
+                        if time.monotonic() - quiet_since > 3.0:
+                            break
+                    else:
+                        quiet_since = None
+                    time.sleep(0.1)
+                # Read through the directory before `shutdown` removes it.
+                s.settled_ready = s.ready
+                s.settled_segments = sorted(s.dir.glob("s*.ts"))
+                s.settled_first = (s.settled_segments[0].read_bytes()
+                                   if s.settled_segments else b"")
+                return s
+            finally:
+                mgr.shutdown()
+
+    def _run(self, name: str) -> sessions.Session:
+        return self._watch(name)
+
+    def test_an_ac3_channel_comes_out_as_aac_and_still_plays(self):
+        """The measured common failure, fixed end to end: h264 + AC-3 in, playable segments out."""
+        s = self._run("ac3-long.ts")
+        self.assertTrue(s.settled_ready, f"no playlist: {s.state} {s.error}")
+        self.assertEqual(s.acodec, "ac3", "the INPUT codec is what is reported")
+        self.assertTrue(s.repaired)
+        self.assertIn("ac3", s.repair)
+        self.assertIn("aac", s.repair)
+
+    def test_an_mp2_channel_is_never_repaired(self):
+        """The regression guard against a deny-list coming back. mp2 plays; touching it would
+        spend CPU on a working channel and apologise for it on the page."""
+        s = self._run("mp2-long.ts")
+        self.assertTrue(s.settled_ready, f"no playlist: {s.state} {s.error}")
+        self.assertEqual(s.acodec, "mp2")
+        self.assertFalse(s.repaired, "mp2 is playable and must take the stream-copy path")
+        self.assertEqual(s.repair, "")
+
+    def test_a_clean_channel_is_never_repaired(self):
+        s = self._run("clean-long.ts")
+        self.assertTrue(s.settled_ready, f"no playlist: {s.state} {s.error}")
+        self.assertFalse(s.repaired)
+        self.assertEqual(s.repair, "")
+
+    def test_an_hevc_channel_becomes_h264(self):
+        """HEVC copies into MPEG-TS perfectly, so this session was `live` with segments and a
+        black rectangle before the repair existed. That is the failure this feature is for."""
+        s = self._run("hevc-long.ts")
+        self.assertTrue(s.settled_ready, f"no playlist: {s.state} {s.error}")
+        self.assertEqual(s.vcodec, "hevc")
+        self.assertTrue(s.repaired)
+        self.assertIn("hevc", s.repair)
+
+    def test_the_repaired_segments_really_decode_as_h264(self):
+        """Reads the OUTPUT with ffprobe rather than trusting the argv.
+
+        The distinction matters: every assertion above would pass if ffmpeg had been handed
+        `-c:v h264_nvenc` and exited immediately. This is the same reason the frontend suite
+        decodes a generated image instead of checking that the endpoint answered.
+        """
+        s = self._watch("hevc-long.ts")
+        self.assertTrue(s.repaired, f"never repaired: {s.state} {s.error}")
+        self.assertTrue(s.settled_first, "no segment was ever written")
+        out = subprocess.run(
+            [shutil.which("ffprobe") or "ffprobe", "-v", "error",
+             "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+             "-of", "csv=p=0", "-"],
+            input=s.settled_first, capture_output=True, timeout=60).stdout.decode().strip()
+        # `splitlines()[0]`: a segment carrying more than one video stream would print one line
+        # each, and the assertion should name the first rather than compare against a blob.
+        first = out.splitlines()[0].strip() if out else ""
+        self.assertEqual(first, "h264", f"repaired segment is {out!r}, not h264")
+
+    def test_the_kill_switch_really_disables_it(self):
+        """With repair off, an HEVC stream goes back to copying through unplayable -- which is
+        the old behaviour, and has to remain reachable without an edit."""
+        real = sessions.REPAIR_MODE
+        try:
+            sessions.REPAIR_MODE = "off"
+            s = self._run("hevc-long.ts")
+            self.assertFalse(s.repaired)
+            self.assertEqual(s.repair, "")
+            self.assertEqual(s.vcodec, "hevc", "still reported, so the page can still explain it")
+        finally:
+            sessions.REPAIR_MODE = real
 
 
 if __name__ == "__main__":
