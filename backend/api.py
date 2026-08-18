@@ -106,7 +106,8 @@ from apps import reinforce  # noqa: E402  -- the training bay. Bound to the pack
 # whether or not the surface is switched on: `apps/reinforce/__init__.py` defines
 # `enabled()` BEFORE it imports `.routes`, and every route calls it and answers 503 when
 # both SYM_REINFORCE_ENABLED and SYM_REINFORCE_TOKEN are not set. Mounting an off surface
-# is not the same as enabling it.
+# is not the same as enabling it. What it now mounts does preference and reinforcement
+# tuning as well as supervised -- see `apps/reinforce/TRAINING_BAY.md`.
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"

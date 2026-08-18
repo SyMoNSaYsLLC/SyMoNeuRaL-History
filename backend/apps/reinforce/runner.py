@@ -52,6 +52,48 @@ of the tokeniser or the collator can carry a training example verbatim, and the 
 trade secret this whole surface is most likely to leak. `_fail()` is the only error path and
 it prints `kind=<ExceptionClassName> stage=<stage>` and nothing else. The full traceback goes
 to stderr, into a log file under `run/` that no route serves.
+
+## Three methods, one runner
+
+`--method` selects the objective and therefore the trainer:
+
+* `sft` -- `transformers.Trainer`. Unchanged, and deliberately so: this path produced the
+  shipped adapter and every line of it behaves exactly as it did before the other two existed.
+* `preference` -- `trl.DPOTrainer`. Needs a `preference` dataset.
+* `reinforcement` -- `trl.GRPOTrainer`. Needs a `prompt` dataset and reward functions. This is
+  the only one that samples, and the only one that is reinforcement learning in the ordinary
+  sense; see `presets.METHODS` for why DPO is not called RL here.
+
+### The reference policy costs no weights
+
+Both new methods want a frozen reference to measure against. Neither loads one. `ref_model` is
+left as `None` while a `peft_config`/adapter is attached, which makes trl **disable the adapter**
+for the reference forward pass and re-enable it after -- so the reference is the base model that
+is already resident. It costs a forward pass, not a second 4-bit 7B. This is the objection that
+kept preference tuning out of v1, and `docs/specs/qlora-upgrade.md` §5.4 had already spotted the
+answer.
+
+### Metric names are normalised here, not in the parser
+
+trl logs `rewards/chosen`, `rewards/rejected`, `train/reward` and friends. The log protocol's
+value character class **does not include `/`**, so an unmodified key would be silently dropped
+by `emit()` -- producing a live RL run with a blank reward curve, which is the dishonest-pixel
+rule in reverse: a panel that looks healthy and reports nothing. `_METRIC_KEYS` maps every
+trl metric name onto an allowlisted key, and `jobs._ALLOWED_KEYS` must contain each of them.
+A test asserts the two ends agree, per key.
+
+### Continuing from an existing adapter
+
+`--init-adapter` loads an existing PEFT adapter as the starting point instead of a freshly
+initialised one, and it exists because **the standard alignment pipeline is SFT first, then RL
+on top.** The shipped SymonChat persona adapter *is* the supervised stage; a GRPO run starting
+from a random adapter throws that away and tries to re-learn the company voice from a reward
+function, which is the wrong way round and would take far more than a reward function can carry.
+
+It is read-only in every sense that matters: the adapter is loaded as a starting point and the
+run writes its **own** output directory. Nothing here writes back to `--init-adapter`, and
+`training/adapter/` -- the adapter the chat surface serves -- is refused as an output path by
+`jobs.py` and is never a default. Promotion remains a deliberate manual step.
 """
 from __future__ import annotations
 
@@ -100,7 +142,42 @@ DENIED = {
     (ROOT / "training" / "build_dataset.py").resolve(),
 }
 
-STAGES = ("load_dataset", "load_model", "build_adapter", "train", "evaluate", "save")
+# Every stage a run can fail in. This tuple and `jobs._ENUM_VALUES["stage"]` must agree, and
+# the agreement is asserted by a test -- because `parse_log()` discards an ENTIRE LINE whose
+# `stage` value is outside its set, including `event=error`. A stage added here and not there
+# does not degrade the report, it deletes it: the run would show as failed with no kind and no
+# stage, which is the least useful possible output from the one path that has to work.
+STAGES = ("load_dataset", "load_model", "build_adapter", "check_rewards", "load_reference",
+          "train", "rollout", "evaluate", "save")
+
+# trl's metric name -> the allowlisted key it is emitted as.
+#
+# The log protocol's value character class does not include `/`, so `rewards/chosen` would be
+# dropped by `emit()` and never reach the panel. Normalising here rather than widening the
+# character class keeps the guard narrow: `/` in a value is also how a filesystem path would
+# arrive, and a path is exactly what must not be emitted.
+_METRIC_KEYS = {
+    "loss": "loss",
+    "grad_norm": "grad_norm",
+    "learning_rate": "lr",
+    "epoch": "epoch",
+    # GRPO
+    "reward": "reward",
+    "reward_std": "reward_std",
+    "kl": "kl",
+    "entropy": "entropy",
+    "clip_ratio": "clip_ratio",
+    "completions/mean_length": "completion_len",
+    "completions/mean_terminated_length": "completion_len_ok",
+    "num_tokens": "tokens_seen",
+    # DPO
+    "rewards/chosen": "reward_chosen",
+    "rewards/rejected": "reward_rejected",
+    "rewards/accuracies": "reward_accuracy",
+    "rewards/margins": "reward_margin",
+    "logps/chosen": "logps_chosen",
+    "logps/rejected": "logps_rejected",
+}
 
 
 def emit(**fields) -> None:
@@ -172,6 +249,32 @@ def main() -> int:
     ap.add_argument("--max-steps", type=int, default=0)
     ap.add_argument("--progress-file", default="")
     ap.add_argument("--measured-file", default="")
+    # ---- the method dimension ---------------------------------------------------------
+    ap.add_argument("--method", default="sft",
+                    choices=("sft", "preference", "reinforcement"),
+                    help="the objective: supervised, DPO, or GRPO")
+    ap.add_argument("--dataset-schema", default="messages",
+                    choices=("messages", "preference", "prompt"))
+    # Start from an existing adapter instead of a fresh one. The standard pipeline is SFT then
+    # RL, so this is how an RL run builds ON the persona adapter rather than against it.
+    ap.add_argument("--init-adapter", default="",
+                    help="path to an existing PEFT adapter to continue from (read-only)")
+    # ---- preference (DPO) -------------------------------------------------------------
+    ap.add_argument("--beta", type=float, default=0.1)
+    ap.add_argument("--loss-type", default="")
+    ap.add_argument("--precompute-ref-log-probs", action="store_true")
+    # ---- reinforcement (GRPO) ---------------------------------------------------------
+    ap.add_argument("--num-generations", type=int, default=4)
+    ap.add_argument("--max-completion-length", type=int, default=192)
+    ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--top-p", type=float, default=1.0)
+    ap.add_argument("--scale-rewards", default="group")
+    ap.add_argument("--mask-truncated-completions", action="store_true")
+    ap.add_argument("--rewards", default="",
+                    help="comma-separated reward function names from rewards.py")
+    ap.add_argument("--rollout", default="transformers",
+                    choices=("transformers", "vllm"))
+    ap.add_argument("--vllm-base-url", default="")
     args = ap.parse_args()
 
     # ---- guards, before anything is opened -------------------------------------------
@@ -215,9 +318,43 @@ def main() -> int:
         # The validation split the shipped trainer does not have. The repo manual is explicit:
         # hold out 5-10% BEFORE looking at training loss. Without it a loss curve is a report
         # on memorisation, which is why no figure from the existing adapter means anything.
+        #
+        # `--val-split 0` is honoured rather than floored, and the reinforcement preset uses it:
+        # GRPO has no held-out loss to compute -- its objective is the reward, measured on the
+        # model's own samples as they are drawn -- so holding back a tenth of the prompts would
+        # spend training signal on an eval the method does not define.
         n_val = max(1, int(len(rows) * args.val_split)) if args.val_split > 0 and len(rows) > 4 else 0
         val_rows, train_rows = rows[:n_val], rows[n_val:]
         emit(event="start", rows=len(train_rows), val_rows=len(val_rows), seed=args.seed)
+
+        # Reward functions are checked BEFORE the model is loaded, which is the whole point of
+        # doing it here. `rewards.selfcheck()` runs every function over synthetic strings and
+        # verifies the contract -- one float per completion, inside its published range. A reward
+        # function that raises, or that returns 5.0 where the table promises 1.0 and therefore
+        # silently dominates every other term, is a bug worth finding in the first second of a
+        # run rather than the twentieth minute.
+        #
+        # Loaded by explicit path, not by import name. `sys.path` had this directory REMOVED at
+        # the top of the file to stop `from datasets import Dataset` resolving to a sibling, and
+        # that fix is what makes a plain `import rewards` fail here. Naming the file is the
+        # honest consequence of a guard that is worth keeping.
+        reward_plan = None
+        if args.method == "reinforcement":
+            stage = "check_rewards"
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("_rf_rewards", HERE / "rewards.py")
+            rewards_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(rewards_mod)
+            problems = rewards_mod.selfcheck()
+            if problems:
+                print("reward self-check failed: " + "; ".join(problems), file=sys.stderr)
+                emit(event="error", kind="RewardContractViolation", stage="check_rewards")
+                return 4
+            fields = sorted({k for row in train_rows[:200] for k in ("answer",) if row.get(k)})
+            names = [n for n in args.rewards.split(",") if n]
+            reward_plan = rewards_mod.resolve(names, available_fields=fields)
+            emit(event="start", rewards=len(reward_plan["funcs"]))
+            stage = "load_dataset"
 
         stage = "load_model"
         tok = AutoTokenizer.from_pretrained(args.model)
@@ -245,13 +382,76 @@ def main() -> int:
             labels = ([-100] * len(p_ids) + a_ids)[: args.max_length]
             return {"input_ids": ids, "labels": labels, "attention_mask": [1] * len(ids)}
 
-        keep = ["input_ids", "labels", "attention_mask"]
-        train_ds = Dataset.from_list(train_rows).map(
-            _encode, remove_columns=[c for c in Dataset.from_list(train_rows).column_names
-                                     if c not in keep])
-        eval_ds = (Dataset.from_list(val_rows).map(
-            _encode, remove_columns=[c for c in Dataset.from_list(val_rows).column_names
-                                     if c not in keep]) if val_rows else None)
+        def _as_conversation(value):
+            """A prompt as a conversation, so the model's own chat template gets applied.
+
+            trl treats a plain string `prompt` column as the *standard* (non-conversational)
+            format and feeds it to the model raw -- no chat template, no `<|im_start|>assistant`
+            turn. On an instruct model that is a real quality bug rather than a formatting
+            nicety: the policy is being sampled outside the format it was tuned in, so the
+            completions are worse than the model is, and the reward curve measures that instead
+            of what it claims to.
+            """
+            if isinstance(value, str):
+                return [{"role": "user", "content": value}]
+            return value
+
+        dropped_long = 0
+        if args.method == "sft":
+            keep = ["input_ids", "labels", "attention_mask"]
+            train_ds = Dataset.from_list(train_rows).map(
+                _encode, remove_columns=[c for c in Dataset.from_list(train_rows).column_names
+                                         if c not in keep])
+            eval_ds = (Dataset.from_list(val_rows).map(
+                _encode, remove_columns=[c for c in Dataset.from_list(val_rows).column_names
+                                         if c not in keep]) if val_rows else None)
+
+        elif args.method == "preference":
+            # DPOTrainer tokenises the prompt/chosen/rejected columns itself, so there is no
+            # `_encode` here and no hand-rolled mask: the objective is a comparison between two
+            # completions, and trl builds both sides. Columns are passed through as authored.
+            def _pair(row: dict) -> dict:
+                return {"prompt": _as_conversation(row["prompt"]),
+                        "chosen": _as_conversation(row["chosen"]),
+                        "rejected": _as_conversation(row["rejected"])}
+
+            train_ds = Dataset.from_list([_pair(r) for r in train_rows])
+            eval_ds = Dataset.from_list([_pair(r) for r in val_rows]) if val_rows else None
+
+        else:   # reinforcement
+            # The prompt-length bound, enforced HERE because trl 1.10.0's `GRPOConfig` has no
+            # `max_prompt_length` field -- a checked absence, not an oversight of ours. Over-long
+            # prompts are DROPPED rather than truncated: a prompt cut off mid-sentence produces
+            # completions that are bad for a reason that has nothing to do with the policy, and
+            # those completions would then be scored and reinforced against. Dropping loses a
+            # row; truncating poisons the gradient.
+            #
+            # The count is reported. The rows are not: no route, no log line and no error
+            # message from this surface names a dataset row.
+            def _prompt_ok(row: dict) -> bool:
+                convo = _as_conversation(row["prompt"])
+                text = tok.apply_chat_template(convo, tokenize=False, add_generation_prompt=True)
+                return len(tok(text, add_special_tokens=False)["input_ids"]) <= args.max_length
+
+            kept = []
+            for row in train_rows:
+                if _prompt_ok(row):
+                    out_row = {"prompt": _as_conversation(row["prompt"])}
+                    if row.get("answer") is not None:
+                        out_row["answer"] = row["answer"]
+                    kept.append(out_row)
+                else:
+                    dropped_long += 1
+            if not kept:
+                print("every prompt exceeded the prompt cap", file=sys.stderr)
+                emit(event="error", kind="AllPromptsTooLong", stage="load_dataset")
+                return 5
+            if dropped_long:
+                emit(event="start", dropped_long=dropped_long)
+            train_rows = kept
+            train_ds = Dataset.from_list(kept)
+            # No eval dataset: GRPO defines no held-out loss. See the val_split note above.
+            eval_ds = None
 
         model = AutoModelForCausalLM.from_pretrained(
             args.model,
@@ -264,18 +464,60 @@ def main() -> int:
             dtype=torch.bfloat16,
             device_map={"": 0},
         )
-        model.config.use_cache = False
+        # The KV cache is switched off for the two methods that only ever run forward-backward
+        # over text they were given, and LEFT ON for the one that generates. A GRPO step samples
+        # `num_generations` completions per prompt before it can compute a reward; doing that
+        # without a cache re-runs attention over the whole prefix for every token, which turns
+        # the sampling phase from the expensive part of a step into the entire step.
+        #
+        # Gradient checkpointing and the cache are not actually in conflict here: transformers
+        # disables the cache inside a checkpointed training forward on its own and restores it
+        # for `generate`. Forcing `use_cache = False` globally would leave generation slow with
+        # nothing gained.
+        model.config.use_cache = (args.method == "reinforcement")
 
         stage = "build_adapter"
         model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
-        model = get_peft_model(model, LoraConfig(
+        lora_cfg = LoraConfig(
             r=args.rank, lora_alpha=args.alpha, lora_dropout=args.dropout, bias="none",
             task_type="CAUSAL_LM",
             target_modules=[m for m in args.target_modules.split(",") if m],
-        ))
+        )
+        init_adapter = args.init_adapter.strip()
+        if init_adapter:
+            # Continue from an existing adapter rather than a freshly initialised one.
+            #
+            # This is what makes the reinforcement method usable on this product at all. The
+            # standard pipeline is supervised first, then RL on top of it: the shipped SymonChat
+            # persona adapter IS the supervised stage, and starting a GRPO run from random
+            # low-rank matrices would ask a reward function to re-derive the company voice from
+            # scratch. A reward function cannot carry that, and the run would spend its whole
+            # budget rediscovering what the corpus already taught.
+            #
+            # `is_trainable=True` is required and easy to miss: `PeftModel.from_pretrained`
+            # loads adapters in INFERENCE mode by default, with `requires_grad=False` on every
+            # LoRA weight. Without it this runs to completion, reports a loss, and saves an
+            # adapter identical to the one it started from -- a silent no-op that looks like a
+            # successful run. The trainable-parameter count emitted below is what catches it.
+            #
+            # The rank and target modules come from the loaded adapter, not from the preset: an
+            # adapter's shape is fixed at the moment it was created. So a preset's `rank` is
+            # ignored on this path, and the manifest records which one actually applied rather
+            # than the one that was asked for.
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, init_adapter, is_trainable=True)
+        else:
+            model = get_peft_model(model, lora_cfg)
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in model.parameters())
         emit(event="start", trainable=trainable, total_params=total)
+        if init_adapter and trainable == 0:
+            # Refused rather than run. A run with nothing trainable produces a copy of its input
+            # and a plausible-looking log, which is the most expensive possible way to learn
+            # that `is_trainable` was missed.
+            print("the initial adapter loaded with no trainable parameters", file=sys.stderr)
+            emit(event="error", kind="AdapterNotTrainable", stage="build_adapter")
+            return 6
 
         stage = "train"
         if torch.cuda.is_available():
@@ -294,14 +536,25 @@ def main() -> int:
                 logs = logs or {}
                 alloc = int(torch.cuda.max_memory_allocated()) if torch.cuda.is_available() else 0
                 reserved = int(torch.cuda.max_memory_reserved()) if torch.cuda.is_available() else 0
-                if "loss" in logs:
+                # Whichever of the known metrics this trainer actually logged, under the
+                # allowlisted name for each. The supervised path logs `loss`; GRPO logs `reward`
+                # and `kl` and may not log a loss at all; DPO logs `rewards/chosen` and friends,
+                # whose `/` would be dropped by `emit()` if it were not mapped here.
+                #
+                # An RL step is reported whenever ANY known metric is present, not only when a
+                # `loss` key is. Keying the whole report off `loss` -- which is what this
+                # callback used to do -- would leave a live GRPO run emitting nothing at all,
+                # and the panel would show a running job with an empty curve.
+                found = {out_key: logs[in_key] for in_key, out_key in _METRIC_KEYS.items()
+                         if in_key in logs and isinstance(logs[in_key], (int, float))}
+                if found:
                     payload = {
                         "event": "step", "step": state.global_step,
                         "total_steps": state.max_steps,
                         "epoch": round(float(state.epoch or 0), 4),
-                        "loss": logs.get("loss"), "lr": logs.get("learning_rate"),
                         "elapsed_s": round(time.time() - started, 1),
                         "vram_alloc": alloc, "vram_reserved": reserved,
+                        **found,
                     }
                     emit(**payload)
                     if progress_file:
@@ -336,11 +589,87 @@ def main() -> int:
             targs["eval_strategy"] = "epoch" if not args.max_steps else "no"
             targs["per_device_eval_batch_size"] = 1
 
-        trainer = Trainer(
-            model=model, train_dataset=train_ds, eval_dataset=eval_ds,
-            data_collator=DataCollatorForSeq2Seq(tok, padding=True, label_pad_token_id=-100),
-            args=TrainingArguments(**targs), callbacks=[Progress()],
-        )
+        if args.method == "sft":
+            trainer = Trainer(
+                model=model, train_dataset=train_ds, eval_dataset=eval_ds,
+                data_collator=DataCollatorForSeq2Seq(tok, padding=True, label_pad_token_id=-100),
+                args=TrainingArguments(**targs), callbacks=[Progress()],
+            )
+
+        elif args.method == "preference":
+            stage = "load_reference"
+            from trl import DPOConfig, DPOTrainer
+            dpo = dict(targs)
+            dpo["beta"] = args.beta
+            dpo["max_length"] = args.max_length
+            if args.loss_type:
+                dpo["loss_type"] = args.loss_type
+            if args.precompute_ref_log_probs:
+                # Reference log-probabilities computed once, before the optimiser and its state
+                # exist, then cached. This is what keeps the reference forward pass out of the
+                # training peak on a card with no headroom -- see `registry.method_terms`.
+                dpo["precompute_ref_log_probs"] = True
+                dpo["precompute_ref_batch_size"] = 1
+            trainer = DPOTrainer(
+                model=model,
+                # `ref_model=None` against a peft model is the whole trick: trl disables the
+                # adapter to get the reference log-probabilities and re-enables it afterwards,
+                # so the reference is the base weights already on the card. Passing a second
+                # `AutoModelForCausalLM` here would load another 4-bit 7B and OOM immediately,
+                # and it is the obvious thing to write.
+                ref_model=None,
+                args=DPOConfig(**dpo), train_dataset=train_ds, eval_dataset=eval_ds,
+                processing_class=tok, callbacks=[Progress()],
+            )
+            stage = "train"
+
+        else:   # reinforcement
+            stage = "rollout"
+            from trl import GRPOConfig, GRPOTrainer
+            grpo = dict(targs)
+            grpo.update(
+                num_generations=args.num_generations,
+                max_completion_length=args.max_completion_length,
+                beta=args.beta,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                scale_rewards=args.scale_rewards,
+                mask_truncated_completions=args.mask_truncated_completions,
+                # Extra dataset columns must survive to reach the reward functions -- `answer`
+                # is passed to `answer_match` as a keyword argument by trl. The inherited
+                # default would strip any column the model's forward signature does not name,
+                # which silently disables every dataset-dependent reward.
+                remove_unused_columns=False,
+                # Completions are written to the trainer's own logs for a human to read. The
+                # reward curve alone is not a report on an RL run: a rising reward with worse
+                # completions is reward hacking, and the completions are how it is spotted.
+                log_completions=True,
+                num_completions_to_print=2,
+                use_cache=True,
+                # On the CONFIG, not on the trainer: `GRPOTrainer.__init__` takes `reward_funcs`
+                # but has no `reward_weights` parameter in trl 1.10.0, and passing it there is a
+                # TypeError at construction. The weights are the relative pull of each reward
+                # function in the sum, and `rewards.py` states each one with its reason.
+                reward_weights=reward_plan["weights"],
+            )
+            if args.loss_type:
+                grpo["loss_type"] = args.loss_type
+            if args.rollout == "vllm":
+                # Server mode only, and never a silent fallback: if the endpoint is not
+                # reachable the run fails rather than quietly generating in-process at a
+                # different speed and a different sampling implementation. Colocate mode is
+                # refused by arithmetic in `presets.NOT_IN_V1`.
+                grpo["use_vllm"] = True
+                grpo["vllm_mode"] = "server"
+                if args.vllm_base_url:
+                    grpo["vllm_server_base_url"] = args.vllm_base_url
+            trainer = GRPOTrainer(
+                model=model, reward_funcs=reward_plan["funcs"],
+                args=GRPOConfig(**grpo), train_dataset=train_ds,
+                processing_class=tok, callbacks=[Progress()],
+            )
+            stage = "train"
+
         trainer.train()
 
         stage = "evaluate"
@@ -369,8 +698,51 @@ def main() -> int:
         # under run/, and no route in this package serves it.
         manifest = {
             "run": {"preset": args.preset, "model": args.model_id or args.model,
+                    "method": args.method, "dataset_schema": args.dataset_schema,
                     "seed": args.seed, "started_at": started, "elapsed_s": round(elapsed, 1),
                     "elapsed_label": "measured"},
+            # The method's own settings, recorded whatever the method -- an empty dict for a
+            # supervised run rather than an absent key, so a reader never has to work out
+            # whether a missing field means "not applicable" or "not recorded".
+            "method_config": ({
+                "beta": args.beta,
+                "loss_type": args.loss_type or "trl default",
+                "precompute_ref_log_probs": bool(args.precompute_ref_log_probs),
+                "reference": ("peft-implicit: ref_model=None with the adapter disabled, so the "
+                              "reference costs a forward pass and no weight bytes"),
+            } if args.method == "preference" else {
+                "num_generations": args.num_generations,
+                "max_completion_length": args.max_completion_length,
+                "prompt_cap_tokens": args.max_length,
+                "prompts_dropped_over_cap": dropped_long,
+                "beta": args.beta,
+                "kl_penalty": ("off -- no reference forward pass, and no KL tether holding the "
+                               "policy near behaviour learned from real examples"
+                               if args.beta == 0 else f"on at beta={args.beta}"),
+                "loss_type": args.loss_type or "trl default",
+                "temperature": args.temperature,
+                "top_p": args.top_p,
+                "scale_rewards": args.scale_rewards,
+                "rollout": args.rollout,
+                "rewards": list(reward_plan["names"]) if reward_plan else [],
+                "reward_weights": list(reward_plan["weights"]) if reward_plan else [],
+                "rewards_refused": list(reward_plan["refused"]) if reward_plan else [],
+                "reward_note": ("rules-based functions from rewards.py, every one verifiable by "
+                                "reading the program. There is no reward model on this box. A "
+                                "rising reward curve is evidence that THIS PROGRAM's score went "
+                                "up -- it is not by itself evidence that the model got better, "
+                                "and with beta=0 there is no structural guard against a reward "
+                                "function's loophole being found and exploited"),
+            } if args.method == "reinforcement" else {}),
+            "initialised_from": (init_adapter or "a freshly initialised adapter"),
+            "initialised_from_note": (
+                ("continued from an existing adapter, so the rank and target modules are that "
+                 "adapter's and NOT this preset's -- an adapter's shape is fixed when it is "
+                 "created. Nothing was written back to it.")
+                if init_adapter else
+                ("started from random low-rank matrices. For the reinforcement method that is "
+                 "usually the wrong choice: the standard pipeline is supervised first and RL on "
+                 "top, so --init-adapter pointed at the persona adapter is the intended path.")),
             "hyperparameters": {
                 "epochs": args.epochs, "max_steps": args.max_steps or None,
                 "rank": args.rank, "lora_alpha": args.alpha, "lora_dropout": args.dropout,

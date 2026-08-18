@@ -687,9 +687,163 @@ def activation_bytes(a: Arch, seq_len: int, batch: int, checkpointing: bool = Tr
     }
 
 
+def kv_cache_bytes(a: Arch, seq_len: int, batch: int) -> int:
+    """KV cache for autoregressive generation, at bf16. PROJECTED.
+
+    Only the reinforcement method pays this: it is the one method here that *samples*. Two
+    tensors (K and V) per layer, each `kv_heads x head_dim` wide per token -- so grouped-query
+    attention makes this far cheaper than the head count suggests. On the 7B, `kv_heads` is 4
+    against 28 query heads, a 7x saving on precisely this term.
+    """
+    return 2 * a.layers * a.kv_width * seq_len * batch * 2
+
+
+def method_terms(a: Arch, *, method: str, method_config: dict, seq_len: int,
+                 checkpointing: bool = True) -> dict:
+    """The VRAM terms the supervised cost model does not have. All PROJECTED.
+
+    ## Why this exists as its own function
+
+    `plan_fit` costed one shape of run: one sequence forward, one backward, one logit tensor.
+    Both new methods break that assumption in ways that are large rather than marginal, and
+    charging them at the supervised rate would publish an understatement wearing a `projected`
+    label -- which is the specific dishonesty `.claude/CLAUDE.md` forbids, made worse by the
+    fact that the arithmetic *looks* done.
+
+    ## reinforcement (GRPO): the multiplier is `num_generations`
+
+    A GRPO step samples `G` completions for each prompt, then trains on all `G`. So the
+    training forward runs at an effective batch of `G`, and every activation term scales with
+    it. Plus a generation KV cache, which the supervised path has no equivalent of at all.
+
+    The one piece of good news, and it is checked against the installed library rather than
+    assumed: **the logit tensor is charged over the completion window only, not the whole
+    sequence.** `trl/trainer/grpo_trainer.py:2503` sets
+
+        logits_to_keep = completion_ids.size(1)   # only the completion tokens
+
+    and passes it into the forward, so the 152k-wide lm_head projection is computed for 256
+    positions rather than 768. On this model that is the difference between ~0.87 GiB and
+    ~2.61 GiB, so it is worth reading the source instead of guessing: guessing high here would
+    refuse a configuration that fits.
+
+    `seq_len` for a reinforcement preset is the **prompt** cap; the completion is
+    `max_completion_length` on top of it. That differs from the supervised and preference
+    methods, where `max_length` covers the whole sequence, and it differs because trl's
+    `GRPOConfig` has **no `max_prompt_length` field in 1.10.0** -- a checked absence -- so the
+    prompt bound is enforced by this package before the card is taken rather than by the
+    trainer at step 0.
+
+    ## preference (DPO): the multiplier is 2, and the reference may be free
+
+    `trl/trainer/dpo_trainer.py:356-359` concatenates the chosen and rejected completions along
+    the **batch** dimension, so one preference example is two sequences through the model. DPO
+    does not use `logits_to_keep`, so its logit tensor is charged over the full sequence at
+    batch 2.
+
+    The reference policy costs **no weight bytes under peft** -- `ref_model=None` with a
+    `peft_config` makes trl disable the adapter for the reference pass and re-enable it after,
+    so the reference is the base model that is already resident. It costs a forward pass. And
+    with `precompute_ref_log_probs=True` even that lands outside the peak: the reference passes
+    all happen in a pre-pass, before the optimiser state exists, so the two never coincide.
+    That is why the preference preset sets it, and it is charged here as zero *at peak* with
+    the reason attached rather than silently omitted.
+    """
+    cfg = method_config or {}
+    terms: dict[str, dict] = {}
+    notes: list[str] = []
+
+    if method == "reinforcement":
+        g = max(1, int(cfg.get("num_generations", 1)))
+        completion = int(cfg.get("max_completion_length", 256))
+        total_len = seq_len + completion
+        beta = float(cfg.get("beta", 0.0))
+
+        kv = kv_cache_bytes(a, total_len, g)
+        # The training forward at effective batch G. Hidden states and the recompute peak scale
+        # with the full sequence; the logits scale with the completion window only.
+        hidden = a.layers * total_len * a.hidden * g * 2 if checkpointing else 0
+        recompute = total_len * g * (a.ffn * 3 + a.hidden * 4) * 2
+        logits = completion * g * a.vocab * (2 + 4)
+
+        terms["rollout_kv_cache"] = {
+            "bytes": kv, "label": "projected",
+            "basis": (f"2 (K,V) x {a.layers} layers x {a.kv_width} kv width x "
+                      f"{total_len} tokens x {g} completions x 2 bytes. Grouped-query "
+                      f"attention: {a.kv_heads} kv heads against {a.heads} query heads")}
+        terms["rollout_group_activations"] = {
+            "bytes": hidden + recompute + logits, "label": "projected",
+            "basis": (f"the training forward runs at an effective batch of {g} -- every sampled "
+                      f"completion takes a gradient. Checkpointed hidden states "
+                      f"{hidden / GIB:.2f} GiB + one-layer recompute {recompute / GIB:.2f} GiB "
+                      f"at seq {total_len} x {g}, plus logits {logits / GIB:.2f} GiB charged "
+                      f"over the {completion}-token completion window only "
+                      f"(logits_to_keep, grpo_trainer.py:2503)")}
+        if beta > 0:
+            # A no-grad forward: no stored hidden states, but the same transient recompute and
+            # logit tensors. Charged, because at G completions it is not a rounding error.
+            ref = recompute + logits
+            terms["reference_forward"] = {
+                "bytes": ref, "label": "projected",
+                "basis": (f"beta={beta} keeps the KL penalty, which costs one extra forward pass "
+                          f"over all {g} completions. No weight bytes -- the reference is this "
+                          f"model with the adapter disabled -- but the transient activations are "
+                          f"real. Set beta=0 to remove this term and the KL tether with it")}
+        else:
+            notes.append("beta=0: no reference forward pass, and no KL tether to lose it to. "
+                         "That is a trade against reward hacking, not a free saving")
+        notes.append(f"num_generations={g} is the multiplier on every term above and is the "
+                     f"first rung on this method's OOM ladder")
+
+    elif method == "preference":
+        # Chosen and rejected, concatenated on the batch dimension.
+        hidden = a.layers * seq_len * a.hidden * 2 * 2 if checkpointing else 0
+        recompute = seq_len * 2 * (a.ffn * 3 + a.hidden * 4) * 2
+        logits = seq_len * 2 * a.vocab * (2 + 4)
+        # `activation_bytes` has already charged one sequence's worth in the base plan, so only
+        # the second sequence is added here. Charging both would double-count.
+        base = activation_bytes(a, seq_len, 1, checkpointing)["total"]
+        extra = max(0, hidden + recompute + logits - base)
+        terms["preference_pair_activations"] = {
+            "bytes": extra, "label": "projected",
+            "basis": (f"every preference example is scored twice -- chosen and rejected are "
+                      f"concatenated along the batch dimension (dpo_trainer.py:356-359), so the "
+                      f"activation and logit terms are charged at batch 2 rather than 1. Only "
+                      f"the second sequence is added here; the first is already in the "
+                      f"activations term above")}
+        if cfg.get("precompute_ref_log_probs"):
+            terms["reference_forward"] = {
+                "bytes": 0, "label": "projected",
+                "basis": ("zero AT PEAK, and that is the whole point of "
+                          "precompute_ref_log_probs=True: the reference log-probabilities are "
+                          "computed in a pass over the dataset before the optimiser and its "
+                          "state exist, cached, and never recomputed. The reference forward and "
+                          "the training peak never coincide. It costs wall-clock and host "
+                          "memory, which is the right trade when VRAM is the binding constraint")}
+            notes.append("reference log-probabilities are precomputed, so the reference forward "
+                         "sits outside the training peak")
+        else:
+            ref = recompute + logits
+            terms["reference_forward"] = {
+                "bytes": ref, "label": "projected",
+                "basis": ("one no-grad forward pass per step over both sequences. No weight "
+                          "bytes -- under peft the reference is this model with the adapter "
+                          "disabled -- but the transient activations coincide with the training "
+                          "peak. precompute_ref_log_probs=True moves this term out of the peak")}
+        notes.append("the reference policy costs no weight bytes: ref_model=None with a "
+                     "peft_config disables the adapter for the reference pass instead of "
+                     "loading a second copy of the model")
+
+    return {"terms": terms,
+            "bytes": sum(t["bytes"] for t in terms.values()),
+            "notes": notes,
+            "label": "projected"}
+
+
 def plan_fit(a: Arch, *, rank: int, target_modules: tuple[str, ...], seq_len: int,
              batch: int, gradient_checkpointing: bool = True,
-             free_bytes: int | None = None) -> dict:
+             free_bytes: int | None = None,
+             method: str = "sft", method_config: dict | None = None) -> dict:
     """The four-term VRAM projection, itemised so a refusal can show its working.
 
     Reinforce's `plan_residency(free_bytes)` decides what fits *before* anything is loaded;
@@ -705,6 +859,11 @@ def plan_fit(a: Arch, *, rank: int, target_modules: tuple[str, ...], seq_len: in
     lora_n = a.lora_params(rank, target_modules)
     trainable = lora_n * TRAINABLE_BYTES_PER_PARAM
     acts = activation_bytes(a, seq_len, batch, gradient_checkpointing)
+    # Whatever the objective costs beyond one forward and one backward: the sampling loop and
+    # its group multiplier for reinforcement, the second sequence and the reference pass for
+    # preference. Empty for `sft`, which is why every existing figure is unchanged.
+    extra = method_terms(a, method=method, method_config=method_config or {},
+                         seq_len=seq_len, checkpointing=gradient_checkpointing)
 
     # Two figures, because they answer two different questions and conflating them is what
     # produced the first bad estimate. `content` is what torch will report as allocated -- it
@@ -712,7 +871,7 @@ def plan_fit(a: Arch, *, rank: int, target_modules: tuple[str, ...], seq_len: in
     # checked against. `total` is what the process takes off the card, which is what decides
     # whether it fits: allocator reservation on top of content, plus a CUDA context that
     # torch's counters cannot see at all.
-    content = weights_4bit + weights_resident + trainable + acts["total"]
+    content = weights_4bit + weights_resident + trainable + acts["total"] + extra["bytes"]
     total = int(content * ALLOCATOR_RESERVE_FACTOR) + CONTEXT_OVERHEAD_BYTES
 
     budget = free_bytes if free_bytes is not None else PRACTICAL_BUDGET_BYTES
@@ -732,6 +891,30 @@ def plan_fit(a: Arch, *, rank: int, target_modules: tuple[str, ...], seq_len: in
     # in these words, is the difference between a refusal and a shrug.
     ladder: list[str] = []
     if verdict != "fits":
+        # The method-specific rungs come FIRST, because on an RL run they are the cheap ones.
+        # `num_generations` multiplies every activation term, so halving it saves more than
+        # halving the sequence does -- and unlike rank it costs nothing in adapter capacity.
+        # Offering "lower the rank" first on a GRPO run would be pointing at the smallest term
+        # on the panel.
+        if method == "reinforcement":
+            cfg = method_config or {}
+            g = int(cfg.get("num_generations", 1))
+            comp = int(cfg.get("max_completion_length", 256))
+            if g > 2:
+                ladder.append(f"lower num_generations from {g} to {g // 2} (saves roughly half "
+                              f"of {extra['bytes'] / GIB:.2f} GiB of rollout terms, projected -- "
+                              f"the cheapest rung on this method, though a smaller group is a "
+                              f"noisier advantage estimate)")
+            if comp > 64:
+                ladder.append(f"shorten max_completion_length from {comp} to {comp // 2} "
+                              f"(the logit term is charged over the completion window, so this "
+                              f"halves it, projected)")
+            if float(cfg.get("beta", 0.0)) > 0:
+                ladder.append("set beta=0 to drop the reference forward pass -- but that removes "
+                              "the KL tether, which is what holds a reward-hacking policy back")
+        if method == "preference" and not (method_config or {}).get("precompute_ref_log_probs"):
+            ladder.append("set precompute_ref_log_probs=True to move the reference forward out "
+                          "of the training peak (costs wall-clock and host memory instead)")
         if seq_len > 512:
             ladder.append(f"shorten max_length from {seq_len} to {seq_len // 2} "
                           f"(saves ~{(acts['logits'] + acts['hidden_states']) // 2 / GIB:.2f} GiB, projected)")
@@ -762,6 +945,7 @@ def plan_fit(a: Arch, *, rank: int, target_modules: tuple[str, ...], seq_len: in
                                      f"+ one-layer recompute {acts['recompute_peak'] / GIB:.2f} GiB "
                                      f"+ logits {acts['logits'] / GIB:.2f} GiB "
                                      f"at seq {seq_len} x batch {batch}"},
+            **extra["terms"],
             "allocator_reserve": {"bytes": int(content * (ALLOCATOR_RESERVE_FACTOR - 1)),
                                   "label": "projected",
                                   "basis": f"x{ALLOCATOR_RESERVE_FACTOR} on the content above. The "
@@ -807,10 +991,25 @@ def plan_fit(a: Arch, *, rank: int, target_modules: tuple[str, ...], seq_len: in
                                "outside the usual 0.1-1% band -- expected at high rank, but check "
                                "the target module list if you did not intend it"),
         "ladder": ladder,
+        "method": method,
+        "method_bytes": extra["bytes"],
+        "method_notes": extra["notes"],
         "label": "projected",
         "note": ("arithmetic, not a measurement. A cell becomes measured only when a run of "
                  "that exact model and preset records torch.cuda.max_memory_allocated()."),
         "accuracy": ACCURACY,
+        # Stated separately from `accuracy`, because `accuracy` describes how the SUPERVISED
+        # arithmetic did against a real run and would otherwise be read as covering these terms
+        # too. It does not. Nothing on either new method has ever run on this box.
+        "method_accuracy": (
+            "the one measurement behind this arithmetic is a supervised run. The preference and "
+            "reinforcement terms above have NEVER been checked against a real peak on this box -- "
+            "they are arithmetic from the trl source, with the source lines cited, and their error "
+            "bar is wider than the supervised model's. Treat a `tight` verdict on either as "
+            "'expect an OOM' rather than 'probably fine'."
+            if method in ("preference", "reinforcement") else
+            "this is the supervised cost model, the one with a measurement behind it -- see "
+            "`accuracy`."),
     }
 
 

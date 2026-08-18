@@ -1,6 +1,14 @@
-"""SyMoNeuRaL Reinforce -- the HTTP surface. Mounted at `/api/train` by `backend/api.py`.
+"""SyMoNeuRaL Reinforce -- the HTTP surface, mounted at `/api/train` by `backend/api.py`.
 
-Nothing here assumes that prefix, the way `apps/tuner` does not assume its own.
+That is true as of the `include_router` call beside the `tuner` one, and it had to be *made*
+true: an earlier revision of this line asserted the mount while `backend/api.py` contained no
+reference to this package at all, so every route here was unreachable and the docstring said
+otherwise. Verified rather than assumed -- with the gate shut every route answers 503, and with
+it open `/presets` answers 200 while `/start` still answers 403 without the token.
+
+Nothing here assumes that prefix, the way `apps/tuner` does not assume its own. Mounting is
+necessary to reach these routes and **not** sufficient to start a run -- the gate below is what
+decides that, and it is shut by default.
 
 ## Why this is an APIRouter and not a second server
 
@@ -56,7 +64,7 @@ import os
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from . import dataset_guard, enabled, jobs, presets, registry
+from . import dataset_guard, enabled, jobs, presets, registry, rewards, rollout
 
 router = APIRouter(tags=["reinforce"])
 
@@ -92,6 +100,11 @@ class StartBody(BaseModel):
     model: str = ""
     preset: str = ""
     dataset: str = ""
+    # The starting adapter, read-only. There is deliberately no `method` field here: a method is
+    # a property of the preset, not an independent choice, so a body cannot pair
+    # `preset="voice"` with `method="reinforcement"` and produce a configuration whose dataset
+    # schema and hyperparameters contradict each other.
+    init_adapter: str = ""
 
 
 # ---------------------------------------------------------------- reads
@@ -132,6 +145,20 @@ def list_presets(model: str = "Qwen/Qwen2.5-7B-Instruct") -> dict:
         "free_vram_label": free_label,
         "measured_peaks": jobs.measured_peaks(),
         "not_offered": presets.NOT_IN_V1,
+        # The three objectives, the schema each needs, and which one is actually RL.
+        "methods": presets.METHODS,
+        "schemas": dataset_guard.SCHEMAS,
+        # The reward table: names, rationale, provenance and weight. Never the patterns -- see
+        # `rewards.py`. Availability here is unresolved because no dataset is named on this
+        # route; `/preflight` resolves it against the chosen file's columns.
+        "rewards": rewards.offered(),
+        "rollout": rollout.describe(),
+        "rl_note": ("nothing about the preference or reinforcement methods has been measured on "
+                    "this box. Their VRAM terms are arithmetic derived from the trl source with "
+                    "the source lines cited, and their error bar is wider than the supervised "
+                    "model's, which has one real run behind it. No quality claim is made for any "
+                    "method, and a reward curve is a reading of a reward function rather than of "
+                    "the model."),
         "labels": {
             "measured": "read off this machine",
             "vendor": "a published specification from somebody else",
@@ -144,7 +171,7 @@ def list_presets(model: str = "Qwen/Qwen2.5-7B-Instruct") -> dict:
 
 
 @router.get("/datasets")
-def list_datasets() -> dict:
+def list_datasets(schema: str = "") -> dict:
     """Datasets an operator has staged. Never anything from `training/`.
 
     This route exists as much to state the refusal as to list anything. See `dataset_guard.py`:
@@ -153,8 +180,20 @@ def list_datasets() -> dict:
     product's recipe.
     """
     _require_surface()
+    if schema and schema not in dataset_guard.SCHEMAS:
+        raise HTTPException(status_code=400, detail={
+            "reason": "unknown_schema",
+            "message": f"No such dataset schema. Available: "
+                       f"{', '.join(dataset_guard.SCHEMAS)}."})
     return {
-        "datasets": [d.to_dict() for d in dataset_guard.staged()],
+        "datasets": [d.to_dict() for d in dataset_guard.staged(schema or None)],
+        "schemas": dataset_guard.SCHEMAS,
+        "filtered_by": schema or None,
+        "schema_note": ("each staged file is sniffed for its schema rather than assumed to be "
+                        "chat examples, and `?schema=` filters to the ones a given method can "
+                        "use. Offering a file that preflight will refuse is the same class of "
+                        "dishonesty as a control that cannot be clicked. Sniffing reads at most "
+                        "five rows and reports the SHAPE it matched -- never a row."),
         "stage_dir": str(dataset_guard.STAGE.relative_to(registry.ROOT)),
         "default": None,
         "policy": ("There is no default dataset and no fallback. Protected SyMoNeuRaL "
@@ -182,8 +221,12 @@ def run_preflight(body: StartBody) -> dict:
     without its sum is indistinguishable from a bug.
     """
     _require_surface()
-    result = jobs.preflight(body.model, body.preset, body.dataset)
+    result = jobs.preflight(body.model, body.preset, body.dataset, body.init_adapter)
     if not result["ok"] and result.get("reason") == "capability":
+        # Reached by two things now, and both are genuinely "this box cannot" rather than "this
+        # is broken": a configuration whose projected peak does not fit, and a reinforcement
+        # preset whose rollout backend is not reachable. An unreachable external vLLM server is
+        # not a fault of this API's.
         raise HTTPException(status_code=501, detail=result)
     return result
 
@@ -202,9 +245,14 @@ def start_run(body: StartBody, x_reinforce_token: str | None = Header(default=No
     """
     _require_token(x_reinforce_token)
     try:
-        job = jobs.start(body.model, body.preset, body.dataset)
+        job = jobs.start(body.model, body.preset, body.dataset, body.init_adapter)
     except dataset_guard.Refused as exc:
         raise HTTPException(status_code=400, detail={"reason": exc.code, "message": exc.message})
+    except jobs.AdapterRefused as exc:
+        raise HTTPException(status_code=400, detail={"reason": "init_adapter",
+                                                    "message": str(exc)})
+    except rewards.RewardError as exc:
+        raise HTTPException(status_code=400, detail={"reason": "rewards", "message": str(exc)})
     except jobs.JobError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"started": True, "job": job,

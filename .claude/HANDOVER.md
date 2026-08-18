@@ -57,6 +57,16 @@ conversation, so every number, path and decision you need is stated here.
   the rack alone is 2,700px — and should not be promised it.
 - **The queue in §5 was rewritten** at the end of that session. Read §5, not §5b — the
   latter is the original list kept only for reference and much of it is done.
+- **The training bay now does preference and reinforcement tuning, on branch
+  `worktree-reinforce-rl`.** The **supervised** bay is on `main` and is mounted and reachable
+  (`170692e` committed it, `8770676` wired it up and gave it `site/reinforce.html`); an earlier
+  revision of this line said the whole bay was `??` on `main`, which stopped being true when
+  those landed. What is still branch-only is the RL half — DPO and GRPO, `rewards.py`,
+  `rollout.py` — and that branch has merged `main` into itself twice, so it is current and
+  conflict-free. §2h has the shape; its own doc is
+  `backend/apps/reinforce/TRAINING_BAY.md`, **not** the `README.md` beside it, which belongs to
+  the unrelated CUDA engine sharing that directory. **No RL run has ever executed on this box**,
+  so every preference and reinforcement figure is arithmetic and labelled `projected`.
 
 ## 0b. First moves
 
@@ -193,17 +203,21 @@ ellipsis violations.
 
 | Branch | Conflicts with `main` now |
 |---|---|
-| `worktree-reinforce-rl` | **1** — `site/reinforce.html`. Was 10. |
+| `worktree-reinforce-rl` | **0** — it has merged `main` into itself three times (`dd9107d`, `c9dba85`, and the catch-up that resolved this row). Was 10, then 1: that last one was `site/reinforce.html`, which is generator output. |
 | `worktree-stickers` | 3 — `backend/api.py`, `apps/sigils/test_sigils.py`, `site/sigils.html` |
 | `worktree-coder-online` | 8 — incl. `.claude/CLAUDE.md`, `backend/api.py`, `tools/build_pages.py` |
 | `worktree-gateway-online` | 7 — incl. `apps/gateway/__init__.py`, `site/gateway.html`, `build_pages.py` |
 
 Reinforce collapsing from 10 conflicts to 1 is the whole argument for merging in this order:
 the session that owned it committed its working-copy work (`8770676`) while these ran, so nine
-of its ten conflicts dissolved on their own. **The remaining one is the real question and is
-still open — two different `site/reinforce.html` files exist, the LoRA training bay on `main`
-and whatever `worktree-reinforce-rl` carries. Somebody has to say which surface Reinforce is
-before that lands.**
+of its ten conflicts dissolved on their own. **That last conflict looked like a product question and is not
+one — answered below, and it needed no decision from anybody.** There are not two surfaces.
+`tools/build_reinforce.py` (from `main`) generates `site/reinforce.html` FROM
+`apps/reinforce/page.html` (from the branch), so both sides of that conflict are build output
+of the same generator over different inputs, and §1c's own rule applies verbatim: take either
+side, re-run the generator, commit what it emits. The RL bay is not a rival product to the
+LoRA bay, it is a superset — `presets.METHODS` offers supervised, preference and
+reinforcement, and the supervised objective **is** the LoRA training bay unchanged.
 
 **A fifth branch appeared mid-merge and is NOT merged: `tuner-transcode`.** It is
 `worktree-online-apps-audit` *rebased* (`a84800e`, "Rebase onto the committed tuner work"), and
@@ -237,6 +251,54 @@ cache-bust assertion) and that one merged clean — `852d24c`.
   `assertLess(TUNE_WAIT_SECONDS, IDLE_TIMEOUT + 1)` and wrote the docstring explaining why the
   coupling was wrong, while `main` had already *replaced* it with a test of the actual mechanism.
   git cannot know a deletion and a replacement are one intent. Both were kept.
+
+**RESOLVED 16:09 — the training-bay page has an owner, and Reinforce no longer exists in two
+places.** Both warnings below are kept because the reasoning still applies to the next collision
+of this shape, but neither is live any more.
+
+The unowned files are committed: `8770676` *"Reinforce goes online: the training bay its author
+left unwired"* is the working-copy work — the `/api/train` mount, `tools/build_reinforce.py`,
+`site/reinforce.html` and `site/reinforce.js` — landed on `main` by the session that wrote them.
+So nothing is untracked and nobody needs to be asked which body of work to keep. **The two were
+complements, not rivals**: that session wired the surface and built the page, this one built the
+engine behind it. The predicted overwrite never had to happen.
+
+`worktree-reinforce-rl` has since **merged `main` into itself twice** (`dd9107d`, `c9dba85`) and
+all ten conflicts are resolved on that branch, so whoever lands it resolves nothing. What the
+two merges actually found, which is the part worth carrying forward:
+
+- **Nine of the ten conflicts were add/add and not disagreements at all.** `main` committed its
+  own supervised bay at `170692e`; the branch added the same paths as new files, so git had no
+  common ancestor and called every line a conflict. `git log --oneline main -- <file>` returned
+  exactly `170692e` for all nine, so `main`'s copies *were* the branch's baseline. Cheap check,
+  and it turns a frightening ten-file conflict into one real one.
+- **The duplicate mount did not produce a conflict marker.** Both sessions added
+  `include_router(reinforce.router, prefix="/api/train")`, in different places in the file, so
+  git kept **both** and merged clean. FastAPI accepts that silently — it registers all seven
+  routes twice and doubles them in the OpenAPI schema, and the surface still answers. **Count the
+  mounts after any `api.py` merge**: `grep -c include_router backend/api.py` should be 6, and
+  `grep -c reinforce.router` should be 1. That count is the only thing that catches it.
+- **A generator merged from one side and its input from the other is an untested pair.**
+  `tools/build_reinforce.py` came from `main`, written against the supervised-only `page.html`;
+  the fragment came from the branch. Its unwrap of `<section><div class="wrap">` has to carry
+  `id="reinforce"` through, and every selector in that fragment's sheet is `#reinforce .rf-*`, so
+  losing the id renders the panel **unstyled with all its text intact** — content assertions pass
+  and no JS error fires. Nothing asserted this; `8770676` verified it once by hand. There are now
+  four standing assertions at the end of `apps/reinforce/test_page.mjs` that load the *deployed*
+  `site/reinforce.html` and read a computed colour (`.rf-lab-measured` → `rgb(127,215,164)`),
+  proven against a negative control: dropping the id fails exactly those two and nothing else.
+
+**Merging `worktree-reinforce-rl`'s `backend/api.py` wholesale reverts four surfaces.** Kept as
+the general lesson, though the branch's own copy is now current: it forked at `595835d` with
+**two** `include_router` calls where `main` had five, so accepting that side silently un-mounted
+accounts, gateway, guide and project. Take the import and the mount by hand; `ast.parse` after.
+
+**What is left on that branch is not a conflict, it is a moving target.** `main` advanced eight
+commits during each of the two merges — eleven sessions land continuously — so `main` is never an
+ancestor of it for long, and chasing that from a worktree cannot terminate. The branch is green
+against `main` as of `f257af8`: 743 tests across all thirteen app suites, 50/50 and 28/28 in real
+Chrome, the `/api/train` gate re-probed shut/open/half through the merged `api.py`. Land it from
+the main checkout, which is the only place a merge *into* `main` can be driven.
 
 ### 2. Tuner guide + EPG — **DONE 2026-08-17 ~14:45**, on disk, live site pending a restart
 
@@ -1113,6 +1175,191 @@ all — no route, no token to leak, no rate limit to get wrong. Per-seat licensi
 separate question from access control and should not be conflated with it; the `licensing/`
 module already issues signed contract keys and could gate a seat, but that gates *use*, not
 *reach*.
+
+## 2h. The training bay learned preference and reinforcement tuning (branch `worktree-reinforce-rl`)
+
+Garrett: *"i need symoneural reinforce updated to actually be a lora tuning application
+including reinforced learning like what is in llama.cpp and vllm"*, then *"you are doing this to
+the symon adapter correct?"*
+
+**Read `backend/apps/reinforce/TRAINING_BAY.md` before touching any of this.** It is the bay's
+own doc and it is not `README.md` in that directory — that one is the CUDA engine's. Two
+unrelated things share the `reinforce` name and this has already confused an agent.
+
+### Where the work is, and the thing that will bite you first
+
+**That was true when this was written and is not any more.** The line here said the entire bay
+was `??` in the main checkout, which is why the worktree started with none of it and ten files
+had to be copied in by hand before anything could run. `170692e` then committed the supervised
+bay to `main` and `8770676` mounted it, so a fresh branch off `main` now *does* get the bay —
+the supervised one.
+
+The work sits on **`worktree-reinforce-rl`**, committed, and that branch has merged `main` into
+itself twice (`dd9107d`, `c9dba85`), so it is current as of `f257af8` and lands without
+conflicts. There is still no remote, so nothing has left the box.
+
+**Nine of its ten conflicts were add/add, i.e. not disagreements**: `main` committed the same
+paths at `170692e` while the branch added them as new files, so git had no common ancestor and
+called every line a conflict even though `main`'s copies were the branch's own baseline. §1c
+records how that was checked and what the one real conflict in `api.py` turned out to be.
+
+Two symlinks were made inside the worktree so the suite exercises real arithmetic instead of
+skipping 20 tests: `backend/models` → the main checkout's, and `training/.venv` → the main
+checkout's. **They are symlinks into another working tree.** Do not commit them anywhere, and do
+not assume they exist in a fresh clone.
+
+### What was actually added
+
+Three objectives now, where there was one:
+
+| | optimises | dataset | trainer | is it RL? |
+|---|---|---|---|---|
+| `sft` | likelihood of answers you supply | `messages` | `transformers.Trainer` | no |
+| `preference` | the gap between a preferred and a rejected answer | `preference` | `trl.DPOTrainer` | **no** |
+| `reinforcement` | a reward on answers the model writes itself | `prompt` | `trl.GRPOTrainer` | yes |
+
+New presets: `prefer` (DPO), `reward` (GRPO), `probe` (a 6-step GRPO smoke test). The four
+supervised presets' projections are **byte-identical** to before — the method dimension was added
+without moving a number the site may already be quoting, and a test holds that.
+
+New files: `rewards.py` (stdlib-only scoring functions), `rollout.py` (where completions come
+from), `TRAINING_BAY.md`, `test_page.mjs`.
+
+**DPO is not filed as reinforcement learning here**, and that is deliberate: it optimises a
+preference objective in closed form and never samples. The industry usually does call it RL. A
+test asserts exactly one method carries `is_rl`.
+
+### The two documented objections, and why they no longer hold
+
+`NOT_IN_V1` and `docs/specs/qlora-upgrade.md` §5.4 both said preference tuning was out, for two
+reasons. Both were answerable rather than wrong:
+
+1. *No VRAM for a reference model beside the policy.* There is never a second set of weights —
+   `ref_model=None` plus a peft adapter makes trl compute the reference pass by **disabling the
+   adapter** on the model already resident. It costs a forward pass, not a copy, and
+   `precompute_ref_log_probs=True` moves even that out of the training peak.
+2. *No paired preference data.* Still true, and now a **precondition enforced by a schema check**
+   instead of a reason to omit the method.
+
+`preference_tuning` is gone from `NOT_IN_V1` and a test asserts its absence. Four new omissions
+took its place, each with its reason: `reward_model_training`, `kto_and_online_dpo`,
+`vllm_colocated_rollouts`, `llama_cpp_rollouts`.
+
+### "like llama.cpp and vllm" — answered as three different things, two of them refusals
+
+- **transformers, in-process** — the default and the only one that works here. On-policy by
+  construction. Slow.
+- **vLLM** — external server only (`SYM_REINFORCE_VLLM_URL`). Colocate refused by arithmetic; it
+  wants a second copy of the weights plus a KV pool beside a process already projecting ~12 GiB
+  of a ~14.2 GiB budget. vLLM is not installed here and nothing imports it — the probe is plain
+  `urllib`. **An unreachable endpoint refuses the run**; there is no silent fallback, because
+  falling back changes the sampling implementation without changing the label on the run.
+- **llama.cpp — refused for rollouts, on correctness, not effort.** This is the one that looks
+  like it should work. `llama-server` holds a Q4_K_M GGUF of the **base** model and cannot carry
+  an adapter that changes every optimiser step, so its completions and logprobs would belong to a
+  different model than the one taking the gradient — off-policy from step 1, and silently. Its
+  real role is the *other* end: it **serves** a GGUF LoRA, which is what makes an adapter
+  promotable. *A fast generator that is not the policy is not a rollout engine.*
+
+### Answering "you are doing this to the symon adapter correct?"
+
+Yes — via `--init-adapter`, which was added for exactly this. The standard pipeline is supervised
+first and RL on top, so an RL run that starts fresh discards the house voice and optimises a
+scoring function against the raw base model. The panel says so on the field.
+
+`training/adapter/` is **allowed as a read-only starting point while still denied as a dataset.**
+That asymmetry is deliberate and documented at length in `jobs.py`: reading weights to continue
+training is not serving a corpus over HTTP. Nothing is ever written back — output goes to
+`run/reinforce/adapters/<job-id>` and promotion stays manual.
+
+The trap that guard exists for: `PeftModel.from_pretrained` loads adapters in **inference mode**
+by default. Without `is_trainable=True` the run completes, reports a loss, and saves a copy of
+its input — a silent no-op that looks like a successful run. There is a `trainable == 0` check
+that exits 6.
+
+### Two silent failure modes, now asserted (this is the part worth carrying forward)
+
+Both are in the log protocol, both produce a panel that looks healthy while reporting nothing,
+and neither raises anywhere:
+
+1. **A metric key absent from `jobs._ALLOWED_KEYS` is dropped.** trl logs `rewards/chosen`, and
+   `/` is outside the value character class, so `runner._METRIC_KEYS` maps them onto allowlisted
+   names. Miss one and a live RL run shows an empty reward curve.
+2. **An unrecognised `stage=` discards the WHOLE line — including `event=error`.** A run failing
+   in a stage one file knows about and the other does not reports *nothing at all*: no kind, no
+   stage.
+
+`MetricProtocolTests` now asserts both agreements key by key. The general lesson: **when two
+files have to agree and disagreement is silent, the agreement is a test, not a comment.**
+
+### Testing
+
+```bash
+python3 backend/apps/reinforce/test_reinforce.py   # 124 passed, 0 skipped (6 skip without
+                                                   # training/.venv -- they read real trl)
+node    backend/apps/reinforce/test_page.mjs       # 50/50, real Chrome. The last four load the
+                                                  # DEPLOYED site/reinforce.html, so run
+                                                  # tools/build_reinforce.py first or they fail.
+```
+
+`test_page.mjs` is new and follows §4's rule — it reads computed styles rather than reasoning
+about the cascade. It stubs the API by route interception rather than starting it, because the
+interesting states (an RL run mid-flight, a refused reward, an unreachable rollout) cannot be
+produced on demand from a box with one GPU and no finished RL run. It resolves Playwright from
+the main checkout when `contrib/` is absent, so it runs from a worktree.
+
+It asserts, among other things: no element truncates, the body does not scroll at 390px, every
+metric series names the step window it was drawn from, and the panel raises no JS errors.
+
+Three test *premises* were invalidated by this work and were rewritten rather than deleted:
+`test_every_preset_holds_out_a_validation_split` became
+`test_every_likelihood_preset_holds_out_a_validation_split` (GRPO has no held-out loss, so RL
+presets must be **exactly** 0.0 *and* carry a rationale — the invariant tightened), and
+`test_preference_tuning_is_stated_not_built` was replaced by its inverse.
+
+### The surface is now actually reachable
+
+`backend/api.py` had **no reference to this package** — `grep -n reinforce backend/api.py`
+returned nothing — while the first line of `routes.py` read "Mounted at `/api/train` by
+`backend/api.py`". Every route was unreachable and the docstring said otherwise. Both are fixed:
+an import beside `tuner` and one `include_router`, with the claim in `routes.py` rewritten to
+what is now true. All four gate states were exercised rather than reasoned about — shut, all
+seven routes answer 503; open, `/presets` answers 200 and `/start` answers 403 with no token and
+403 with a wrong one.
+
+> **`backend/api.py` on this branch is a stale copy.** It branched before several other sessions
+> landed their own mounts (a peer reports `accounts`, `gateway`, `guide`, `project` at
+> api.py:2070-2074 in the live checkout; this copy has only `tuner`). **Take the two lines by
+> hand — do not merge this file wholesale**, or you will revert four other surfaces. `ast.parse`
+> the result immediately: a half-applied edit there takes the whole site down.
+
+### What is NOT done
+
+- **The rack unit is still hand-rolled, and that is left alone deliberately.** `api.py` builds
+  the `train` unit inline from `CHAT_ADAPTER.exists()` with `href="/training.html"`, while
+  `reinforce.status()` already returns the bay's real state and the `__init__` docstring names
+  `Unit(**status())` as the contract. Swapping it belongs to whoever owns `site/reinforce.html`,
+  which does **not exist on this branch** — pointing the unit there from here is a dead link.
+- **The panel is staged, not wired in.** No generator and no deploy step consumes
+  `page.html`/`page.js`; they render only under `test_page.mjs`. Publishing the bay is a separate
+  decision, and it needs §4's gate story thought through first — the surface is off unless
+  `SYM_REINFORCE_ENABLED` and `SYM_REINFORCE_TOKEN` are both set.
+- **No preference or reinforcement run has ever been executed on this box.** Every RL VRAM figure
+  is arithmetic derived from the trl source with source lines cited, labelled `projected`. The
+  one real measurement behind this package is a *supervised* run, and `plan_fit()` returns a
+  `method_accuracy` string saying in as many words that no RL term has been checked — so the RL
+  arithmetic cannot borrow the supervised measurement's error bar.
+- **The `reward` preset is `tight`, not `fits`** (1.68 GiB headroom at 384 prompt / 192
+  completion / group of 4). Thirteen configurations were costed; only 384/128/G=4 reached "fits"
+  and 128-token completions are too short to be worth reinforcing. The choice is recorded as a
+  `verdict` rationale entry rather than resolved by shrinking until the word changed. It still
+  has more headroom than the already-shipped `longform` preset (1.14 GiB).
+
+### Stale claim corrected while here
+
+The handover recorded `test_alpha_is_twice_rank_everywhere` as red (48 != 64 for `recall`). The
+working copy already has `recall` at alpha 64 and the test passes. All three new presets keep
+alpha = 2 × rank.
 
 ## 2d. The dev fee — `backend/apps/licensing/`
 

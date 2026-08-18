@@ -67,6 +67,91 @@ DENIED_TREES = ((ROOT / "training" / "adapter").resolve(),)
 MAX_BYTES = 256 * 1024 * 1024      # structural cap: an unbounded read is a memory bug
 MAX_ROWS = 200_000
 
+# ---------------------------------------------------------------- the three schemas
+#
+# One schema per method, because the objective decides what a row has to contain and there is
+# no shape that serves all three. This is the guard's half of the answer to the objection that
+# kept preference tuning out of v1 -- *"it needs paired preference data, which does not exist
+# here"*. That is still true, and this file does not invent any: what it does is admit the
+# shape, so a missing preference file is a stated precondition that preflight refuses by name
+# rather than a reason to omit the method.
+#
+# **Validation is structural only.** A row is judged on whether it has the right keys of the
+# right types, never on what it says. That is the same rule as everywhere else in this file, and
+# it is why `_reject` takes a code rather than a message built from data.
+SCHEMAS = {
+    "messages": {
+        "id": "messages",
+        "label": "Chat examples",
+        "method": "sft",
+        "required": ("messages",),
+        "shape": ('{"messages": [{"role": "user", "content": "..."}, '
+                  '{"role": "assistant", "content": "..."}]}'),
+        "why": ("supervised fine-tuning trains on an answer you wrote, so a row is a "
+                "conversation ending in the assistant turn to be learned. At least two "
+                "messages: the loss masks everything before the final one"),
+    },
+    "preference": {
+        "id": "preference",
+        "label": "Preference pairs",
+        "method": "preference",
+        "required": ("prompt", "chosen", "rejected"),
+        "shape": '{"prompt": "...", "chosen": "...", "rejected": "..."}',
+        "why": ("DPO optimises the margin between an answer you preferred and one you did not, "
+                "so a row carries both. Neither has to be ideal -- only ordered, which is a "
+                "different and often easier authoring job than writing the target answer"),
+    },
+    "prompt": {
+        "id": "prompt",
+        "label": "Prompts",
+        "method": "reinforcement",
+        "required": ("prompt",),
+        "optional": ("answer",),
+        "shape": '{"prompt": "...", "answer": "..."}      # answer optional',
+        "why": ("GRPO generates its own completions and scores them, so a row needs only the "
+                "prompt -- there is no target answer to write, which is the whole point of the "
+                "method. An optional `answer` column unlocks the `answer_match` reward function, "
+                "the one that scores correctness rather than conduct"),
+    },
+}
+
+
+def _is_text(value) -> bool:
+    """A non-empty string. Used for prompt/chosen/rejected fields."""
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _is_messages(value) -> bool:
+    """A list of at least one {role, content} dict.
+
+    Accepted wherever a plain string is, because trl takes both spellings: a `prompt` may be
+    text or a conversation, and a preference pair may be either. Rejecting the conversational
+    form would refuse the shape that a chat model's own template produces.
+    """
+    if not isinstance(value, list) or not value:
+        return False
+    return all(isinstance(m, dict) and "role" in m and "content" in m for m in value)
+
+
+def _valid_row(row, schema: str) -> bool:
+    """Structural validation for one row against one schema. Never inspects content.
+
+    Returns a bool rather than raising, because the caller counts bad rows and reports the
+    first line NUMBER; an exception carrying a reason built from the row would be the leak
+    this whole module exists to prevent.
+    """
+    if not isinstance(row, dict):
+        return False
+    if schema == "messages":
+        msgs = row.get("messages")
+        return isinstance(msgs, list) and len(msgs) >= 2 and _is_messages(msgs)
+    if schema == "preference":
+        return all(_is_text(row.get(k)) or _is_messages(row.get(k))
+                   for k in ("prompt", "chosen", "rejected"))
+    if schema == "prompt":
+        return _is_text(row.get("prompt")) or _is_messages(row.get("prompt"))
+    return False
+
 
 class Refused(Exception):
     """A dataset was refused.
@@ -126,21 +211,43 @@ class DatasetInfo:
     bytes_on_disk: int
     rows: int
     label: str = "measured"
+    schema: str = "messages"
+    # Column names seen on at least one valid row, restricted to the schema's own vocabulary.
+    # This is what lets `rewards.resolve()` know whether `answer_match` is available -- and it
+    # is a list of KEYS, never of values. An arbitrary key from the file is not reported: the
+    # intersection below is taken against a fixed allowlist, because a dataset whose column was
+    # named after its contents would otherwise leak one word of it.
+    fields: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return {"name": self.name, "path": self.path, "bytes_on_disk": self.bytes_on_disk,
-                "rows": self.rows, "label": self.label,
-                "note": ("row count and size only -- no route in this package returns dataset "
-                         "content, and no error message quotes a line")}
+                "rows": self.rows, "label": self.label, "schema": self.schema,
+                "schema_label": SCHEMAS[self.schema]["label"],
+                "method": SCHEMAS[self.schema]["method"],
+                "fields": list(self.fields),
+                "note": ("row count, size, schema and column NAMES only -- no route in this "
+                         "package returns dataset content, and no error message quotes a line")}
 
 
-def admit(path_str: str) -> DatasetInfo:
-    """Validate an operator-named JSONL file and return its shape.
+# Column names this module will ever report. A fixed allowlist rather than "whatever keys the
+# file had": a row keyed `{"acme_corp_quote_2026": ...}` would otherwise publish a fact about
+# the data through its schema.
+_REPORTABLE_FIELDS = ("messages", "prompt", "chosen", "rejected", "answer")
+
+
+def admit(path_str: str, schema: str = "messages") -> DatasetInfo:
+    """Validate an operator-named JSONL file against one schema and return its shape.
 
     Order matters and is the whole security property: **deny first**, then existence, then
     size, then structure. Checking existence first would let a caller probe for the corpus by
     the difference between "denied" and "not found".
+
+    `schema` is one of `SCHEMAS` and defaults to `messages`, so every existing caller keeps its
+    exact behaviour. A preset's required schema comes from its method, so a preference run
+    cannot be pointed at a chat-example file and discover it at step 0.
     """
+    if schema not in SCHEMAS:
+        _reject("unknown_schema", f"No such dataset schema. Available: {', '.join(SCHEMAS)}.")
     if not path_str or not path_str.strip():
         _reject("no_dataset", "No dataset named. This surface has no default dataset and does "
                               "not fall back to one.")
@@ -166,6 +273,7 @@ def admit(path_str: str) -> DatasetInfo:
     rows = 0
     bad = 0
     first_bad_line = 0
+    seen_fields: set[str] = set()
     with candidate.open("r", encoding="utf-8", errors="replace") as fh:
         for lineno, line in enumerate(fh, 1):
             if not line.strip():
@@ -174,12 +282,8 @@ def admit(path_str: str) -> DatasetInfo:
                 _reject("too_many_rows", f"More than {MAX_ROWS:,} rows.")
             try:
                 row = json.loads(line)
-                msgs = row["messages"]
-                if not isinstance(msgs, list) or len(msgs) < 2:
+                if not _valid_row(row, schema):
                     raise ValueError
-                for m in msgs:
-                    if not isinstance(m, dict) or "role" not in m or "content" not in m:
-                        raise ValueError
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 # NOTE: the exception is swallowed on purpose. json's own error message
                 # includes a slice of the offending document, and that slice is exactly the
@@ -187,26 +291,79 @@ def admit(path_str: str) -> DatasetInfo:
                 bad += 1
                 first_bad_line = first_bad_line or lineno
                 continue
+            # Intersected against a fixed allowlist, never taken wholesale -- see
+            # `_REPORTABLE_FIELDS`. A column named after its own contents does not get published
+            # through the schema report.
+            seen_fields.update(k for k in _REPORTABLE_FIELDS
+                               if k in row and row.get(k) not in (None, "", []))
             rows += 1
 
+    spec = SCHEMAS[schema]
     if rows == 0:
-        _reject("no_valid_rows", "No usable rows. Each line must be a JSON object with a "
-                                 "\"messages\" list of {role, content} pairs.")
+        _reject("no_valid_rows", f"No usable rows for the '{schema}' schema "
+                                 f"({spec['label']}). Each line must be a JSON object shaped "
+                                 f"{spec['shape']}")
     if bad:
-        _reject("malformed", f"{bad} line(s) are not valid chat examples, the first at line "
-                             f"{first_bad_line}. Each line must be a JSON object with a "
-                             f"\"messages\" list of {{role, content}} pairs. "
+        _reject("malformed", f"{bad} line(s) do not fit the '{schema}' schema "
+                             f"({spec['label']}), the first at line {first_bad_line}. Each line "
+                             f"must be a JSON object shaped {spec['shape']} "
                              f"(The line itself is deliberately not quoted back.)")
 
-    return DatasetInfo(name=candidate.name, path=str(candidate), bytes_on_disk=size, rows=rows)
+    return DatasetInfo(name=candidate.name, path=str(candidate), bytes_on_disk=size, rows=rows,
+                       schema=schema,
+                       fields=tuple(f for f in _REPORTABLE_FIELDS if f in seen_fields))
 
 
-def staged() -> list[DatasetInfo]:
+def sniff(path_str: str) -> str | None:
+    """Which schema this file fits, or None. Reads at most a handful of rows.
+
+    `staged()` needs this to label a file without being told what it is, and the page needs the
+    label to filter the picker by method. It is a *read*, so it goes through the same deny check
+    as everything else -- and it is bounded, because a sniffer that reads a 256 MiB file to
+    answer a listing request is a latency bug on the panel.
+
+    Order matters: `preference` is tried before `prompt`, because a preference row also has a
+    valid `prompt` field and would otherwise be mislabelled as the looser schema. Most specific
+    first.
+    """
+    candidate = pathlib.Path(path_str.strip())
+    if not candidate.is_absolute():
+        candidate = (ROOT / candidate)
+    if is_denied(candidate) or not candidate.is_file():
+        return None
+    probe: list[dict] = []
+    try:
+        with candidate.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    probe.append(json.loads(line))
+                except json.JSONDecodeError:
+                    return None
+                if len(probe) >= 5:
+                    break
+    except OSError:
+        return None
+    if not probe:
+        return None
+    for schema in ("messages", "preference", "prompt"):
+        if all(_valid_row(row, schema) for row in probe):
+            return schema
+    return None
+
+
+def staged(schema: str | None = None) -> list[DatasetInfo]:
     """Datasets previously staged by an operator. Never includes anything from `training/`.
 
     This scans `run/reinforce/datasets/` and nothing else. It is the *only* directory scan in
     this package that touches data rather than weights, and it is pointed at a directory that
     exists for this purpose. Do not widen it.
+
+    Each file is sniffed for its schema rather than assumed to be chat examples, so a preference
+    file staged beside a chat file is listed as what it is. `schema` filters the result, which is
+    what lets the picker show only the datasets a chosen preset can actually use -- offering a
+    file that will be refused at preflight is the same class of dishonesty as a disabled control.
     """
     out: list[DatasetInfo] = []
     if not STAGE.is_dir():
@@ -214,8 +371,11 @@ def staged() -> list[DatasetInfo]:
     for p in sorted(STAGE.glob("*.jsonl")):
         if is_denied(p):
             continue      # belt and braces: a symlink into training/ staged by hand
+        found = sniff(str(p))
+        if found is None or (schema is not None and found != schema):
+            continue
         try:
-            out.append(admit(str(p)))
+            out.append(admit(str(p), schema=found))
         except Refused:
             continue
     return out

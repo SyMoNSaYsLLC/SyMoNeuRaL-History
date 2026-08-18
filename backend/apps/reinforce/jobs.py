@@ -65,7 +65,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from . import dataset_guard, presets, registry
+from . import dataset_guard, presets, registry, rewards, rollout
 from .registry import GIB, ROOT
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
@@ -83,6 +83,58 @@ MEASURED_FILE = JOBS_DIR / "measured-peaks.json"
 # a run to the serving adapter is a deliberate act, and it is not one this surface performs.
 OUTPUT_DIR = JOBS_DIR / "adapters"
 
+# The shipped persona adapter, offered as a READ-ONLY starting point for a run.
+SHIPPED_ADAPTER = ROOT / "training" / "adapter"
+
+
+class AdapterRefused(Exception):
+    """An `--init-adapter` path that cannot be used. Message is ours."""
+
+
+def _admit_init_adapter(path_str: str) -> str:
+    """Validate a starting adapter and return its resolved path. Read-only, always.
+
+    ## Why this is not `dataset_guard.admit()`, and must not be merged into it
+
+    `dataset_guard` **denies** `training/adapter/` outright, and correctly: as a *dataset* that
+    directory is a trade-secret artefact carrying the trained weights and the tokeniser, and
+    globbing it into a data picker would publish the product.
+
+    As a *starting adapter* it is the single most useful thing on the box, and the intended path.
+    The standard alignment pipeline is supervised first and reinforcement on top; the shipped
+    persona adapter IS the supervised stage. Refusing it here would mean every RL run starts from
+    random low-rank matrices and asks a reward function to re-derive the company voice.
+
+    So the same path is denied for one purpose and allowed for another, and that is a deliberate
+    asymmetry rather than an inconsistency for a later agent to tidy away. What makes it safe is
+    the direction of travel: this path is **only ever read**, it is never enumerated, its contents
+    are never returned by a route, and the run writes its own separate output directory. The
+    difference between reading weights to continue training and serving a corpus over HTTP is the
+    entire difference.
+
+    `training/corpus.jsonl` and `build_dataset.py` stay denied here too -- they are not adapters,
+    and a caller reaching for one has made a mistake worth naming.
+    """
+    if not path_str or not path_str.strip():
+        return ""
+    candidate = pathlib.Path(path_str.strip())
+    if not candidate.is_absolute():
+        candidate = ROOT / candidate
+    resolved = candidate.resolve(strict=False)
+
+    # The two protected artefacts remain refused: neither is an adapter, and asking for one as a
+    # starting point is a confusion worth reporting rather than silently working around.
+    if resolved in {p.resolve() for p in dataset_guard.DENIED}:
+        raise AdapterRefused("That path is a protected SyMoNeuRaL artefact and is not an adapter.")
+    if not resolved.is_dir():
+        raise AdapterRefused("No such adapter directory.")
+    if not (resolved / "adapter_config.json").is_file():
+        # Checked by structure, not by name. A directory without this file is not a PEFT adapter,
+        # and `PeftModel.from_pretrained` would fail on it well after the card was acquired.
+        raise AdapterRefused("That directory is not a PEFT adapter -- no adapter_config.json in "
+                             "it. Nothing was read.")
+    return str(resolved)
+
 
 class JobError(Exception):
     """Refusal to start. Message is ours; never built from file contents."""
@@ -96,21 +148,57 @@ _LINE = re.compile(r"^REINFORCE (?P<body>(?:[a-z_]+=[A-Za-z0-9_.:+-]{1,64} ?)+)$
 # The complete set of keys that may reach an API response. A key not in this set is dropped
 # even if it appears on a well-formed line, so adding a field to the runner is a deliberate
 # two-file change rather than something that leaks in by accident.
+#
+# ## Adding a metric is a two-file change, and forgetting the second file is silent
+#
+# The reinforcement and preference methods report quantities the supervised path has no
+# equivalent of -- `reward`, `reward_std`, `kl`, `completion_len`, `clip_ratio`, `entropy` for
+# GRPO; `reward_chosen`, `reward_rejected`, `reward_accuracy`, `reward_margin` for DPO. A key
+# missing from this set is not an error anywhere: it is **dropped**, and the panel then shows a
+# running RL job with an empty reward curve. That is the dishonest-pixel rule inverted -- a
+# display that looks alive and reports nothing -- so `test_reinforce.py` asserts key by key that
+# `runner._METRIC_KEYS` and this set agree.
+#
+# Note also what these names do NOT contain: a slash. trl logs `rewards/chosen`; the runner maps
+# it to `reward_chosen` before printing, because `/` is outside the value character class and is
+# also how a filesystem path would arrive. The mapping is the runner's job; the narrow character
+# class stays.
 _ALLOWED_KEYS = frozenset({
     "event", "step", "total_steps", "epoch", "loss", "lr", "elapsed_s", "val_loss",
     "rows", "val_rows", "vram_alloc", "vram_reserved", "peak_alloc", "peak_reserved",
     "kind", "stage", "seed", "trainable", "total_params",
+    # shared
+    "grad_norm", "tokens_seen",
+    # reinforcement (GRPO)
+    "reward", "reward_std", "kl", "entropy", "clip_ratio",
+    "completion_len", "completion_len_ok", "rewards", "dropped_long",
+    # preference (DPO)
+    "reward_chosen", "reward_rejected", "reward_accuracy", "reward_margin",
+    "logps_chosen", "logps_rejected",
 })
 _NUMERIC_KEYS = frozenset({
     "step", "total_steps", "epoch", "loss", "lr", "elapsed_s", "val_loss", "rows",
     "val_rows", "vram_alloc", "vram_reserved", "peak_alloc", "peak_reserved", "seed",
     "trainable", "total_params",
+    "grad_norm", "tokens_seen",
+    "reward", "reward_std", "kl", "entropy", "clip_ratio",
+    "completion_len", "completion_len_ok", "rewards", "dropped_long",
+    "reward_chosen", "reward_rejected", "reward_accuracy", "reward_margin",
+    "logps_chosen", "logps_rejected",
 })
 # Free-text-shaped keys are constrained to a vocabulary rather than to a character class,
 # because `kind=<exception class>` is the one field a Python traceback could otherwise steer.
+#
+# **`stage` is the dangerous one.** An unrecognised value here does not degrade a line, it
+# discards the WHOLE line -- see the `ok = False` branch in `parse_log()` -- and that includes
+# `event=error stage=<new stage> kind=<class>`. So a stage added to `runner.STAGES` and not
+# added here turns the one report that has to survive into nothing at all: a failed run with no
+# kind and no stage. The four new stages below are the RL path's, and a test asserts the two
+# tuples match.
 _ENUM_VALUES = {
     "event": {"start", "step", "eval", "done", "error"},
-    "stage": {"load_dataset", "load_model", "build_adapter", "train", "evaluate", "save"},
+    "stage": {"load_dataset", "load_model", "build_adapter", "check_rewards", "load_reference",
+              "train", "rollout", "evaluate", "save"},
 }
 _LOG_TAIL_BYTES = 64 * 1024
 
@@ -177,6 +265,15 @@ class Job:
     exit_file: str
     out_dir: str
     plan: dict
+    # Everything below carries a default, and that is load-bearing rather than lazy. `_load_job`
+    # does `Job(**raw)` over a JSON file that may have been written by an EARLIER version of this
+    # module -- a run started before these fields existed, still on disk, possibly still running.
+    # A field without a default turns reading that record into a TypeError, which `_load_job`
+    # catches and reports as "no run has been started from this surface" while a fine-tune is
+    # live on the card. Adding a required field here silently loses a running job.
+    method: str = "sft"
+    dataset_schema: str = "messages"
+    init_adapter: str = ""
 
     def to_dict(self) -> dict:
         return {**self.__dict__}
@@ -335,6 +432,29 @@ def snapshot() -> dict:
         "vram_note": ("torch.cuda.max_memory_allocated() and max_memory_reserved() inside the "
                       "training process -- the only numbers on this surface that can retire a "
                       "projection"),
+        # The method's own metrics, and ONLY the ones the run actually reported. A key absent
+        # from the runner's output is absent here too rather than present as null: the panel
+        # decides what to draw from what exists, so a null would become an axis with no data.
+        "method": job.method,
+        "method_label": presets.METHODS.get(job.method, {}).get("label", job.method),
+        "metrics": {k: latest[k] for k in (
+            "reward", "reward_std", "kl", "entropy", "clip_ratio", "completion_len",
+            "completion_len_ok", "grad_norm", "loss",
+            "reward_chosen", "reward_rejected", "reward_accuracy", "reward_margin",
+            "logps_chosen", "logps_rejected") if latest.get(k) is not None},
+        "metrics_label": "measured",
+        "metrics_note": (
+            ("reward is the weighted sum of this run's rules-based reward functions, read from "
+             "the trainer. It is a real reading of THAT SCORE. A rising reward is evidence the "
+             "program's score went up -- not by itself evidence the model got better, which is "
+             "why the completions are logged for a human to read."
+             if job.method == "reinforcement" else
+             "DPO's rewards/* are implicit log-ratios against the reference policy, not a reward "
+             "signal from a reward function. `reward_accuracy` is the fraction of pairs where the "
+             "preferred completion scored higher -- it saturates early, and a margin that keeps "
+             "growing after it does is memorisation."
+             if job.method == "preference" else
+             "supervised loss, read from the trainer's own state")),
         "events": events[-40:],
         "measured_peaks": measured_peaks(),
         "log_note": ("this response is built from an allowlist of known-shaped runner output; "
@@ -369,7 +489,8 @@ def measured_peaks() -> dict:
 # ---------------------------------------------------------------- preflight and launch
 
 
-def preflight(model_id: str, preset_id: str, dataset_path: str = "") -> dict:
+def preflight(model_id: str, preset_id: str, dataset_path: str = "",
+              init_adapter: str = "") -> dict:
     """Everything checked before a single weight is read.
 
     Reinforce's `plan_residency(free_bytes)` decides what fits before anything is loaded; this
@@ -399,11 +520,16 @@ def preflight(model_id: str, preset_id: str, dataset_path: str = "") -> dict:
     arch = registry.Arch(**entry.arch)
     plan = registry.plan_fit(arch, rank=preset.rank, target_modules=preset.target_modules,
                              seq_len=preset.max_length, batch=1,
-                             gradient_checkpointing=True, free_bytes=free)
+                             gradient_checkpointing=True, free_bytes=free,
+                             method=preset.method, method_config=preset.method_config)
     plan["free_vram_label"] = free_label
 
     result = {"ok": True, "model": entry.to_dict(), "preset": preset.to_dict(), "plan": plan,
-              "shared": presets.SHARED, "reason": "", "message": ""}
+              "shared": presets.SHARED, "reason": "", "message": "",
+              "method": preset.method,
+              "method_info": presets.METHODS[preset.method],
+              "dataset_schema": preset.dataset_schema,
+              "schema_spec": dataset_guard.SCHEMAS[preset.dataset_schema]}
 
     if plan["verdict"] == "refused":
         result.update({"ok": False, "reason": "capability",
@@ -423,11 +549,59 @@ def preflight(model_id: str, preset_id: str, dataset_path: str = "") -> dict:
         result.update({"ok": False, "reason": "busy",
                        "message": "A run is already in progress on this surface."})
 
+    # The rollout backend, checked before the card is taken rather than at step 0. Only the
+    # reinforcement method generates anything, so the other two skip this entirely.
+    if preset.method == "reinforcement":
+        backend = (preset.method_config or {}).get("rollout", "transformers")
+        state = rollout.check(backend)
+        result["rollout"] = {"backend": backend, **state}
+        if not state["ok"]:
+            result.update({"ok": False, "reason": state["reason"], "message": state["message"]})
+
     if dataset_path:
         try:
-            result["dataset"] = dataset_guard.admit(dataset_path).to_dict()
+            # Admitted against the schema THIS PRESET'S METHOD requires, not against a default.
+            # A preference run pointed at a file of chat examples is refused here, by name, with
+            # the shape it wanted -- rather than failing inside a collator twenty minutes in.
+            info = dataset_guard.admit(dataset_path, schema=preset.dataset_schema)
+            result["dataset"] = info.to_dict()
+            # Reward functions resolved against the columns the dataset actually has, so
+            # `answer_match` is offered when there is an `answer` column and refused by name when
+            # there is not. Resolved here because a reward selection that cannot be honoured is a
+            # refusal to start, not a surprise at step 0.
+            if preset.method == "reinforcement":
+                names = (preset.method_config or {}).get("rewards", ())
+                try:
+                    plan_r = rewards.resolve(names, available_fields=info.fields)
+                    result["rewards"] = {"active": plan_r["names"],
+                                         "weights": plan_r["weights"],
+                                         "refused": plan_r["refused"],
+                                         "offered": rewards.offered(info.fields)}
+                except rewards.RewardError as exc:
+                    result.update({"ok": False, "reason": "rewards", "message": str(exc)})
         except dataset_guard.Refused as exc:
             result.update({"ok": False, "reason": f"dataset_{exc.code}", "message": exc.message})
+
+    # The starting adapter. Validated even when empty, so the response always says which one a
+    # run would use -- "a freshly initialised adapter" is a decision worth stating rather than
+    # a blank field.
+    try:
+        resolved_init = _admit_init_adapter(init_adapter)
+    except AdapterRefused as exc:
+        resolved_init = ""
+        result.update({"ok": False, "reason": "init_adapter", "message": str(exc)})
+    result["init_adapter"] = resolved_init or None
+    result["init_adapter_note"] = (
+        ("continuing from an existing adapter. Its rank and target modules override this "
+         "preset's -- an adapter's shape is fixed when it is created. Nothing is written back "
+         "to it; this run writes its own output directory.")
+        if resolved_init else
+        ("starting from a freshly initialised adapter. For the reinforcement method that is "
+         "usually the wrong choice: the standard pipeline is supervised first and RL on top, so "
+         "the shipped persona adapter is the intended starting point. Pass it as init_adapter."
+         if preset.method == "reinforcement" else
+         "starting from a freshly initialised adapter, which is the normal choice for this "
+         "method."))
 
     # Environment facts that are true or not, checked before the run rather than at step 0.
     problems = []
@@ -443,7 +617,7 @@ def preflight(model_id: str, preset_id: str, dataset_path: str = "") -> dict:
     return result
 
 
-def start(model_id: str, preset_id: str, dataset_path: str) -> dict:
+def start(model_id: str, preset_id: str, dataset_path: str, init_adapter: str = "") -> dict:
     """Launch a run under the governor, detached, and record it on disk.
 
     The command is `gpu-governor.sh with train -- <training venv python> runner.py ...`:
@@ -457,12 +631,16 @@ def start(model_id: str, preset_id: str, dataset_path: str) -> dict:
     * `start_new_session=True` detaches it -- see the module docstring for why an API restart
       must not fire the governor's release trap under a live run.
     """
-    pre = preflight(model_id, preset_id, dataset_path)
+    pre = preflight(model_id, preset_id, dataset_path, init_adapter)
     if not pre["ok"]:
         raise JobError(pre.get("message") or pre.get("reason") or "preflight refused")
 
     preset = presets.PRESETS[preset_id]
-    info = dataset_guard.admit(dataset_path)          # admitted again; the guard is not optional
+    # Admitted again, against the preset's own schema; the guard is not optional and is not
+    # cached from the preflight. A caller that reached `start()` without a preflight still gets
+    # every check, which is the property that makes the guard a guard.
+    info = dataset_guard.admit(dataset_path, schema=preset.dataset_schema)
+    init_adapter = _admit_init_adapter(init_adapter)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -498,6 +676,42 @@ def start(model_id: str, preset_id: str, dataset_path: str) -> dict:
     if preset.max_steps:
         argv += ["--max-steps", str(preset.max_steps)]
 
+    # ---- the method's own arguments ---------------------------------------------------
+    #
+    # Passed explicitly rather than as a serialised blob, so that every value crossing the
+    # process boundary is one this module chose and `build_script` quoted. A `--method-config
+    # '{...}'` argument would put operator-influenced JSON on a command line for the runner to
+    # re-parse, and the argparse `choices=` on the far side would no longer be checking anything.
+    cfg = preset.method_config or {}
+    argv += ["--method", preset.method, "--dataset-schema", preset.dataset_schema]
+    if init_adapter:
+        argv += ["--init-adapter", init_adapter]
+    if preset.method == "preference":
+        argv += ["--beta", str(cfg.get("beta", 0.1))]
+        if cfg.get("loss_type"):
+            argv += ["--loss-type", str(cfg["loss_type"])]
+        if cfg.get("precompute_ref_log_probs"):
+            argv += ["--precompute-ref-log-probs"]
+    elif preset.method == "reinforcement":
+        argv += [
+            "--num-generations", str(cfg.get("num_generations", 4)),
+            "--max-completion-length", str(cfg.get("max_completion_length", 192)),
+            "--beta", str(cfg.get("beta", 0.0)),
+            "--temperature", str(cfg.get("temperature", 1.0)),
+            "--top-p", str(cfg.get("top_p", 1.0)),
+            "--scale-rewards", str(cfg.get("scale_rewards", "group")),
+            "--rewards", ",".join(cfg.get("rewards", ())),
+            "--rollout", str(cfg.get("rollout", "transformers")),
+        ]
+        if cfg.get("loss_type"):
+            argv += ["--loss-type", str(cfg["loss_type"])]
+        if cfg.get("mask_truncated_completions"):
+            argv += ["--mask-truncated-completions"]
+        if cfg.get("rollout") == "vllm":
+            url = rollout.vllm_base_url()
+            if url:
+                argv += ["--vllm-base-url", url]
+
     script = build_script(argv, exit_path)
 
     log_fh = log_path.open("ab", buffering=0)
@@ -523,7 +737,8 @@ def start(model_id: str, preset_id: str, dataset_path: str) -> dict:
     job = Job(id=job_id, model=pre["model"]["id"], preset=preset.id,
               dataset_rows=info.rows, started_at=time.time(), pid=proc.pid,
               log=str(log_path), exit_file=str(exit_path), out_dir=str(out_dir),
-              plan=pre["plan"])
+              plan=pre["plan"], method=preset.method,
+              dataset_schema=preset.dataset_schema, init_adapter=init_adapter)
     PROGRESS_FILE.unlink(missing_ok=True)
     JOB_FILE.write_text(json.dumps(job.to_dict(), indent=2))
     return job.to_dict()
@@ -615,7 +830,8 @@ def status() -> dict:
             snap_state = "failed"
         step, total = int(prog.get("step") or 0), int(prog.get("total_steps") or 0)
         if snap_state in ("running", "queued") and total:
-            detail_extra = f" · step {step}/{total} · {job.preset} on {job.model}"
+            method_bit = (f" · {job.method}" if job.method != "sft" else "")
+            detail_extra = f" · step {step}/{total} · {job.preset} on {job.model}{method_bit}"
         elif snap_state in ("finished", "failed"):
             detail_extra = f" · last run: {snap_state} ({job.preset})"
 
@@ -637,7 +853,9 @@ def status() -> dict:
         # different claim from "this unit can take work" and was the strongest single argument
         # that the surface was a status panel rather than a training bay.
         n_models = sum(1 for e in registry.catalogue() if e.trainable)
-        detail = (f"{n_models} base model(s) loadable · {len(presets.PRESETS)} tuning presets · "
+        n_rl = sum(1 for p in presets.PRESETS.values() if p.is_rl)
+        detail = (f"{n_models} base model(s) loadable · {len(presets.PRESETS)} tuning presets "
+                  f"across {len(presets.METHODS)} methods ({n_rl} reinforcement) · "
                   f"a run takes the whole card{detail_extra}")
 
     return {
