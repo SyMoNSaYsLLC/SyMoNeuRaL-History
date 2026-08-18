@@ -2,11 +2,19 @@
 
 **Last updated 2026-08-17 08:30. Written for a fresh agent with zero prior context.**
 
-> **If you read nothing else:** nothing is broken, nothing is blocked, and **nothing is
-> waiting on a deploy** — the repo and production agree. Run `node tests/frontend.mjs` and
-> `node tests/frontend.mjs https://symoneural.com`; both should say **26/26**. If they
-> disagree, production is behind and only Garrett can fix that — see §0b. Read `git log`,
-> then §5.
+> **If you read nothing else:** nothing is broken and nothing is blocked, but **one page IS
+> now waiting on a deploy** — `site/training.html` carries the 27B measurement (§0b-ter) and
+> `/var/www/symoneural/training.html` does not. `sudo scripts/deploy.sh --prune` is Garrett's
+> to run; an agent cannot. Everything else in the repo and production agree. Run
+> `node tests/frontend.mjs` and `node tests/frontend.mjs https://symoneural.com`; the local
+> one says **43/43**. If they disagree, production is behind and only Garrett can fix that —
+> see §0b. Read `git log`, then §5.
+>
+> **The 27B work is committed** — `ec9e995` (manual correction + inference measurement) and
+> `4b85bd0` (the QLoRA training path). Both verified 2026-08-18 16:40: pytest **941 passed**
+> (the documented baseline, no regression), `tests/frontend.mjs` **43/43** on a spare port,
+> and `build_training.py` run twice is byte-identical and reproduces the committed HTML
+> exactly, so the generator and the page in git agree.
 
 Read this file first and read all of it. It is standalone — you will not have the previous
 conversation, so every number, path and decision you need is stated here.
@@ -19,9 +27,10 @@ conversation, so every number, path and decision you need is stated here.
 
 ## 0. Sixty-second version
 
-- **Nothing is broken, nothing is blocked, nothing is pending.** **26/26 locally and
-  26/26 against the public site**, verified 2026-08-17 08:30. The suite generates a real
-  image on the real card mid-run, so it is a genuine end-to-end check.
+- **Nothing is broken and nothing is blocked; one deploy is pending** (`site/training.html`,
+  see the box above). The suite was **26/26** when this line was written on 2026-08-17 08:30
+  and is **43/43** as of 2026-08-18 — it has grown, so trust the run and not this number. It
+  generates a real image on the real card mid-run, so it is a genuine end-to-end check.
 - **Three deploy commands exist and they are not interchangeable.** `site/` content needs
   `sudo scripts/deploy.sh --prune`; `backend/api.py` needs
   `sudo systemctl restart symoneural-api`; `ops/Caddyfile` needs
