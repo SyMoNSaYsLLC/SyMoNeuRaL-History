@@ -21,9 +21,33 @@ and nowhere earlier.
 
 All of it — `ops/gateway/`, `backend/apps/gateway/__main__.py`, the contracts, the two new
 frontend assertions — is on the branch **`worktree-gateway-online`**, currently through
-`9809f91` (it starts at `15ac0cf`). In your working checkout `ops/gateway/setup.sh` is still a
+its **tip** — take `worktree-gateway-online` as it stands rather than any commit named here,
+because this line has now been rewritten twice as the branch grew and a named head goes stale
+the moment anything lands on it. It starts at `15ac0cf`. In your working checkout `ops/gateway/setup.sh` is still a
 missing file, so Phase A step 1 fails until you do this. The branch lives in the shared `.git`,
 so it survives the worktree being removed.
+
+### Merging with main — the one conflict that is a decision, already taken
+
+Main independently grew its own `backend/apps/gateway/abi.py`, so git reports **add/add** on it
+(and on `test_gateway.py` and `docs/specs/gateway-completion.md`), plus content conflicts in
+`backend/apps/gateway/__init__.py`, `site/gateway.html`, `tests/frontend.mjs` and
+`tools/build_pages.py`. Seven in total; everything else auto-merges, confirmed with
+`git merge-tree --write-tree HEAD main`, which trial-merges without touching the tree.
+
+**Take this branch's `abi.py` wholesale.** This is not a close call and does not need
+re-litigating: every line unique to main's copy is either its narrower
+`SUPPORTED = ("address", "uint256", "bool", "string")` or the sentence justifying that. It
+carries no logic this one lacks. And main's version **cannot decode the contract it ships
+with** — `licenceByNonce` returns `(address, address, uint256, bytes32, uint64, uint64)` and
+main supports neither `bytes32` nor `uint64`. Same for `test_gateway.py`: this branch's covers
+main's cases plus the clearance-store and LED paths. The other five need hunk-wise resolution.
+
+**The merge cannot be run from the `gateway-online` worktree as it stands.** That tree carries
+89 uncommitted files belonging to other sessions — tuner, asicminer, `backend/api.py`, a dozen
+`site/*.html` — and **50 of them are files this merge touches**, so git refuses to start and
+the ways past it either commit someone else's work under this branch or destroy it. Land or
+set that work aside first; then the merge is mechanical.
 
 **Take the branch, not a single commit.** Cherry-picking `15ac0cf` alone silently drops
 everything in `7ac0881` — the low-s signing guard, the coincurve pin, the `isLicensed`
