@@ -145,6 +145,39 @@ NVIDIA's FastAPI fork was written over `backend/`; a clone of NVIDIA/NemoClaw la
   are now committed (`8e48acd`). The Python one was renamed from `symon client.py` — the space
   broke the import its own docstring prescribes.
 
+### `/api/studio/models` — a model list that does no work (2026-08-18)
+
+`GET /api/studio/models` is declared inline in `backend/api.py`, above the StaticFiles mount.
+It reads **one pre-computed file**, `run/registry.json`, written out-of-band by
+`python3 tools/build_registry.py`. It does not scan, fork, probe the network, or take the GPU
+lock — that is the point of it, and `apps/test_studio_models.py` asserts it against the
+handler's own AST, so "fixing" a stale response by calling `registry.catalogue()` from the
+route fails the suite rather than quietly landing a directory walk on the live path.
+
+- **Run the generator after `scripts/fetch-models.sh`, or on a timer.** It is deliberately
+  **not** in the build list in `.claude/CLAUDE.md`: it writes nothing under `site/`, so it is
+  independent of the `build_cachebust.py` stamp ordering, and rebuilding the site does not
+  change its answer while dropping a model into the cache does.
+- Missing file → **200 with `models: []` and `generated_at: null`**, and a `detail` naming the
+  generator. Not a 404: this is a list a client polls, and an empty list keeps its decode path
+  intact.
+- **`latency_ms` is null on every row and that is the honest answer.** Nothing on this machine
+  stores a per-model latency. The `151 tok/s` on the site is a string literal in
+  `tools/build_console.py:115`; the only measurement persisted to disk is peak VRAM
+  (`run/reinforce/measured-peaks.json`). `_latency_for()` in the generator is the single
+  documented place to wire a real reading in, per row, once something measures one — and a
+  test fails if a number ever appears without `latency_label: "measured"`. Do not fill it from
+  the console constant: that figure was measured for one model at one quantisation, and
+  stamping it across every row states something about models it was never measured on.
+- **There is no Swift `StudioClient` in this repo** — zero matches, and none in any commit.
+  Nothing constrained the response shape, so it mirrors what `/api/train/models` already ships
+  (a `models` array, each figure carrying its own label). If a real client turns up wanting
+  different key names, renaming them is a small edit; the shape was chosen, not matched.
+- `grep -c include_router` is still **8** and there is still exactly **one** `app.mount`. Both
+  are asserted by the new test file.
+
+Suite after this change: **887 passed** (871 baseline + 16 new), same two mandatory `--ignore`s.
+
 ---
 
 ## 0c. THE OVERNIGHT QUEUE — written 2026-08-17 ~12:45, Garrett asleep

@@ -2206,6 +2206,106 @@ app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
                    dependencies=[Depends(throttled_for("sigil"))])
 
+
+# ---- the studio model list -------------------------------------------------
+# A read of one pre-computed file, and deliberately nothing else.
+#
+# `apps/reinforce/registry.py` can enumerate every model on this box, and it is stdlib-only
+# specifically so this module may import it -- which it already does, at /api/train/models.
+# That route walks the HF cache, opens each `config.json`, and parses the key/value header out
+# of every GGUF present. It is the right thing behind the training bay, where an operator has
+# asked for a fresh scan and will wait for it.
+#
+# This route is the opposite case: a client polling for a model list on the live path. The
+# architecture rule for this stack is that the control plane's scans stay off that path
+# entirely, so the scan happens out-of-band in `tools/build_registry.py` and lands in
+# `run/registry.json`, and what happens here is one `read_text` and a validation pass. No
+# directory walk, no subprocess, no network, and nothing that could ever take the GPU lock.
+#
+# Declared BEFORE the StaticFiles mount below, for the reason the section routes give.
+STUDIO_REGISTRY_FILE = RUN / "registry.json"
+
+# Only these keys survive a read, and each is checked against the type it must be. Re-validated
+# even though `tools/build_registry.py` wrote it, exactly as `apps/reinforce/jobs.py` re-validates
+# `progress.json`: `run/` is world-readable state on a box that also runs a web server, and
+# trusting a field because we wrote it is how a validated field silently becomes an unvalidated
+# one the next time somebody edits the writer.
+_STUDIO_FIELDS: dict[str, type | tuple[type, ...]] = {
+    "id": str, "name": str, "kind": str, "path": str,
+    "present": bool, "trainable": bool, "reason": str,
+    "capabilities": list,
+    "bytes_on_disk": int, "bytes_on_disk_label": str,
+    "quantisation": str, "quantisation_label": str,
+    "parameters": int, "parameters_label": str,
+    "latency_ms": (int, float), "latency_label": str, "latency_measured_at": int,
+}
+
+
+def _studio_rows(raw: object) -> list[dict]:
+    """Keep the rows that are shaped like rows, drop everything else without comment.
+
+    A row must at least name itself; anything without a string `id` is not a model and is not
+    reported as one. Absent and wrong-typed fields become `None` rather than being omitted, so
+    the client decodes one stable shape whether or not the writer has caught up with this list.
+    """
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for row in raw:
+        if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+            continue
+        clean: dict = {}
+        for key, want in _STUDIO_FIELDS.items():
+            val = row.get(key)
+            # `bool` is a subclass of `int` in Python, so an unguarded isinstance(True, int)
+            # would let `present: true` through as a byte count.
+            if want is not bool and isinstance(val, bool):
+                val = None
+            clean[key] = val if isinstance(val, want) else None
+        out.append(clean)
+    return out
+
+
+@app.get("/api/studio/models", tags=["studio"],
+         summary="Models on this machine, read from a pre-computed file")
+async def studio_models() -> dict:
+    """The model list, as last written by `tools/build_registry.py`.
+
+    **`latency_ms` is null on every row, and that is the honest answer today.** Nothing on this
+    machine stores a per-model latency: the token rate on the site is a literal in
+    `tools/build_console.py`, and the only measurement persisted to disk is peak VRAM. The field
+    is present so the response shape does not change when a real reading appears; a number will
+    only ever be written by something that measured it, for the row it measured.
+
+    An empty `models` with `generated_at: null` means the file has not been written yet -- a
+    200 rather than a 404, because this is a list a client polls and an empty list keeps its
+    decode path intact. `detail` then names the generator to run, which is the useful half of
+    the 404 the section routes raise.
+    """
+    try:
+        doc = json.loads(STUDIO_REGISTRY_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        doc = None
+    if not isinstance(doc, dict):
+        return {
+            "models": [], "generated_at": None, "schema": None,
+            "detail": ("run/registry.json has not been generated; "
+                       "run python3 tools/build_registry.py"),
+        }
+    generated = doc.get("generated_at")
+    schema = doc.get("schema")
+    return {
+        "models": _studio_rows(doc.get("models")),
+        "generated_at": generated if isinstance(generated, int) and not isinstance(generated, bool) else None,
+        "schema": schema if isinstance(schema, int) and not isinstance(schema, bool) else None,
+        "latency_note": ("null latency means unmeasured, not zero. See the route docstring: no "
+                         "per-model timing is recorded on this machine yet."),
+        "freshness_note": ("this file is written out-of-band and is not refreshed by this "
+                           "request; re-run tools/build_registry.py after changing what is on "
+                           "disk"),
+    }
+
+
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a
 # `.html`, which is what makes them shareable. It is done HERE because FastAPI does all
