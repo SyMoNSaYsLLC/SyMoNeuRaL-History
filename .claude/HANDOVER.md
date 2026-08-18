@@ -89,6 +89,64 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
+## 0b-bis. `scripts/symoneural.sh on` CANNOT WORK — systemd owns the API (2026-08-18)
+
+**`.claude/CLAUDE.md` presents `./scripts/symoneural.sh on|off|status` as the way to manage the
+API and never mentions systemd. On this box that is wrong and it will send you hunting a bug you
+did not cause.** `symoneural-api.service` is **enabled and active** with `Restart=always`, so:
+
+- `symoneural.sh off` SIGTERMs the process; systemd restarts it three seconds later.
+- `symoneural.sh on` then loses the bind race and `run/api.out` reads
+  `[Errno 98] ... address already in use`, which looks exactly like a broken tree.
+- Worse, the script has *already* written its own dead PID into `run/api.pid` by then, so
+  `symoneural.sh status` reports **down** while the API is serving `200` perfectly well.
+
+`run/api.pid` was **absent** at the start of this session, which is consistent with somebody
+hitting this before and deleting the file rather than writing it down.
+
+**Use systemd. It is the supervisor.**
+
+```bash
+systemctl is-active symoneural-api          # the real answer
+sudo systemctl restart symoneural-api
+journalctl -u symoneural-api -n 50
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8800/api/status   # 200
+```
+
+`symoneural.sh` is still correct for a *spare* instance on another port, which is what
+`tests/frontend.mjs` wants — and the kill switch is `sudo systemctl stop symoneural-api`, not
+`symoneural.sh off`.
+
+### Two documented numbers are stale — you did not break them
+
+| Says | Where | Actually |
+|---|---|---|
+| `grep -c include_router backend/api.py` → **6** | §1c of this file, below | **8** — and `git show HEAD:backend/api.py` also gives 8, so HEAD ships 8. The *lesson* in that section (count the mounts after any `api.py` merge) is still right; only the constant drifted. |
+| pytest → **682 pass** | `.claude/CLAUDE.md`, "Test in a real browser" | **871 passed**, same command, same two mandatory `--ignore`s |
+
+Verified 2026-08-18 alongside the restore below. Frontend suites on that date:
+`tests/frontend.mjs` **43/43**, `tuner_failpaths.mjs` **32/32**, `tuner_watch.mjs` **8/8**.
+(§0b above still says 26/26 and the note further down says 28/28; the suite has grown.)
+
+### `backend/` was displaced and has been fully restored
+
+Overnight 2026-08-18 the real `backend/` was moved to `backend/backend.old/` and a clone of
+NVIDIA's FastAPI fork was written over `backend/`; a clone of NVIDIA/NemoClaw landed at
+`frontend/`. **Nothing was lost** — all 197 tracked files were diffed against `8951715` and
+0 of 197 differed. `backend/` is back and `git diff --quiet HEAD -- backend/` passes.
+
+- The two clones are parked at `references/fastapi-nvidia/` (74M) and `references/NemoClaw/`
+  (314M), under the gitignored `references/` tree. **Delete them when you are satisfied** —
+  they are kept only to make the move reversible. Nothing of ours is inside either.
+- **There is no `frontend/` directory and there never was one in this repo.** Any instruction
+  naming `frontend/src/...` was written against that clone. The site is generated static HTML
+  (`tools/build_*.py` → `site/`); there is no React app, no `package.json`, no bundler.
+- `symon_client.py` / `symon_client.js` were the only never-committed files in the incident and
+  are now committed (`8e48acd`). The Python one was renamed from `symon client.py` — the space
+  broke the import its own docstring prescribes.
+
+---
+
 ## 0c. THE OVERNIGHT QUEUE — written 2026-08-17 ~12:45, Garrett asleep
 
 Garrett handed over a long list and went to bed, asking explicitly that the plan live here in

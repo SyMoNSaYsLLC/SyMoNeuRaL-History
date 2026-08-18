@@ -1,0 +1,50 @@
+[package]
+name = "symon-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Front-door HTTP gateway for symoneural.com: proxies to the FastAPI control plane, validates payloads in WASM."
+license = "Apache-2.0"
+
+# The binary is `symon-gateway`. Note the hyphen: an earlier spec called it `symon_gateway`,
+# and `ops/systemd/*.service` plus scripts/symoneural.sh must agree with whatever is here.
+[[bin]]
+name = "symon-gateway"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros", "http2"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors", "limit"] }
+hyper = "1"
+http = "1"
+http-body-util = "0.1"
+bytes = "1"
+futures-util = "0.3"
+
+# `stream` is what makes the SSE passthrough a passthrough rather than a buffer-and-forward.
+reqwest = { version = "0.12", default-features = false, features = ["stream", "json", "rustls-tls"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+wasmtime = "27"
+wasmtime-wasi = "27"
+
+utoipa = { version = "5", features = ["axum_extras"] }
+# 9.x, not 8.x. utoipa-swagger-ui 8 is built against axum 0.7; against axum 0.8 it fails with
+# `the trait bound Router<_>: From<SwaggerUi> is not satisfied`, which reads like a missing
+# feature flag rather than a version mismatch. `vendored` embeds the Swagger UI assets in the
+# binary instead of fetching them at build time -- no network at build, nothing to serve off disk.
+utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
+
+anyhow = "1"
+thiserror = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

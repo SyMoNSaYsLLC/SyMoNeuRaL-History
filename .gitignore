@@ -93,3 +93,11 @@ backend/apps/licensing/contract-signing.key
 # source in any case, they are other branches' working copies. `git worktree list` is how
 # you enumerate them; `git worktree remove` is how they go away.
 .claude/worktrees/
+
+# Rust build output for symon-gateway. Hundreds of megabytes of compiled dependencies, and
+# `cargo build` reproduces all of it from Cargo.toml + Cargo.lock. Cargo.lock IS tracked --
+# it is a binary that gets deployed, so the exact dependency versions matter.
+symon-gateway/target/
+
+# The compiled Go validator. Built by `make build-wasm`; see ops/middleware/limiter.go.
+ops/middleware/*.wasm
