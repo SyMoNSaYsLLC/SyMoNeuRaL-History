@@ -87,7 +87,7 @@
         <p><b>~$1,000 once</b>, then $0.045/hr of electricity at full tilt.
            A year of running it flat out, all in, is
            <b>$1,394</b>.</p>
-        <p>Ceiling: a 14B at Q4, or a 32B at IQ2 with little context headroom.</p>
+        <p>Ceiling: <b>measured</b> &mdash; a 27B at Q2_K, 56.90 tok/s, with 64K of context.</p>
       </div>
       <div class="card" style="border-color:rgba(255,171,61,.35)">
         <img class="ico" src="/studio-64.png?v=5827422377" alt="" width="38" height="38">
@@ -555,8 +555,12 @@
       observed inference runs. Bytes-per-parameter assumptions: FP16 2.0, INT8
       1.0, Q4 ~0.55, IQ2 ~0.3. KV cache is budgeted separately and grows with
       context — at 131 KB/token for an 8B-class model with FP16 KV, a 32 K
-      context costs 4.3 GB on top of the weights. The practical ceiling on this
-      card is a <strong>14B at Q4/Q6, or a 32B at IQ2</strong>.
+      context costs 4.3 GB on top of the weights.
+      <del>The practical ceiling on this card is a <strong>14B at Q4/Q6, or a
+      32B at IQ2</strong>.</del> &mdash; superseded by measurement (2026-08-18):
+      the real ceiling is a <strong>27B at Q2_K</strong>, resident in 14.07 GiB
+      and decoding at <strong>56.90 tok/s measured</strong>, with room for 64K of
+      context. See the training manual.
     </p>
 
     <div class="grid g4" style="margin-top:30px">

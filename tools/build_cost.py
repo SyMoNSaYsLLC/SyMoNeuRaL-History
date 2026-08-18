@@ -178,7 +178,7 @@ COST = f"""{BEGIN}
         <p><b>~$1,000 once</b>, then ${RUN_HR:.3f}/hr of electricity at full tilt.
            A year of running it flat out, all in, is
            <b>${CARD_COST + RUN_HR * 8760:,.0f}</b>.</p>
-        <p>Ceiling: a 14B at Q4, or a 32B at IQ2 with little context headroom.</p>
+        <p>Ceiling: <b>measured</b> &mdash; a 27B at Q2_K, 56.90 tok/s, with 64K of context.</p>
       </div>
       <div class="card" style="border-color:rgba(255,171,61,.35)">
         <img class="ico" src="/studio-64.png" alt="" width="38" height="38">
