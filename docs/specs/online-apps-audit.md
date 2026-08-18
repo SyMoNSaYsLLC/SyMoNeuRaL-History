@@ -713,11 +713,51 @@ entirely. The test would be more honest asserting against the guard directly, or
    engine to print"* — while `factorial(20)` still returns its exact answer. The rack also still
    reports 12 units rather than the merged 11 for the same reason.
 
-### Still to build: the transcode
+### The transcode — built, in `adec23d`
 
-Designed and measured in §7, and **unblocked as of `aebd444`** — it had to be built on top of the
-tuner session's rewritten `sessions.py`, which is now committed, and this branch is rebased onto
-it. Not started at the time of this commit. Two constraints carried forward from that session:
-detect-then-respawn is unavoidable, and `_spawn`'s *"it never quietly re-encodes, because the GPU
-belongs to inference"* must be rewritten with the engine-separation measurement as its
-justification rather than quietly contradicted.
+Designed and measured in §7, unblocked by `aebd444`, and now implemented in both tiers. A session
+still starts with `-c copy` and most channels never leave that path; when the input dump names
+codecs the browser has been measured unable to decode, ffmpeg is respawned once with the cheapest
+repair — `-c:v copy -c:a aac` for a bad soundtrack, `h264_nvenc` (or `libx264`) for a bad picture.
+`public()["repair"]` names what was re-encoded. `SYMONEURAL_TUNER_REPAIR=off` restores the previous
+behaviour exactly. 17 new tests, 176 in the suite, green.
+
+The allow-list polarity is the load-bearing decision: `PLAYABLE_VIDEO` / `PLAYABLE_AUDIO` list what
+**does** play, so an unrecognised codec gets repaired rather than silently passed. A deny-list is
+wrong in the direction that breaks working channels — which is exactly how `mp2` nearly shipped as
+unplayable — and an allow-list is wrong only in the direction of a needless transcode.
+
+Two bugs the tests found that reading the code did not:
+
+- `ts_sync_offset` returns **-1** when it cannot lock, and the first draft sliced with it unguarded.
+  `chunk[-1:]` discards all but the final byte — a repair that destroys the stream it repairs.
+- The repair is decided by the stderr reader but applied by the pump thread, since only the pump may
+  touch `proc.stdin`, so it lands on the **next write**. Given a 576 KB file, ffmpeg drains it all
+  before it finishes announcing codecs and the plan is made with no writes left — measured, with
+  `bytes_in` equal to the file size at that instant. Harmless in production, where a channel never
+  stops mid-broadcast, but it means the fixture has to be a continuous feeder to be honest.
+
+#### One decision that is Garrett's, not an agent's
+
+**The video tier does not take a `gpu-governor.sh` lease**, and `CLAUDE.md` says everything touching
+the GPU goes through the governor. This is a deliberate exception, argued from two measurements, and
+it should either be ratified in `CLAUDE.md` or overruled — not left as an undocumented divergence:
+
+- A tuner session lives as long as somebody watches, so a lease here would be held **for a process
+  lifetime**, which is the one thing the governor's own rules forbid, and it would lock the CLI and
+  every model out until the acquire timeout.
+- NVENC does not contend for what the governor arbitrates: encoder 50% while compute read 2%, and
+  encoder 0% while inference held compute at 67%.
+
+What it does contend for is VRAM, so that is checked instead — below `VRAM_FLOOR_MIB` (1024 MiB by
+default) free, the tuner takes the CPU path rather than the last of the card. Overruling this costs
+the video tier, not the audio one: `SYMONEURAL_TUNER_REPAIR=cpu` keeps every channel playable at a
+measured 13.4× realtime and never touches the GPU.
+
+#### Not done: the page copy
+
+`site/tuner-watch.html` still says the tuner does not use the GPU, and its codec warning does not
+yet read `repair` — so a repaired channel will play while the page still explains that it cannot.
+The backend publishes what the page needs; wiring it up is a `tools/build_pages.py` change, which
+means it also needs `build_cachebust.py` after it, and it is the next piece of work rather than a
+finished one.
