@@ -94,6 +94,9 @@ from apps.guide import routes as guide_routes  # noqa: E402  -- question -> chan
 from apps.accounts import routes as accounts_routes  # noqa: E402  -- signup,
 # login and sessions. Imported as `routes` rather than the package so the package's
 # many bare names (verify, enabled, status) cannot shadow anything in this module.
+from apps import voice  # noqa: E402  -- speech to text on the CPU. Bound to the package so
+# its bare `status`/`enabled`/`installed` cannot shadow this module's own. Importing it drags
+# in no new dependency: the engine is a subprocess, not a library.
 from apps import reinforce  # noqa: E402  -- the training bay. Bound to the package so its
 # bare `status`/`enabled` cannot shadow this module's own. Importing it is cheap and safe
 # whether or not the surface is switched on: `apps/reinforce/__init__.py` defines
@@ -171,6 +174,12 @@ _RATE_SUGGESTED = {
     "chat":  (120, 2000),       # ~1-3 s of GPU, and the queue is the real backstop
     "remix": (40,  600),        # a longer generation
     "image": (20,  300),        # ~9 s of exclusive GPU each
+    # Voice is the first surface where the comment above does NOT apply. It is CPU work with
+    # no GPU queue in front of it, so nothing else rations it and the bucket is the only
+    # backstop there is. ~0.65 s of CPU each: an order cheaper than image, an order dearer
+    # than RavenCalc. The key must exist even while unset -- throttled_for() reads LIMITS on
+    # its deny path, and LIMITS is built from this dict.
+    "voice": (60,  900),
 }
 
 
@@ -2157,6 +2166,14 @@ app.include_router(project.router, prefix="/api/project", tags=["project"])
 # what exists under it. Only a new top-level path -- the /overview /livestack /controlboard
 # /receipts class -- has to be added there, and that has bitten before.
 app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
+# Speech in, on the CPU. This surface takes no governor lease -- measured, not asserted: the
+# whisper.cpp build here is GGML_CUDA=OFF, 284 MiB RSS and 0 VRAM, so a spoken question is
+# transcribed *while* a chat generation runs rather than after it. RavenCalc is the precedent.
+# Off unless SYM_VOICE_ENABLED=1 and SYM_VOICE_TOKEN are both set; see apps/voice/__init__.py.
+# There is deliberately NO `voice` rack unit yet: status() is written and correct, but its href
+# is /voice.html and that page does not exist, so the row would be a dead link on the front
+# page. Add the row in the same commit as the page.
+app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 
 # ---- clean URLs for the four front-page sections ---------------------------
 # tools/build_split.py writes one page per section. These give them addresses without a
