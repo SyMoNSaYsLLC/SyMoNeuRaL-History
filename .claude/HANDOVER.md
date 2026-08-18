@@ -183,7 +183,7 @@ the same hour. Rules that follow from that, and they are not optional:
 Merges have worked so far: the tuner session's `ac3`/`aac` fixture cases and this session's
 `emptylive` case coexist and `node tests/tuner_failpaths.mjs` is **27/27** with both in.
 
-### 1c. THE MERGE — four clean branches are IN. Four remain. (2026-08-17 15:4x)
+### 1c. THE MERGE — nine branches are IN. Two remain, and both were handed back. (2026-08-17)
 
 Garrett's instruction was "merge the four clean branches first". Done, as `5662390`:
 
@@ -340,7 +340,7 @@ Built as `<details class="tn-stats">` on `/tuner.html` and as the `s` panel on
 screen. See §2h. Every figure is read from the player or the session document, and a figure the
 player has not reported yet renders `-`, which is itself the reading.
 
-### 4. Five surfaces to bring online — 1 of 5 DONE (Miner); the rest ONE SESSION EACH, IN FLIGHT (see §1b)
+### 4. Five surfaces to bring online — 2 of 5 DONE (Miner, Reinforce); the rest ONE SESSION EACH, IN FLIGHT (see §1b)
 
 **Do not start these from a general session.** As of 14:55 there is a dedicated background
 session per surface and they are already writing: `site/reinforce.html` and
@@ -348,15 +348,20 @@ session per surface and they are already writing: `site/reinforce.html` and
 a generator mid-write. What is below is the survey those sessions should be reading, not a
 queue to pick up.
 
-**Still true and owned by nobody, so somebody must do it:** `apps.reinforce` has *no*
-`include_router` in `backend/api.py` (verified 14:52 — only tuner, accounts, gateway, guide,
-project are mounted), and the `train` rack unit at `api.py:1449` is hand-rolled with
-`href="/training.html"` — the manual — while `apps.reinforce.status()` already returns the
-correct unit dict with `href="/reinforce.html"`. Its own docstring names the contract:
-`app.include_router(router, prefix="/api/train", tags=["reinforce"])` and `Unit(**status())`.
-Verified safe to mount: `python3 -c "import sys; sys.path.insert(0,'backend'); from apps.reinforce
-import router, status"` imports clean on the **system** interpreter (7 routes) — it does not drag
-torch into the serving path.
+**~~Still true and owned by nobody, so somebody must do it:~~ RETRACTED — both halves of this
+were done in `8770676` and are live.** The paragraph used to say `apps.reinforce` had no
+`include_router` and that the `train` rack unit was hand-rolled with `href="/training.html"`.
+Neither is true as of 2026-08-17 15:30: `backend/api.py:2185` is
+`app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])`, the unit at
+`api.py:1539` carries `href="/reinforce.html"`, and the **running** API confirms it —
+`train ready /reinforce.html` on the live rack, with `/api/train/status` answering `503` (gated)
+rather than `404` (absent).
+
+**Do not act on this paragraph by adding a mount.** It is being kept rather than deleted only
+because it is the kind of instruction a fresh agent acts on immediately, and `backend/api.py` is
+one of the two most contended files in the repo — a duplicate `include_router` added to a live
+file by someone following a stale note is exactly the half-applied edit §1b warns takes the site
+down.
 
 
 In his order: **Reinforce** as a real tuning/training studio, **~~Miner~~ DONE — see below**,
