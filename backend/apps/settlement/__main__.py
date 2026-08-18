@@ -116,7 +116,8 @@ def main() -> int:
 
         # unit_state reads the REAL store location, so point _cleared at this rehearsal one.
         real = gateway._cleared
-        gateway._cleared = lambda n, a: s.latest(n, a)               # noqa: SLF001
+        # `_cleared` returns (clearance, problem); the rehearsal store is healthy, so None.
+        gateway._cleared = lambda n, a: (s.latest(n, a), None)       # noqa: SLF001
         try:
             after, detail_after = gateway.unit_state(reading)
             ok &= step("with a settlement on record the rack is ready", after == "ready",

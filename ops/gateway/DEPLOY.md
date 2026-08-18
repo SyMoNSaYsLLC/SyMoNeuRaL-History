@@ -1,8 +1,10 @@
 # Bringing the Gateway online — the operator's procedure
 
-**Everything an agent could do is done.** What is left is in this file, and it is left because
-each step is a decision or a credential rather than a task: a company keypair, a contract
-deployment under that key, and two `sudo` commands. `docs/specs/gateway-completion.md` §7 marks
+**What is left in this file is a decision or a credential rather than a task:** a company
+keypair, a contract deployment under that key, and two `sudo` commands. An earlier revision
+opened "everything an agent could do is done", and that was wrong twice — once when the
+off-chain verifier did not exist, and again when nothing recorded a settlement. Both are built
+now, so the sentence is finally close to true; treat it as a claim to re-check, not a fact. `docs/specs/gateway-completion.md` §7 marks
 these **(b)** for that reason, and `.claude/HANDOVER.md` §5 item 0 sets the precedent — the
 contract signing key was Garrett's call too.
 
@@ -19,7 +21,7 @@ and nowhere earlier.
 
 All of it — `ops/gateway/`, `backend/apps/gateway/__main__.py`, the contracts, the two new
 frontend assertions — is on the branch **`worktree-gateway-online`**, currently through
-`7ac0881` (it starts at `15ac0cf`). In your working checkout `ops/gateway/setup.sh` is still a
+`9809f91` (it starts at `15ac0cf`). In your working checkout `ops/gateway/setup.sh` is still a
 missing file, so Phase A step 1 fails until you do this. The branch lives in the shared `.git`,
 so it survives the worktree being removed.
 
@@ -60,7 +62,7 @@ below stands on.
 ```bash
 cd backend && python3 -m apps.gateway          # reads three real TRON networks
 cd ops/gateway && node test_contracts.mjs      # executes the contracts in a local EVM
-cd backend && python3 -m pytest apps/gateway apps/settlement -q   # 115 offline tests
+cd backend && python3 -m pytest apps/gateway apps/settlement -q   # 120 offline tests
 ```
 
 Measured 2026-08-17 from this box:
@@ -95,7 +97,7 @@ Honest gaps, since everything above is stated as measured:
 - **No transaction has ever been signed or broadcast**, so no key, no funds and no gas
   estimate has been tested. The contracts are proven by *execution* in a local EVM at Istanbul,
   which is much stronger than compiling, but it is not the TVM.
-- The 115 backend tests (61 gateway · 54 settlement) all inject `fetch=`, so they never touch
+- The 120 backend tests (61 gateway · 59 settlement) all inject `fetch=`, so they never touch
   the network. That gap is exactly why `python3 -m apps.gateway` exists; run it if you want the
   transport proven today.
 - **No settlement has ever been recorded**, so the `ready` branch of `unit_state` has been

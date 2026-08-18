@@ -39,6 +39,7 @@ most likely way anyone ever runs this twice.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from .store import Clearance, ClearanceStore
@@ -156,7 +157,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0                                 # re-running is not an error
     if not result:
         return 1
-    print("recorded — the Gateway unit will read `ready` on the next status poll")
+
+    # Only claim the lamp will change if this settlement is against the pair the web process
+    # is actually configured for. Recording a Nile licence while the service points at
+    # mainnet is a perfectly reasonable thing to do and changes nothing on the rack, and
+    # telling the operator otherwise sends them restarting a service that was never wrong.
+    net_env = (os.environ.get("SYM_GATEWAY_NETWORK") or "").strip().lower()
+    addr_env = (os.environ.get("SYM_GATEWAY_CONTRACT") or "").strip()
+    if not net_env or not addr_env:
+        print("recorded. This shell has no SYM_GATEWAY_NETWORK/CONTRACT set, so whether the "
+              "rack turns green depends on what the API service is configured for.")
+    elif (net_env, addr_env) == (a.network, a.contract):
+        print("recorded — the Gateway unit will read `ready` on the next status poll")
+    else:
+        print(f"recorded, but the configured surface is {net_env} · {addr_env}, so this "
+              "settlement does not light it. That is correct, not a bug.")
     return 0
 
 

@@ -484,13 +484,13 @@ class TestUnitState(unittest.TestCase):
         # The store is asked for (network, contract) and answers None when they do not match;
         # that filtering is store.latest's job and is tested in apps/licensing. Here we only
         # assert unit_state honours a None as "not ready".
-        with mock.patch.object(gateway, "_cleared", return_value=None):
+        with mock.patch.object(gateway, "_cleared", return_value=(None, None)):
             with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
                      SYM_GATEWAY_CONTRACT=USDT):
                 state, _ = gateway.unit_state(reading_for())
         self.assertEqual(state, "offline")
 
-        with mock.patch.object(gateway, "_cleared", return_value=rec):
+        with mock.patch.object(gateway, "_cleared", return_value=(rec, None)):
             with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
                      SYM_GATEWAY_CONTRACT=USDT):
                 state, detail = gateway.unit_state(reading_for())
@@ -501,7 +501,7 @@ class TestUnitState(unittest.TestCase):
     def test_ready_is_unreachable_without_a_present_contract(self):
         """Even with a settlement on record, a missing or unverified contract stays offline."""
         rec = types.SimpleNamespace(nonce=1, at_block=1)
-        with mock.patch.object(gateway, "_cleared", return_value=rec):
+        with mock.patch.object(gateway, "_cleared", return_value=(rec, None)):
             with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
                      SYM_GATEWAY_CONTRACT=USDT):
                 for reading in (None,
@@ -517,7 +517,7 @@ class TestUnitState(unittest.TestCase):
         seen = set()
         rec = types.SimpleNamespace(nonce=1, at_block=1)
         for cleared in (None, rec):
-            with mock.patch.object(gateway, "_cleared", return_value=cleared):
+            with mock.patch.object(gateway, "_cleared", return_value=(cleared, None)):
                 for kw in ({}, {"error": "boom"}, {"contract_present": False},
                            {"contract_present": None}):
                     with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",

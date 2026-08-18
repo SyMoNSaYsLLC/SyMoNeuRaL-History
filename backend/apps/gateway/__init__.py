@@ -282,12 +282,27 @@ def _cleared(net: str, addr: str):
     has nothing to do with this surface; see `settlement/__init__.py` for the table. Imported
     lazily so that `gateway` keeps working with neither package present, which is what every
     test that predates them relies on.
+
+    Returns `(clearance_or_None, problem_or_None)`. The second half exists because failing
+    closed is necessary but not sufficient: `ClearanceStore.all` turns an unreadable file into
+    zero clearances, which is the right *state* and the wrong *sentence*. Without this the
+    surface said "no licence has ever cleared against this contract" when the truth was that
+    nobody could tell — a page confidently reporting a fact it did not have, on a site whose
+    argument is that its readings are real. The state is `offline` either way.
     """
     try:
         from settlement.store import ClearanceStore
-        return ClearanceStore().latest(net, addr)
+        s = ClearanceStore()
+        found = s.latest(net, addr)
+        bad = s.bad_lines
+        if bad == -1:
+            return None, f"the clearance store at {s.path.name} exists but could not be read"
+        if bad > 0:
+            return found, (f"{bad} record{'s' if bad != 1 else ''} in the clearance store "
+                           "could not be parsed")
+        return found, None
     except Exception:                             # noqa: BLE001 - see the docstring
-        return None
+        return None, "the clearance store could not be consulted"
 
 
 def unit_state(reading: dict | None = None) -> tuple[str, str]:
@@ -376,13 +391,19 @@ def unit_state(reading: dict | None = None) -> tuple[str, str]:
         # not degrade the gateway unit, it takes down every unit's reading at once. The cost
         # of the second guard is three lines and the failure it prevents is site-wide.
         try:
-            cleared = _cleared(net, addr)
+            cleared, problem = _cleared(net, addr)
         except Exception:                         # noqa: BLE001
-            cleared = None
+            cleared, problem = None, "the clearance store could not be consulted"
         if cleared is not None:
+            note = f" ({problem})" if problem else ""
             return "ready", (f"{deployed}. Licence #{cleared.nonce} settled at block "
                              f"{cleared.at_block:,} — the payment path has completed "
-                             f"end to end")
+                             f"end to end{note}")
+        if problem:
+            # Offline, but NOT because nothing has settled — because we cannot tell. Saying
+            # the former here would be the site asserting a fact it does not have.
+            return "offline", (f"{deployed}. Offline because {problem}, so no settlement can "
+                               "be confirmed either way")
         return "offline", (deployed + ". Offline because no licence has ever cleared against "
                            "this contract — the payment path is built and tested but has "
                            "never carried a real settlement")

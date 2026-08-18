@@ -544,6 +544,41 @@ class TestRecorder:
         assert r, str(r)
         assert s.count() == 1
 
+    def test_the_operator_cli_runs_and_reports_by_exit_code(self, tmp_path, monkeypatch):
+        """`main()` is what DEPLOY.md tells an operator to type, and it had never been run.
+
+        Exit codes matter here because the command is meant to be usable from a shell script:
+        0 for a fresh recording and for a repeat, non-zero for any refusal.
+        """
+        from settlement import record as rec_mod
+        monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
+        monkeypatch.setattr(rec_mod, "verify_payment",
+                            lambda *a, **k: verify.verify_payment(*a, **{**k, "fetch": node(
+                                encode_licence())}))
+        argv = ["--network", NET, "--contract", CONTRACT, "--nonce", "7",
+                "--payer", PAYER, "--token", TOKEN, "--workspace", WS,
+                "--min-amount", "1000000"]
+
+        assert rec_mod.main(argv) == 0, "a good settlement did not exit 0"
+        assert rec_mod.main(argv) == 0, "re-running must not be an error"
+        assert store.ClearanceStore(tmp_path / "clearances.jsonl").count() == 1
+
+        # A fresh nonce, or the already-recorded check short-circuits before verification and
+        # this asserts nothing. That precedence is deliberate — a nonce already on file was
+        # verified when it was written, and re-reading the chain for it is wasted work — but
+        # it means a wrong-payer re-run of a *recorded* nonce reports "already recorded"
+        # rather than the mismatch. Pinned just below so the ordering cannot change silently.
+        bad = list(argv)
+        bad[bad.index("--nonce") + 1] = "8"
+        bad[bad.index("--payer") + 1] = OTHER
+        assert rec_mod.main(bad) == 1, "a refusal must exit non-zero"
+        assert store.ClearanceStore(tmp_path / "clearances.jsonl").count() == 1
+
+        repeat_with_nonsense = list(argv)
+        repeat_with_nonsense[repeat_with_nonsense.index("--payer") + 1] = OTHER
+        assert rec_mod.main(repeat_with_nonsense) == 0, \
+            "an already-recorded nonce is reported as such before anything is re-verified"
+
     def test_there_is_no_way_to_record_without_a_chain_read(self):
         """No bypass flag, no caller-supplied record: every write follows a chain read.
 
@@ -601,6 +636,52 @@ class TestRecordingIsWhatLightsTheLed:
 
         state, detail = gateway.unit_state(reading)
         assert state == "ready", f"a settlement did not light the LED: {detail}"
+
+    def test_an_unreadable_store_says_so_instead_of_claiming_nothing_settled(
+            self, tmp_path, monkeypatch):
+        """Fail-closed is the right state and can still be the wrong sentence.
+
+        `ClearanceStore.all` turns an unreadable file into zero clearances, so the surface
+        used to report "no licence has ever cleared against this contract" when the truth was
+        that nobody could tell. Same LED, different claim — and this site's whole argument is
+        that what it prints is real.
+        """
+        import gateway
+        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+
+        p = tmp_path / "clearances.jsonl"
+        p.write_text("{}\n")
+        p.chmod(0o000)
+        monkeypatch.setattr(store, "DEFAULT_PATH", p)
+        try:
+            state, detail = gateway.unit_state(probe_reading())
+        finally:
+            p.chmod(0o600)
+
+        assert state == "offline"
+        assert "could not be read" in detail, detail
+        assert "no licence has ever cleared" not in detail, \
+            "claimed nothing settled when the store was unreadable"
+
+    def test_a_corrupt_line_is_disclosed_rather_than_silently_skipped(
+            self, tmp_path, monkeypatch):
+        import gateway
+        from settlement.record import record_settlement
+        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        p = tmp_path / "clearances.jsonl"
+        monkeypatch.setattr(store, "DEFAULT_PATH", p)
+
+        record_settlement(NET, CONTRACT, 7, fetch=node(encode_licence()), **ok_args())
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write("{not json at all\n")
+
+        state, detail = gateway.unit_state(probe_reading())
+        assert state == "ready", detail
+        assert "could not be parsed" in detail, detail
 
     def test_a_settlement_on_a_different_contract_does_not_light_it(
             self, tmp_path, monkeypatch):
