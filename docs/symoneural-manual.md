@@ -199,7 +199,88 @@ Applying the decode-speed formula (`bandwidth ÷ model bytes`) with the **measur
 | 32B | ~17.6 GB | **does not fit** (15.9 GiB) |
 | 32B @ IQ2 | ~9.6 GB | ~78 tok/s |
 
-The practical ceiling on this card is a **14B at Q4/Q6, or a 32B at IQ2**.
+That table is arithmetic, and one row of it has now been tested and is wrong. It said a
+large model "does not fit"; the paragraph below is what happened when one was actually
+loaded. The table is left standing because the correction is the point.
+
+~~The practical ceiling on this card is a **14B at Q4/Q6, or a 32B at IQ2**.~~ — superseded
+by the measurement below. The real ceiling is a **27B at Q2_K**, with room for 64K of
+context.
+
+### Measured: Qwen3.6-27B fully resident (2026-08-18)
+
+The "does not fit" row above came from parameter-count arithmetic, never from a load
+attempt. This is the load attempt. All figures **measured on this machine**, llama.cpp
+build `4df29be`, `llama-bench -p 512 -n 128`, weights
+`Qwen3.6-27B-UD-Q2_K_XL.gguf` (11,849,779,424 bytes on disk):
+
+| | Reading |
+|---|---|
+| Reported size / params | 11.03 GiB, 26.90 B |
+| Offload | `-ngl 99` — every layer on the GPU, no CPU offload |
+| Prompt (pp512) | **1537.77 ± 94.82 tok/s** |
+| Generation (tg128) | **56.90 ± 0.22 tok/s** |
+| Peak VRAM during the bench | **11,916 MiB of 16,303** — at llama-bench's short context, *not* a deployable session |
+
+A 26.9 B model runs fully GPU-resident on a 15.92 GiB card. The engine needed no work:
+the GGUF header declares `general.architecture = qwen35` and the local llama.cpp build
+already carries `LLM_ARCH_QWEN35`.
+
+**This validates the bandwidth formula, with a correction.** 752 GB/s ÷ 11.85 GB predicts
+**63.46 tok/s**; the card delivered **56.90**. The formula is **~11.5% optimistic** — real
+decode came in at 90% of predicted. That is one datapoint, not a calibration curve, but it
+is the first time any row of the table above has had a measurement to sit next to. Treat
+the other predicted rows as similarly optimistic rather than as results.
+
+### Measured: what context fits in the headroom
+
+The 11,916 MiB bench figure is peak at llama-bench's short context and implies more
+headroom than a real session has. Every number below is total resident VRAM reported by
+`nvidia-smi` with `llama-server` loaded and idle at that context, same weights, `-ngl 99`:
+
+| Context | KV type | Result | Resident VRAM |
+|---|---|---|---|
+| 8,192 | f16 | loads | 12,354 MiB |
+| 16,384 | f16 | loads | 12,874 MiB |
+| 32,768 | f16 | loads | 13,914 MiB |
+| 32,768 | q8_0 | loads | 13,040 MiB |
+| 65,536 | q8_0 | loads | **14,288 MiB** |
+| 131,072 | q8_0 | **fails** | — |
+
+The 128K failure is a real allocator error, not a timeout:
+
+```
+ggml_backend_cuda_buffer_type_alloc_buffer: allocating 598.50 MiB on device 0:
+    cudaMalloc failed: out of memory
+llama_init_from_model: failed to initialize the context:
+    failed to allocate buffer for rs cache
+```
+
+Note what failed: the **recurrent-state cache**, not the KV cache. This architecture is
+hybrid, and recurrent state is sized per slot rather than per token, so do not read the 128K
+failure as a point on the KV slope below.
+
+KV grows linearly, and the slope is what the rows above actually measure. Taking
+differences rather than absolutes (the absolute figures include the weights and the compute
+buffers, so only the deltas isolate KV):
+
+- **f16: 63.5 MiB per 1K tokens** — 16K→32K costs 1,040 MiB for 16,384 tokens.
+- **q8_0: 38.1 MiB per 1K tokens** — 32K→64K costs 1,248 MiB for 32,768 tokens.
+
+So q8_0 is about 60% the cost of f16 here, not the half you would get from the bit width
+alone. At the same 32K context the two differ by a directly measured **874 MiB**
+(13,914 vs 13,040), and that saving is what buys the jump from 32K to 64K.
+
+**64K at q8_0 is the largest context that loads**, at 14,288 MiB of 16,303 — about 2 GB of
+the card still free.
+
+What this does *not* establish, in order of how likely it is to mislead. It is a
+**load-and-idle** measurement: the server allocated the context and sat there, and nothing
+here exercises it under generation. Concurrency is untested and matters — that context is a
+pool shared across the server's slots, not 64K guaranteed to each simultaneous user. Whether
+q8_0 KV degrades output quality is not measured, only that it allocates. And the smaller
+quants of this model (UD-IQ2_M at 10.85 GB, UD-IQ2_XXS at 9.39 GB) have not been loaded here;
+they are smaller on disk, which is a file size, not a fit.
 
 ---
 
@@ -8367,9 +8448,16 @@ original author's assertions:
 
 - **The predicted decode-speed table in Part I** applies the bandwidth formula to
   the measured 752 GB/s. The bandwidth is measured; the tok/s figures are arithmetic
-  from it, not observed inference runs.
-- **"Model does not fit" thresholds** come from parameter-count arithmetic against
-  15.9 GiB, not from attempting to load those models.
+  from it, not observed inference runs. **One point on it has since been measured**
+  (2026-08-18): the formula predicted 63.46 tok/s for an 11.85 GB model and the card
+  delivered 56.90, so it runs **~11.5% optimistic**. Every remaining row in that table
+  is still arithmetic and should be read as an upper bound.
+- **"Model does not fit" thresholds** came from parameter-count arithmetic against
+  15.9 GiB, not from attempting to load those models. **This was wrong, and the load was
+  attempted** (2026-08-18): Qwen3.6-27B at Q2_K is 26.90 B parameters and runs fully
+  GPU-resident with 64K of q8_0 context. The arithmetic had ruled out models this size.
+  Thresholds for quantizations and models *other* than the one measured in Part I remain
+  arithmetic and remain unverified.
 - **The suggestion that the card might be in a chipset rather than CPU-direct slot**
   is a hypothesis. What is measured is `Host Max: 3` and a link that trains to Gen 3
   x8 under load. The cause was not investigated.
