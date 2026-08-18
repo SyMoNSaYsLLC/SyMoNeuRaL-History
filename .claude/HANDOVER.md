@@ -210,9 +210,52 @@ route fails the suite rather than quietly landing a directory walk on the live p
   for a `(0,0)` entry — `_limiters` skips it, the lifespan log filters on `if p`, and
   `throttled_for` only reads it on a deny — so no existing endpoint's response shape moved.
 - `grep -c include_router` is still **8** and there is still exactly **one** `app.mount`. Both
-  are asserted by the new test file.
+  are asserted by the new test file. **Now 9** — `apps/rackpower` was mounted at `/api/rack`;
+  see the section below. The assertion in `apps/test_studio_models.py` moved in the same commit
+  that mounted it, which is the tripwire behaving correctly rather than being silenced.
 
 Suite after this change: **890 passed** (871 baseline + 19 new), same two mandatory `--ignore`s.
+**Now 991** — 51 more from `apps/rackpower/`.
+
+---
+
+### Per-unit power switch — `apps/rackpower`, `/api/rack`
+
+The rack rows on the home page can be taken offline one at a time by an operator.
+`scripts/symoneural.sh off` was the only granularity before this: all surfaces or none.
+
+- **Off by default and gated three ways**, the same idiom as `coder`/`project`/`asicminer`:
+  `SYM_RACK_ENABLED=1` + `SYM_RACK_TOKEN`, plus `SYM_RACK_ALLOW_REMOTE` for a non-loopback
+  peer. With the switch unset every route answers **404, not 403** — the rack is public, and
+  a 403 tells a visitor this installation has an operator control worth attacking.
+- **The button refuses real work, in three places, or it would be the fake activity light**
+  `.claude/CLAUDE.md` forbids: `rackpower.apply()` rewrites the rack reading, the
+  `rack_power_gate` HTTP middleware answers 503, and the WebSocket dispatch refuses the
+  matching frame. Three, because `console.js` prefers the socket — an HTTP-only guard would
+  leave a "taken offline" unit serving every client that works properly.
+- **Offline means admit nothing new; it never kills the holder.** A job already running
+  finishes. The package imports no `subprocess`/`signal` and never touches `gpu.lock.d`;
+  `test_the_module_cannot_kill_anything` parses the AST to enforce it (grepping the text
+  failed on the module's own docstring, which *promises* the property).
+- **`train` and `miner` are deliberately not switchable.** `train` because there is no honest
+  partial version — the run either continues (the button lied) or dies (it was destructive).
+  `miner` because it is one row over GPU and ASIC halves, and forcing it offline while the
+  ASIC half is hashing puts a false reading on the rack.
+- **`peer_of()` reads `X-Forwarded-For`, not `request.client.host`.** Caddy and the gateway
+  both sit in front, so the socket peer is `127.0.0.1` for every request that ever arrived
+  from the internet — using it would delete the loopback gate for the entire world. Safe here
+  because `api.py` binds `127.0.0.1:8800` and Caddy *replaces* an untrusted inbound XFF. **If
+  either fact changes, this gate weakens to the token alone.**
+- Overrides persist in `run/units.disabled.json` (atomic rename) so a surface taken down for a
+  weights swap does not come back up because systemd restarted the API at 3am. The cost is an
+  override nobody remembers setting, so every affected row carries who and when and reads
+  "taken offline by operator … not a fault".
+- The operator panel is in `site/console.js`, appended to `#rack`, and renders **only** with
+  `#operator` in the URL or a token already in `sessionStorage`. It is not in a rack row: rows
+  are rewritten by `renderRack()` on every push, and a row is a single `<a href>` — a
+  `<button>` nested in an anchor is invalid HTML that toggles *and* navigates on one click.
+  Its CSS is injected from the JS and scoped under `#op-panel`, so it cannot join `.bar`,
+  `.live` and `#console .sub` in the list of class-name collisions.
 
 ---
 

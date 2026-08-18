@@ -98,16 +98,21 @@ class RouteIsReachable(unittest.TestCase):
                         "can never match")
 
     def test_the_router_count_is_unchanged(self):
-        """Eight `include_router` calls, and adding this route must not have moved that.
+        """Nine `include_router` calls, and adding a plain route must not move that.
 
         The count is the cheap proxy for "no surface was mounted or unmounted by accident".
         It is recorded in `.claude/HANDOVER.md`; if this fails, one of the two is wrong and
         it is worth finding out which before changing the number here.
+
+        Was 8 until `apps/rackpower` was mounted at `/api/rack` -- the per-unit power
+        switch. That is a deliberate ninth surface, so this number moved in the same commit
+        that mounted it, which is the whole point of the tripwire: it should be impossible
+        to add a router without someone typing the new number and meaning it.
         """
         calls = [n for n in ast.walk(TREE)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "include_router"]
-        self.assertEqual(len(calls), 8)
+        self.assertEqual(len(calls), 9)
 
 
 class ValidatorRejectsJunk(unittest.TestCase):

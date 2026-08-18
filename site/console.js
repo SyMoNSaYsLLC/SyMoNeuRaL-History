@@ -322,5 +322,162 @@
     });
   }
 
+  // ---- the operator's per-unit power panel --------------------------------
+  //
+  // `scripts/symoneural.sh off` is the kill switch for the whole API. This is the per-unit
+  // one: take Image down while its weights are swapped and leave everything else serving.
+  //
+  // THREE THINGS ABOUT THIS BLOCK ARE DELIBERATE AND SHOULD NOT BE "TIDIED":
+  //
+  // 1. It appends to #rack and never touches a rack row. renderRack() rewrites #units on
+  //    every push, so a control placed inside a row would be destroyed four seconds later.
+  //    A row is also a single <a href>, and a <button> nested in an anchor is invalid HTML
+  //    that both toggles the unit and navigates away on one click.
+  //
+  // 2. It renders nothing at all unless the operator asks for it -- `#operator` in the URL,
+  //    or a token already held from earlier in this browser session. The rack is served to
+  //    the public internet; an "Operator" affordance visible to every visitor advertises a
+  //    control worth attacking, and the API answers 404 rather than 403 for the same reason.
+  //
+  // 3. Its styles are injected here, scoped under #op-panel, rather than added to
+  //    symoneural.css. Three separate bugs in this repo have come from generic class names
+  //    colliding across components (.bar, .live, #console .sub), and an operator control has
+  //    no business being able to cause a fourth. There is no ellipsis rule: the panel wraps.
+  //
+  // The token lives in sessionStorage, not localStorage: it is a shared secret, and closing
+  // the tab should not leave it on disk for the next person at this desk.
+  var OP_KEY = 'symoneural.rack.token';
+  function opToken() { try { return sessionStorage.getItem(OP_KEY) || ''; } catch (e) { return ''; } }
+  function setOpToken(v) {
+    try { v ? sessionStorage.setItem(OP_KEY, v) : sessionStorage.removeItem(OP_KEY); } catch (e) {}
+  }
+
+  function opPanel() {
+    var rack = document.getElementById('rack');
+    if (!rack) return;
+    if (location.hash !== '#operator' && !opToken()) return;
+
+    var style = document.createElement('style');
+    style.textContent =
+      '#op-panel{margin-top:14px;border:1px solid #1d2b22;border-radius:6px;' +
+        'background:#080d0a;font-size:13px}' +
+      '#op-panel>summary{padding:8px 12px;cursor:pointer;color:#7fdca4;' +
+        'font-family:ui-monospace,monospace;letter-spacing:.04em}' +
+      '#op-panel .op-body{padding:0 12px 12px}' +
+      '#op-panel .op-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;' +
+        'padding:6px 0;border-top:1px solid #16211b}' +
+      '#op-panel .op-id{font-family:ui-monospace,monospace;min-width:9ch;color:#cfe9d8}' +
+      '#op-panel .op-why{color:#8aa294;flex:1 1 18ch}' +
+      '#op-panel button{font:inherit;padding:3px 10px;border-radius:4px;cursor:pointer;' +
+        'border:1px solid #2b4636;background:#0f1a13;color:#9fe0b8}' +
+      '#op-panel button[disabled]{opacity:.5;cursor:progress}' +
+      '#op-panel input{font:inherit;padding:4px 8px;border-radius:4px;' +
+        'border:1px solid #2b4636;background:#0b120d;color:#cfe9d8;flex:1 1 22ch}' +
+      '#op-panel .op-msg{padding-top:8px;color:#e0b48a}';
+
+    var panel = document.createElement('details');
+    panel.id = 'op-panel';
+    panel.open = true;
+    panel.innerHTML = '<summary>Operator &mdash; unit power</summary>' +
+                      '<div class="op-body"><div class="op-msg">Checking&hellip;</div></div>';
+    rack.appendChild(style);
+    rack.appendChild(panel);
+
+    var body = panel.querySelector('.op-body');
+
+    function msg(text) { body.innerHTML = '<div class="op-msg"></div>'; body.firstChild.textContent = text; }
+
+    function askForToken(why) {
+      body.innerHTML =
+        '<div class="op-row"><input type="password" id="op-tok" placeholder="SYM_RACK_TOKEN" ' +
+        'autocomplete="off"><button type="button" id="op-go">unlock</button></div>' +
+        '<div class="op-msg"></div>';
+      if (why) body.querySelector('.op-msg').textContent = why;
+      var go = function () {
+        var v = body.querySelector('#op-tok').value.trim();
+        if (!v) return;
+        setOpToken(v);
+        load();
+      };
+      body.querySelector('#op-go').addEventListener('click', go);
+      body.querySelector('#op-tok').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') go();
+      });
+    }
+
+    // The panel reports what the API says and nothing else. It never guesses a unit's
+    // state from the rack it sits under, because that reading and this one would drift and
+    // an operator would be looking at two answers to one question.
+    function load() {
+      fetch('/api/rack/power', {headers: {'X-Sym-Token': opToken()}})
+        .then(function (r) {
+          if (r.status === 404) {
+            // Absent, not forbidden. With SYM_RACK_ENABLED unset there is nothing here to
+            // unlock, so say that rather than asking for a token that cannot work.
+            setOpToken('');
+            throw new Error('The power surface is off on this installation. ' +
+                            'Set SYM_RACK_ENABLED=1 and SYM_RACK_TOKEN to use it.');
+          }
+          if (r.status === 403) { setOpToken(''); throw new Error('__token__'); }
+          if (!r.ok) throw new Error('The API answered ' + r.status + '.');
+          return r.json();
+        })
+        .then(render)
+        .catch(function (e) {
+          if (e.message === '__token__') return askForToken('Refused. Wrong token, or this ' +
+                                                           'browser is not on the machine.');
+          msg(e.message);
+        });
+    }
+
+    function render(doc) {
+      body.innerHTML = '';
+      doc.units.forEach(function (u) {
+        var row = document.createElement('div');
+        row.className = 'op-row';
+
+        var id = document.createElement('span');
+        id.className = 'op-id';
+        id.textContent = u.id;
+
+        var why = document.createElement('span');
+        why.className = 'op-why';
+        // Real readings only, and the whole reading: when it went down and where from.
+        // "offline" on its own would leave an operator unable to tell their own
+        // intervention from a fault, which is the entire point of recording who and when.
+        why.textContent = u.disabled
+          ? ('off since ' + new Date(u.at * 1000).toLocaleTimeString() + ' from ' + u.by)
+          : 'serving';
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = u.disabled ? 'put back' : 'take offline';
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          fetch('/api/rack/power/' + encodeURIComponent(u.id), {
+            method: 'POST',
+            headers: {'X-Sym-Token': opToken(), 'Content-Type': 'application/json'},
+            body: JSON.stringify({offline: !u.disabled})
+          }).then(function (r) {
+            if (!r.ok) throw new Error('The API answered ' + r.status + '.');
+            // Reload the panel from the API rather than flipping the label locally: the
+            // POST is the request, the GET is the fact, and only one of them is allowed to
+            // decide what this panel shows.
+            load();
+            // Pull a fresh rack immediately so the row above updates now instead of at the
+            // next four-second tick. On the socket this is a frame; polling handles itself.
+            if (socket && socket.readyState === 1) socket.send('{"t":"rack"}'); else poll();
+          }).catch(function (e) { btn.disabled = false; msg(e.message); });
+        });
+
+        row.appendChild(id); row.appendChild(why); row.appendChild(btn);
+        body.appendChild(row);
+      });
+    }
+
+    if (opToken()) load(); else askForToken('');
+  }
+
   if (el('units') || el('m-vram')) connect();
+  opPanel();
 })();

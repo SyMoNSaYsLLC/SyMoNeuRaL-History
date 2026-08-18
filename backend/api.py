@@ -47,7 +47,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -108,6 +108,12 @@ from apps import reinforce  # noqa: E402  -- the training bay. Bound to the pack
 # both SYM_REINFORCE_ENABLED and SYM_REINFORCE_TOKEN are not set. Mounting an off surface
 # is not the same as enabling it. What it now mounts does preference and reinforcement
 # tuning as well as supervised -- see `apps/reinforce/TRAINING_BAY.md`.
+from apps import rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
+# so its bare `enabled`/`status_rows`/`apply` cannot shadow anything here. Importing it is
+# free and safe with the switch off: it reads no file until `enabled()` passes, spawns
+# nothing, and `apply()` returns its argument unchanged. It is imported LAST of the apps
+# because it is the only one that rewrites another surface's rack reading, and reading the
+# import list top to bottom should end at the thing that has the last word.
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
@@ -1300,6 +1306,42 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
 
 
+@app.middleware("http")
+async def rack_power_gate(request: Request, call_next):
+    """Refuse HTTP work on a surface an operator has taken off the rack.
+
+    THIS IS WHAT MAKES THE BUTTON REAL. `.claude/CLAUDE.md`: *"No decorative status
+    indicators."* A control that flips a rack row to `offline` while `POST /api/chat` keeps
+    answering is the fake activity light with a worse failure mode -- an operator would
+    believe a surface was down and act on it. The rack reading in `build_status()` and this
+    gate are two halves of one fact, and neither may ship without the other.
+
+    Deliberately a middleware and not an edit to any endpoint. The standing instruction is
+    that `api.py`'s existing endpoints, image generation logic and `gpu-governor.sh` calls
+    are not to be altered; this touches none of the three. It also means a surface added
+    later inherits the switch by adding one line to `rackpower.ROUTES` rather than by
+    remembering to paste a guard into a new handler.
+
+    Cost when nothing is switched off: one dict walk over five prefixes. `is_disabled()`
+    (which reads the file) is only reached for a path that actually belongs to a governed
+    surface, so `/api/status` -- the polled one -- never touches the disk here.
+
+    503 with `Retry-After`, not 404: the surface exists and is coming back. 404 would tell a
+    visitor the feature was never built, and the honest answer is that an operator took it
+    down and the detail line on the rack says when.
+    """
+    unit_id = rackpower.unit_for_path(request.url.path)
+    if unit_id is not None and rackpower.is_disabled(unit_id):
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "300"},
+            content={"error": f"{unit_id} has been taken off the rack by an operator. "
+                              f"It is not faulty and nothing was lost; see the rack on the "
+                              f"home page for when it went down."},
+        )
+    return await call_next(request)
+
+
 DOCS_HEADER = """
 <header>
   <div class="wrap bar">
@@ -1483,7 +1525,14 @@ def build_status() -> Status:
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
         license=licensing.disclosure(),
-        units=[
+        # `rackpower.apply` gets the LAST word on unit state, and only ever in one
+        # direction: it can force a unit to `offline` when an operator has taken it down,
+        # and it can do nothing else. Every state below is still derived from a real reading
+        # -- weights on disk, the governor's holder, the surface's own switches -- and an
+        # override replaces the derived state with a detail line that says an operator did
+        # it, so the rack never reports an intervention as a fault. With the switch off this
+        # is the identity function and costs one dict lookup.
+        units=rackpower.apply([
             Unit(id="chat", label="SyMoNeuRaL Chat", slot="1U", state=gpu_unit("chat", chat_ok),
                  bus="gpu", href="/chat.html",
                  # Product names first -- these are our builds: our quantization, our
@@ -1631,7 +1680,7 @@ def build_status() -> Status:
             # off that name -- folding them would make one of the two invisible in exactly
             # the display this site exists to be honest about.
             Unit(**sigils.status()),
-        ],
+        ]),
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
             vram_used_pct=round(100 * (1 - free / total)) if free and total else None,
@@ -1747,6 +1796,22 @@ async def websocket(ws: WebSocket) -> None:
             if kind == "rack":
                 await ws.send_text(json.dumps({"t": "rack", **build_status().model_dump()},
                                               separators=(",", ":")))
+                continue
+
+            # The other half of the power switch. `rack_power_gate` covers HTTP; this covers
+            # the socket, and BOTH are required for the button to be honest -- `console.js`
+            # prefers the socket and falls back to polling, so an HTTP-only guard would
+            # leave a "taken offline" unit still serving every client that works properly.
+            #
+            # Above the rate limiter deliberately: a unit that is off should not spend the
+            # caller's token bucket to be told so, and `ping` and `rack` are already handled
+            # and returned, so the operator can still read the rack while a surface is down.
+            off_unit = rackpower.unit_for_frame(kind)
+            if off_unit is not None and rackpower.is_disabled(off_unit):
+                await ws.send_text(json.dumps({
+                    "t": "error", "code": 503,
+                    "error": f"{off_unit} has been taken off the rack by an operator. "
+                             f"It is not faulty; the rack says when it went down."}))
                 continue
 
             # Everything below spends the GPU or the CPU, so it is rate limited exactly
@@ -2178,6 +2243,10 @@ app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accoun
 app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
 app.include_router(guide_routes.router, prefix="/api/guide", tags=["guide"])
 app.include_router(project.router, prefix="/api/project", tags=["project"])
+# The per-unit power switch. Mounting it is not enabling it: with SYM_RACK_ENABLED unset
+# every route answers 404 -- absent rather than forbidden, because the rack is public and a
+# 403 would advertise to a visitor that this installation has an operator control.
+app.include_router(rackpower.router, prefix="/api/rack", tags=["rack"])
 # `/api/train`, not `/api/reinforce`: the router's own first line names this prefix, `page.js`
 # hard-codes it, and the rack unit has been `train` since before either existed. The docstring
 # in apps/reinforce/routes.py said "Mounted at /api/train by backend/api.py" from the day it was
