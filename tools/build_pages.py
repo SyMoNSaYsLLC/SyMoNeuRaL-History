@@ -1704,6 +1704,33 @@ TUNER_BODY = """    <style>
     }
     #tnbody .tn-fgx:hover{color:var(--fg)}
     #tnbody .tn-fgctx{margin:0 0 9px; color:var(--dim); font-size:12.2px; line-height:1.5}
+
+    /* The couple of questions. A <details> rather than a wizard: the panel has to stay
+       inside one 390px screen, and somebody who already knows what to type should not have
+       to walk past a form to reach the box they type it in. */
+    #tnbody .tn-fgask{margin:0 0 10px; padding:9px 11px; border:1px solid var(--line);
+      border-radius:11px; background:var(--panel2, #121513)}
+    #tnbody .tn-fgask summary{cursor:pointer; color:var(--fg); font:600 12.5px/1.45 inherit}
+    #tnbody .tn-fgask summary:hover{color:var(--accent)}
+    #tnbody .tn-fgnote{margin:8px 0 0; color:var(--dim); font-size:11.9px; line-height:1.5}
+    #tnbody .tn-fgnote code{font-size:11.4px; color:var(--fg)}
+    #tnbody .tn-fglab{margin:11px 0 6px; color:var(--fg); font:600 12.2px/1.4 inherit}
+    #tnbody .tn-fgfield{display:block; margin-top:9px; color:var(--fg);
+      font:600 12.2px/1.4 inherit}
+    #tnbody .tn-fgfield input{
+      display:block; width:100%; box-sizing:border-box; margin-top:6px; padding:8px 10px;
+      border-radius:9px; border:1px solid var(--line); background:var(--panel);
+      color:var(--fg); font:13.2px/1.4 inherit;
+    }
+    #tnbody .tn-fgfield input:focus{outline:2px solid var(--accent); outline-offset:1px}
+    #tnbody .tn-fgchips{display:flex; flex-wrap:wrap; gap:6px}
+    #tnbody .tn-fgchip{
+      display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+      padding:6px 11px; border:1px solid var(--line); border-radius:999px;
+      color:var(--dim); font:600 12px/1 inherit;
+    }
+    #tnbody .tn-fgchip input{margin:0}
+    #tnbody .tn-fgchip.on{border-color:var(--accent); color:var(--fg)}
     #tnbody .tn-fg textarea{
       width:100%; box-sizing:border-box; resize:vertical; padding:9px 11px;
       border-radius:9px; border:1px solid var(--line); background:var(--panel2, #121513);
@@ -2200,6 +2227,34 @@ TUNER_BODY = """    <style>
                 <button type="button" class="tn-fgx" id="tnfgx" aria-label="Close">&times;</button>
               </div>
               <p class="tn-fgctx" id="tnfgctx"></p>
+              <!-- The couple of questions, and the reason they are QUESTIONS. "smart based
+                   off location" cannot honestly become an IP lookup here: there is none in
+                   the serving path, and adding one so a guide could open pre-filled would
+                   be the first thing on this site that reads the visitor instead of asking
+                   them. So it asks -- in one field -- and every answer lands in the prompt
+                   box below, visible and editable, before anything is sent anywhere. -->
+              <details class="tn-fgask" id="tnfgask">
+                <summary>Answer a couple of questions instead</summary>
+                <p class="tn-fgnote">Your answers write the prompt below, which you can read
+                  and edit before asking. They stay in this browser.</p>
+                <label class="tn-fgfield" for="tnfgloc">Where are you watching from?
+                  <input type="text" id="tnfgloc" autocomplete="off"
+                         placeholder="UK &mdash; or US East, or Germany">
+                </label>
+                <p class="tn-fgnote"><b>Nothing is looked up.</b> This box does not geolocate
+                  you. Whatever you type is matched against your provider&rsquo;s own group
+                  titles, so their spelling is the one that wins &mdash; &ldquo;UK&rdquo;
+                  finds <code>UK| SPORTS</code>. If it matches nothing, Guide sets it aside
+                  and says so rather than handing you an empty guide.</p>
+                <p class="tn-fglab">What do you actually watch?</p>
+                <div class="tn-fgchips" id="tnfgkeep"></div>
+                <p class="tn-fglab">Anything you never want to see?</p>
+                <div class="tn-fgchips" id="tnfgdrop"></div>
+                <div class="tn-fgrow">
+                  <button type="button" class="tn-fggo" id="tnfgwrite">Write the prompt and ask</button>
+                  <button type="button" class="tn-fgalt" id="tnfgforget">Forget my answers</button>
+                </div>
+              </details>
               <textarea id="tnfgq" rows="2" placeholder="What should your guide keep? &ldquo;UK sports and films, no shopping&rdquo;"></textarea>
               <div class="tn-fgrow">
                 <button type="button" class="tn-fggo" id="tnfggo">Ask the box</button>
@@ -2759,7 +2814,9 @@ TUNER_JS = """<script src="/hls.js"></script>
   fgPill.addEventListener('click', function () { fgOpen(fgBody.hidden); });
   document.getElementById('tnfgx').addEventListener('click', function () { fgOpen(false); });
 
-  fgGo.addEventListener('click', function () {
+  // Named rather than inline because the questionnaire below fills the prompt box and then
+  // asks the same way the button does -- two paths into one request, not two requests.
+  function fgAsk() {
     var q = fgQ.value.trim();
     if (!q) { fgQ.focus(); return; }
     var chans = fgChannels();
@@ -2797,7 +2854,8 @@ TUNER_JS = """<script src="/hls.js"></script>
       fgGo.disabled = false;
       fgWhy.textContent = 'could not reach the box';
     });
-  });
+  }
+  fgGo.addEventListener('click', fgAsk);
 
   fgApply.addEventListener('click', function () {
     if (!fgLast || !fgLast.groups) return;
@@ -2829,6 +2887,113 @@ TUNER_JS = """<script src="/hls.js"></script>
         + 'still apply for this session.';
     }
   });
+
+  // ---- the couple of questions -------------------------------------------------------
+  //
+  // Garrett: "I really wanted to integrate the symoneural guide AI so it would be smart
+  // based off location and ask a couple questions". It asks. Location here is a question
+  // and never a lookup -- see the comment on the markup for why that is deliberate rather
+  // than lazy -- and the answers compose one sentence that lands in the prompt box, where
+  // the visitor can see exactly what is about to be sent and change it.
+  //
+  // The words are kept as the visitor's own. `guide/__init__.py` matches them against the
+  // playlist's group vocabulary and bridges the ones it knows ("films" -> the MOVIES
+  // groups), so rewording them here would be this page guessing on the module's behalf and
+  // getting the credit or the blame for it.
+  var QK = 'symoneural.tuner.guideq';
+  var FG_KEEP = ['sports', 'films', 'news', 'kids', 'documentaries', 'music', 'entertainment'];
+  var FG_DROP = ['shopping', 'religion', 'adult', 'radio'];
+  var fgAskEl = document.getElementById('tnfgask'), fgLoc = document.getElementById('tnfgloc');
+  var fgKeepEl = document.getElementById('tnfgkeep'), fgDropEl = document.getElementById('tnfgdrop');
+  var qKeep = {}, qDrop = {};
+
+  function fgChips(host, words, state) {
+    host.textContent = '';
+    words.forEach(function (w) {
+      var lab = document.createElement('label');
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = state[w] === 1;
+      lab.className = 'tn-fgchip' + (box.checked ? ' on' : '');
+      box.addEventListener('change', function () {
+        if (box.checked) { state[w] = 1; } else { delete state[w]; }
+        lab.className = 'tn-fgchip' + (box.checked ? ' on' : '');
+        fgSaveAnswers();
+      });
+      lab.appendChild(box);
+      lab.appendChild(document.createTextNode(w));
+      host.appendChild(lab);
+    });
+  }
+
+  function fgSaveAnswers() {
+    try {
+      localStorage.setItem(QK, JSON.stringify({loc: fgLoc.value.trim(),
+                                               keep: Object.keys(qKeep),
+                                               drop: Object.keys(qDrop)}));
+    } catch (e) { /* private mode: the answers still hold for this session */ }
+  }
+
+  function fgLoadAnswers() {
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(QK) || 'null'); } catch (e) { saved = null; }
+    if (saved) {
+      fgLoc.value = saved.loc || '';
+      (saved.keep || []).forEach(function (w) { qKeep[w] = 1; });
+      (saved.drop || []).forEach(function (w) { qDrop[w] = 1; });
+    }
+    fgChips(fgKeepEl, FG_KEEP, qKeep);
+    fgChips(fgDropEl, FG_DROP, qDrop);
+    // Open on a first visit, folded once there are answers to come back to. The questions
+    // are the point on the visit where you have no idea what to type; on the next visit
+    // you do, and a form in the way would be the thing being complained about.
+    fgAskEl.open = !saved;
+  }
+
+  // One sentence, in the shape the module reads best: the positive clause first, then the
+  // exclusions after "not" -- a word `_NEGATORS` splits on, so "not shopping" narrows the
+  // negative clause instead of leaking backwards over the whole question.
+  function fgList(a) {
+    if (a.length < 2) return a.join('');
+    return a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  }
+
+  function fgCompose() {
+    var keep = FG_KEEP.filter(function (w) { return qKeep[w] === 1; });
+    var drop = FG_DROP.filter(function (w) { return qDrop[w] === 1; });
+    var loc = fgLoc.value.trim();
+    var s = keep.length ? (loc ? loc + ' ' : '') + fgList(keep) : loc;
+    if (drop.length) s += (s ? ', ' : '') + 'not ' + fgList(drop);
+    return s;
+  }
+
+  document.getElementById('tnfgwrite').addEventListener('click', function () {
+    var s = fgCompose();
+    if (!s) {
+      fgWhy.hidden = false;
+      fgWhy.textContent = 'Answer at least one of them \\u2014 a location on its own is '
+        + 'enough, and so is a single category. With none of them answered there is no '
+        + 'question to ask.';
+      return;
+    }
+    fgSaveAnswers();
+    fgQ.value = s;                      // visible and editable BEFORE the request goes out
+    fgAsk();
+  });
+
+  document.getElementById('tnfgforget').addEventListener('click', function () {
+    qKeep = {}; qDrop = {};
+    fgLoc.value = '';
+    try { localStorage.removeItem(QK); } catch (e) { /* nothing was stored to remove */ }
+    fgChips(fgKeepEl, FG_KEEP, qKeep);
+    fgChips(fgDropEl, FG_DROP, qDrop);
+    fgSaved.hidden = false;
+    fgSaved.textContent = 'Answers cleared from this browser. Nothing left this browser in '
+      + 'the first place \\u2014 they only ever wrote the prompt.';
+  });
+
+  fgLoc.addEventListener('change', fgSaveAnswers);
+  fgLoadAnswers();
 
   gsearch.addEventListener('input', function () { applyGroupSearch(); updateGroupCount(); });
   document.getElementById('tngall').addEventListener('click', function () { bulk(function () { return true; }); });
