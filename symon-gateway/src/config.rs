@@ -40,6 +40,34 @@ pub struct Config {
 
     /// Upstream request timeout. Generous, because a cold model load is minutes.
     pub upstream_timeout_secs: u64,
+
+    /// The most a `/v1/chat/completions` body may be, in bytes, before it is refused with 413.
+    ///
+    /// This route is the one place the gateway must hold the whole body in memory, because it
+    /// validates before forwarding. Every other route streams straight through and has no cap
+    /// at all — deliberately: `backend/apps/voice/routes.py:43` records that every size cap on
+    /// uploads was removed and that the route reads in 64 KiB chunks precisely so a long
+    /// recording is never resident. A blanket body limit on this process would quietly undo
+    /// that. 8 MiB is roughly 80× the 100,000-character prompt ceiling in `api.py:156`, so it
+    /// bounds memory without being reachable by a legitimate request.
+    pub max_chat_body_bytes: usize,
+
+    /// Whether to believe an inbound `X-Forwarded-For`.
+    ///
+    /// `api.py:505` keys its rate limiter on the *first* entry of that header, so whoever
+    /// writes it decides who gets throttled. Two deployments, two right answers:
+    ///
+    ///   * **Caddy in front** (`true`): the first entry is the real client, written by Caddy.
+    ///     Preserve it and append this hop.
+    ///   * **This process is the front door** (`false`, the default): there is no trusted
+    ///     writer upstream, so any inbound value is client-supplied and a client that sends
+    ///     its own `X-Forwarded-For: <anything>` gets a fresh rate-limit bucket per request.
+    ///     Overwrite it with the peer address.
+    ///
+    /// The default is the fail-closed one. Getting it wrong in the `false` direction puts
+    /// every client in one shared bucket, which throttles too much; getting it wrong in the
+    /// `true` direction removes the limiter entirely for anyone who reads this file.
+    pub trust_forwarded: bool,
 }
 
 impl Config {
@@ -61,6 +89,10 @@ impl Config {
             upstream_timeout_secs: env_or("SYMON_UPSTREAM_TIMEOUT", "900")
                 .parse()
                 .unwrap_or(900),
+            max_chat_body_bytes: env_or("SYMON_MAX_CHAT_BODY", "8388608")
+                .parse()
+                .unwrap_or(8 * 1024 * 1024),
+            trust_forwarded: matches!(env_or("SYMON_TRUST_FORWARDED", "0").as_str(), "1"),
         })
     }
 }

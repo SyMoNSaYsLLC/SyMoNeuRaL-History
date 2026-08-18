@@ -24,6 +24,7 @@ mod middleware;
 mod models;
 mod proxy;
 mod router;
+mod ws;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -78,9 +79,15 @@ async fn main() -> anyhow::Result<()> {
     let app = router::build(state);
     let listener = tokio::net::TcpListener::bind(bind).await?;
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown())
-        .await?;
+    // `into_make_service_with_connect_info` and not the bare service: without it there is no
+    // `ConnectInfo` in the request extensions, `proxy::forwarded_value` has no peer address to
+    // report, and every caller arrives at the rate limiter in `api.py` as 127.0.0.1.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await?;
 
     tracing::info!(component = "gateway", "symon-gateway stopped");
     Ok(())

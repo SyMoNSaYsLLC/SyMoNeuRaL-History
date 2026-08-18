@@ -70,6 +70,13 @@ pub async fn healthz(State(st): State<AppState>) -> Response {
     )
 )]
 pub async fn proxy_api(State(st): State<AppState>, req: Request) -> Result<Response, AppError> {
+    // Checked here rather than on a dedicated `/api/ws` route so that any WebSocket route
+    // FastAPI grows later is carried without a change here. The alternative -- naming the one
+    // path that exists today -- would fail the same silent way the reqwest path did: a 404
+    // that looks like a missing upstream route.
+    if crate::ws::wants_upgrade(req.headers()) {
+        return crate::ws::relay(st, req).await;
+    }
     let upstream = st.cfg.api_upstream.clone();
     forward(st, &upstream, req).await
 }
@@ -105,9 +112,12 @@ pub async fn forward(st: AppState, upstream: &str, req: Request) -> Result<Respo
         .parse()
         .map_err(|e| AppError::BadRequest(format!("cannot build upstream URI: {e}")))?;
 
-    let bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("could not read request body: {e}")))?;
+    // Streamed, not buffered. `axum::body::to_bytes` here would hold every upload whole in
+    // memory, and `backend/apps/voice/routes.py:43` is explicit that there is deliberately no
+    // byte cap on an audio upload and that the route reads it in 64 KiB chunks so that a long
+    // recording is never resident. Buffering it in this process would undo that silently and
+    // hand the box an OOM instead of a 413.
+    let upstream_body = reqwest::Body::wrap_stream(body.into_data_stream());
 
     let mut headers = HeaderMap::new();
     for (name, value) in parts.headers.iter() {
@@ -119,13 +129,17 @@ pub async fn forward(st: AppState, upstream: &str, req: Request) -> Result<Respo
         }
         headers.insert(name.clone(), value.clone());
     }
-    forwarded_for(&mut headers, &parts.headers);
+    if let Some(v) = forwarded_value(&st, &parts) {
+        if let Ok(hv) = HeaderValue::from_str(&v) {
+            headers.insert("x-forwarded-for", hv);
+        }
+    }
 
     let resp = st
         .http
         .request(parts.method.clone(), target.to_string())
         .headers(headers)
-        .body(bytes)
+        .body(upstream_body)
         .send()
         .await
         .map_err(|e| {
@@ -156,12 +170,44 @@ pub async fn forward(st: AppState, upstream: &str, req: Request) -> Result<Respo
         .map_err(|e| AppError::Middleware(e.to_string()))?)
 }
 
-/// Append this hop to `X-Forwarded-For` rather than replacing it, so the chain survives
-/// Caddy -> gateway -> API and the API can still see the real client.
-fn forwarded_for(out: &mut HeaderMap, incoming: &HeaderMap) {
-    if let Some(existing) = incoming.get("x-forwarded-for") {
-        out.insert("x-forwarded-for", existing.clone());
+/// The `X-Forwarded-For` value to send upstream, or `None` to send none.
+///
+/// This is not a formality. `api.py:505` and `api.py:1771` both key the rate limiter on the
+/// **first** entry of this header, so whichever process writes that entry decides who gets
+/// throttled — and a proxy that forwards the client's own value verbatim hands every caller a
+/// free bucket per request simply by sending `X-Forwarded-For: <anything>`.
+///
+/// Which behaviour is correct depends on what is in front, so it is configuration rather than
+/// a guess (`SYMON_TRUST_FORWARDED`, defaulting to untrusted):
+///
+///   * **trusted** — Caddy is in front and wrote the first entry. Preserve the chain and
+///     append this hop, so the API still sees the real client.
+///   * **untrusted** — this process is the front door. Any inbound value is client-supplied.
+///     Replace it with the peer address.
+///
+/// The peer comes from `ConnectInfo`, which is only populated because `main.rs` serves with
+/// `into_make_service_with_connect_info`. Without that this returns `None` in the untrusted
+/// case and the API falls back to its own view of the socket — still 127.0.0.1, but a shared
+/// bucket rather than a spoofable one.
+pub fn forwarded_value(st: &AppState, parts: &axum::http::request::Parts) -> Option<String> {
+    let peer = parts
+        .extensions
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|ci| ci.0.ip().to_string());
+
+    let inbound = parts
+        .headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok());
+
+    if st.cfg.trust_forwarded {
+        return match (inbound, peer) {
+            (Some(chain), Some(p)) => Some(format!("{chain}, {p}")),
+            (Some(chain), None) => Some(chain.to_string()),
+            (None, p) => p,
+        };
     }
+    peer
 }
 
 /// `POST /v1/chat/completions` — validate the payload, then forward it to the engine upstream.
@@ -183,9 +229,18 @@ pub async fn chat_completions(
 ) -> Result<Response, AppError> {
     let (parts, body) = req.into_parts();
 
-    let bytes = axum::body::to_bytes(body, usize::MAX)
+    // The only route that reads a body whole, because it validates before forwarding. It is
+    // therefore the only one that needs a ceiling, and `to_bytes` enforces it while reading
+    // rather than after -- an unbounded read here would let a single request exhaust memory
+    // long before the token estimate it is supposed to be checked against ever ran.
+    let bytes = axum::body::to_bytes(body, st.cfg.max_chat_body_bytes)
         .await
-        .map_err(|e| AppError::BadRequest(format!("could not read request body: {e}")))?;
+        .map_err(|_| {
+            AppError::PayloadTooLarge(format!(
+                "request body exceeds the {} byte ceiling for this route",
+                st.cfg.max_chat_body_bytes
+            ))
+        })?;
 
     // Parsed only to fail fast on a malformed body and to name the model in the log. The
     // *forwarded* bytes are the originals — re-serialising from `ChatRequest` would quietly
