@@ -1891,24 +1891,28 @@ because they are the cheapest real work available.
       window, not the speech. Any progress indicator counts `windows`, never seconds, and no
       page may promise per-second scaling.
 
-    `cd backend && python3 apps/voice/test_voice.py` → **31 tests**, and the suite in *Test in a
-    real browser* went 682 → **727 passed**. The engine tests **skip** on a fresh checkout
+    `cd backend && python3 apps/voice/test_voice.py` → **31 tests**, which is Voice's whole
+    contribution. The suite in *Test in a real browser* measured **730 passed** at `c140c15` —
+    quoted as a reading, not as a delta: it moved 727 → 730 in the six minutes between writing
+    that sentence and checking it, because peers are landing tests too, and CLAUDE.md's `682` is
+    someone else's line to update. Re-run it rather than doing arithmetic on it. The engine
+    tests **skip** on a fresh checkout
     rather than fail: `contrib/whisper.cpp` and `backend/models/whisper` are both gitignored.
     Nothing new was installed — `python-multipart` was already an OS package, so the serving
     interpreter is untouched.
 
     **Two pieces are deliberately not done, and both are one decision away:**
 
-    1. **No `voice` rack unit and no `site/voice.html`.** `status()` in
-       `backend/apps/voice/__init__.py` is written and correct but its `href` is `/voice.html`,
-       which does not exist — the page comes from `tools/build_pages.py`, which other sessions
-       were holding. A rack row pointing at a 404 is worse than no row, so the `Unit` was left
-       out of `api.py` on purpose. **Land the page and the unit in the same commit.**
-    2. **Speech out.** `tts.py` reports its own absence rather than faking it, and probes on
-       every call so an install changes the answer with no code change. It needs a Piper venv
-       at `backend/apps/voice/.venv` (beside the package, where `apps/asicminer/.venv` lives —
-       an earlier line in the spec said `voice/.venv` at the repo root and was corrected), plus
-       a voice model and its licence in `backend/models/licenses/`. That is Garrett's call.
+    - **No `voice` rack unit and no `site/voice.html`.** `status()` in
+      `backend/apps/voice/__init__.py` is written and correct but its `href` is `/voice.html`,
+      which does not exist — the page comes from `tools/build_pages.py`, which other sessions
+      were holding. A rack row pointing at a 404 is worse than no row, so the `Unit` was left
+      out of `api.py` on purpose. **Land the page and the unit in the same commit.**
+    - **Speech out.** `tts.py` reports its own absence rather than faking it, and probes on
+      every call so an install changes the answer with no code change. It needs a Piper venv
+      at `backend/apps/voice/.venv` (beside the package, where `apps/asicminer/.venv` lives —
+      an earlier line in the spec said `voice/.venv` at the repo root and was corrected), plus
+      a voice model and its licence in `backend/models/licenses/`. That is Garrett's call.
 
     **Not measured, and must not reach a page until it is: chat's time to first token.** The
     80–92 tok/s recorded for chat elsewhere in this file is throughput; TTFT is what a spoken
