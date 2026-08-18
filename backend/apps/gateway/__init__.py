@@ -99,6 +99,27 @@ the reload and restart. **No private key belongs in that file, or in any file sy
     abi.py       encode/decode for address, uint256, bool, string
     chain.py     the read-only node client, and the fail-closed rule in full
     routes.py    the APIRouter; serves the cache, never triggers a fetch
+    __main__.py  `python3 -m apps.gateway` -- reads three REAL networks. See below.
+
+## The suite is offline. The transport is not, and that gap is covered separately
+
+`test_gateway.py` is 57 tests and every one injects `fetch=`, deliberately: a suite that needs
+egress to pass is the next entry in `.claude/HANDOVER.md` §3.0d's list of verification steps
+that failed on healthy input. But stubbing the transport means `chain.http_post` -- the only
+code here that touches the network -- is never exercised by it.
+
+`python3 -m apps.gateway` closes that gap by hand, against real nodes, both directions
+(a present contract and an absent one) plus four negative controls. Run it after any change to
+`chain.py`. Measured 2026-08-17: mainnet head block 85,439,122 in 430 ms; USDT reads back as
+`TetherToken` with 33 ABI functions; the same address on Nile and Shasta reads absent.
+
+## The operator half lives in `ops/gateway/` and the dependency runs one way
+
+Contracts, the compiler toolchain, deployment and quote signing are all over there, in their
+own venv, because they hold a private key and this package must never be able to. That tool
+imports `address.py`, `keccak.py` and `chain.NODES` from here so there is one implementation
+of base58check and one endpoint map. **Nothing here may import from `ops/`.** See
+`ops/gateway/DEPLOY.md` for the procedure that turns the switches above on.
 """
 from __future__ import annotations
 
@@ -247,6 +268,43 @@ async def refresher() -> None:
 # --------------------------------------------------------------------- the rack unit
 
 
+def _cleared(net: str, addr: str):
+    """The newest licence that actually settled against this network and contract, or None.
+
+    Wrapped in a bare `except` on purpose, and returning None on every failure. This function
+    is the one thing that can light this surface's LED, so every way it can go wrong has to
+    land on "not lit". A missing `settlement` package, an unreadable store, a permissions
+    error, a partially-written record — all of them mean the same thing here, and it is not
+    "ready". This is the inverse of `docs/specs/symon-ml-review.md` finding 1: that bug turned
+    a failed check into a grant, and this turns every failed check into a refusal.
+
+    `settlement`, NOT `licensing`. `backend/apps/licensing/` is the mining dev-fee model and
+    has nothing to do with this surface; see `settlement/__init__.py` for the table. Imported
+    lazily so that `gateway` keeps working with neither package present, which is what every
+    test that predates them relies on.
+
+    Returns `(clearance_or_None, problem_or_None)`. The second half exists because failing
+    closed is necessary but not sufficient: `ClearanceStore.all` turns an unreadable file into
+    zero clearances, which is the right *state* and the wrong *sentence*. Without this the
+    surface said "no licence has ever cleared against this contract" when the truth was that
+    nobody could tell — a page confidently reporting a fact it did not have, on a site whose
+    argument is that its readings are real. The state is `offline` either way.
+    """
+    try:
+        from settlement.store import ClearanceStore
+        s = ClearanceStore()
+        found = s.latest(net, addr)
+        bad = s.bad_lines
+        if bad == -1:
+            return None, f"the clearance store at {s.path.name} exists but could not be read"
+        if bad > 0:
+            return found, (f"{bad} record{'s' if bad != 1 else ''} in the clearance store "
+                           "could not be parsed")
+        return found, None
+    except Exception:                             # noqa: BLE001 - see the docstring
+        return None, "the clearance store could not be consulted"
+
+
 def unit_state(reading: dict | None = None) -> tuple[str, str]:
     """(state, detail) for the rack.
 
@@ -256,20 +314,34 @@ def unit_state(reading: dict | None = None) -> tuple[str, str]:
 
     ### THE RULE, and it is the whole point of this surface
 
-    **Every return here is `offline`, and no `except` in this package may return anything
-    else.** A gateway that cannot verify must say so. `docs/specs/symon-ml-review.md`
-    finding 1 is a licence check whose TRON lookup fell back to `return True`, so blocking
-    `api.trongrid.io` with one iptables rule *granted* the licence -- a check that fails open
-    is worse than no check, because the surface around it claims the weights are protected.
+    **No `except` in this package may return anything but `offline`.** A gateway that cannot
+    verify must say so. `docs/specs/symon-ml-review.md` finding 1 is a licence check whose
+    TRON lookup fell back to `return True`, so blocking `api.trongrid.io` with one iptables
+    rule *granted* the licence -- a check that fails open is worse than no check, because the
+    surface around it claims the weights are protected.
 
-    This function is the place that bug would be born. The natural next commit is "the
-    contract is there, so report ready", and that commit is wrong: a deployed contract is not
-    a working licensing service. `ready` requires the off-chain daemon to exist and run, a
-    payment path a real person can complete, a confirmed payment that unlocks something, and
-    that round trip exercised end to end at least once. Until all five are true the honest
-    answer is a better `offline`. If you are changing this to return `ready`, you are also
-    introducing an authorization decision that does not exist today -- resolve findings 1 and
-    2 of that review first.
+    This function is the place that bug would be born, so the rule is phrased about failure
+    paths rather than about the whole function.
+
+    ### There is now exactly one `ready` return, and what it costs
+
+    An earlier revision of this docstring said every return here is `offline`, which was true
+    when nothing could ever earn otherwise. `backend/apps/licensing/` now exists, so the
+    honest statement is narrower: **the only `ready` return requires a licence to have
+    actually settled** against the configured network and contract, recorded by the code path
+    that verified it -- see `_cleared`. §4 of `docs/specs/gateway-completion.md` lists five
+    conditions, and that record is the only one that cannot be faked by configuration.
+
+    The warning that mattered still stands, and is the reason `_cleared` is not a config
+    read: *the natural next commit is "the contract is there, so report ready", and that
+    commit is wrong.* A deployed contract is not a working licensing service. If you find
+    yourself widening this branch -- treating a configured contract, a reachable node, or a
+    non-empty settings file as sufficient -- you are writing that commit. Everything except a
+    real settlement is a better `offline`.
+
+    Do not add a fifth state string either. `site/console.js:47` lights the green LED for any
+    state that is not the literal `offline`, so `configured` or `provisioned` would light it
+    while meaning less than `ready` does.
     """
     ok, why = configured()
     if not ok:
@@ -300,10 +372,41 @@ def unit_state(reading: dict | None = None) -> tuple[str, str]:
         fns = reading.get("abi_functions")
         what = f"a contract with {fns} function{'s' if fns != 1 else ''}" if fns else "a contract"
         cname = reading.get("contract_name")
-        return "offline", (f"{name} · {short} — measured {when}: {what}"
-                           + (f" named {cname}" if cname else "")
-                           + f" is deployed, read at {at_block}. Offline because the "
-                             "off-chain daemon is not built and no licence has ever cleared")
+        deployed = (f"{name} · {short} — measured {when}: {what}"
+                    + (f" named {cname}" if cname else "")
+                    + f" is deployed, read at {at_block}")
+
+        # The ONLY route to a lit LED on this surface, and it is deliberately narrow.
+        #
+        # `docs/specs/gateway-completion.md` §4 warns that the natural next commit here is
+        # "the contract is there, so report ready", and that that commit is wrong. It still
+        # is. What makes `ready` honest is not configuration but *evidence*: a licence that
+        # actually settled against this exact network and this exact contract address,
+        # recorded by the code path that verified it, and re-checkable against the chain by
+        # anyone who doubts it. An operator cannot turn this light green by editing a
+        # setting, which is what `.claude/CLAUDE.md`'s ban on decorative indicators requires.
+        # Guarded a second time, at the call site. `_cleared` already swallows everything,
+        # so this looks redundant -- it is not. `unit_state` is called from api.py's
+        # `/api/status` handler, which builds the WHOLE rack; an exception escaping here does
+        # not degrade the gateway unit, it takes down every unit's reading at once. The cost
+        # of the second guard is three lines and the failure it prevents is site-wide.
+        try:
+            cleared, problem = _cleared(net, addr)
+        except Exception:                         # noqa: BLE001
+            cleared, problem = None, "the clearance store could not be consulted"
+        if cleared is not None:
+            note = f" ({problem})" if problem else ""
+            return "ready", (f"{deployed}. Licence #{cleared.nonce} settled at block "
+                             f"{cleared.at_block:,} — the payment path has completed "
+                             f"end to end{note}")
+        if problem:
+            # Offline, but NOT because nothing has settled — because we cannot tell. Saying
+            # the former here would be the site asserting a fact it does not have.
+            return "offline", (f"{deployed}. Offline because {problem}, so no settlement can "
+                               "be confirmed either way")
+        return "offline", (deployed + ". Offline because no licence has ever cleared against "
+                           "this contract — the payment path is built and tested but has "
+                           "never carried a real settlement")
 
     # contract_present is None with no error: the probe returned a shape this function does
     # not understand. Unverified is offline, and says so rather than guessing.

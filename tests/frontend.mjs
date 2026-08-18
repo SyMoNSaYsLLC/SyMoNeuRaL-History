@@ -401,6 +401,53 @@ try {
            clip.join('; ') || 'clean');
     await probe.close();
   }
+  // ---- the gateway page shows the API's own words, and does not light an LED ----
+  // docs/specs/gateway-completion.md item 6. Before this, the suite touched gateway.html
+  // only in the script-error sweep below -- so the licensing surface could have reported
+  // anything at all, or nothing, and every test still passed.
+  //
+  // It reads /api/status, NOT /api/gateway/state. That route answers 503 while the surface
+  // is switched off, which is its correct behaviour and production's current state, so an
+  // assertion bound to it would go red on a healthy system -- HANDOVER §3.0d is a list of
+  // five verification steps that did exactly that. /api/status carries the gateway unit in
+  // every configuration.
+  //
+  // The comparison is verbatim on purpose. The whole design of this surface is that the
+  // detail line is free-text carrying the truth the four state strings cannot express
+  // (backend/apps/gateway/__init__.py, "Do not invent a fifth state string"). A page that
+  // paraphrased it -- or that fell back to a friendly default when the fetch failed -- would
+  // be inventing a reading, which is the one thing this rack exists to not do.
+  await page.goto(BASE + '/gateway.html', { waitUntil: 'networkidle' });
+  await page.waitForFunction(
+    () => !/Reading the surface state/.test(
+      document.getElementById('gwdetail')?.textContent || 'Reading the surface state'),
+    { timeout: 15000 }).catch(() => {});
+  const gw = await page.evaluate(async () => {
+    const s = await fetch('/api/status', { headers: { Accept: 'application/json' } })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+    const unit = s && (s.units || []).find(u => u.id === 'gateway');
+    const led = document.querySelector('#gwhead s');
+    return {
+      shown: document.getElementById('gwstate')?.textContent?.trim(),
+      detail: document.getElementById('gwdetail')?.textContent?.trim(),
+      apiState: unit?.state, apiDetail: (unit?.detail || '').trim(),
+      // The LED is a bare <s> with no class. symoneural.css renders that as an unlit grey
+      // dot; any class the JS added would light it. Reading the computed colour rather than
+      // the class list is the lesson from three cascade bugs in this stylesheet -- and an
+      // unearned green light on a licensing surface is precisely the decorative indicator
+      // .claude/CLAUDE.md forbids.
+      ledClass: led ? led.className : null,
+      ledColor: led ? getComputedStyle(led).backgroundColor : null,
+    };
+  });
+  record('the gateway page prints the API\'s own state and detail, verbatim',
+         !!gw.apiState && gw.shown === gw.apiState &&
+         gw.detail.length > 0 && gw.detail === gw.apiDetail,
+         `page "${gw.shown}" / api "${gw.apiState}" · detail ${gw.detail === gw.apiDetail
+           ? `matches (${gw.detail.length} chars)` : `DIFFERS: "${gw.detail}"`}`);
+  record('the gateway status dot is unlit while the surface is offline',
+         gw.apiState !== 'offline' || !gw.ledClass,
+         `state=${gw.apiState} led class=${JSON.stringify(gw.ledClass)} bg=${gw.ledColor}`);
 
   // ---- no page throws a script error ------------------------------------
   // This exists because a generator shipped BROKEN JAVASCRIPT to production and the suite

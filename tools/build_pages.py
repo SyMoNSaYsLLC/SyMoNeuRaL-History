@@ -1560,8 +1560,17 @@ GATEWAY_BODY = """    <div class="pgwrap">
             <li><b>Energy.</b> TRON meters execution as Bandwidth and Energy rather than a
               gas auction. Renting Energy moves the execution cost off the end user.</li>
             <li><b>Settlement.</b> The daemon broadcasts the validation state and the
-              payment; DPoS confirmation unlocks the compiled workspace.</li>
+              payment. Once DPoS confirms it, the settlement is read back off the chain and
+              checked field by field &mdash; payer, token, amount, workspace &mdash; and a
+              short-lived entitlement is issued for the workspace it covers.</li>
           </ol>
+          <p class="gw-note">One thing this is not: <b>a copy-protection scheme.</b> A
+            blockchain is public, so a key published to it is published to everyone, and any
+            arrangement that actually withholds one puts a server we run in the loop &mdash;
+            which makes that server the authority and the chain a payment rail. So we call it
+            a payment rail. Settlement is final, auditable and needs no card processor; that
+            is the whole of the claim, and it is worth having. The encryption at rest is
+            real and is not load-bearing against a determined licensee.</p>
         </div>
       </div>
 
@@ -1575,7 +1584,12 @@ GATEWAY_BODY = """    <div class="pgwrap">
             make execution free; it moves the cost from the end user to whoever rents the
             Energy. Calling that zero would describe an accounting choice as a physical
             property.</p>
-          <p><b>Nothing here is measured</b>, because nothing has run.</p>
+          <p><b>What is measured here comes from the chain reader</b> &mdash; head block,
+            whether a contract exists at the configured address, and how long the node took
+            to answer. It runs off the request path and its age is printed with it, because
+            &ldquo;real, and 40 seconds old&rdquo; is a different claim from &ldquo;real
+            right now&rdquo;. When the surface is switched off there is no reading to show,
+            and the status line says that rather than showing a stale one.</p>
         </div>
         <div class="callout">
           <h3>Pricing</h3>
@@ -1584,10 +1598,21 @@ GATEWAY_BODY = """    <div class="pgwrap">
             <a href="mailto:symonsayadmin@symoneural.com">symonsayadmin@symoneural.com</a>.</p>
         </div>
         <div class="callout">
-          <h3>Why it reads offline</h3>
-          <p>There is no deployed contract, no wallet, no daemon and <b>no key material on
-            this box</b>. Signing belongs on the operator&rsquo;s own machine, never in the
-            environment of a public-facing web process.</p>
+          <h3>What is, and is not, on this box</h3>
+          <p>There is <b>no wallet, no private key and no signing code</b> in the process
+            serving this page. Reading a public chain needs none of them: the calls this box
+            makes are unauthenticated, and it cannot build, sign or broadcast a transaction
+            &mdash; its own test suite asserts that.</p>
+          <p>The licensing logic is split along the same line. <b>Checking</b> a licence needs
+            only public information, so it runs here: reading the settlement off the chain,
+            confirming the payer, the token, the amount and the workspace all match, and
+            verifying an entitlement against a public key. <b>Issuing</b> one needs a private
+            key, so it does not run here and cannot. A break-in on this box could read
+            licences and could not mint one.</p>
+          <p>Signing lives on the operator&rsquo;s own machine. Whether a contract is deployed,
+            and what is at that address, is <b>not claimed on this page</b> &mdash; it is read
+            from the chain and reported in the status line above, so this page cannot come to
+            disagree with the machine.</p>
         </div>
       </aside>
     </div>
@@ -5704,15 +5729,27 @@ def main() -> int:
               "reading rather than a placeholder.",
          body=MINER_BODY, script=MINER_JS)
 
-    page("gateway.html",
+    # `gpu=False, surface="Gateway"` for the same reason tuner.html passes it: this is a
+    # bus="net" surface that never takes the governor lock, so the shared "you may be queued
+    # behind a render" callout was describing a machine constraint that cannot apply here. The
+    # gpu=False variant still shows the card — it is shared and worth seeing — while saying
+    # outright that this page does not wait for it. (docs/specs/gateway-completion.md flag 3.)
+    #
+    # Every line below is written to stay true in BOTH states, before and after a contract is
+    # deployed. The previous copy hardcoded "nothing is deployed yet" and "nothing here is
+    # measured", which a deployment turns into a live page contradicting the API — this repo's
+    # most-repeated failure. What the chain actually holds is not asserted here at all; it is
+    # read from the chain and printed in the status line, verbatim.
+    page("gateway.html", gpu=False, surface="Gateway",
          title="SyMoNeuRaL Gateway — stablecoin licensing, honestly labelled",
-         desc="A TRON/USDT licensing and validation gateway. Designed, not yet deployed.",
-         icon="/terminal-64.png", eyebrow="Surface · designed, not deployed",
-         heading="Licensing that clears in seconds, and says whose number that is.",
+         desc="A TRON/USDT licensing and validation gateway. Its status is read from the chain.",
+         icon="/terminal-64.png", eyebrow="Surface · network · TRON",
+         heading="Licensing that settles on-chain, and says whose number that is.",
          lede="A licensing gateway on the TRON Virtual Machine, settling in USDT, with a "
               "local daemon that makes a human approve the configuration before anything "
-              "is broadcast. Nothing is deployed yet, so this page reports offline and "
-              "labels every figure it quotes as vendor or projected.",
+              "is broadcast. The status line below is read live from this box: it names the "
+              "network it is pointed at, what it last read from the chain, and how old that "
+              "reading is.",
          body=GATEWAY_BODY, script=GATEWAY_JS)
 
     page("tuner.html", gpu=False, surface="Tuner",

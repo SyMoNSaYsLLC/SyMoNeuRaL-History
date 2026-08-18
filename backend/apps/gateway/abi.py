@@ -1,9 +1,15 @@
 """Minimal ABI encoding and decoding for read-only TVM calls. Stdlib, no I/O, no keys.
 
-Scope is deliberately narrow: the four types a licensing read actually needs -- `address`,
-`uint256`, `bool` and `string`. It is not a general ABI codec and does not pretend to be;
-tuples, arrays and fixed-point are absent rather than half-implemented, and an unknown type
-raises rather than being guessed at.
+Scope is deliberately narrow: the six types a licensing read actually needs -- `address`,
+`uint256`, `uint64`, `bytes32`, `bool` and `string`. It is not a general ABI codec and does not
+pretend to be; tuples, arrays and fixed-point are absent rather than half-implemented, and an
+unknown type raises rather than being guessed at.
+
+`bytes32` is the odd one and the reason to read this paragraph: every other type here is
+**right**-aligned in its word, and `bytes32` is **left**-aligned. Decoding a workspace hash with
+the numeric rule silently yields a different 32 bytes, which compares unequal to the hash the
+buyer signed -- so the licence would read as "not yours" rather than as an error. It is handled
+explicitly below and asserted in the tests for exactly that reason.
 
 Encoding a call needs no wallet and no private key. **Signing does** -- and signing is
 secp256k1, which is not in the standard library and does not belong in a public-facing web
@@ -22,7 +28,8 @@ from .keccak import keccak256
 
 WORD = 32
 UINT_MAX = (1 << 256) - 1
-SUPPORTED = ("address", "uint256", "bool", "string")
+UINT64_MAX = (1 << 64) - 1
+SUPPORTED = ("address", "uint256", "uint64", "bytes32", "bool", "string")
 
 
 class AbiError(ValueError):
@@ -56,6 +63,16 @@ def encode_params(types: list[str], values: list) -> str:
             if n < 0 or n > UINT_MAX:
                 raise AbiError(f"uint256 out of range: {n}")
             head.append(n.to_bytes(WORD, "big"))
+        elif t == "uint64":
+            n = int(v)
+            if n < 0 or n > UINT64_MAX:
+                raise AbiError(f"uint64 out of range: {n}")
+            head.append(n.to_bytes(WORD, "big"))
+        elif t == "bytes32":
+            raw = bytes.fromhex(v.removeprefix("0x")) if isinstance(v, str) else bytes(v)
+            if len(raw) != WORD:
+                raise AbiError(f"bytes32 takes exactly 32 bytes, got {len(raw)}")
+            head.append(raw)          # LEFT-aligned: already a full word, never padded
         elif t == "bool":
             head.append(_word(b"\x01" if v else b"\x00"))
         elif t == "string":
@@ -82,6 +99,17 @@ def decode_params(types: list[str], data: str) -> list:
             out.append(_addr.from_hex(w[-20:].hex()))
         elif t == "uint256":
             out.append(int.from_bytes(w, "big"))
+        elif t == "uint64":
+            n = int.from_bytes(w, "big")
+            # A uint64 arrives in a 32-byte word with 24 zero bytes ahead of it. Anything in
+            # those bytes means this is not the value we think it is -- most likely the types
+            # list is out of step with the function's real return shape. Refuse rather than
+            # truncate, because a truncated block height still looks like a plausible number.
+            if n > UINT64_MAX:
+                raise AbiError(f"uint64 word carries {n}, which does not fit in 64 bits")
+            out.append(n)
+        elif t == "bytes32":
+            out.append(w)             # LEFT-aligned: the word IS the value, verbatim
         elif t == "bool":
             n = int.from_bytes(w, "big")
             if n not in (0, 1):

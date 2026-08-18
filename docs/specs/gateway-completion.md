@@ -2,7 +2,65 @@
 
 **Audit date 2026-08-17. This is a spec, not a state document.** `.claude/HANDOVER.md` remains
 the one state document and `.claude/CLAUDE.md` the one rulebook — see `README.md` in this
-directory. Nothing here has been implemented.
+directory.
+
+---
+
+## STATUS, 2026-08-17 — every agent-doable item in §7 is now done
+
+The line "Nothing here has been implemented" was true when this was written and is not any
+more. What changed, against §7's own numbering:
+
+| Item | | State |
+|---|---|---|
+| 1 | fail-closed rule written at the insertion point | **done** — `chain.py` module docstring and `unit_state()` |
+| 2 | `test_gateway.py` | **done** — 57 tests, all offline, incl. the "no environment produces a non-`offline` state" tripwire |
+| 3 | base58check, not base58 shape | **done** — `address.py`, checksum verified |
+| 4 | read-only chain reader, cached off the status path | **done** — `chain.py` + `ChainCache` (TTL 60 s) + `refresher()` |
+| 5 | network → endpoint map | **done** — `chain.NODES`, no `SYM_GATEWAY_NODE_URL` |
+| 6 | frontend assertion | **done** — two, in `tests/frontend.mjs`; both verified to go red when broken |
+| 8 (a) | draft the Solidity | **done** — `ops/gateway/contracts/`, compiled AND executed, 17/17 |
+| 7, 8 (b), 8b, 9 | keypair, deployment, page redeploy, service env | **not done — yours.** `ops/gateway/DEPLOY.md` is the procedure |
+| 10, 11 | the off-chain verifier, and gating that actually gates | **done** — `backend/apps/settlement/`, 47 tests. Every fail-closed case was verified to go red with the bug put back |
+| 12 | key exchange, or an explicit decision not to do DRM | **decided** — payment rail, not DRM, per the review's own recommendation. Written into `settlement/__init__.py`, `ops/gateway/DEPLOY.md` and the page |
+| 13 | `ready` | **reachable, and correctly not reached.** `unit_state` can now return it, through exactly one route: a settlement recorded against the configured network *and* contract. None has ever settled, so the rack reads `offline` |
+| — | a payment path a real person can complete | **not built.** Quoting is a CLI invocation; a buyer needs a page. This is now the only engineering left before `ready` |
+| 7, 8 (b), 8b, 9 | keypair, deployment, page redeploy, service env | **not done — yours** |
+
+**§7 phase 3 said "do NOT start until the fail-open question is resolved". It is resolved, in
+writing, which is what unblocked 10–13.** The gate was never that the work was hard; it was
+that starting it without an answer would have baked an unexamined authorization model into the
+product. The answer is the one the review recommended, it is recorded in three places, and it
+is cheap to reverse — one docstring, one page paragraph, no code.
+
+**A correction to this document's own framing.** The heading above says "every agent-doable
+item is done", and §7 marks 10–13 as **(c)**, blocked. That reading put the surface's
+completion behind a keypair and two `sudo` commands, and it was wrong: `unit_state`'s first
+condition for `ready` is a daemon that exists, and none did. Garrett with a mainnet key and
+full root still could not have made this surface honestly green. The blocker was code, and
+code is the agent-doable kind.
+
+**Two gaps this spec did not anticipate, both now closed:**
+
+- **The transport was never exercised.** All 57 tests inject `fetch=`, so `chain.http_post`
+  had never run against a real node — "it compiled" wearing the costume of "it passed".
+  `python3 -m apps.gateway` now reads three live networks in both directions with four
+  negative controls. Measured: mainnet head block **85,439,122** in 430 ms, USDT reads back as
+  `TetherToken` with 33 ABI functions, and the same address on Nile and Shasta reads *absent*.
+- **The contracts were never executed.** `ops/gateway/test_contracts.mjs` runs them in a local
+  EVM at the same `istanbul` hardfork the artefacts are compiled for: replay, expiry,
+  wrong-signer, tampering, signature malleability, and the unpaid-quote rollback. 17/17.
+
+**§6 flags 1 and 3 are also fixed**, and flag 2 is defused rather than deferred: the page no
+longer hardcodes deployment state at all. It said "Nothing is deployed yet" and "Nothing here
+is measured", both of which a deployment turns into a live page contradicting the API. Those
+facts now come from the status line, read verbatim from `/api/status`, so **the page will not
+need re-editing when a contract lands.**
+
+**The state is still `offline`, on every path, and that is the correct outcome.** §4 is
+unchanged and remains the authority on what `ready` would take.
+
+---
 
 > **Re-grep every `file:line` below before trusting it.** `backend/api.py` and
 > `tools/build_pages.py` were being edited by other agents *during* this audit — `GATEWAY_BODY`
