@@ -640,6 +640,86 @@ class ReadFileTests(unittest.TestCase):
         self.assertEqual(result["bytes"], result["bytes_returned"])
 
 
+#: A string this repo does not contain, assembled so that it is not a literal in this file --
+#: see `SearchBoundTests.test_no_matches_is_a_result_and_not_an_error` for why that matters.
+_NEEDLE = "zzz-no-such-" + "string-in-this-tree-" + "zzz"
+
+
+class SearchBoundTests(unittest.TestCase):
+    """`search` and `find_files` bound the *work*, which is the claim their docstrings make.
+
+    Written the same way as `ReadFileTests` above and for the same reason: the failure being
+    guarded is a revert to `subprocess.run(capture_output=True)`, which passes every assertion
+    about the returned list while running grep over the whole tree first. So the check is not
+    "did five results come back" -- it is "was `subprocess.run` never reached". Patching it to
+    raise turns the slow-but-correct implementation into a red test instead of a quiet one.
+
+    The wall-clock evidence these were written against, taken 2026-08-19 on this box:
+    `search("def", "/", max_results=5)` returns in **0.05 s**, where a plain
+    `grep -rnI def backend/` runs 2.41 s and produces 342,656 lines -- all of which the previous
+    implementation materialised in the serving process before slicing to five.
+    """
+
+    def test_search_never_runs_grep_to_completion(self):
+        from .tools_impl import fs
+
+        with mock.patch.object(fs.subprocess, "run",
+                               side_effect=AssertionError("ran the search to completion")):
+            result = fs.search("def", str(APP), max_results=5)
+        self.assertEqual(result["count"], 5)
+        self.assertEqual(len(result["matches"]), 5)
+        self.assertTrue(result["truncated"])
+
+    def test_find_files_never_runs_find_to_completion(self):
+        from .tools_impl import fs
+
+        with mock.patch.object(fs.subprocess, "run",
+                               side_effect=AssertionError("ran the walk to completion")):
+            result = fs.find_files("*.py", str(APP), max_results=2)
+        self.assertEqual(result["count"], 2)
+        self.assertTrue(result["truncated"])
+
+    def test_find_files_count_agrees_with_the_list_it_reports(self):
+        from .tools_impl import fs
+
+        # This is a behaviour change, deliberately locked in. `count` used to be the total
+        # matched while `files` was the truncated slice, so a caller reading `count` and then
+        # `len(files)` got two different numbers from one reply and neither was labelled.
+        result = fs.find_files("*.py", str(APP), max_results=2)
+        self.assertEqual(result["count"], len(result["files"]))
+
+    def test_no_matches_is_a_result_and_not_an_error(self):
+        from .tools_impl import fs
+
+        # grep exits 1 when it matches nothing. The implementation never consults the exit
+        # code, and this is the case that would surface it as `search_failed` if it started to.
+        #
+        # The needle is assembled at runtime rather than written as one literal, because the
+        # first draft of this test searched the directory this file lives in for a string that
+        # this file therefore contained, and got two hits. A literal here is a test that fails
+        # the moment it is written down.
+        result = fs.search(_NEEDLE, str(APP))
+        self.assertNotIn("error", result)
+        self.assertEqual(result["count"], 0)
+        self.assertFalse(result["truncated"])
+        self.assertNotIn("timed_out_after_s", result)
+
+    def test_the_deadline_is_reported_separately_from_truncation(self):
+        from .tools_impl import fs
+
+        # A pattern that matches nothing over a tree too big to finish: the count bound can
+        # never trip, so only the timer can end this. `timed_out_after_s` is what distinguishes
+        # "there is more" from "we stopped looking before we knew", and an empty result with no
+        # such key would be a claim that the tree really contains no matches.
+        with mock.patch.object(fs, "SEARCH_TIMEOUT_S", 1):
+            started = time.monotonic()
+            result = fs.search(_NEEDLE, "/", max_results=5)
+            elapsed = time.monotonic() - started
+        self.assertEqual(result["timed_out_after_s"], 1)
+        self.assertFalse(result["truncated"])
+        self.assertLess(elapsed, 10, f"the deadline did not fire promptly ({elapsed:.1f}s)")
+
+
 class EventRelayTests(unittest.TestCase):
     def test_a_preview_goes_out_as_a_json_header_then_a_binary_frame(self):
         async def go():

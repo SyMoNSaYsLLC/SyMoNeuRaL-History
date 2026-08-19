@@ -17,7 +17,9 @@ from __future__ import annotations
 import os
 import pathlib
 import shutil
+import signal
 import subprocess
+import threading
 
 from .. import workspace
 from ..registry import tool
@@ -44,6 +46,67 @@ def _stat(p: pathlib.Path) -> dict:
         except OSError:
             pass
     return row
+
+
+#: Wall-clock ceiling on one `search` or `find_files`. A bound on the result count does not
+#: bound a grep that matches nothing across a large tree, so both limits are needed.
+SEARCH_TIMEOUT_S = 60
+
+
+def _bounded(cmd: list[str], want: int, timeout: int) -> tuple[list[str], bool, str | None]:
+    """Run `cmd`, read at most `want + 1` output lines, then kill it. -> (lines, expired, error)
+
+    Slicing the output afterwards is what this replaces, and the slice bounded the reply
+    without bounding the work in exactly the way `read_file`'s did before it started reading
+    `want + 1` bytes: `search("def", "/")` ran grep over the whole host and brought every match
+    into this process before cutting the list. The extra line is how `truncated` stays honest
+    without a second pass.
+
+    `start_new_session=True` plus `killpg`, for the reason `host.run_command` documents at
+    length: a kill that reaches only the child leaves grandchildren holding the stdout pipe and
+    the read that follows never returns. `grep` and `find` do not fork, but the deadline timer
+    has to be able to end whatever is on the other end of that pipe.
+
+    `expired` is reported separately from truncation because they mean different things to the
+    caller: truncated says "there is more", expired says "we stopped looking before we knew".
+    """
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                text=True, start_new_session=True)
+    except OSError as e:
+        return [], False, str(e)
+
+    expired = False
+
+    def kill_group() -> None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()                     # group already gone, or never got one
+
+    def on_deadline() -> None:
+        nonlocal expired
+        expired = True
+        kill_group()
+
+    timer = threading.Timer(max(1, timeout), on_deadline)
+    timer.start()
+    lines: list[str] = []
+    try:
+        for raw in proc.stdout:
+            raw = raw.rstrip("\n")
+            if raw:
+                lines.append(raw)
+            if len(lines) > want:
+                break
+    finally:
+        timer.cancel()
+        proc.stdout.close()
+        # Unconditional. The loop above normally leaves the child mid-tree with a closed pipe;
+        # a child that already exited on its own makes this a no-op.
+        kill_group()
+        proc.wait()
+    return lines, expired, None
 
 
 @tool("workspace")
@@ -188,9 +251,8 @@ def search(pattern: str, path: str = ".", glob: str = "", regex: bool = False,
         path: Directory to search under. Relative paths are against the project root.
         glob: Restrict to matching filenames, e.g. "*.py".
         regex: Treat the pattern as an extended regular expression rather than a literal.
-        max_results: How many matching lines come back. `grep` runs over the whole tree
-            either way and the list is cut afterwards, so this bounds the answer and not the
-            work; `truncated` in the reply says whether anything was cut.
+        max_results: Stop after this many matching lines. grep is killed once one more than
+            this has arrived, so this bounds the search and not just the reply.
     """
     p = workspace.resolve(path)
     if not p.exists():
@@ -198,19 +260,25 @@ def search(pattern: str, path: str = ".", glob: str = "", regex: bool = False,
     cmd = ["grep", "-rnI", "-E" if regex else "-F", "--", pattern, str(p)]
     if glob:
         cmd[2:2] = [f"--include={glob}"]
-    try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return {"error": "search_failed", "detail": str(e)}
-    # grep exits 1 for "no matches", which is a result and not a failure.
-    lines = [ln for ln in out.stdout.splitlines() if ln][:max_results]
+    want = max(0, max_results)
+    # grep's exit code is never consulted: it exits 1 for "no matches", which is a result and
+    # not a failure, and an empty `matches` list already says so truthfully.
+    lines, expired, failure = _bounded(cmd, want, SEARCH_TIMEOUT_S)
+    if failure is not None:
+        return {"error": "search_failed", "detail": failure}
+    truncated = len(lines) > want
     hits = []
-    for ln in lines:
+    for ln in lines[:want]:
         parts = ln.split(":", 2)
         hits.append({"file": parts[0], "line": int(parts[1]), "text": parts[2]}
                     if len(parts) == 3 and parts[1].isdigit() else {"raw": ln})
-    return {"pattern": pattern, "root": str(p), "count": len(hits),
-            "truncated": len(out.stdout.splitlines()) > len(hits), "matches": hits}
+    out = {"pattern": pattern, "root": str(p), "count": len(hits),
+           "truncated": truncated, "matches": hits}
+    if expired:
+        out["timed_out_after_s"] = SEARCH_TIMEOUT_S
+        out["detail"] = ("grep was still running at the deadline and was killed; these are the "
+                         "matches it had produced, not all of them")
+    return out
 
 
 @tool("workspace")
@@ -220,9 +288,8 @@ def find_files(name: str, path: str = ".", max_results: int = 200) -> dict:
     Args:
         name: A shell glob matched against the filename only.
         path: Directory to search under.
-        max_results: How many paths come back. `find` runs to completion either way -- the
-            pruning below is what bounds the work -- and `truncated` says whether the list
-            was cut. Note `count` is the number found, which can exceed the list length.
+        max_results: Stop after this many. find is killed once one more than this has arrived,
+            so this bounds the walk and not just the reply.
     """
     p = workspace.resolve(path)
     if not p.is_dir():
@@ -233,10 +300,18 @@ def find_files(name: str, path: str = ".", max_results: int = 200) -> dict:
            "(", "-name", ".git", "-o", "-name", "node_modules", "-o", "-name", ".venv",
            "-o", "-name", "__pycache__", ")", "-prune", "-o",
            "-name", name, "-print"]
-    try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return {"error": "find_failed", "detail": str(e)}
-    found = [ln for ln in out.stdout.splitlines() if ln]
-    return {"name": name, "root": str(p), "count": len(found),
-            "truncated": len(found) > max_results, "files": found[:max_results]}
+    want = max(0, max_results)
+    lines, expired, failure = _bounded(cmd, want, SEARCH_TIMEOUT_S)
+    if failure is not None:
+        return {"error": "find_failed", "detail": failure}
+    truncated = len(lines) > want
+    found = lines[:want]
+    # `count` is the length of `files`, which is what it was not before: it used to report the
+    # total found while `files` was sliced, so the two disagreed on every truncated result.
+    out = {"name": name, "root": str(p), "count": len(found),
+           "truncated": truncated, "files": found}
+    if expired:
+        out["timed_out_after_s"] = SEARCH_TIMEOUT_S
+        out["detail"] = ("find was still walking at the deadline and was killed; these are the "
+                         "paths it had produced, not all of them")
+    return out
