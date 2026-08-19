@@ -1,0 +1,208 @@
+# Build the text_gen Bento, containerize it with BentoML's own generated Dockerfile, prove the
+# image serves, and only then push it to GHCR.
+#
+# There is no Dockerfile in this repository and there must not be one for this image.
+# `bentoml containerize` generates it from `deploy/bento/bentofile.yaml`; a hand-written one
+# beside it would be a second source of truth that drifts from the Bento's own manifest.
+#
+# NOTE FOR ANYONE READING THIS ON THE BOX IT WAS WRITTEN ON: this repository has no git remote.
+# `git remote -v` is empty and CLAUDE.md says so deliberately -- "history never leaves this box,
+# which is doing a lot of the protecting". Nothing has ever run this file. Every step below was
+# verified by running its equivalent by hand in `deploy/bento/`, and `deploy/bento/DECISIONS.md`
+# records which steps were verified locally and which are unverifiable without a remote. Read
+# that file before trusting a green check here, because there has never been one.
+name: bento-containerize
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/bento/**'
+      - '.github/workflows/bento-containerize.yml'
+  pull_request:
+    paths:
+      - 'deploy/bento/**'
+      - '.github/workflows/bento-containerize.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag for the pushed image (the ghcr.io/<owner>/<repo> part is derived)'
+        default: 'bentoml-latest'
+        required: false
+
+concurrency:
+  # One build per ref. Two pushes a minute apart would otherwise race to publish the same
+  # mutable `bentoml-latest` tag, and the winner would be whichever finished second.
+  group: bento-containerize-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write        # GHCR. Nothing else -- this workflow writes no code and opens no PRs.
+
+env:
+  BENTO_DIR: deploy/bento
+  BENTO_NAME: text_gen
+  IMAGE_TAG: ${{ github.event.inputs.image_tag || 'bentoml-latest' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Decision D. Matches `docker.python_version` in bentofile.yaml. They are allowed to
+          # differ -- the builder only needs to run `bentoml build`, not the service -- but a
+          # mismatch means the pickled model in the store is written by one interpreter and
+          # read by another, and pickle protocol compatibility is not a thing to leave to luck.
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: ${{ env.BENTO_DIR }}/requirements.txt
+
+      - name: Install BentoML
+        working-directory: ${{ env.BENTO_DIR }}
+        run: pip install -r requirements.txt
+
+      - name: Bento CLI version and containerize capabilities
+        id: caps
+        working-directory: ${{ env.BENTO_DIR }}
+        run: |
+          set -euo pipefail
+          bentoml --version
+          # Decision C, checked rather than assumed. `--push` is present in 1.4.39, but it is a
+          # passthrough to buildx, not a BentoML feature -- so it exists only when the backend
+          # is buildx/docker. With `--backend podman` (what this repo's own box has) it is not
+          # accepted, and the push is a separate `podman push`.
+          if bentoml containerize --help 2>/dev/null | grep -q -- '--push'; then
+            echo "has_push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_push=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+      - name: Derive image name
+        id: image
+        run: |
+          set -euo pipefail
+          # GHCR rejects an uppercase path component, and this repository's name is
+          # `Symoneural`. `ghcr.io/${{ github.repository }}` therefore 400s with "invalid
+          # reference format" on any repo whose owner or name is not already lowercase, which
+          # is a genuinely confusing failure to hit at push time after a ten-minute build.
+          repo_lc=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=ghcr.io/${repo_lc}" >> "$GITHUB_OUTPUT"
+          echo "ref=ghcr.io/${repo_lc}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Save the text_gen model into the Bento store
+        working-directory: ${{ env.BENTO_DIR }}
+        run: |
+          set -euo pipefail
+          # `bentoml build` packs models from the store, not from the checkout, so this is not
+          # optional setup -- without it the build stops with "model text_gen:latest not found".
+          python save_model.py
+
+      - name: Build the Bento
+        id: bento
+        working-directory: ${{ env.BENTO_DIR }}
+        run: |
+          set -euo pipefail
+          bentoml build -f bentofile.yaml
+          tag=$(bentoml list "${BENTO_NAME}" -o json | python -c \
+            'import json,sys; print(json.load(sys.stdin)[0]["tag"])')
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "built ${tag}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Decision B: FAST. The image is built here, in this job, from this checkout. BAKE --
+      # a separate bake-file target driving buildx -- buys multi-target matrices and shared
+      # build contexts, and there is one target and one context. It would be indirection with
+      # nothing on the other end of it.
+      - name: Containerize (load locally, do not push yet)
+        working-directory: ${{ env.BENTO_DIR }}
+        run: |
+          set -euo pipefail
+          bentoml containerize "${{ steps.bento.outputs.tag }}" \
+            --backend buildx --load --platform linux/amd64 \
+            -t "${{ steps.image.outputs.ref }}" \
+            -t "${{ steps.image.outputs.name }}:${{ github.sha }}"
+
+      # This step is the reason the build above says `--load` instead of `--push`, and it is
+      # not caution in the abstract. Writing `SUPPORTED_RESOURCE_TYPES` where the scheduler
+      # reads `SUPPORTED_RESOURCES` produced a completely green `bentoml build` and a service
+      # that died on startup with an AttributeError out of BentoML's own strategy.py. A
+      # `--push` build never holds the image locally, so that bug would have been published
+      # under a green check. Build, prove it serves, then publish.
+      - name: Smoke-test the image
+        run: |
+          set -euo pipefail
+          docker run -d --name bento-smoke -p 3000:3000 "${{ steps.image.outputs.ref }}"
+          for i in $(seq 1 60); do
+            if curl -sf -m 2 http://127.0.0.1:3000/healthz >/dev/null; then break; fi
+            sleep 2
+          done
+          echo "--- /healthz (BentoML's own liveness route) ---"
+          curl -sf -m 5 http://127.0.0.1:3000/healthz && echo
+          echo "--- /status (did the runner load its model?) ---"
+          status=$(curl -sf -m 10 http://127.0.0.1:3000/status \
+                     -H 'content-type: application/json' -d 'null')
+          echo "${status}"
+          echo "${status}" | grep -q '"runner":"text_gen_runner"'
+          echo "--- /generate ---"
+          out=$(curl -sf -m 30 http://127.0.0.1:3000/generate \
+                  -H 'content-type: application/json' \
+                  -d '{"prompt":"ci smoke test","max_tokens":8}')
+          echo "${out}"
+          # Assert on the shape, not on the words. The stub's exact phrasing is not a contract;
+          # "the runner answered and said which backend answered" is.
+          echo "${out}" | grep -q '"backend"'
+          echo "${out}" | grep -q '"text"'
+
+      - name: Container logs
+        if: always()
+        run: docker logs bento-smoke 2>&1 | tail -60 || true
+
+      - name: Stop the smoke-test container
+        if: always()
+        run: docker rm -f bento-smoke || true
+
+      # Everything below publishes, so it is skipped on pull requests. A fork PR has no
+      # `packages: write` token anyway, and failing at the login step is a worse way to learn
+      # that than not running it.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # No repository secret is required. GITHUB_TOKEN is minted per run and the
+          # `packages: write` permission above is what makes it sufficient. If this repo's org
+          # policy forbids GITHUB_TOKEN package writes, replace this with a PAT in a secret
+          # named GHCR_TOKEN -- that is the only case where a secret is needed here.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          docker push "${{ steps.image.outputs.ref }}"
+          docker push "${{ steps.image.outputs.name }}:${{ github.sha }}"
+          echo "pushed ${{ steps.image.outputs.ref }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Bento"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Bento | \`${{ steps.bento.outputs.tag }}\` |"
+            echo "| Image | \`${{ steps.image.outputs.ref }}\` |"
+            echo "| Digest tag | \`${{ steps.image.outputs.name }}:${{ github.sha }}\` |"
+            echo "| \`containerize --push\` available | ${{ steps.caps.outputs.has_push }} |"
+            echo ""
+            echo "Built with \`bentoml containerize\`. There is no Dockerfile in this repo."
+          } >> "$GITHUB_STEP_SUMMARY"

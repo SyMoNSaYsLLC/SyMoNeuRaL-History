@@ -1,6 +1,6 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-17 08:30. Written for a fresh agent with zero prior context.**
+**Last updated 2026-08-19. Written for a fresh agent with zero prior context.**
 
 > **If you read nothing else:** nothing is broken and nothing is blocked, but **two pages ARE
 > now waiting on a deploy** — `site/training.html` carries the 27B measurement (§0b-ter) and
@@ -14,7 +14,8 @@
 >
 > **The 27B work is committed** — `ec9e995` (manual correction + inference measurement) and
 > `4b85bd0` (the QLoRA training path). Both verified 2026-08-18 16:40: pytest **941 passed**
-> (the documented baseline, no regression), `tests/frontend.mjs` **43/43** on a spare port,
+> (the baseline documented at the time, no regression; it is **981** as of 2026-08-19 — see the
+> stale-numbers table below), `tests/frontend.mjs` **43/43** on a spare port,
 > and `build_training.py` run twice is byte-identical and reproduces the committed HTML
 > exactly, so the generator and the page in git agree.
 
@@ -24,9 +25,6 @@ conversation, so every number, path and decision you need is stated here.
 > **Precedence:** this file is authoritative for *state and what is left to do*.
 > `.claude/CLAUDE.md` remains authoritative for *rules*. Anything in `docs/archive/` is
 > superseded — do not act on it.
-
----
-
 ## 0. Sixty-second version
 
 - **Nothing is broken and nothing is blocked; one deploy is pending** (`site/training.html`,
@@ -79,6 +77,45 @@ conversation, so every number, path and decision you need is stated here.
   the unrelated CUDA engine sharing that directory. **No RL run has ever executed on this box**,
   so every preference and reinforcement figure is arithmetic and labelled `projected`.
 
+---
+
+## 0a. `deploy/bento/` — a BentoML build pipeline that has never run in CI (2026-08-19)
+
+New, self-contained, and **outside the serving path**. Garrett asked for a BentoML
+build + containerize pipeline producing a GHCR image for a Runner-based service, with no
+hand-written Dockerfile. Eight new files: `deploy/bento/{text_gen_stub,save_model,
+bentoml_service_runner}.py`, `bentofile.yaml`, `requirements.txt`, `README.md`,
+`DECISIONS.md`, and `.github/workflows/bento-containerize.yml`.
+
+**The one thing you must not misread:** this is not a reversal of the "BentoML loses" verdict in
+`docs/integration-sources.md`. That verdict was about *serving* and *registry*, and it stands —
+`llama-server` still serves, `run/registry.json` is still the registry, nothing in `backend/`
+imports BentoML, `api.py` is byte-identical. What this buys is a **generated Dockerfile**: the
+image recipe comes from `bentofile.yaml` instead of a hand-maintained file that drifts away from
+`ops/Containerfile`. The service holds no weights and never takes a GPU lease.
+
+**The workflow has never executed**, because there is no git remote. That is the request's own
+allowed fallback ("a green CI run *or* a documented reason why CI could not push") and the
+documented reason is: no remote → no Actions → no GHCR push → no PR. `deploy/bento/DECISIONS.md`
+stands in for the PR description and carries decisions A–E plus five adaptations.
+
+**Two things a future agent will want and would otherwise re-derive:**
+
+1. `requirements.txt` pins `bentoml==1.4.39` **deliberately**. The service uses `bentoml.legacy.
+   Runner`, deprecated in 1.4; an unpinned install eventually deletes the module and the Bento
+   stops building.
+2. The workflow builds with `--load` and pushes with `docker push` rather than using
+   `containerize --push`, even though `--push` exists. Reason: a `--push` build never holds the
+   image locally, so it cannot be smoke-tested — and **three of the four bugs found while writing
+   this produced an image that started, passed `/healthz`, and returned a correct-looking
+   `/status` while being unable to generate a single token.** The bug table in `DECISIONS.md`
+   is the evidence.
+
+Verified on this box end-to-end, including one full run from an emptied `~/bentoml` store, which
+is the state CI starts in. Not verifiable here: anything requiring GitHub or GHCR.
+
+---
+
 ## 0b. First moves
 
 ```bash
@@ -128,12 +165,12 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8800/api/status   # 20
 `tests/frontend.mjs` wants — and the kill switch is `sudo systemctl stop symoneural-api`, not
 `symoneural.sh off`.
 
-### Two documented numbers are stale — you did not break them
+### Two documented numbers were stale — you did not break them (one is now fixed)
 
 | Says | Where | Actually |
 |---|---|---|
 | `grep -c include_router backend/api.py` → **6** | §1c of this file, below | **8** — and `git show HEAD:backend/api.py` also gives 8, so HEAD ships 8. The *lesson* in that section (count the mounts after any `api.py` merge) is still right; only the constant drifted. |
-| pytest → **682 pass** | `.claude/CLAUDE.md`, "Test in a real browser" | **871 passed**, same command, same two mandatory `--ignore`s |
+| pytest → **682 pass** | `.claude/CLAUDE.md`, "Test in a real browser" | **fixed 2026-08-19** — CLAUDE.md now says 981 with a date on it, and says explicitly that the count drifts as apps land. 981 collected, 981 passed, same command, same two mandatory `--ignore`s. |
 
 Verified 2026-08-18 alongside the restore below. Frontend suites on that date:
 `tests/frontend.mjs` **43/43**, `tuner_failpaths.mjs` **32/32**, `tuner_watch.mjs` **8/8**.

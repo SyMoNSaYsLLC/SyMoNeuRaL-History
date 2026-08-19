@@ -1,0 +1,5 @@
+# Pinned, not ranged. `bentoml_service_runner.py` is written against the Runner API, which
+# moved to `bentoml.legacy` in 1.4 and carries a removal warning; the first release that
+# actually deletes it turns this build into an `AttributeError` at import time in a file
+# nobody touched. Bump this line deliberately, with the service ported in the same commit.
+bentoml==1.4.39

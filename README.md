@@ -73,6 +73,14 @@ copy would let the host and the container both acquire, both load weights, and p
 models on a 16 GB card — a silent OOM that looks like a CUDA fault. `scripts/container-run.sh`
 explains every flag it passes.
 
+There is a second, unrelated image in `deploy/bento/`: a BentoML service (`text_gen_runner`)
+whose Dockerfile is **generated** by `bentoml containerize` rather than written by hand, built
+and pushed by `.github/workflows/bento-containerize.yml`. It is not part of the serving path,
+holds no weights, and never takes the GPU lease — it forwards to the `llama-server` that
+`api.py` already runs. `deploy/bento/README.md` covers it; `deploy/bento/DECISIONS.md` records
+why it exists alongside `ops/Containerfile` rather than replacing it, and notes that the
+workflow has never run, because this repository has no git remote.
+
 ## Layout
 
 ```

@@ -1,0 +1,39 @@
+# What `bentoml build` packs. There is no Dockerfile in this directory and there must not be:
+# `bentoml containerize` generates one from this file, and a hand-written Dockerfile beside it
+# would be a second source of truth that drifts.
+service: "bentoml_service_runner:svc"
+name: "text_gen"
+description: |
+  Runner-based text generation. Forwards to a local llama.cpp OpenAI-compatible server when
+  SYM_LLAMA_URL is set; falls back to the deterministic stub packed as `text_gen:latest`, and
+  names the backend that answered in every response. No weights are in this image.
+labels:
+  owner: symoneural
+  stack: symoneural.com
+  surface: text_gen
+include:
+  # Explicit, not a glob. The default include is the whole build context, and the build context
+  # here is a directory that also holds a `.venv` -- roughly 400 MB of site-packages that would
+  # be copied into the Bento and then into the image for no reason at all.
+  - "bentoml_service_runner.py"
+  - "save_model.py"
+  # Not optional. The saved model pickles `StubTextGen` *by reference*, so the Bento must carry
+  # the module it names or the runner fails at load with ModuleNotFoundError.
+  - "text_gen_stub.py"
+  - "requirements.txt"
+python:
+  requirements_txt: "./requirements.txt"
+  # No lockfile is generated. Locking would resolve against the *builder's* interpreter, which
+  # is 3.13 on this box and 3.11 in the image, and pin wheels that the image's Python cannot
+  # install. The single pinned line above is the lock.
+  lock_packages: false
+docker:
+  # Decision D. 3.11 rather than the 3.13 this box runs, because BentoML's own published base
+  # images and the wheels it pulls are best-covered there; the service itself is plain stdlib
+  # plus bentoml and runs on either.
+  python_version: "3.11"
+  distro: debian
+models:
+  # `save_model.py` must have run against the same BENTOML_HOME before this build, or the build
+  # stops here rather than shipping a Bento whose runner cannot load anything.
+  - "text_gen:latest"
