@@ -108,6 +108,19 @@ from apps import reinforce  # noqa: E402  -- the training bay. Bound to the pack
 # both SYM_REINFORCE_ENABLED and SYM_REINFORCE_TOKEN are not set. Mounting an off surface
 # is not the same as enabling it. What it now mounts does preference and reinforcement
 # tuning as well as supervised -- see `apps/reinforce/TRAINING_BAY.md`.
+from apps import symoneuralstudio as studio  # noqa: E402  -- the local agent and the
+# visual bench it drives. Bound to an alias because `studio` is already the name of a concept
+# in this file (`/api/studio/models`, the `studio` rate bucket) and a bare `enabled`/`status`
+# from the package would shadow this module's own. Importing it is free with the switch off:
+# `apps/symoneuralstudio/gate.py` is stdlib-only, and every route calls `enabled()` first and
+# answers 503 when SYM_STUDIO_ENABLED and SYM_STUDIO_TOKEN are not both set. It imports no
+# torch, spawns no process, and does not touch the GPU until a job is queued.
+from apps import symoneuralexp as exp  # noqa: E402  -- the plugin runtime. Bound to an
+# alias for the same reason as `studio`: a bare `enabled`/`status` from the package would
+# shadow this module's own. Importing it starts nothing -- `runtime()` is created on first
+# request and `boot()` mounts the preset there, not here -- and the runtime modules under it
+# are stdlib-only, so this import cannot fail for a missing PyYAML or a missing FastAPI. It is
+# the layer the other apps will eventually mount into rather than a surface of its own.
 from apps import rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
 # so its bare `enabled`/`status_rows`/`apply` cannot shadow anything here. Importing it is
 # free and safe with the switch off: it reads no file until `enabled()` passes, spawns
@@ -206,6 +219,12 @@ _RATE_SUGGESTED = {
     # which is exactly the shape where the operator may later want a ceiling, so the knob
     # exists ahead of the need. Same numbers as voice: cheap, but not free.
     "studio": (60,  900),
+    # The plugin runtime's reads (`/api/exp/state`, `/plugins`, `/events`). Listed for the
+    # reason spelled out under "sigil" and repeated under "studio": absent from this dict is
+    # not unlimited-by-choice, it is unmeterable, and SYM_RATE_EXP would be read by nothing.
+    # The page polls `/events` with a cursor while it is open, so the ceiling has to sit above
+    # a poll loop rather than below it -- the same shape as voice, and the same numbers.
+    "exp": (60,  900),
 }
 
 
@@ -1669,8 +1688,19 @@ def build_status() -> Status:
             # on the CPU while the card is busy, never taking the GPU lock -- is now in the
             # Tuner unit's own detail line. See `apps/tuner/routes.py::status()`.
             #
-            # The rack is therefore ELEVEN units, not twelve. `tests/frontend.mjs` guards
-            # the invariant behind that count and was updated in the same commit.
+            # The rack is therefore THIRTEEN units, in the order they are built below:
+            # chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project,
+            # sigils, studio, exp. Eleven before `studio` and `exp` landed alongside their
+            # pages -- and this comment said TWELVE for the change that added both, because a
+            # number kept only in prose drifts. `apps/test_status_rack.py` now counts the
+            # `Unit(...)` calls in this function with an AST walk, so the next mistake is a
+            # test failure and not a sentence.
+            #
+            # `tests/frontend.mjs` does NOT guard the count, deliberately: it asserts the
+            # invariant that no two tiles claim the same page and the same bus (see the comment
+            # at frontend.mjs:97), which survives the rack growing. `units.length >= 5` is all
+            # it says about the number.
+            #
             # The shared workspace. Like Coder it has no page yet, so it links to the
             # documentation rather than to a 404; unlike Coder it DOES carry a route,
             # because it stores nothing executable -- it is SQLite and text.
@@ -1680,6 +1710,17 @@ def build_status() -> Status:
             # off that name -- folding them would make one of the two invisible in exactly
             # the display this site exists to be honest about.
             Unit(**sigils.status()),
+            # The Studio. Reports `offline` until both switches are set -- it can write to
+            # the host, so it is off by default -- and never `busy`: it orchestrates work
+            # that other rows already report. A second row lighting up for somebody else's
+            # job would be a decorative indicator, which this rack does not have.
+            Unit(**studio.status()),
+            # The plugin runtime. `queued` until the first request to /api/exp mounts the
+            # default preset, `ready` after -- and never a state that describes what it is
+            # *about* to mount, which would be reporting intent as a reading. There is no
+            # `degraded` in Unit.state, so a failed plugin is counted at the front of `detail`
+            # rather than dropped.
+            Unit(**exp.status()),
         ]),
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
@@ -2283,6 +2324,44 @@ app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
                    dependencies=[Depends(throttled_for("sigil"))])
 
+# The Studio: a local agent with tools, and ComfyUI's own node editor in front of it.
+#
+# TWO routers, because the surface genuinely lives in two places:
+#
+#   /api/studio/*    the agent (SSE), the tool registry, the queue, the render proxy
+#   /studio/comfy/*  a same-origin reverse proxy in front of ComfyUI's shipped frontend
+#
+# The second one is not an API and does not belong under /api: it serves an HTML application
+# and its assets. `comfyui_frontend_package` derives its own API base from `location.pathname`,
+# so mounted at /studio/comfy/ it addresses /studio/comfy/api/... by itself and no path is
+# rewritten anywhere -- FastAPI still owns every routing decision, which is the rule.
+#
+# `ops/Caddyfile` DOES need a delegation block for /studio, and this is the /overview class of
+# change the /api comment above warns about: Caddy hands the whole /api subtree to the API but
+# resolves any other path against /var/www/symoneural first, where there is no file called
+# `studio`. Without the block the page 404s in production and answers perfectly on localhost,
+# which is the exact failure the section pages hit when they were first deployed. The block is
+# written; applying it needs `sudo ./scripts/install-caddy.sh`.
+#
+# Not metered by `throttled_for("studio")` even though the bucket exists and is configured:
+# that bucket belongs to `/api/studio/models` below, which is a public read, and this surface
+# is single-operator and token-gated. A 60/900 cap on it would throttle the editor's own asset
+# loads -- one page open is dozens of requests -- and produce a broken UI that looks like a
+# bug rather than a limit.
+app.include_router(studio.router, prefix="/api/studio", tags=["studio"])
+app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=False)
+
+# ---- the plugin runtime ----------------------------------------------------
+# Reads are open, mutations need SYM_EXP_ENABLED=1 and SYM_EXP_TOKEN. The split is narrower
+# than studio's and deliberate: the whole argument for this surface is that what is mounted,
+# in what state, and waiting on what is inspectable, and a plugin table behind a secret is a
+# plugin table nobody reads. One thing is withheld from a tokenless caller -- each entry's
+# `config`, which is where a plugin's credentials would live.
+#
+# Touching `exp.router` here is what imports `apps/symoneuralexp/routes.py`, so a syntax error
+# in it still fails the boot loudly despite the PEP 562 lazy attribute on the package.
+app.include_router(exp.router, prefix="/api/exp", tags=["exp"])
+
 
 # ---- the studio model list -------------------------------------------------
 # A read of one pre-computed file, and deliberately nothing else.
@@ -2433,6 +2512,43 @@ def _section_route(filename: str):
 
 for _slug, _file in SECTION_PAGES.items():
     app.get(f"/{_slug}", include_in_schema=False)(_section_route(_file))
+
+
+@app.get("/studio", include_in_schema=False)
+async def studio_page() -> FileResponse:
+    """The Studio, at a clean address.
+
+    Its own route rather than a `SECTION_PAGES` entry, because `_section_route`'s 404 hardcodes
+    *"run python3 tools/build_split.py"*. That is true of the four section pages and false of
+    this one, and a 404 that names the wrong generator sends the next person to the wrong file.
+    Same read-at-request-time behaviour, different instruction.
+
+    Declared above the StaticFiles mount, for the same reason every route here is.
+    """
+    f = SITE / "studio.html"
+    if not f.is_file():
+        raise HTTPException(status_code=404,
+                            detail="studio.html has not been generated; "
+                                   "run python3 tools/build_studio.py")
+    return FileResponse(f, media_type="text/html")
+
+
+@app.get("/exp", include_in_schema=False)
+async def exp_page() -> FileResponse:
+    """The plugin runtime's page, at a clean address.
+
+    Its own route rather than a `SECTION_PAGES` entry, for the same reason `/studio` has one:
+    `_section_route`'s 404 hardcodes *"run python3 tools/build_split.py"*, which would send the
+    next person to the wrong generator. Same read-at-request-time behaviour, right instruction.
+
+    Declared above the StaticFiles mount, for the same reason every route here is.
+    """
+    f = SITE / "exp.html"
+    if not f.is_file():
+        raise HTTPException(status_code=404,
+                            detail="exp.html has not been generated; "
+                                   "run python3 tools/build_exp.py")
+    return FileResponse(f, media_type="text/html")
 
 
 @app.get("/", include_in_schema=False)

@@ -98,7 +98,7 @@ class RouteIsReachable(unittest.TestCase):
                         "can never match")
 
     def test_the_router_count_is_unchanged(self):
-        """Nine `include_router` calls, and adding a plain route must not move that.
+        """Twelve `include_router` calls, and adding a plain route must not move that.
 
         The count is the cheap proxy for "no surface was mounted or unmounted by accident".
         It is recorded in `.claude/HANDOVER.md`; if this fails, one of the two is wrong and
@@ -108,11 +108,22 @@ class RouteIsReachable(unittest.TestCase):
         switch. That is a deliberate ninth surface, so this number moved in the same commit
         that mounted it, which is the whole point of the tripwire: it should be impossible
         to add a router without someone typing the new number and meaning it.
+
+        Then 9 -> 11, both in the commit that added the Studio, and both deliberate: one
+        router at `/api/studio` and one at `/studio/comfy`. The second is the odd one and is
+        the reason this docstring says eleven rather than ten -- it serves ComfyUI's own node
+        editor as an HTML application, so it does not belong under `/api`, and it is a
+        separate `include_router` rather than a sub-prefix because a router's prefix cannot
+        put half its routes outside its own tree.
+
+        Then 11 -> 12 for `apps/symoneuralexp` at `/api/exp` -- the plugin runtime. One
+        router, and the page it serves is a generated file behind a plain `@app.get("/exp")`
+        rather than a second router, so this moved by one and not by two.
         """
         calls = [n for n in ast.walk(TREE)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "include_router"]
-        self.assertEqual(len(calls), 9)
+        self.assertEqual(len(calls), 12)
 
 
 class ValidatorRejectsJunk(unittest.TestCase):
