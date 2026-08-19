@@ -130,6 +130,49 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# SyMoNeuRaL Studio: the agent page at /studio, and ComfyUI's own node editor
+	# reverse-proxied by FastAPI at /studio/comfy/*.
+	#
+	# Same shape and same reason as @sections above -- a DELEGATION, not a rewrite. Neither
+	# path is a file on disk, so without this block file_server looks for
+	# /var/www/symoneural/studio, does not find it, and 404s without ever asking the API.
+	# Against localhost the API answers directly and this block is not exercised at all, so
+	# run tests/frontend.mjs against production after changing it.
+	#
+	# `handle` covers the subtree, which is what /studio/comfy/* needs: one page open pulls
+	# dozens of assets and opens a WebSocket at /studio/comfy/ws. The upgrade needs no
+	# directive here -- that is the reason this file is Caddy and not Apache (see 1. above).
+	#
+	# flush_interval -1 because /api/studio/agent streams the agent's reasoning as SSE and
+	# the editor streams render progress; buffered, both arrive in one lump at the end and
+	# look like a hang. That path is under /api and already covered above, but the editor's
+	# own socket comes through HERE.
+	@studio path /studio /studio/*
+	handle @studio {
+		reverse_proxy 127.0.0.1:8800 {
+			flush_interval -1
+		}
+	}
+
+	# The plugin runtime's page at /exp. Same delegation, one line shorter, and the
+	# differences are the point:
+	#
+	#   * `path /exp` EXACT, not `/exp/*`. There is no subtree -- the runtime's reads live at
+	#     /api/exp/*, already delegated by the /api block above -- and a wildcard here would
+	#     claim addresses nothing serves.
+	#   * No `flush_interval -1`. The page polls /api/exp/events with a cursor rather than
+	#     holding a stream open, so there is nothing here to unbuffer. Copying the directive
+	#     across from @studio would be cargo cult: it would read as "this streams" to the next
+	#     person, and it does not.
+	#
+	# Added in the same change as the /exp route and the rack row, because @sections' comment
+	# is the record of what happens otherwise: file_server looks for /var/www/symoneural/exp,
+	# does not find it, and 404s without asking the API -- while localhost answers perfectly.
+	@exp path /exp
+	handle @exp {
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# Anything else is a static file.
 	handle {
 		file_server
