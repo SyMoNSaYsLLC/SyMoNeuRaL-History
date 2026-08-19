@@ -66,14 +66,25 @@ conversation, so every number, path and decision you need is stated here.
   2026-08-17), which is why this list is shorter than it looks; `sigils`, `studio` and `exp` are
   the additions since. `studio` and `exp` read `offline`/`queued` until their two switches are
   set, which is the honest reading and not a fault.
-- **Three units read OFFLINE for three unrelated reasons, and no agent can change any of them
-  — every path is `sudo`.** They have been read as one stalled task for days; they are not.
-  - **`project` — genuinely fixable, one command.** The code is complete and tested;
-    `store.enabled()` wants `SYM_PROJECT_ENABLED=1` and `SYM_PROJECT_TOKEN`, and
-    `ops/symoneural-api.service` carries neither. `sudo ./scripts/enable-surfaces.sh project`
-    writes the drop-in, mints the token into `/etc/symoneural/api.env` (root, 0600, via
-    `EnvironmentFile=` — never `Environment=`, which `systemctl show` prints to any user) and
-    restarts. It is idempotent, and it is the only one of the three that turns green.
+- **Three units read OFFLINE for three unrelated reasons, and no agent can change any of them.**
+  They have been read as one stalled task for days; they are not. Two of the three need `sudo`;
+  the third now needs an authenticated write, which is a different kind of blocked.
+  - **`project` — enabled since 05:09 EDT 2026-08-19, and still offline for a second reason.**
+    Garrett ran `sudo ./scripts/enable-surfaces.sh project`;
+    `/etc/systemd/system/symoneural-api.service.d/10-surfaces.conf` exists and the unit's
+    `EnvironmentFiles=/etc/symoneural/api.env`, so `store.enabled()` is now true. The detail
+    string is the evidence and it is worth learning to read: `store.probe()` returns
+    `"surface disabled on this installation"` when the switches are unset and
+    `"no project store initialised"` when they are set but the file is missing, and
+    `/api/status` returned the **second** at 05:39 EDT. What is missing is
+    `run/project/store.db`. **Nothing in the serving path creates it.** `store.init_db()` is
+    called only from `test_project.py`; `store.probe()` opens `mode=ro` on purpose so a rack
+    poll cannot manufacture an empty database and then report the surface healthy. The file
+    appears on the first token-authenticated `POST /api/projects`, which reaches
+    `store.create_project` → `store.connect()` → `_SCHEMA`. So this one is no longer a `sudo`
+    task at all: it wants one write by whoever holds `SYM_PROJECT_TOKEN`, and that token lives
+    in `/etc/symoneural/api.env` (root, 0600, via `EnvironmentFile=` — never `Environment=`,
+    which `systemctl show` prints to any user), which is why an agent still cannot do it.
   - **`coder` — switchable, but never a clickable page, by decision.**
     `sudo ./scripts/enable-surfaces.sh coder` makes it read `ready · local only`. It
     deliberately has **no HTTP route**: `ops/Caddyfile` delegates the whole `/api/*` subtree, so
@@ -960,7 +971,7 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | `tests/frontend.mjs` | **35/35 against `https://symoneural.com`, 2026-08-17 15:35** — production, not local. The five `400`/`404` lines it prints under "failed requests" are the tuner-routing assertion probing its own endpoints on purpose; they are the test working, not a fault. |
 | `https://symoneural.com/` | **302 -> /overview** |
 | `https://www.symoneural.com/` | 200, its own Let's Encrypt cert (Caddy issues per name, so the apex cert's SAN list is apex-only — that is correct, not a fault) |
-| Rack units | **13** — chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project, sigils, studio, exp (read from `/api/status` on the **running** API, 2026-08-19; service active since 05:09:47 EDT). This row said **10** for two days while §0 said thirteen; the 10 was a correct 2026-08-17 reading that nobody re-took. Down from 12 to 10 by two deliberate merges, not by anything breaking: `guide` folded into `tuner` (§2h), and `asicminer`+`gpuminer` folded into one `miner` unit; `sigils`, `studio` and `exp` are the three added since. `train` points at `/reinforce.html`, not the manual. Of the thirteen, `coder`/`gateway`/`project` read `offline` and `exp` reads `queued` — see §0 for why each, and note that only `project` can be turned green, by Garrett, with one command. |
+| Rack units | **13** — chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project, sigils, studio, exp (read from `/api/status` on the **running** API at 05:39 EDT 2026-08-19; that service has been up since 05:22:39 EDT, and the reading was re-taken because a restart had happened since the earlier one). This row said **10** for two days while §0 said thirteen; the 10 was a correct 2026-08-17 reading that nobody re-took. Down from 12 to 10 by two deliberate merges, not by anything breaking: `guide` folded into `tuner` (§2h), and `asicminer`+`gpuminer` folded into one `miner` unit; `sigils`, `studio` and `exp` are the three added since. `train` points at `/reinforce.html`, not the manual. Of the thirteen, `coder`/`gateway`/`project`/`studio` read `offline` and `exp` reads `queued` — see §0 for why each, and note that `project` is now *enabled* and offline for a second, different reason: its store file does not exist and no serving-path code creates one. |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
