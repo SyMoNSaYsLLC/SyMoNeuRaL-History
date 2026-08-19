@@ -169,10 +169,11 @@ node tests/tuner_watch.mjs          # tuner-watch.html, ditto -- no account, no 
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
-**981 pass (measured 2026-08-19); the two `--ignore`s are not optional and not a failure you
-introduced.** The count drifts upward as apps land — it was 682, then 941, then 973 — so treat
-the absolute number as a date-stamped reading, not a contract. What matters is that you get a
-number at all. Without
+**1063 pass in 111.16 s (measured 2026-08-19, from `backend/`); the two `--ignore`s are not
+optional and not a failure you introduced.** The count drifts upward as apps land — it was 682,
+then 941, then 973, then 981, then 1062 — so treat the absolute number as a date-stamped reading, not a
+contract. `--collect-only` should report the same figure; that comparison is what catches a
+collection abort, which is not a smaller number but no number at all. Without
 them pytest stops at *collection* — `Interrupted: 2 errors`, zero tests run, which reads exactly
 like you broke the suite. `apps/reinforce/tests` imports `cupy` and `apps/remix/tests` imports
 `symon_capture`; neither is installed on the **system** interpreter and neither may be, since

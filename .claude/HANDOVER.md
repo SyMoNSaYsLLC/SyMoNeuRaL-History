@@ -47,13 +47,47 @@ conversation, so every number, path and decision you need is stated here.
   reintroduce a second thing that routes.
 - **One RTX 5070 Ti, 15.92 GiB, one tenant at a time**, arbitrated by a `mkdir` lock at
   `<root>/run/gpu.lock.d`. That constraint is the architecture. See §4.
-- **Twelve rack units now**, not eight and not five. `GET /api/status` is the authority and it
-  answers, in order: `chat`, `image`, `remix`, `ravencalc`, `train`, `asicminer`, `gpuminer`,
-  `tuner`, `coder`, `gateway`, `guide`, `project` (verified 2026-08-17 against the running
-  API). Count it there, not here — this line has already been stale twice. The four beyond the
-  eight below arrived on 2026-08-17 from work that is **in the working tree and uncommitted**:
-  `gpuminer` (§5 item 4), `coder`, `guide` and `project`. §2c has the shape of the first three
-  additions; §2d the dev fee; §2e firmware and the QEMU emulator.
+- **Thirteen rack units, and this is a reading rather than a count of source.** Measured
+  2026-08-19 with `curl -s http://127.0.0.1:8800/api/status`, against the systemd service that
+  entered active state at 05:09:47 EDT: thirteen rows, in order `chat`, `image`, `remix`,
+  `ravencalc`, `train`, `miner`, `tuner`, `coder`, `gateway`, `project`, `sigils`, `studio`,
+  `exp`. `/studio` and `/exp` both answer 200 on that same process.
+  **A grep of `api.py:build_status()` is not this reading.** An earlier revision of this line
+  presented one as the other, and it was wrong for a stretch this morning: `api.py` was rewritten
+  at 08:37 UTC and until the service was restarted the endpoint answered **eleven** — no `studio`
+  row, no `exp` row — while this file claimed thirteen. `build_status()` is code, so the count in
+  the tree becomes the count on the wire only after
+  `sudo systemctl restart symoneural-api` (Garrett only). If you cannot reach the endpoint, say
+  the number is counted from source and unverified against the running service.
+  `backend/apps/test_status_rack.py` asserts the number, the names and the comment above the list
+  in `api.py` agree **with each other** — worth having, and it cannot catch the case above,
+  because all three can agree and all three be undeployed.
+  `guide` folded into `tuner` and `asicminer`+`gpuminer` folded into one `miner` row (both
+  2026-08-17), which is why this list is shorter than it looks; `sigils`, `studio` and `exp` are
+  the additions since. `studio` and `exp` read `offline`/`queued` until their two switches are
+  set, which is the honest reading and not a fault.
+- **Three units read OFFLINE for three unrelated reasons, and no agent can change any of them
+  — every path is `sudo`.** They have been read as one stalled task for days; they are not.
+  - **`project` — genuinely fixable, one command.** The code is complete and tested;
+    `store.enabled()` wants `SYM_PROJECT_ENABLED=1` and `SYM_PROJECT_TOKEN`, and
+    `ops/symoneural-api.service` carries neither. `sudo ./scripts/enable-surfaces.sh project`
+    writes the drop-in, mints the token into `/etc/symoneural/api.env` (root, 0600, via
+    `EnvironmentFile=` — never `Environment=`, which `systemctl show` prints to any user) and
+    restarts. It is idempotent, and it is the only one of the three that turns green.
+  - **`coder` — switchable, but never a clickable page, by decision.**
+    `sudo ./scripts/enable-surfaces.sh coder` makes it read `ready · local only`. It
+    deliberately has **no HTTP route**: `ops/Caddyfile` delegates the whole `/api/*` subtree, so
+    an `/api/coder/...` route would be publicly reachable the moment it existed, and this is an
+    agent that can develop the site. The script also refuses to set `SYM_CODER_ALLOW_REMOTE`.
+    If a Coder *page* is wanted, that is a decision to put to Garrett with the security argument
+    attached, not a bug nobody got round to.
+  - **`gateway` — not fixable by configuration at all.** `unit_state()` has one `ready` branch
+    and it requires a licence that has **settled** against the configured network and contract.
+    `SymoneuralLicence.sol` has never been deployed; there is no wallet, no daemon, no key
+    material. `ops/gateway/DEPLOY.md` is the path and it starts with deploying to Nile and
+    funding a wallet. Do **not** widen the `ready` branch: `site/console.js:47` lights the green
+    LED for any state that is not literally `offline`, so inventing `configured` would light it
+    while meaning less than `ready`.
 - **`/` redirects (302) to `/overview`.** The front page is four sections, each at its own
   URL — `/overview`, `/livestack`, `/controlboard`, `/receipts`. The tabbed one-screen
   `index.html` still exists and still answers at `/index.html`; it is the page
@@ -926,13 +960,13 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | `tests/frontend.mjs` | **35/35 against `https://symoneural.com`, 2026-08-17 15:35** — production, not local. The five `400`/`404` lines it prints under "failed requests" are the tuner-routing assertion probing its own endpoints on purpose; they are the test working, not a fault. |
 | `https://symoneural.com/` | **302 -> /overview** |
 | `https://www.symoneural.com/` | 200, its own Let's Encrypt cert (Caddy issues per name, so the apex cert's SAN list is apex-only — that is correct, not a fault) |
-| Rack units | **10** — chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project (read from `/api/status` on the **running** API, 2026-08-17 15:30). Down from 12 by two deliberate merges, not by anything breaking: `guide` folded into `tuner` (§2h), and `asicminer`+`gpuminer` folded into one `miner` unit. `train` now points at `/reinforce.html`, not the manual. |
+| Rack units | **13** — chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project, sigils, studio, exp (read from `/api/status` on the **running** API, 2026-08-19; service active since 05:09:47 EDT). This row said **10** for two days while §0 said thirteen; the 10 was a correct 2026-08-17 reading that nobody re-took. Down from 12 to 10 by two deliberate merges, not by anything breaking: `guide` folded into `tuner` (§2h), and `asicminer`+`gpuminer` folded into one `miner` unit; `sigils`, `studio` and `exp` are the three added since. `train` points at `/reinforce.html`, not the manual. Of the thirteen, `coder`/`gateway`/`project` read `offline` and `exp` reads `queued` — see §0 for why each, and note that only `project` can be turned green, by Garrett, with one command. |
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
-| Pending deploy | **none as of 15:35.** Garrett ran both at 15:23/15:24 and ran them **in the right order** — webroot files stamped 15:23, `ActiveEnterTimestamp` 15:24:07 — so the Movies fix, the Tuner+Guide merge, the merged `miner` unit and Reinforce are all live. Verified, not assumed: `/reinforce.html` `/reinforce.js` `/miner.html` `/project.html` `/gateway.html` all **200** on `https://symoneural.com`. **When the next backend change lands, the order is `sudo scripts/deploy.sh --prune` FIRST, then `sudo systemctl restart symoneural-api`** — see the box below. **That backend change has now landed:** `96e4ccb` mounts `/api/voice/*` in `backend/api.py`, so **`sudo systemctl restart symoneural-api` is owed** before those routes answer on the live service (they 404 until then; agents cannot run it, it needs a password). After the restart they answer **503 by design** until `SYM_VOICE_ENABLED=1` and `SYM_VOICE_TOKEN` are set on the service — a 503 there is the gate working, not a broken mount. It touched **no** file under `site/`, so `deploy.sh` is not required for this one — but if anything else in the queue did touch `site/`, run deploy first anyway and keep the order. |
-| Backend suites | **679 passed, 1 failed** at `f9f3546` (14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. The one red is the tuner codec test, and it belongs to a live writer — see below. |
-| Uncommitted | **16 paths at 14:43, and every one of them is the tuner session's live work** (`epg.py`, `sessions.py`, `tuner.html`, `tuner-watch.html`, `build_pages.py`, `build_masthead.py`, `api.py`, `frontend.mjs`, …). The ~100-path backlog is gone: `8e835cb`, `e38f463` and `f9f3546` landed it. **Still no git remote** — history never leaves this box. |
+| Pending deploy | **Two of the three, and the API is NOT one of them.** Measured 2026-08-19 05:20 EDT. The service already restarted at 05:09:47 and runs `backend/api.py` out of this repo, so the backend half is live: `/api/status` answers thirteen units and `/studio` and `/exp` both return 200 on 127.0.0.1:8800. What is owed, Garrett only: **(1) `sudo scripts/deploy.sh --prune`** — `/var/www/symoneural/` has no `studio.html`, no `exp.html`, no `studio.js`, no `exp.js`, and its `symoneural.css` predates the masthead change. The two pages would answer through the API even so, because `/studio` and `/exp` are FastAPI routes reading `<root>/site/`; their **scripts** would not, because `/studio.js` and `/exp.js` are plain static paths Caddy serves off the webroot. A page that loads and does nothing is the failure mode here. **(2) `sudo ./scripts/install-caddy.sh`** — the `@studio` and `@exp` delegation blocks in `ops/Caddyfile` are written and `caddy validate` passes, but until they are installed production resolves both paths against the webroot and 404s without asking the API. Neither block is exercised against localhost, which is why local 200s prove nothing about it. Order stays `deploy.sh` first. |
+| Backend suites | **1063 passed, 0 failed in 111.16 s**, measured 2026-08-19 from `backend/` with `python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests`; `--collect-only` collects the same 1063 (both re-taken at 05:26 EDT on the committed tree; an earlier reading of 1062/110.75 s in this same session was one test stale, taken before the last of the new tests landed — which is why the two runs are dated to the minute), which is the check that catches a collection abort (a smaller number is a lost test, *no* number is `Interrupted`). Previous reading for contrast: **679 passed, 1 failed** at `f9f3546` (2026-08-17 14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. That single red was the tuner codec test, owned by a live writer at the time; today's run has no reds. |
+| Uncommitted | **The 2026-08-19 review work is committed** — six commits on top of `48fc731`: the Studio app, the plugin runtime, the `api.py` wiring plus the new rack tripwire, the masthead/CSS pass, the Caddy delegation, and this state-document pass. What is left in the tree is the review's own paperwork (`CLOSEOUT-2026-08-19.md`, `REVIEW-LOG.md`, `SWEEP-READY.md`, all mode 600) and material Garrett dropped here (`drive-download-.../`, two NGC captures) — none of it mine to commit. The §4/§5 punch-list items in `REVIEW-LOG.md` are still OPEN and are not in any commit above. **Still no git remote** — history never leaves this box. |
 
 ### The two deploy commands have an order, and the natural one is wrong
 
