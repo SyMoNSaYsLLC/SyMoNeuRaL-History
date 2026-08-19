@@ -333,6 +333,46 @@ class RegistryTests(unittest.TestCase):
                     self.assertIn("type", spec, f"{short}.{key} has no declared type")
 
 
+    def test_a_yaml_true_is_refused_by_every_field_that_is_not_a_bool(self):
+        """`check_config`'s fast path rejects `bool` for an `int` field and its comment says the
+        principle. The principle did not hold for the other two.
+
+        `bool` subclasses `int`, so `isinstance(True, int)` is True and the fast path catches
+        it. But `isinstance(True, float)` and `isinstance(True, str)` are both False, so a bool
+        written against a float or a str field skipped that branch entirely and landed in
+        `_coerce`, whose tests are `isinstance(value, (int, str))` for float and
+        `isinstance(value, (int, float))` for str -- and a bool passes both. `interval: true`
+        therefore became `1.0` on a float field and `"True"` on a str one, silently, which is
+        exactly the repair the `int` branch exists to refuse.
+
+        The string coercions are the point of `_coerce` and must keep working, so they are
+        asserted in the same test: killing the bool leak by dropping `int` from the float test
+        would take `"1.5"` with it.
+        """
+        class Runner:
+            label = "probe"
+            schema = {"flag": (bool, False), "n": (int, 0), "x": (float, 0.0), "s": (str, "")}
+
+        for key, want in (("n", "int"), ("x", "float"), ("s", "str")):
+            with self.subTest(field=key):
+                with self.assertRaises(ContextError) as caught:
+                    registry.check_config(Runner(), {key: True})
+                self.assertIn(f"{key!r} wants {want}, got bool", str(caught.exception))
+
+        # A bool for a bool field is not the trap and must still pass, as must the quoted forms
+        # `_coerce` exists for. Without this half the guard could be `return _NO` unconditionally
+        # and the test above would still be green.
+        self.assertEqual(registry.check_config(Runner(), {"flag": True})["flag"], True)
+        for given, expect in (({"flag": "true"}, ("flag", True)),
+                              ({"flag": "FALSE"}, ("flag", False)),
+                              ({"n": "5"}, ("n", 5)),
+                              ({"x": "1.5"}, ("x", 1.5)),
+                              ({"s": 7}, ("s", "7"))):
+            with self.subTest(given=given):
+                key, value = expect
+                self.assertEqual(registry.check_config(Runner(), dict(given))[key], value)
+
+
 class PresetTests(unittest.TestCase):
     def test_every_preset_parses_and_names_are_what_the_files_are_called(self):
         names = loadermod.presets()

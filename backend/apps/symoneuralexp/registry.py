@@ -161,8 +161,11 @@ def check_config(runner: Runner, config: dict | None) -> dict:
             continue
         value = config[key]
         if want is typing.Any or isinstance(value, want):
-            # `bool` is a subclass of `int`; the same trap as the studio registry, and the same
-            # answer. `interval: true` is not an interval of 1.
+            # `bool` is a subclass of `int`, so `interval: true` satisfies `isinstance(value,
+            # int)` and would arrive as an interval of 1. Rejected here. The float and str fields
+            # need the same answer and cannot get it here -- `isinstance(True, float)` is False,
+            # so a bool bound for a float field never reaches this branch at all; `_coerce` turns
+            # it away instead, and the reason is written there.
             if want is int and isinstance(value, bool):
                 problems.append(f"{key!r} wants int, got bool")
             continue
@@ -199,7 +202,20 @@ def _typename(want) -> str:
 def _coerce(value, want):
     """YAML gives strings for anything quoted, and a manifest written by hand quotes things it
     did not need to. `"5"` for an int field is a typo, not a type error, and refusing it just
-    makes the manifest harder to write."""
+    makes the manifest harder to write.
+
+    A bool is not one of those typos, and this is where the `bool`-is-an-`int` trap gets closed
+    for the two fields `check_config`'s fast path cannot reach. `isinstance(True, float)` is
+    False and `isinstance(True, str)` is False, so `flag: true` written against a float or str
+    field falls through to here -- and the two tests below accept `int` and `(int, str)`, which
+    a bool passes. Without the guard `interval: true` became `1.0` on a float field and
+    `"True"` on a str one: the same silent repair the fast path rejects for `int`, one line
+    later and two types over. Measured before the guard: `{"x": True}` against `(float, 0.0)`
+    returned `{"x": 1.0}`, and `{"s": True}` against `(str, "")` returned `{"s": "True"}`. Both
+    now say `wants float, got bool` / `wants str, got bool`, which is what `int` already said.
+    """
+    if isinstance(value, bool) and want is not bool:
+        return _NO
     try:
         if want is int and isinstance(value, str) and value.strip().lstrip("-").isdigit():
             return int(value)
