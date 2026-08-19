@@ -48,10 +48,18 @@ conversation, so every number, path and decision you need is stated here.
 - **One RTX 5070 Ti, 15.92 GiB, one tenant at a time**, arbitrated by a `mkdir` lock at
   `<root>/run/gpu.lock.d`. That constraint is the architecture. See §4.
 - **Thirteen rack units, and this is a reading rather than a count of source.** Measured
-  2026-08-19 with `curl -s http://127.0.0.1:8800/api/status`, against the systemd service that
-  entered active state at 05:09:47 EDT: thirteen rows, in order `chat`, `image`, `remix`,
-  `ravencalc`, `train`, `miner`, `tuner`, `coder`, `gateway`, `project`, `sigils`, `studio`,
-  `exp`. `/studio` and `/exp` both answer 200 on that same process.
+  2026-08-19 **06:30 EDT** with `curl -s http://127.0.0.1:8800/api/status`, against the systemd
+  invocation that entered active state at **05:22:39 EDT** (`NRestarts=0`, so that is the only
+  process this unit has run since it was last started): thirteen rows, in order `chat`, `image`,
+  `remix`, `ravencalc`, `train`, `miner`, `tuner`, `coder`, `gateway`, `project`, `sigils`,
+  `studio`, `exp`. `/studio` and `/exp` both answer 200 on that same process. An earlier revision
+  of this line credited the reading to an invocation that started 05:09:47 EDT; the unit had
+  already been restarted past it, so the process named was not the one answering.
+  **The tree and the wire agree, and that is checkable rather than asserted.** `backend/api.py`
+  was last written 04:37 EDT and the running process started 05:22:39 EDT, so the code on the
+  wire *is* the code in the tree: compare `stat -c %y backend/api.py` against
+  `systemctl show symoneural-api -p ExecMainStartTimestamp`. Make that comparison before you
+  treat any source count as a live one, because it is the whole of what licenses it.
   **A grep of `api.py:build_status()` is not this reading.** An earlier revision of this line
   presented one as the other, and it was wrong for a stretch this morning: `api.py` was rewritten
   at 08:37 UTC and until the service was restarted the endpoint answered **eleven** — no `studio`
@@ -66,9 +74,14 @@ conversation, so every number, path and decision you need is stated here.
   2026-08-17), which is why this list is shorter than it looks; `sigils`, `studio` and `exp` are
   the additions since. `studio` and `exp` read `offline`/`queued` until their two switches are
   set, which is the honest reading and not a fault.
-- **Three units read OFFLINE for three unrelated reasons, and no agent can change any of them.**
-  They have been read as one stalled task for days; they are not. Two of the three need `sudo`;
-  the third now needs an authenticated write, which is a different kind of blocked.
+- **Four rows read OFFLINE. Three of them are three unrelated states that render the same grey,
+  and no agent can change any of the three.** The wire tally at 06:30 EDT was `ready` 8,
+  `offline` 4, `queued` 1 — the fourth grey row is `studio`, which is offline only because its
+  two switches are unset (the bullet above), so it is not part of this group and is not waiting
+  on anyone. The three below have been read as one stalled task for days; they are not one task
+  and there is no single fix. Two of them need `sudo`; the third now needs an authenticated
+  write, which is a different kind of blocked. Each one's `detail` string on the wire is the
+  evidence for its own case, and they are quoted per-unit below.
   - **`project` — enabled since 05:09 EDT 2026-08-19, and still offline for a second reason.**
     Garrett ran `sudo ./scripts/enable-surfaces.sh project`;
     `/etc/systemd/system/symoneural-api.service.d/10-surfaces.conf` exists and the unit's
@@ -86,13 +99,21 @@ conversation, so every number, path and decision you need is stated here.
     in `/etc/symoneural/api.env` (root, 0600, via `EnvironmentFile=` — never `Environment=`,
     which `systemctl show` prints to any user), which is why an agent still cannot do it.
   - **`coder` — switchable, but never a clickable page, by decision.**
-    `sudo ./scripts/enable-surfaces.sh coder` makes it read `ready · local only`. It
+    On the wire it reads `disabled — local-only operator surface, off by default`, which is
+    `backend/apps/coder/__init__.py:953` verbatim. `sudo ./scripts/enable-surfaces.sh coder`
+    takes the other branch, twelve lines down at `:956`, which formats
+    `local only · workspace <name> · no GPU lease` — read from the source, not from a run, because
+    the command needs `sudo`. It
     deliberately has **no HTTP route**: `ops/Caddyfile` delegates the whole `/api/*` subtree, so
     an `/api/coder/...` route would be publicly reachable the moment it existed, and this is an
     agent that can develop the site. The script also refuses to set `SYM_CODER_ALLOW_REMOTE`.
     If a Coder *page* is wanted, that is a decision to put to Garrett with the security argument
     attached, not a bug nobody got round to.
-  - **`gateway` — not fixable by configuration at all.** `unit_state()` has one `ready` branch
+  - **`gateway` — not fixable by configuration at all.** On the wire it reads `not configured —
+    set SYM_GATEWAY_ENABLED=1, SYM_GATEWAY_NETWORK (nile|shasta|mainnet) and
+    SYM_GATEWAY_CONTRACT (a T… address) · see /gateway.html`, which names three environment
+    variables and so reads like the other two switchable surfaces. It is not one: setting all
+    three does not reach `ready`. `unit_state()` has one `ready` branch
     and it requires a licence that has **settled** against the configured network and contract.
     `SymoneuralLicence.sol` has never been deployed; there is no wallet, no daemon, no key
     material. `ops/gateway/DEPLOY.md` is the path and it starts with deploying to Nile and
@@ -995,7 +1016,7 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
-| Pending deploy | **Two of the three, and the API is NOT one of them.** Measured 2026-08-19 05:20 EDT. The service already restarted at 05:09:47 and runs `backend/api.py` out of this repo, so the backend half is live: `/api/status` answers thirteen units and `/studio` and `/exp` both return 200 on 127.0.0.1:8800. What is owed, Garrett only: **(1) `sudo scripts/deploy.sh --prune`** — `/var/www/symoneural/` has no `studio.html`, no `exp.html`, no `studio.js`, no `exp.js`, and its `symoneural.css` predates the masthead change. The two pages would answer through the API even so, because `/studio` and `/exp` are FastAPI routes reading `<root>/site/`; their **scripts** would not, because `/studio.js` and `/exp.js` are plain static paths Caddy serves off the webroot. A page that loads and does nothing is the failure mode here. **(2) `sudo ./scripts/install-caddy.sh`** — the `@studio` and `@exp` delegation blocks in `ops/Caddyfile` are written and `caddy validate` passes, but until they are installed production resolves both paths against the webroot and 404s without asking the API. Neither block is exercised against localhost, which is why local 200s prove nothing about it. Order stays `deploy.sh` first. |
+| Pending deploy | **Two of the three, and the API is NOT one of them.** Measured 2026-08-19 05:20 EDT. The service has restarted past the `api.py` rewrite — the invocation running at 06:30 EDT entered active state 05:22:39 EDT — and runs `backend/api.py` out of this repo, so the backend half is live: `/api/status` answers thirteen units and `/studio` and `/exp` both return 200 on 127.0.0.1:8800. What is owed, Garrett only: **(1) `sudo scripts/deploy.sh --prune`** — `/var/www/symoneural/` has no `studio.html`, no `exp.html`, no `studio.js`, no `exp.js`, and its `symoneural.css` predates the masthead change. The two pages would answer through the API even so, because `/studio` and `/exp` are FastAPI routes reading `<root>/site/`; their **scripts** would not, because `/studio.js` and `/exp.js` are plain static paths Caddy serves off the webroot. A page that loads and does nothing is the failure mode here. **(2) `sudo ./scripts/install-caddy.sh`** — the `@studio` and `@exp` delegation blocks in `ops/Caddyfile` are written and `caddy validate` passes, but until they are installed production resolves both paths against the webroot and 404s without asking the API. Neither block is exercised against localhost, which is why local 200s prove nothing about it. Order stays `deploy.sh` first. |
 | Backend suites | **1063 passed, 0 failed in 111.16 s**, measured 2026-08-19 from `backend/` with `python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests`; `--collect-only` collects the same 1063 (both re-taken at 05:26 EDT on the committed tree; an earlier reading of 1062/110.75 s in this same session was one test stale, taken before the last of the new tests landed — which is why the two runs are dated to the minute), which is the check that catches a collection abort (a smaller number is a lost test, *no* number is `Interrupted`). Previous reading for contrast: **679 passed, 1 failed** at `f9f3546` (2026-08-17 14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. That single red was the tuner codec test, owned by a live writer at the time; today's run has no reds. |
 | Uncommitted | **The 2026-08-19 review work is committed** — six commits on top of `48fc731`: the Studio app, the plugin runtime, the `api.py` wiring plus the new rack tripwire, the masthead/CSS pass, the Caddy delegation, and this state-document pass. What is left in the tree is the review's own paperwork (`CLOSEOUT-2026-08-19.md`, `REVIEW-LOG.md`, `SWEEP-READY.md`, all mode 600) and material Garrett dropped here (`drive-download-.../`, two NGC captures) — none of it mine to commit. The §4/§5 punch-list items in `REVIEW-LOG.md` are still OPEN and are not in any commit above. **Still no git remote** — history never leaves this box. |
 
