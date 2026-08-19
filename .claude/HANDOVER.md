@@ -124,6 +124,26 @@ conversation, so every number, path and decision you need is stated here.
 
 ---
 
+## 0a-bis. `symoneuralexp` hot-reload runs a path plugin's body TWICE — open, measured (2026-08-19)
+
+One `POST /api/exp/reload` on an entry whose `use:` is a path (`plugins/clock.py`, as opposed to
+the dotted `apps.symoneuralexp.plugins.clock` every preset actually uses) executes that file's
+module body **two** times. `Loader.reload` calls `reload_module` on the module it already has,
+then calls `resolve_ref`, and `_from_path` calls `exec_module` unconditionally on every resolve —
+so it builds a *second* module object and that is the one the fiber gets rebound to. The first
+execution is wasted work whose side effects still happen.
+
+Measured, not read off the source: a probe plugin appending a line to a file on import reaches
+**2 lines after one reload**, and `resolve_ref(ref) is module_reload_module_touched` is `False`.
+
+Not fixed, deliberately. The fix is to derive the module from `entry.use` instead of from the
+runner target, which changes hot-reload semantics for all four plugin shapes on a code path that
+had **zero** tests before 2026-08-19 (`ReloadTests` in `test_exp.py` is the first coverage it has
+ever had). That is a redesign, and the pass that found this was a claims pass. No preset is
+affected today because none of the three uses a path `use:`.
+
+---
+
 ## 0a. `deploy/bento/` — a BentoML build pipeline that has never run in CI (2026-08-19)
 
 New, self-contained, and **outside the serving path**. Garrett asked for a BentoML

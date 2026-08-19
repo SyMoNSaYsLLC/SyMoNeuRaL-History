@@ -158,7 +158,17 @@ def _from_path(ref: str):
 
 
 def _module_of(target) -> object | None:
-    """The module to reload for a plugin, whichever of the four shapes it is."""
+    """The module to re-execute for a plugin, or None when there is no way to name one.
+
+    Three of the four shapes `registry.resolve` accepts answer this. A module is itself; a
+    function and a class both carry `__module__` naming the file they were defined in; an
+    *instance* inherits `__module__` from its type, which is also the right file whenever the
+    class was defined in the plugin. What has no answer is a plugin assembled at runtime --
+    `types.SimpleNamespace(apply=...)` has no `__module__` attribute at all (checked on 3.13.5:
+    `hasattr` is False, not None) -- and a target whose `__module__` names a module that is not
+    in `sys.modules`. Both return None, and `Loader.reload` has to say so instead of reporting
+    a reload it did not perform.
+    """
     if isinstance(target, type(sys)):
         return target
     name = getattr(target, "__module__", None)
@@ -214,12 +224,19 @@ class Entry:
         self.isolate = list(raw.get("isolate") or ())
         self.intercept = dict(raw.get("intercept") or {})
         self.parent = parent
-        # `raw["id"]`, not `raw.get("id") or ...`: YAML 1.1 parses the bare words `on`, `off`,
-        # `yes` and `no` as booleans, so `id: off` arrives here as `False` and an `or` chain
-        # silently falls through to `use` -- giving the entry a module path for a name and
-        # making it unaddressable by the id its author wrote. Quote such ids in the manifest;
-        # this at least keeps what they meant.
+        # `is not None`, not `or`: YAML 1.1 parses the bare words `on`, `off`, `yes` and `no`
+        # as booleans, so `id: off` arrives here as `False`, and an `or` chain would fall
+        # through to `use` -- giving the entry a module path for a name. But `str(False)` is not
+        # a rescue either: it names the entry "False", which is not what its author typed and
+        # not what `POST /remove {"id": "off"}` looks for, so the entry becomes unaddressable
+        # by any spelling anyone would try. Raising here is the only outcome that reaches the
+        # person who can fix it, so it raises and names the fix.
         given = raw.get("id")
+        if isinstance(given, bool):
+            raise ContextError(
+                f"entry id {given!r} came from a bare YAML 1.1 boolean -- 'on', 'off', 'yes' "
+                f"and 'no' are parsed as True/False before this code sees them. Quote it: "
+                f'id: "{"on" if given else "off"}"')
         self.id = str(given) if given is not None else str(self.use or f"entry-{index}")
         self.children = [Entry(child, parent=self, index=i)
                          for i, child in enumerate(raw.get("plugins") or ())]
@@ -545,7 +562,31 @@ class Loader:
                 self.runtime.trace.add("loader/error", entry=entry.id, phase="reload",
                                        error=str(exc))
                 return entry
-        entry.error = None
+        # A path `use:` gets re-executed by `resolve_ref` below whichever way the block above
+        # went, because `_from_path` calls `exec_module` every time it is asked. So a missing
+        # module only means "nothing was re-imported" for the shapes that reach their runner
+        # through an attribute lookup on an already-imported module.
+        #
+        # It also means a path `use:` has its body run *twice* per reload -- once by
+        # `reload_module` above and once by `resolve_ref` below -- and the fiber is bound to the
+        # second module object, so the first execution is wasted work with live side effects.
+        # Measured, not inferred: a counter appended to on import reaches 2 after one `reload`.
+        # Left in place here because removing it changes hot-reload semantics for every shape,
+        # which is not a claims fix; it is an open item in `.claude/HANDOVER.md`.
+        ref = str(entry.use or "")
+        from_disk_anyway = ref.endswith(".py") or "/" in ref
+        skipped = module is None and not from_disk_anyway
+        # Assigned once, and this is the whole of B14: the previous form set a message inside
+        # the `except` above and then cleared it here unconditionally, so the one case that had
+        # something to report -- a target with no module to re-execute -- came back as a plain
+        # 200 with `error: null`, indistinguishable from a reload that read the file. `state`
+        # still comes from the fiber, which really is running; `error` is the only channel for
+        # "the process is fine and your edit did not take", which is what the `/reload` route
+        # docstring already says callers must read.
+        entry.error = (
+            "nothing was re-imported: this plugin object does not name a module that is in "
+            "sys.modules, so there is no file to re-execute. Rebound and restarted against "
+            "the code already loaded." if skipped else None)
         try:
             plugin = resolve_ref(entry.use)
         except Exception as exc:                                  # noqa: BLE001
@@ -559,7 +600,11 @@ class Loader:
             return entry
         entry.fiber.rebind(registry.resolve(plugin, name=entry.id))
         if entry.fiber.state != FAILED:
-            await self.runtime.emit("hmr/reload", entry.fiber, "module-reloaded")
+            # The reason string is read back by the trace pane, so it has to distinguish the
+            # two outcomes as well: `module-reloaded` on a skip is the same false claim as the
+            # cleared `error` was, one field over.
+            await self.runtime.emit("hmr/reload", entry.fiber,
+                                    "rebound-only" if skipped else "module-reloaded")
             await entry.fiber.restart()
         await self.runtime.settle()
         return entry

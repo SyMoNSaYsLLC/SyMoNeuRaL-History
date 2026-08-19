@@ -41,9 +41,13 @@ Nothing here starts the API, takes the GPU lock or calls an LLM.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import pathlib
 import re
+import sys
+import tempfile
+import types
 import unittest
 
 from . import fiber as fibermod
@@ -200,6 +204,82 @@ def state_of(loader, entry_id):
     return loader.find(entry_id).snapshot(with_config=False)["state"]
 
 
+#: The one plugin shape that has no file behind it. `registry.resolve` accepts it -- an object
+#: with `.apply(ctx, config)` -- and it is assembled here at import time rather than defined as
+#: a class, so it carries no `__module__` at all: `hasattr(NAMESPACE_PLUGIN, "__module__")` is
+#: False on 3.13.5, not None. `ReloadTests` is about what `Loader.reload` may claim about it.
+NAMESPACE_PLUGIN = types.SimpleNamespace(apply=lambda ctx, config: None)
+
+#: What a probe module writes on every execution, so "was it re-executed" is a count on disk
+#: rather than a belief. Set by `probe_module` for the duration of one test.
+PROBE_SOURCE = """import pathlib
+
+with pathlib.Path({counter!r}).open("a") as fh:
+    fh.write("exec\\n")
+
+
+def apply(ctx, config):
+    return None
+
+
+class Plug:
+    def apply(self, ctx, config):
+        return None
+
+
+PLUGIN = Plug()
+"""
+
+
+@contextlib.contextmanager
+def probe_module():
+    """An importable-by-name module on `sys.path` that records each execution of its body.
+
+    Not a path `use:`, deliberately. `_from_path` calls `exec_module` every time it is asked, so
+    a path-loaded plugin is re-executed by `resolve_ref` whether or not anything reloaded it,
+    and it cannot discriminate the case these tests are about. A module with a real name on
+    `sys.path` goes through the finders, which is the ordinary case in every preset.
+
+    Yields `(name, execs)` where `execs()` is the count so far.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        counter = root / "execs.log"
+        counter.write_text("")
+        name = "expprobe_reload"
+        (root / f"{name}.py").write_text(PROBE_SOURCE.format(counter=str(counter)))
+        sys.path.insert(0, str(root))
+        try:
+            yield name, lambda: counter.read_text().count("exec")
+        finally:
+            sys.path.remove(str(root))
+            sys.modules.pop(name, None)
+
+
+@contextlib.contextmanager
+def watch_reloads(loader):
+    """Collect the `reason` of every `hmr/reload` emitted while the block runs, oldest first.
+
+    Subscribed straight into `runtime.listeners` rather than through `Context.on`, which
+    registers its own unsubscribe as an effect and therefore wants a fiber to hang it on.
+    `hmr/reload` is a runtime event delivered to listeners and is *not* written to the trace
+    ring -- `Runtime.emit` records only `listener/error` -- so a listener is the only place the
+    reason is observable at all.
+
+    Two reasons arrive per reload: the loader's, and then `"requested"` from `Fiber.restart`
+    underneath it. The loader's is the one under test and it is first.
+    """
+    seen: list[str] = []
+    entry = (-1, lambda fiber, reason=None: seen.append(reason))
+    loader.runtime.listeners.setdefault("hmr/reload", []).append(entry)
+    try:
+        yield seen
+    finally:
+        bucket = loader.runtime.listeners.get("hmr/reload") or []
+        if entry in bucket:
+            bucket.remove(entry)
+
+
 # ---------------------------------------------------------------------------
 class RegistryTests(unittest.TestCase):
     def test_all_four_plugin_shapes_resolve(self):
@@ -321,13 +401,28 @@ class PresetTests(unittest.TestCase):
         run(go())
 
     def test_the_yaml_boolean_trap_is_still_defused(self):
-        # YAML 1.1 reads the bare word `off` as False. `failures.yaml` quotes it, and `Entry`
-        # keeps `str(given)` rather than falling through an `or` chain to `use`. Both halves are
-        # asserted, because either one alone would let the id become a module path.
+        # YAML 1.1 reads the bare word `off` as False. `failures.yaml` quotes it, so the id
+        # survives as a string and the entry is addressable by the word its author typed.
         ids = [loadermod.Entry(raw).id for raw in
                loadermod.load_manifest(loadermod.preset_path("failures"))]
         self.assertIn("off", ids)
-        self.assertEqual(loadermod.Entry({"id": False, "use": "x.y"}).id, "False")
+
+    def test_an_unquoted_boolean_id_raises_instead_of_becoming_the_word_False(self):
+        """This assertion used to read `== "False"`, which is what the code did.
+
+        Naming an entry "False" is not a rescue: `POST /remove {"id": "off"}` cannot find it,
+        `{"id": "False"}` is not a spelling anyone would guess, and the manifest and the running
+        graph disagree with no error anywhere. The message has to reach the person editing the
+        YAML, so it raises and quotes the fix.
+        """
+        for given, quoted in ((False, 'id: "off"'), (True, 'id: "on"')):
+            with self.subTest(given=given):
+                with self.assertRaises(ContextError) as caught:
+                    loadermod.Entry({"id": given, "use": "x.y"})
+                self.assertIn(quoted, str(caught.exception))
+        # A string that merely looks like one is untouched -- the trap is the YAML parser, not
+        # the word.
+        self.assertEqual(loadermod.Entry({"id": "off", "use": "x.y"}).id, "off")
 
 
 class LifecycleTests(unittest.TestCase):
@@ -475,6 +570,83 @@ class LifecycleTests(unittest.TestCase):
             self.assertIn("settle_error", loader.state(),
                           "the page cannot show a wedged runtime it is never told about")
             self.assertIsNone(loader.state()["settle_error"])
+        run(go())
+
+
+class ReloadTests(unittest.TestCase):
+    """`Loader.reload` may only report a reload it performed.
+
+    This path had no test at all until B14. The defect it hides is quiet by construction: a
+    plugin with no module to re-execute took the same 200, the same `error: null` and the same
+    `hmr/reload reason="module-reloaded"` as a plugin whose file had just been read off disk.
+    The fiber did restart in both cases, so the page animated and nothing looked wrong -- which
+    is why an editor could sit there re-saving a file and watching a reload that never happened.
+    """
+
+    def test_reload_of_an_assembled_object_reports_that_nothing_was_reimported(self):
+        async def go():
+            loader = await fresh({"plugins": [{"id": "ns", "use": f"{__name__}:NAMESPACE_PLUGIN"}]})
+            self.assertEqual(state_of(loader, "ns"), fibermod.ACTIVE)
+            with watch_reloads(loader) as seen:
+                entry = await loader.reload("ns")
+            # The fiber really did restart -- that half was never broken and is not being
+            # removed. What is new is that the entry now says what did not happen.
+            self.assertEqual(state_of(loader, "ns"), fibermod.ACTIVE)
+            self.assertIsNotNone(entry.error, "a reload that re-imported nothing reported clean")
+            self.assertIn("nothing was re-imported", entry.error)
+            self.assertIn("sys.modules", entry.error)
+            self.assertEqual(seen[0], "rebound-only")
+            self.assertNotIn("module-reloaded", seen)
+        run(go())
+
+    def test_reload_of_a_module_plugin_re_executes_the_file_and_reports_clean(self):
+        async def go():
+            with probe_module() as (name, execs):
+                loader = await fresh({"plugins": [{"id": "p", "use": name}]})
+                self.assertEqual(execs(), 1, "mounting did not import the module once")
+                with watch_reloads(loader) as seen:
+                    entry = await loader.reload("p")
+                self.assertEqual(execs(), 2, "reload did not re-execute the module body")
+                self.assertIsNone(entry.error)
+                self.assertEqual(seen[0], "module-reloaded")
+                self.assertEqual(state_of(loader, "p"), fibermod.ACTIVE)
+        run(go())
+
+    def test_reload_of_a_class_instance_plugin_re_executes_its_file_too(self):
+        """The shape a `__module__`-only guard would have broken.
+
+        An instance has no `__name__` and is neither a class nor a routine, so a guard written
+        around those predicates returns None for it and turns this working reload into the
+        no-op the test above now detects. `__module__` inherited from the type names the file
+        the class was defined in, which is the file the editor just changed, so it is the right
+        answer and the body of `_module_of` is left alone.
+        """
+        async def go():
+            with probe_module() as (name, execs):
+                loader = await fresh({"plugins": [{"id": "p", "use": f"{name}:PLUGIN"}]})
+                target = loader.find("p").fiber.runner.target
+                self.assertFalse(inspect.isclass(target) or inspect.isroutine(target))
+                self.assertEqual(execs(), 1)
+                with watch_reloads(loader) as seen:
+                    entry = await loader.reload("p")
+                self.assertEqual(execs(), 2, "an instance plugin no longer reloads its file")
+                self.assertIsNone(entry.error)
+                self.assertEqual(seen[0], "module-reloaded")
+        run(go())
+
+    def test_a_path_use_is_not_reported_as_unreloadable(self):
+        """`_from_path` execs on every resolve, so a path plugin is always running new code.
+
+        It reaches `resolve_ref` by a route that re-reads the file regardless of what
+        `_module_of` answered, so the skip message would be false about it even when the module
+        lookup comes back empty. That is why the flag is `module is None and not from_disk`.
+        """
+        async def go():
+            loader = await fresh({"plugins": [{"id": "clock", "use": "plugins/clock.py"}]})
+            with watch_reloads(loader) as seen:
+                entry = await loader.reload("clock")
+            self.assertIsNone(entry.error)
+            self.assertEqual(seen[0], "module-reloaded")
         run(go())
 
 
