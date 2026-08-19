@@ -177,17 +177,39 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-curl -fsS http://127.0.0.1:8800/api/status 2>/dev/null | /usr/bin/python3 -c '
-import json, sys
+# Two shell facts, both learned by this block being broken from the day it was written:
+#
+#   * The reader below is a QUOTED heredoc, not `python3 -c '...'`. Inside a
+#     single-quoted shell string a backslash-quote is a literal backslash followed by a
+#     quote, so the f-strings reached Python as `u[\"id\"]` and it died with
+#     "SyntaxError: unexpected character after line continuation character" on every run.
+#     A quoted heredoc passes its body through untouched, so `u["id"]` stays `u["id"]`
+#     and there is nothing to escape. Re-quoting the -c form would have worked too and is
+#     the wrong fix: it leaves the next author one edit away from the same crash.
+#   * The document arrives in an environment variable rather than on stdin, because the
+#     heredoc *is* stdin. Piping curl into a command that also takes a heredoc cannot work.
+#
+# The two failure modes are reported separately now. The old `|| die` fired on the
+# SyntaxError and printed "the API did not come back" -- which was false. The API had come
+# back; the operator was sent to journalctl to hunt a service fault that was in this file.
+STATUS_DOC=$(curl -fsS http://127.0.0.1:8800/api/status 2>/dev/null) \
+  || die "/api/status did not answer after the restart -- journalctl -u $UNIT -n 50"
+
+# `rack` is deliberately absent from the watch set below: it is the operator power switch,
+# not a rack row, and it has no `id` in /api/status. Including it would print nothing and
+# read like a surface that failed to come up.
+STATUS_DOC="$STATUS_DOC" /usr/bin/python3 - <<'PYEOF' \
+  || die "the API answered but its reply did not parse -- the fault is here, not the service"
+import json, os, sys
+
 try:
-    doc = json.load(sys.stdin)
-except Exception:
-    sys.exit("could not read /api/status -- check: journalctl -u symoneural-api -n 50")
-watch = {"coder", "project", "gateway"}
+    doc = json.loads(os.environ["STATUS_DOC"])
+except Exception as e:
+    sys.exit(f"/api/status did not parse: {e}")
 for u in doc.get("units", []):
-    if u.get("id") in watch:
-        print(f"  {u[\"id\"]:<9} {u[\"state\"]:<8} {u[\"detail\"]}")
-' || die "the API did not come back -- journalctl -u $UNIT -n 50"
+    if u.get("id") in {"coder", "project", "gateway"}:
+        print(f'  {u["id"]:<9} {u["state"]:<8} {u["detail"]}')
+PYEOF
 
 printf '\nDone. Tokens are in %s (root, 0600). Read one with:\n' "$ENV_FILE"
 printf '    sudo sed -n "s/^SYM_PROJECT_TOKEN=//p" %s\n' "$ENV_FILE"
