@@ -945,6 +945,26 @@
 .mh-foot{margin:15.8px 0 0; color:var(--faint); font-size:var(--t6); line-height:1.55; max-width:46ch}
 .mh-foot b{color:var(--dim); font-weight:600}
 
+/* ---- the creed: the company's own lines, set as claims rather than as data ----
+   Deliberately NOT styled like the measured figures elsewhere on the page. Those are
+   monospace, tabular and captioned with their provenance; these are italic, quoted and
+   attributed to nobody, because a slogan wearing the costume of a measurement is the one
+   dishonest thing this design could do. Same reason the quote gets a rule and a hanging
+   mark: it reads as editorial voice on sight, before the words are parsed.
+   No ellipsis rules here, and none anywhere -- long lines wrap. */
+.mh-creed{
+  margin:10px 0 0; max-width:34ch;
+  color:var(--dim); font-size:var(--t5); line-height:1.5; font-style:italic;
+}
+.mh-creed i{color:var(--accent); font-style:italic; font-weight:600}
+.mh-creed-q{
+  margin:18px 0 0; padding:0 0 0 15px; max-width:44ch;
+  border-left:2px solid var(--accent);
+}
+.mh-creed-q p{margin:0; color:var(--dim); font-size:var(--t5); line-height:1.6; font-style:italic}
+.mh-creed-q .q-kick{margin-top:9px; font-style:normal; color:var(--faint); line-height:1.5}
+.mh-creed-q .q-kick b{color:var(--accent); font-weight:600}
+
 /* ---- a render in a page gutter ----
    Every one links to its own full-size PNG. That is load-bearing rather than a nicety: the
    watermark strip printed into each file names the model, the quantisation, 768x768, the
