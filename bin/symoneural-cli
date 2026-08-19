@@ -25,8 +25,9 @@ card: `agent`, `tools`, `tool`, `state` and `mcp` are a client for
 `backend/apps/symoneuralstudio` -- 26 registered tools in four groups, native tool
 calling, and an MCP transport. `agent` streams one turn's frames as they arrive and
 takes the GPU only for as long as a tool it calls does. Its options are exactly the
-parameters `POST /api/studio/agent` reads (`max_steps`, `model`, `context`) and no
-others, and it needs the API's own `SYM_STUDIO_TOKEN` in the environment.
+five parameters `POST /api/studio/agent` reads -- `query`, `history` (`-c`, from a
+transcript under `run/`), `max_steps`, `model` and `context` -- and no others, and it
+needs the API's own `SYM_STUDIO_TOKEN` in the environment.
 
 Deliberately stdlib-only apart from sympy, which the system interpreter already
 carries -- `urllib` reads the SSE stream. `tools` and `mcp` additionally import the
@@ -341,11 +342,15 @@ def cmd_ravencalc(args) -> int:
 # below are that surface in a terminal.
 #
 # They are a client and nothing else. Every option here maps to a parameter the endpoint
-# actually reads (`query`, `history`, `max_steps`, `context`, `model` -- that is the whole list
-# accepted by `POST /api/studio/agent`) and every field printed is one the response actually
-# carries. There is no client-side tool filtering, no permission mode and no session resume,
-# because the server has no such parameters: a flag the endpoint ignores is a lie with a
-# help string.
+# actually reads -- `query`, `history`, `max_steps`, `context`, `model`, which is the whole list
+# `POST /api/studio/agent` accepts -- and every field printed is one the response actually
+# carries. There is no client-side tool filtering and no permission mode, because the server
+# has no such parameters: a flag the endpoint ignores is a lie with a help string.
+#
+# `history` is the one that needs saying out loud. The endpoint reads it (`routes.py`, and
+# `agent.run()` splices it between the system prompt and the new question), so the CLI carries
+# it: `-c` sends back a transcript this command itself recorded under `run/`. The server keeps
+# no session state of its own -- the file is the session, and it is the client's to hold.
 # ---------------------------------------------------------------------------
 
 DEFAULT_API = os.environ.get("SYM_API_URL", "http://127.0.0.1:8800")
@@ -425,6 +430,47 @@ def local_registry():
     sys.path.insert(0, str(ROOT / "backend"))
     from apps.symoneuralstudio import registry, tools_impl  # noqa: F401  (registers the tools)
     return registry
+
+
+def transcript_path(session: str) -> Path:
+    """`run/agent-<session>.json` -- where a multi-turn thread is kept.
+
+    `run/` is this repo's runtime state and this is runtime state, so it goes there rather than
+    into a dotfile in `$HOME`. The name is filtered down to letters, digits, dash and underscore
+    because it becomes a filename; an empty result falls back to `default` instead of writing
+    `agent-.json`.
+    """
+    safe = "".join(ch if (ch.isalnum() or ch in "-_") else "-" for ch in session).strip("-")
+    return RUN / f"agent-{safe or 'default'}.json"
+
+
+def transcript_read(path: Path) -> list[dict]:
+    """The stored thread, or `[]`.
+
+    Only messages with a string `role` and `content` survive: the file is fed straight to the
+    endpoint as `history`, and a half-written or hand-edited entry would come back as a 422
+    from somewhere far away from here. A malformed file reads as empty rather than raising --
+    the thread is a convenience, and losing it must not take the turn down with it.
+    """
+    try:
+        loaded = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(loaded, list):
+        return []
+    return [m for m in loaded
+            if isinstance(m, dict) and isinstance(m.get("role"), str)
+            and isinstance(m.get("content"), str)]
+
+
+def transcript_write(path: Path, messages: list[dict]) -> None:
+    """Replace the thread on disk. Failures are reported, not raised: the answer already
+    arrived, and an unwritable `run/` is not a reason to exit non-zero after a good turn."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(messages, indent=1) + "\n")
+    except OSError as exc:
+        print(c(f"could not record the turn in {path}: {exc}", AMBER), file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +664,20 @@ def cmd_agent(args) -> int:
     answer, error, done, notice. Anything else the loop grows later prints as raw JSON rather
     than being dropped -- a renderer that silently ignores an event it does not know is how a
     terminal ends up quieter than the thing it is watching.
+
+    Multi-turn is client-side by necessity: the endpoint reads a `history` list but stores
+    nothing between calls, so the thread lives in `run/agent-<session>.json` and `-c` sends it.
     """
+    path = transcript_path(args.session)
+    if args.forget:
+        existing = transcript_read(path)
+        if path.exists():
+            path.unlink()
+            print(f"forgot {path} ({len(existing)} messages)")
+        else:
+            print(f"nothing recorded in {path}")
+        return 0
+
     if not require_token():
         return 2
     query = " ".join(args.query).strip()
@@ -626,6 +685,27 @@ def cmd_agent(args) -> int:
         print("nothing to ask", file=sys.stderr)
         return 2
     body: dict = {"query": query}
+
+    prior: list[dict] = []
+    if args.cont:
+        stored = transcript_read(path)
+        prior = stored
+        if args.history_limit and len(prior) > args.history_limit:
+            prior = prior[-args.history_limit:]
+            # A window that starts on an assistant turn asks the model to continue a reply to a
+            # question it cannot see, so the clip moves forward to the first user message.
+            while prior and prior[0].get("role") != "user":
+                prior = prior[1:]
+        if not stored:
+            print(c(f"history: nothing recorded in {path.name} yet", DIM), file=sys.stderr)
+        elif len(prior) < len(stored):
+            print(c(f"history: sending the last {len(prior)} of {len(stored)} messages in "
+                    f"{path.name} (--history-limit {args.history_limit})", DIM), file=sys.stderr)
+        else:
+            print(c(f"history: {len(prior)} messages from {path.name}", DIM), file=sys.stderr)
+    if prior:
+        body["history"] = prior
+
     if args.max_steps:
         body["max_steps"] = args.max_steps
     if args.model:
@@ -709,8 +789,16 @@ def cmd_agent(args) -> int:
             else:  # an event this renderer has not been taught: show it, do not swallow it
                 print(f"{stamp} {c('?', AMBER)} {json.dumps(frame, default=str)}")
 
+    # Record the exchange whether or not this turn read the thread, so that a later `-c` has
+    # something to send. A failed turn is not appended: half a turn is worse than none.
+    if answer and not failed and not args.no_save:
+        transcript_write(path, transcript_read(path)
+                         + [{"role": "user", "content": query},
+                            {"role": "assistant", "content": answer}])
+
     if args.output_format == "json":
         print(json.dumps({"query": query, "answer": answer, "events": frames,
+                          "session": args.session, "history_sent": len(prior),
                           "elapsed_s": round(time.monotonic() - t0, 3),
                           "ok": not failed}, indent=2, default=str))
     return 1 if failed else 0
@@ -827,6 +915,19 @@ def main() -> int:
 
     p = studio("agent", "one agent turn, streamed -- thinking, tool calls, results, answer")
     p.add_argument("query", nargs="*", help="what to ask")
+    # `history` is a parameter the endpoint reads, so it gets a flag. The thread is a file this
+    # command writes, because the server keeps no session state to resume.
+    p.add_argument("-c", "--continue", dest="cont", action="store_true",
+                   help="send the recorded thread as `history`, making this turn a reply")
+    p.add_argument("--session", default="default", metavar="NAME",
+                   help="which thread to use, kept in run/agent-NAME.json (default: default)")
+    p.add_argument("--history-limit", type=int, default=20, metavar="N",
+                   help="send at most the last N messages of it (default 20, 0 for all); "
+                        "when it clips, it says so")
+    p.add_argument("--no-save", action="store_true",
+                   help="do not record this turn in the thread")
+    p.add_argument("--forget", action="store_true",
+                   help="delete the thread's file and exit")
     p.add_argument("--max-steps", type=int,
                    help="tool-calling rounds before the loop stops (server default 8)")
     p.add_argument("--model", help="override the backend's model name")
