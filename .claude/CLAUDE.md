@@ -236,6 +236,27 @@ back, and the next tenant OOMs at step 0. Measured here: a render peaks at **13,
 floor. `comfyui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
 is taken per render and released after the drain, which is the rule above applied.
 
+**The Studio agent loop does not stream tokens, so do not quote a first-token latency for
+it.** `inference.Backend.chat` sends `"stream": False` and is the loop's only call site;
+`Backend.stream()` is unexercised and says so. The loop's granularity is SSE *events*. Measured
+2026-08-19 over six turns, warm: the `backend` probe frame lands in **0.015-0.022 s**, the first
+frame carrying model output in **0.2 s warm / 1.06 s cold** (the cold penalty is `--no-warmup`
+plus first processing of the 26 rendered tool specs), and a whole turn takes **0.53 s** with no
+tool, **1.0-1.9 s** with one, **3.1 s** with three. Native tool calling works on this build --
+no `notice` downgrade in any turn, and turn 6 returned three tools from one message.
+
+**To measure it, warm the engine through the chat surface, never by spawning llama-server.**
+`inference.py` probes and never spawns, because `api.py` owns that process inside
+`gpu.hold("chat")` and a second spawner would race it for :8081 and the lease:
+```bash
+curl -sS -X POST http://127.0.0.1:8800/api/chat -H 'Content-Type: application/json' \
+    -d '{"prompt":"ready","max_tokens":8}'   # ~7.1 s of that is spawn + weight load
+ss -lntp | grep 8081                            # confirm it stayed resident; chat does not stop it
+```
+llama-server then holds **~8.1 GiB** and stays up, while `gpu-governor.sh` reads `lock free` --
+**the agent loop takes no lease.** Only `api.py` can stop it (shutdown, or an image render at
+`api.py:2052`), so expect to leave it resident; that is this box's warm state, not a leak.
+
 These assert on what the DOM *shows*: units render from `/api/status`, the bus plate carries a
 real reading, nothing overlaps at 390px, calc returns `x**3/3`, and a generated image actually
 decodes. That last assertion exists because a render once succeeded server-side and still
