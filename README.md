@@ -108,7 +108,7 @@ backend/                the server
     sigils/             stickers with a real alpha channel, keyed out arithmetically
     tuner/              IPTV over ffmpeg stream-copy to HLS
 
-bin/symoneural          the CLI -- one command over the whole stack
+bin/symoneural-cli      the CLI -- one command over the whole stack
 
 tools/                  the site generators, all idempotent. `ls tools/build_*.py` is the
                         authority on the set; the list below should match it exactly

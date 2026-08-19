@@ -599,7 +599,7 @@ class GpuQueue:
         Residency and work are different things. llama-server staying loaded is residency,
         tracked by the governor's `resident` file. Holding the lock is work. So the
         governor lock is now taken here, per job, and released the moment the job ends --
-        which is what lets `symoneural image` from a terminal take its turn like any other
+        which is what lets `symoneural-cli image` from a terminal take its turn like any other
         tenant, and lets the governor evict a resident-but-idle surface to make room.
         """
         if not _try(self._slots):

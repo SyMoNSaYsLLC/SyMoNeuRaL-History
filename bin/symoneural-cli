@@ -3,9 +3,15 @@
 
 Three surfaces share one workstation, and they do not share it equally:
 
-    chat    llama.cpp + Qwen2.5-14B Q4_K_M     ~9 GB of VRAM, needs the card
-    image   stable-diffusion.cpp + FLUX.1-schnell q4_k   ~7 GB, needs the card
-    ravencalc   sympy, exact symbolic          CPU only, needs nothing
+    chat    llama.cpp + Qwen2.5-7B Q4_K_M    8.1 GiB resident, measured   needs the card
+    image   stable-diffusion.cpp + FLUX.1-schnell q4_k   11.8 GiB of weights   needs the card
+    ravencalc   sympy, exact symbolic         CPU only, never queues       needs nothing
+
+The chat figure is the whole resident cost measured on this box -- 4.36 GiB of weights plus
+the adapter and the KV cache -- and it agrees with the ~8.2 GiB `backend/api.py` budgets for
+the same spawn. The image figure is the four weight files summed with `ls`, not a resident
+reading: sd.cpp is not ComfyUI, and the 13.1 GiB peak recorded for a 1024x1024 render in
+HANDOVER belongs to that other engine. Both are verifiable by opening what they name.
 
 The first two cannot be resident at the same time in 15.92 GiB, so every GPU
 operation here goes through the governor, which serialises them and -- more
@@ -34,12 +40,12 @@ HERE = Path(__file__).resolve().parent
 # usually a directory that exists. Assert it.
 ROOT = HERE.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
-MODELS = ROOT / "models"
-RUN = HERE / "run"
-GOVERNOR = HERE / "gpu-governor.sh"
+MODELS = ROOT / "backend" / "models"
+RUN = ROOT / "run"
+GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 
-LLAMA_BIN = HERE / "llama.cpp" / "build" / "bin"
-SD_BUILD = HERE / "stable-diffusion.cpp" / "build" / "bin"
+LLAMA_BIN = ROOT / "contrib" / "llama.cpp" / "build" / "bin"
+SD_BUILD = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin"
 
 # The resident workhorse, and the base the SyMoNeuRaL adapter is trained against. The 14B is
 # the heavy tier -- better answers, ~98 tok/s instead of ~170, and no adapter.
@@ -47,7 +53,7 @@ CHAT_MODEL = MODELS / "llm" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 CHAT_MODEL_HEAVY = MODELS / "llm" / "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
 # Present once the fine-tune has run; served as an adapter rather than merged so the base
 # weights stay shared and reverting is a flag rather than a redeploy.
-CHAT_ADAPTER = HERE / "training" / "adapter" / "symoneural-lora.gguf"
+CHAT_ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"
 FLUX_UNET = MODELS / "image" / "flux1-schnell-q4_k.gguf"
 FLUX_VAE = MODELS / "image" / "ae.safetensors"
 FLUX_CLIP = MODELS / "image" / "clip_l.safetensors"
@@ -320,7 +326,7 @@ def cmd_ravencalc(args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="symoneural", description="One command over the local SyMoNeuRaL stack.")
+        prog="symoneural-cli", description="One command over the local SyMoNeuRaL stack.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help="device, surfaces and lock state").set_defaults(fn=cmd_status)

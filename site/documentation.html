@@ -629,14 +629,14 @@
       budget for KV cache and activations.
     </p>
 
-<pre class="code"><span class="t"><s class="on"></s><s></s><s></s>residency plan &nbsp;·&nbsp; live query</span><code><span class="c">$</span> symoneural residency
-free                 <span class="g">15.4 GiB</span>
-weights budget       <span class="g">10.0 GiB</span>   <span class="c">(35% reserved for KV + activations)</span>
-resident tiers       <span class="g">1.5b, 7b</span>
-headroom             <span class="g">4.5 GiB</span>
+<pre class="code"><span class="t"><s class="on"></s><s></s><s></s>residency plan &nbsp;·&nbsp; captured 2026-08-19, chat resident</span><code><span class="c">$</span> symoneural-cli residency
+free                 <span class="g">7.1 GiB</span>
+weights budget       <span class="g">10.3 GiB</span>   <span class="c">(35% reserved for KV + activations)</span>
+resident surface     <span class="g">chat</span>
+headroom             <span class="a">0.0 GiB</span>
 
-swap cost            1.5b <span class="a">138 ms</span>   7b <span class="a">598 ms</span>   14b <span class="a">1181 ms</span>
-resident : host      <span class="g">107×</span></code></pre>
+swap cost            chat <span class="a">675 ms</span>   image <span class="a">992 ms</span>   <span class="c">(over the measured 6.94 GB/s host link)</span>
+resident : host      <span class="g">108x</span>   <span class="c">(752 GB/s on-card vs 6.94 GB/s across PCIe)</span></code></pre>
   </div>
     </details>
   </div>
