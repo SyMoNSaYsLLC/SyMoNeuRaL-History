@@ -108,7 +108,16 @@ def _yaml():
 
 # ----------------------------------------------------------------------------- resolution
 def resolve_ref(ref: str):
-    """`use:` string to a plugin object. Raises `ContextError` naming all three forms tried."""
+    """`use:` string to a plugin object, in one of three forms.
+
+    Every failure is a `ContextError` naming what it tried, and the three branches say three
+    different things on purpose. `package.module:attribute` already told us which module and
+    which attribute, so its errors name those; a path already told us the file, so its error is
+    the path. Only the bare dotted name is genuinely ambiguous -- it could have been any of the
+    three and was probably a typo in one of them -- so that is the one branch that lists all
+    three forms. An earlier revision of this line claimed every branch did, which is a promise
+    two of them do not keep and do not need to.
+    """
     ref = str(ref).strip()
     if ":" in ref and not ref[1:2] == ":":        # not a Windows drive letter; we are on Linux
         module_name, _, attr = ref.partition(":")

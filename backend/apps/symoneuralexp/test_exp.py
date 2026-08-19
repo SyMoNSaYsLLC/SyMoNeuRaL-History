@@ -762,11 +762,16 @@ class GpuPluginTests(unittest.TestCase):
 
 
 class InterceptTests(unittest.TestCase):
-    """`intercept` -- the only mechanism `presets/sessions.yaml` declares and cannot exercise.
+    """`intercept` -- what a group declares, and what the call underneath it receives.
 
-    Nothing in `plugins/` injects `llm`, so the preset's `intercept: {llm: {temperature: 0.0}}`
-    has no consumer to shape and the demonstration lives here instead. Both directions are
-    asserted, because a proxy that merges nothing would pass the first assertion alone.
+    The first three tests use local fixtures because they need to vary the manifest. The last
+    one mounts `presets/sessions.yaml` itself, because that file's header publishes two specific
+    numbers and something has to hold it to them: it once declared an `intercept` with no
+    consumer under it at all, which made the whole demonstration unobservable while reading as
+    if it worked. `plugins/asker.py` is that consumer.
+
+    Both directions are asserted throughout, because a proxy that merged nothing would pass
+    every "the default arrived" assertion on its own and fail no test.
     """
 
     def setUp(self):
@@ -805,6 +810,36 @@ class InterceptTests(unittest.TestCase):
             ctx = loader.find("session.consumer").fiber.ctx
             self.assertEqual(ctx.llm.complete("x", temperature=0.7)["kwargs"],
                              {"temperature": 0.7})
+        run(go())
+
+    def test_the_sessions_preset_shows_both_sides_of_one_declaration(self):
+        """The shipped preset, not a fixture: 0.7 on one side and 0.0 on the other.
+
+        `presets/sessions.yaml` and `plugins/asker.py` both name this test, and both publish
+        those two figures. Reading them means holding the two `Asker` objects -- `Loader.state`
+        serialises service *keys* and never service contents -- so this is the only place the
+        claim can be checked, which is why the preset's header points here rather than at a
+        command to run.
+
+        The two entries are identical apart from which group they sit in. If the reading ever
+        comes back the same on both sides, `intercept` stopped reaching the consumer.
+        """
+        async def go():
+            loader = await fresh(loadermod.preset_path("sessions"))
+            askers = {s.key: s.value for s in loader.runtime.services.values()
+                      if s.name == "asker"}
+            self.assertEqual(len(askers), 2, sorted(askers))
+            by_realm = {key.split(".", 1)[0]: value for key, value in askers.items()}
+            self.assertEqual(sorted(by_realm), ["session-a", "session-b"], sorted(askers))
+            for realm, expected in (("session-a", 0.7), ("session-b", 0.0)):
+                answer = by_realm[realm].answers[0]
+                self.assertEqual(answer["temperature"], expected,
+                                 f"{realm} asked at {answer['temperature']}, not {expected}")
+            # Same prompt, same plugin, same config -- and two different calls landed. The
+            # prefixes come from the two `echo_llm` entries and prove the fork happened too:
+            # one shared service would have answered both with one prefix.
+            self.assertEqual(by_realm["session-a"].answers[0]["text"], "a> olleh")
+            self.assertEqual(by_realm["session-b"].answers[0]["text"], "b> olleh")
         run(go())
 
 
@@ -1373,8 +1408,12 @@ class CliTests(unittest.TestCase):
     def test_isolated_sessions_produce_two_services_of_one_name(self):
         code, out, _ = self._run(["--preset", "sessions"])
         self.assertEqual(code, 0)
-        self.assertEqual(out.count("realm=session-a"), 2, out)
-        self.assertEqual(out.count("realm=session-b"), 2, out)
+        # Three, not two: `isolate: [llm, memory, asker]`. `asker` is in that list because
+        # without it both sessions provide one root-realm `asker` and the second entry fails to
+        # mount -- see the preset's header.
+        self.assertEqual(out.count("realm=session-a"), 3, out)
+        self.assertEqual(out.count("realm=session-b"), 3, out)
+        self.assertNotIn("failed", out)
 
     def test_failures_exit_zero_unless_strict(self):
         ok, out, _ = self._run(["failures"])
@@ -1444,10 +1483,15 @@ class DocsTests(unittest.TestCase):
         Asserting on a phrase the file does not contain would make this test the very thing the
         closeout review was written about, so it checks two sentences that are actually in it and
         prints only the missing phrase rather than the whole document.
+
+        Whitespace is collapsed before matching. The second phrase used to be written with the
+        newline the file happens to wrap on -- `"there is no\nin-process isolation here"` -- so
+        the test was asserting on the width of a paragraph, and re-wrapping a sentence that had
+        not changed its meaning would have failed it.
         """
-        text = (APP / "docs" / "isolation.md").read_text().lower()
+        text = " ".join((APP / "docs" / "isolation.md").read_text().lower().split())
         for phrase in ("it is not a **security** boundary",
-                       "there is no\nin-process isolation here"):
+                       "there is no in-process isolation here"):
             with self.subTest(phrase=phrase):
                 self.assertTrue(phrase in text, f"isolation.md no longer says {phrase!r}")
 

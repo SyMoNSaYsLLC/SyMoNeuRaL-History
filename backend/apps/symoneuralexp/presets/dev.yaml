@@ -1,7 +1,9 @@
-# The default manifest: five of the seven plugins in `plugins/`.
+# The default manifest: five of the eight plugins in `plugins/`.
 #
-# Not here: `explode` (it fails on purpose -- `failures` is where it belongs) and `echo_llm`
-# (its point is `intercept` and per-session forking, which needs the groups in `sessions`).
+# Not here: `explode` (it fails on purpose -- `failures` is where it belongs), `echo_llm` and
+# `asker` (their point is `intercept` and per-session forking, which needs the groups in
+# `sessions`; `asker` is the consumer that turns that declaration into a different number, and
+# mounted here with no group above it there would be nothing to shape it).
 #
 # Load it:   await loader.apply(preset_path("dev"))
 #            POST /api/exp/preset {"name": "dev"}

@@ -86,14 +86,45 @@ was not written in this repository. None has.
 
 ### 2. Landlock, seccomp, namespaces — on that child
 
-*Measured:* `landlock` is in this kernel's enabled LSM list
-(`/sys/kernel/security/lsm`), and `landlock_create_ruleset(NULL, 0,
-LANDLOCK_CREATE_RULESET_VERSION)` returns **6**, so ABI version 6 is available. Across v1–v6 that
-covers filesystem paths, TCP bind and connect, `ioctl` on device files, and scoping of signals
-and abstract UNIX sockets. Unprivileged user namespaces are available
-(`/proc/sys/user/max_user_namespaces` is 384841 and Debian 13 ships no
-`kernel.unprivileged_userns_clone` toggle), and `bwrap` and `systemd-run` are both installed.
-`wasmtime`, `firejail` and `nsjail` are not.
+*Measured on this machine, 2026-08-19.* Every figure below has its command beside it, because a
+number labelled "measured" with no way to re-take the reading is indistinguishable from a number
+someone remembered:
+
+```console
+$ cat /sys/kernel/security/lsm
+lockdown,capability,landlock,yama,apparmor,tomoyo,bpf,ipe,ima,evm
+
+$ python3 -c "import ctypes; print(ctypes.CDLL('libc.so.6').syscall(444, None, 0, 1))"
+6
+
+$ cat /proc/sys/user/max_user_namespaces
+384841
+
+$ cat /proc/sys/kernel/unprivileged_userns_clone
+1
+
+$ unshare --user --map-root-user id -u
+0
+
+$ command -v bwrap systemd-run wasmtime firejail nsjail
+/usr/bin/bwrap
+/usr/bin/systemd-run
+```
+
+Syscall 444 is `landlock_create_ruleset` on x86-64, and `(NULL, 0,
+LANDLOCK_CREATE_RULESET_VERSION)` is the documented way to ask for the ABI version rather than to
+create anything. So `landlock` is in the enabled LSM list and ABI version **6** is available:
+across v1–v6 that covers filesystem paths, TCP bind and connect, `ioctl` on device files, and
+scoping of signals and abstract UNIX sockets.
+
+Unprivileged user namespaces are available, and the `unshare` line is the one that actually
+proves it: it succeeded and reported uid **0** inside the namespace, as this user, with no `sudo`.
+The two sysctls above it are why it is allowed to work — a non-zero `max_user_namespaces` ceiling
+and `unprivileged_userns_clone = 1`. An earlier revision of this
+paragraph said Debian 13 ships no `unprivileged_userns_clone` toggle; it does, at
+`/proc/sys/kernel/unprivileged_userns_clone`, and on 13.6 / kernel 6.12.101+deb13-amd64 it reads
+1. `bwrap` and `systemd-run` are installed; `wasmtime`, `firejail` and `nsjail` printed nothing,
+which is `command -v` saying they are absent.
 
 So the tools are here. The reason none of them is used is a property of Landlock that matters
 more than its coverage: **it is per-process and irreversible.** A process that restricts itself
