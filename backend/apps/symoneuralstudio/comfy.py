@@ -85,8 +85,21 @@ FALLBACK_DRAIN_FLOOR_MIB = 1500
 
 
 def base_url() -> str:
-    """Where ComfyUI is. Loopback by default: the public surface is FastAPI's, and ComfyUI
-    has no authentication of its own to put on an open port."""
+    """Where ComfyUI is. Loopback by *default*, and the default is all it is.
+
+    The reason for the default stands: the public surface is FastAPI's, and ComfyUI has no
+    authentication of its own to put on an open port. But this reads the environment on every
+    call and caches nothing, so the destination is chosen per request -- and `env_set` in
+    `tools_impl/host.py:150` writes `os.environ` in this same process, which puts the address
+    inside what an agent turn can change. Measured: `base_url()` gave `http://127.0.0.1:8188`,
+    then `env_set("SYM_COMFY_URL", "http://169.254.169.254:80")`, then `base_url()` gave
+    `http://169.254.169.254:80` -- the link-local metadata address, fetched by the API process
+    on behalf of whoever is driving the agent.
+
+    There is no allow-list and none is added here, per the standing no-filters instruction.
+    What keeps this shut is the gate in front of the agent, not this function, so do not read
+    the first line as a bound on where requests go.
+    """
     if (env := os.environ.get("SYM_COMFY_URL")):
         return env.rstrip("/")
     host = os.environ.get("SYM_COMFY_HOST", DEFAULT_HOST)

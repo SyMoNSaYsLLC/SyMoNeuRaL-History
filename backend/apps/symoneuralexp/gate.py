@@ -61,6 +61,16 @@ def present_token(headers, query=None) -> str | None:
     browser attaches to those. Nothing here is framed and nothing here loads sub-resources
     under its own path, so a cookie would be a credential minted for no request -- and one
     scoped, inevitably, more broadly than the single path that justified it.
+
+    The query form has the shape of the same argument and does not survive it. Studio needs one
+    because `<img src>` and `new WebSocket()` cannot set a header; nothing here is either, and
+    `page.js` sends `X-Sym-Token` and only that (`page.js:56`). So this branch is a credential
+    channel that is live -- `routes.py:67` and `:81` both hand it `request.query_params` -- and
+    that no caller in this repo uses, which means the only way a token arrives here is in a URL,
+    where it lands in the access log and in any referrer. Deleting the three lines would be the
+    honest end of that reasoning; it is left in place because this pass is correcting claims
+    rather than changing what the code accepts, and it is written down here so the next person
+    reads it as an open item and not as a channel something depends on.
     """
     for key in (HEADER, HEADER.lower()):
         value = headers.get(key)

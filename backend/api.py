@@ -2348,6 +2348,14 @@ app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
 # is single-operator and token-gated. A 60/900 cap on it would throttle the editor's own asset
 # loads -- one page open is dozens of requests -- and produce a broken UI that looks like a
 # bug rather than a limit.
+#
+# What that costs, stated rather than left to be inferred from the reasons above: there is no
+# ceiling on how many tokens a caller may try. `hmac.compare_digest` in `studio/gate.py` closes
+# the timing channel and nothing closes the rate, so the guess budget is the network's. The
+# token is the whole boundary in front of `run_command`, so it wants to be long and random --
+# `openssl rand -hex 32`, not a word -- and that is a property of how it is set, which no code
+# here can enforce. A lockout is the guard that would close this and it is deliberately not
+# written: it is a filter, and this project carries none by standing instruction.
 app.include_router(studio.router, prefix="/api/studio", tags=["studio"])
 app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=False)
 

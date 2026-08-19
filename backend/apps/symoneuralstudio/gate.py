@@ -74,9 +74,18 @@ def present_token(headers, query, cookies=None) -> str | None:
 
     A cookie is the only mechanism a browser applies to sub-resource requests it issues on its
     own. It is minted by `routes.editor` on the entry document, scoped to `COOKIE_PATH` so it
-    is never sent to `/api/studio` or to any other part of the site, `HttpOnly` so page script
-    cannot read it back out, `SameSite=Strict`, and given no expiry so it dies with the tab --
-    the same lifetime as the `sessionStorage` copy the page holds.
+    is never sent to `/api/studio` or to any other part of the site, `SameSite=Strict`, and
+    given no expiry so it dies with the tab -- the same lifetime as the `sessionStorage` copy
+    the page holds.
+
+    It is also `HttpOnly`, and that flag wants stating narrowly: it keeps *this copy* out of
+    `document.cookie` and it protects nothing about the token itself. The same secret is on the
+    iframe's own URL -- `page.js:373` sets `frame.src = '/studio/comfy/?token=' + token()` --
+    so it sits in `location.search` of the framed document, readable by any script ComfyUI
+    loads there, its own frontend bundle and any custom node alike. `page.js:274` puts it on
+    image URLs the same way, and the page holds a copy in `sessionStorage` besides. Anything
+    that can run script in either document already has the operator token. `HttpOnly` is
+    hygiene on one copy of several, not a boundary, and this docstring read as though it were.
     """
     for key in (HEADER, HEADER.lower()):
         value = headers.get(key)

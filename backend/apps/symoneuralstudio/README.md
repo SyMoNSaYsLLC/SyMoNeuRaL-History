@@ -278,9 +278,16 @@ There is also a browser check, which is **not** part of `tests/frontend.mjs` and
 folded into it — it needs the surface switched on and it takes the GPU for a real render:
 
 ```bash
-cd backend && SYM_STUDIO_ENABLED=1 SYM_STUDIO_TOKEN=devtest python3 -m uvicorn api:app --port 8875
+# One token for this run, and not a fixed literal. It is the whole boundary in front of
+# `run_command`, it travels in URLs (`gate.py`), and nothing rate-limits guesses at it
+# (`api.py:2346`). This example used to say `devtest`, which is a credential worth pasting
+# nowhere -- least of all into an env file that outlives the test.
+export SYM_STUDIO_TOKEN=$(openssl rand -hex 32); echo "$SYM_STUDIO_TOKEN"
+cd backend && SYM_STUDIO_ENABLED=1 python3 -m uvicorn api:app --port 8875    # blocks
+
+# Second shell, with SYM_STUDIO_TOKEN exported to the value the line above printed:
 bash scripts/comfyui.sh start
-SYM_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8875
+node tests/studio.mjs http://127.0.0.1:8875
 ```
 
 It asserts the strip populates from the API, the tool table has a row per tool, the ComfyUI

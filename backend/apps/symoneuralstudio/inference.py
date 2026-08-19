@@ -111,7 +111,19 @@ class Backend:
                      model: str | None = None, temperature: float = 0.6,
                      max_tokens: int = 2048,
                      timeout: float = 600.0) -> AsyncIterator[dict]:
-        """Token-by-token deltas, as OpenAI-shaped chunk dicts."""
+        """Token-by-token deltas, as OpenAI-shaped chunk dicts. Nothing calls it.
+
+        The agent loop uses `chat` only -- `agent.py:274`, `:282` and `:342` are the three call
+        sites and all three are `backend.chat`. `/api/studio/agent` does stream, but it streams
+        the loop's *events* (`agent.py:239`, "yielding events as they happen"): backend chosen,
+        tool called, tool returned, done. That is a different granularity from tokens and it does
+        not go through here.
+
+        Kept because both backends support `stream: true` and the SSE surface it would feed
+        already exists, so wiring a token channel is a change to `agent.py`, not a new module.
+        Read it as tested-shaped but unexercised: no test drives it either, so treat the chunk
+        parsing below as unproven rather than as a working path.
+        """
         body: dict[str, Any] = {
             "model": model or self.model_hint,
             "messages": messages,

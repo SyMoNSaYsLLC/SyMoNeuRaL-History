@@ -135,6 +135,16 @@ def env_get(name: str = "") -> dict:
     instead of in the clear, because this result is fed into an LLM context that is rendered
     into a browser and may be logged.
 
+    That is transcript hygiene and not a confidentiality boundary, which matters because this
+    docstring used to imply the second. `run_command` is in this same module at `:70`, in the
+    same registry group, and it returns whatever a shell prints. Measured with
+    `SYM_STUDIO_TOKEN=s3cret-token-abcdefgh` set: this tool answered
+    `<set, 21 chars, ends 'efgh'>` and `run_command("printenv SYM_STUDIO_TOKEN")` answered
+    `s3cret-token-abcdefgh`. So the mask keeps a secret out of a context window that did not
+    ask for one; it does not keep it from an agent that asks. No blocklist is added to
+    `run_command` for it -- the standing instruction is that this project carries no filters --
+    and the gate in front of the surface is what stands between the two.
+
     Args:
         name: A single variable to read. Empty returns every name currently set.
     """

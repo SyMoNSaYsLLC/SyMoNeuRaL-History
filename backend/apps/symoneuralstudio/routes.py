@@ -311,8 +311,18 @@ async def state(request: Request) -> JSONResponse:
     root is a path and is disclosed deliberately -- `page.js` prints it, and a page that cannot
     say where it is pointing is not reporting presence, it is hiding it. The other was
     `last_job_error`, a formatted exception that can carry more than its own existence; it is
-    now reduced to presence and a timestamp unless the caller presented the token. The rest is
-    booleans, counts, names of things that are listed on the page anyway, and a VRAM figure.
+    now reduced to presence and a timestamp unless the caller presented the token.
+
+    The rest is booleans, counts and names of things the page lists anyway -- except one field,
+    which is bigger than this paragraph used to admit. `comfy.alive()` returns ComfyUI's
+    `/system_stats` body under `system`, unchanged, and that body is not a VRAM figure:
+    `ComfyUI/server.py:686` puts `os`, `ram_total`/`ram_free`, the ComfyUI, frontend and
+    template versions, `comfy_package_versions`, the whole `sys.version` string, the torch
+    version, `deploy_environment` and **`sys.argv`** in it, plus per-device name and VRAM.
+    `sys.argv` is that process's command line. All of it is disclosed here with no token
+    whenever ComfyUI is up. Quoted from that source and not from a live reading, deliberately:
+    ComfyUI is down on this box, so the tokenless body measured here carries `"up": false` and
+    no `system` key at all, and the shape above is what the handler will return when it is up.
     """
     on = enabled()
     try:
