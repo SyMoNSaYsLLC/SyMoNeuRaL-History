@@ -135,7 +135,8 @@ conversation, so every number, path and decision you need is stated here.
   decision for Garrett — not a bug awaiting an agent", and he answered *"nithing is mine its
   all you fix it"*. The promise is every section with no internal scroll at every viewport the
   gate allows, 1301x740 through 2560x1440. `node tests/frontend.mjs http://127.0.0.1:8875`
-  (run from the repo root, not `backend/`) reports **43/43 passed**, 0 failed, and the two
+  (run from the repo root, not `backend/`) reports **43/43 passed**, 0 failed, **measured at
+  `8b557ac`**, and the two
   assertions that cover this print their own numbers: `livestack@1855x745 [rack] 584/584`,
   `livestack@1301x740 [rack] 587/587`, `livestack@1990x970 --t3=22.1px --t7=11.6px over=0px`.
 
