@@ -20,8 +20,18 @@ tenants. The third does not touch the GPU at all and therefore never queues:
 that asymmetry is a fact about the work, not an implementation detail, and the
 CLI is shaped to make it visible.
 
+A fourth surface joined them and is not on that table because it does not own the
+card: `agent`, `tools`, `tool`, `state` and `mcp` are a client for
+`backend/apps/symoneuralstudio` -- 26 registered tools in four groups, native tool
+calling, and an MCP transport. `agent` streams one turn's frames as they arrive and
+takes the GPU only for as long as a tool it calls does. Its options are exactly the
+parameters `POST /api/studio/agent` reads (`max_steps`, `model`, `context`) and no
+others, and it needs the API's own `SYM_STUDIO_TOKEN` in the environment.
+
 Deliberately stdlib-only apart from sympy, which the system interpreter already
-carries. Nothing here may be installed into the pinned base environment.
+carries -- `urllib` reads the SSE stream. `tools` and `mcp` additionally import the
+backend's registry in-process, which costs httpx, already in the serving path.
+Nothing here may be installed into the pinned base environment.
 """
 from __future__ import annotations
 
@@ -322,6 +332,454 @@ def cmd_ravencalc(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# The studio surface: connectors, tools, and the agent loop.
+#
+# `backend/apps/symoneuralstudio` is the capable half of this stack -- 26 registered tools in
+# four groups, native tool calling, an SSE agent loop and an MCP transport -- and until now
+# none of it was reachable without a browser or a hand-written curl. The four subcommands
+# below are that surface in a terminal.
+#
+# They are a client and nothing else. Every option here maps to a parameter the endpoint
+# actually reads (`query`, `history`, `max_steps`, `context`, `model` -- that is the whole list
+# accepted by `POST /api/studio/agent`) and every field printed is one the response actually
+# carries. There is no client-side tool filtering, no permission mode and no session resume,
+# because the server has no such parameters: a flag the endpoint ignores is a lie with a
+# help string.
+# ---------------------------------------------------------------------------
+
+DEFAULT_API = os.environ.get("SYM_API_URL", "http://127.0.0.1:8800")
+# Word for word what `/api/studio/state` returns as its own `detail` when the switch is off,
+# so the CLI and the endpoint cannot drift into saying different things about the same gate.
+GATE_HINT = "set SYM_STUDIO_ENABLED=1 and SYM_STUDIO_TOKEN=<secret>, then restart the API"
+
+
+def studio_token() -> str:
+    """The operator token, read from the environment and never printed -- only sent."""
+    return os.environ.get("SYM_STUDIO_TOKEN") or ""
+
+
+def require_token() -> bool:
+    if studio_token():
+        return True
+    print(f"no SYM_STUDIO_TOKEN in this environment: {GATE_HINT}", file=sys.stderr)
+    print(c("the token is the API's own, kept in /etc/symoneural/api.env (root, 0600); "
+            "export the same value here", DIM), file=sys.stderr)
+    return False
+
+
+def api_open(path: str, *, base: str, method: str = "GET", body: object = None,
+             accept: str = "application/json", timeout: float = 30.0):
+    """Open one request against the studio router and hand back the live response.
+
+    stdlib `urllib`, so the module docstring's dependency claim stays true. An SSE stream is
+    newline-delimited chunks over a socket that stays open; nothing here needs a client
+    library, and `urlopen` iterates a chunked response line by line as it arrives.
+    """
+    import urllib.request
+
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(base.rstrip("/") + path, data=data, method=method)
+    req.add_header("Accept", accept)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    if (token := studio_token()):
+        req.add_header("X-Sym-Token", token)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def api_json(path: str, *, base: str, method: str = "GET", body: object = None,
+             timeout: float = 60.0) -> tuple[int, dict]:
+    """`(status, body)`. A 4xx is a result here, not an exception: the router answers `denied`,
+    `unknown_tool` and `empty_query` as JSON, and those bodies are the useful part."""
+    import urllib.error
+
+    try:
+        with api_open(path, base=base, method=method, body=body, timeout=timeout) as r:
+            raw = r.read().decode(errors="replace")
+            return r.status, (json.loads(raw) if raw.strip() else {})
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode(errors="replace")
+        try:
+            return exc.code, json.loads(raw)
+        except ValueError:
+            return exc.code, {"error": raw.strip()[:400] or f"HTTP {exc.code}"}
+    except urllib.error.URLError as exc:
+        return 0, {"error": "unreachable", "detail": str(exc.reason)}
+
+
+def unreachable(base: str, obj: dict) -> int:
+    print(f"no API at {base} -- {obj.get('detail') or obj.get('error')}", file=sys.stderr)
+    print("start one:  cd backend && python3 -m uvicorn api:app --port 8800", file=sys.stderr)
+    return 1
+
+
+def local_registry():
+    """The tool registry as this checkout defines it, imported in-process.
+
+    This is the same object `agent.py` generates its system prompt from and `mcp_server.py`
+    iterates, so `tools` tells the truth about what the model can call without an API to ask.
+    It costs the backend's imports -- stdlib plus httpx, both already in the serving path --
+    and `tools --remote` is there for when the live reading is the point.
+    """
+    sys.path.insert(0, str(ROOT / "backend"))
+    from apps.symoneuralstudio import registry, tools_impl  # noqa: F401  (registers the tools)
+    return registry
+
+
+# ---------------------------------------------------------------------------
+
+
+def cmd_state(args) -> int:
+    """What the stack reports about itself, tokenless: `GET /api/studio/state`."""
+    status, obj = api_json("/api/studio/state", base=args.url, timeout=20.0)
+    if status == 0:
+        return unreachable(args.url, obj)
+    if args.json:
+        print(json.dumps(obj, indent=2, sort_keys=True))
+        return 0 if status == 200 else 1
+
+    def row(label: str, value: str) -> None:
+        print(f"{label:<20} {value}")
+
+    on = bool(obj.get("enabled"))
+    row("surface", c("on", GREEN) if on else c("off", AMBER))
+    if not on:
+        row("", c(str(obj.get("detail") or GATE_HINT), DIM))
+    ws = obj.get("workspace") or {}
+    row("workspace", str(ws.get("root") or c("not found -- set SYM_STUDIO_ROOT", AMBER)))
+    row("tools", str(obj.get("tools", "?")))
+    row("max steps", str(obj.get("max_steps", "?")))
+    for name, b in (obj.get("inference") or {}).get("backends", {}).items():
+        up = b.get("up")
+        models = ", ".join(b.get("models") or []) if up else ""
+        row(f"inference {name}", (c("up", GREEN) + (f"  {models}" if models else ""))
+            if up else c("down", AMBER))
+        if not up and b.get("detail") and args.why:
+            row("", c(str(b["detail"]), DIM))
+    cu = obj.get("comfyui") or {}
+    row("comfyui", c("up", GREEN) if cu.get("up") else c("down", AMBER))
+    lease = obj.get("lease") or {}
+    row("gpu lease", c("held", AMBER) if lease.get("holding") else c("not held", GREEN))
+    row("workflows", ", ".join(obj.get("workflows") or []) or "none")
+    if (pinned := (obj.get("inference") or {}).get("pinned")):
+        row("SYM_STUDIO_LLM", str(pinned))
+    return 0
+
+
+def cmd_tools(args) -> int:
+    """The tool registry -- names, groups, and the JSON Schema the model is handed."""
+    if args.remote:
+        if not require_token():
+            return 2
+        status, obj = api_json("/api/studio/tools", base=args.url, timeout=20.0)
+        if status == 0:
+            return unreachable(args.url, obj)
+        if status != 200:
+            print(f"HTTP {status}: {json.dumps(obj)}", file=sys.stderr)
+            return 1
+        entries = obj.get("tools") or []
+        specs = obj.get("specs") or []
+        source = f"live from {args.url}"
+    else:
+        try:
+            registry = local_registry()
+        except Exception as exc:  # noqa: BLE001 -- report the import, do not pretend
+            print(f"cannot import the registry: {type(exc).__name__}: {exc}", file=sys.stderr)
+            print("try:  symoneural-cli tools --remote", file=sys.stderr)
+            return 1
+        entries = [{"name": t.name, "group": t.group, "dangerous": t.dangerous,
+                    "description": t.description, "parameters": t.parameters}
+                   for t in sorted(registry.TOOLS.values(), key=lambda t: (t.group, t.name))]
+        specs = registry.tool_specs()
+        source = f"this checkout ({ROOT.name})"
+
+    if args.name:
+        entries = [e for e in entries if e["name"] == args.name]
+        specs = [s for s in specs
+                 if (s.get("function") or {}).get("name") == args.name or
+                 s.get("name") == args.name]
+        if not entries:
+            print(f"no tool named {args.name!r}", file=sys.stderr)
+            return 1
+    if args.group:
+        entries = [e for e in entries if e["group"] == args.group]
+        keep = {e["name"] for e in entries}
+        specs = [s for s in specs
+                 if ((s.get("function") or {}).get("name") or s.get("name")) in keep]
+        if not entries:
+            print(f"no tools in group {args.group!r}", file=sys.stderr)
+            return 1
+    if args.json:
+        # The OpenAI tool-spec shape, exactly as it goes into the request the model sees.
+        print(json.dumps(specs, indent=2))
+        return 0
+
+    if args.name:
+        e = entries[0]
+        print(f"{c(e['name'], BOLD)}  {c(e['group'], DIM)}"
+              f"{'  ' + c('writes', AMBER) if e['dangerous'] else ''}")
+        print(f"  {e['description'] or '(no description)'}")
+        props = (e.get("parameters") or {}).get("properties") or {}
+        required = set((e.get("parameters") or {}).get("required") or [])
+        for pname, schema in props.items():
+            kind = schema.get("type", "any")
+            mark = "" if pname in required else c(" optional", DIM)
+            print(f"    {pname:<18} {kind}{mark}")
+            if schema.get("description"):
+                print(f"      {c(str(schema['description']), DIM)}")
+        if not props:
+            print(f"    {c('no parameters', DIM)}")
+        return 0
+
+    group = None
+    room = max(24, shutil.get_terminal_size((100, 24)).columns - 32)
+    for e in entries:
+        if e["group"] != group:
+            group = e["group"]
+            print(f"\n{c(group, BOLD)}")
+        flag = c(" writes", AMBER) if e["dangerous"] else ""
+        first = (e["description"] or "").strip().splitlines()[0] if e["description"] else ""
+        if len(first) > room:  # clipped on a word, and it says so, rather than mid-word
+            first = first[:room].rsplit(" ", 1)[0] + " ..."
+        print(f"  {e['name']:<20}{first}{flag}")
+    writes = sum(1 for e in entries if e["dangerous"])
+    print(f"\n{len(entries)} tools, {writes} of which write  {c(source, DIM)}")
+    return 0
+
+
+def cmd_tool(args) -> int:
+    """Run one tool directly: `POST /api/studio/tool/{name}`, no model in the path.
+
+    The route's own docstring calls this an operator surface reached with curl and a token.
+    This is that, with the arguments parsed for you.
+    """
+    if not require_token():
+        return 2
+    arguments: dict = {}
+    if args.body:
+        try:
+            arguments = json.loads(args.body)
+        except ValueError as exc:
+            print(f"--body is not JSON: {exc}", file=sys.stderr)
+            return 2
+        if not isinstance(arguments, dict):
+            print("--body must be a JSON object", file=sys.stderr)
+            return 2
+    for pair in args.arg:
+        if "=" not in pair:
+            print(f"arguments are key=value, got {pair!r}", file=sys.stderr)
+            return 2
+        key, _, raw = pair.partition("=")
+        try:  # so numbers, booleans, null and nested JSON arrive as themselves
+            arguments[key] = json.loads(raw)
+        except ValueError:
+            arguments[key] = raw
+    started = time.monotonic()
+    status, obj = api_json(f"/api/studio/tool/{args.name}", base=args.url,
+                           method="POST", body=arguments, timeout=args.timeout)
+    if status == 0:
+        return unreachable(args.url, obj)
+    if status == 404 and obj.get("error") == "unknown_tool":
+        print(f"no tool named {args.name!r}", file=sys.stderr)
+        print(f"{len(obj.get('available') or [])} available -- "
+              f"symoneural-cli tools", file=sys.stderr)
+        return 1
+    if status != 200:
+        print(f"HTTP {status}: {json.dumps(obj)}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(obj, indent=2, default=str))
+        return 0 if obj.get("ok") else 1
+    wall = time.monotonic() - started
+    if not obj.get("ok"):
+        print(c(f"{args.name} failed: {obj.get('error')}", AMBER), file=sys.stderr)
+        return 1
+    result = obj.get("result")
+    print(result if isinstance(result, str) else json.dumps(result, indent=2, default=str))
+    note = (f"{args.name} ok  server {obj.get('elapsed_s')}s  wall {wall:.2f}s")
+    print(c(note, DIM), file=sys.stderr)
+    return 0
+
+
+def _one_line(value: object, width: int) -> str:
+    """A result rendered on one line, with its own size stated rather than hidden."""
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    flat = " ".join(text.split())
+    if len(flat) <= width:
+        return flat
+    return f"{flat[:width]}... ({len(text)} chars)"
+
+
+def cmd_agent(args) -> int:
+    """Drive one agent turn and render the SSE stream as it arrives.
+
+    The frames are `agent.run()`'s own, unchanged: backend, thinking, tool_call, tool_result,
+    answer, error, done, notice. Anything else the loop grows later prints as raw JSON rather
+    than being dropped -- a renderer that silently ignores an event it does not know is how a
+    terminal ends up quieter than the thing it is watching.
+    """
+    if not require_token():
+        return 2
+    query = " ".join(args.query).strip()
+    if not query:
+        print("nothing to ask", file=sys.stderr)
+        return 2
+    body: dict = {"query": query}
+    if args.max_steps:
+        body["max_steps"] = args.max_steps
+    if args.model:
+        body["model"] = args.model
+    if args.context:
+        body["context"] = args.context
+
+    import urllib.error
+
+    try:
+        resp = api_open("/api/studio/agent", base=args.url, method="POST", body=body,
+                        accept="text/event-stream", timeout=args.timeout)
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode(errors="replace")
+        try:
+            detail = json.dumps(json.loads(raw))
+        except ValueError:
+            detail = raw.strip()[:400]
+        print(f"HTTP {exc.code}: {detail}", file=sys.stderr)
+        return 1
+    except urllib.error.URLError as exc:
+        return unreachable(args.url, {"detail": str(exc.reason)})
+
+    t0 = time.monotonic()
+    frames: list[dict] = []
+    answer = ""
+    failed = False
+    width = shutil.get_terminal_size((100, 24)).columns
+    with resp:
+        for raw in resp:
+            line = raw.decode("utf-8", errors="replace").strip()
+            if not line.startswith("data:"):
+                continue
+            try:
+                frame = json.loads(line[5:].strip())
+            except ValueError:
+                continue
+            frames.append(frame)
+            kind = frame.get("event")
+            if kind == "answer":
+                answer = frame.get("text") or ""
+            if kind == "error":
+                failed = True
+            if args.output_format == "stream-json":
+                print(json.dumps(frame, default=str), flush=True)
+                continue
+            if args.output_format == "json":
+                continue
+            stamp = c(f"{time.monotonic() - t0:6.2f}s", DIM)
+            if kind == "backend":
+                print(f"{stamp} {c('backend', BOLD)} {frame.get('name')} "
+                      f"{c(str(frame.get('url') or ''), DIM)}")
+            elif kind == "thinking":
+                for para in (frame.get("text") or "").strip().splitlines():
+                    if para.strip():
+                        print(f"{stamp} {c(para.strip(), DIM)}")
+            elif kind == "tool_call":
+                print(f"{stamp} {c('call', GREEN)} {frame.get('name')}"
+                      f"({_one_line(frame.get('arguments'), max(20, width - 30))})")
+            elif kind == "tool_result":
+                shown = (json.dumps(frame.get('result'), indent=2, default=str)
+                         if args.verbose else _one_line(frame.get("result"),
+                                                        max(20, width - 30)))
+                print(f"{stamp} {c('   ->', DIM)} {shown}")
+            elif kind == "answer":
+                print(f"{stamp} {c('answer', BOLD)}"
+                      f"{c('  (step limit reached)', AMBER) if frame.get('truncated') else ''}")
+                print(answer.strip())
+            elif kind == "notice":
+                print(f"{stamp} {c('notice', AMBER)} {frame.get('detail')}")
+            elif kind == "error":
+                print(f"{stamp} {c('error', AMBER)} {frame.get('code')}: "
+                      f"{frame.get('detail')}", file=sys.stderr)
+            elif kind == "done":
+                used, secs = frame.get("tools_used"), frame.get("seconds")
+                print(f"{stamp} {c('done', DIM)} {c(str(frame.get('steps')) + ' steps', DIM)}"
+                      + (c(f", tools {used}", DIM) if used else "")
+                      + (c(f", {secs}s server-side", DIM) if secs is not None else "")
+                      + (c(", hit the step limit", AMBER) if frame.get("hit_step_limit")
+                         else ""))
+            else:  # an event this renderer has not been taught: show it, do not swallow it
+                print(f"{stamp} {c('?', AMBER)} {json.dumps(frame, default=str)}")
+
+    if args.output_format == "json":
+        print(json.dumps({"query": query, "answer": answer, "events": frames,
+                          "elapsed_s": round(time.monotonic() - t0, 3),
+                          "ok": not failed}, indent=2, default=str))
+    return 1 if failed else 0
+
+
+def cmd_mcp(args) -> int:
+    """The MCP transport: what it would serve, whether it can start, and how to wire a client.
+
+    `mcp_server.py` iterates the same registry the agent does, so the tool list here is not a
+    second copy -- it is the same 26 functions over a different transport. The venv is the only
+    thing FastMCP is installed into; without it this reports the gap instead of guessing.
+    """
+    pkg = ROOT / "backend" / "apps" / "symoneuralstudio"
+    venv_py = pkg / ".venv" / "bin" / "python"
+    server = pkg / "mcp_server.py"
+    have_venv = venv_py.is_file()
+    fastmcp = None
+    if have_venv:
+        probe = subprocess.run([str(venv_py), "-c",
+                                "import fastmcp;print(fastmcp.__version__)"],
+                               capture_output=True, text=True)
+        fastmcp = probe.stdout.strip() if probe.returncode == 0 else None
+
+    if args.serve:
+        if not have_venv or not fastmcp:
+            print("the MCP venv is not ready. build it, by full path, never into the system "
+                  "interpreter:", file=sys.stderr)
+            print(f"  python3 -m venv {pkg / '.venv'}", file=sys.stderr)
+            print(f"  {pkg / '.venv/bin/pip'} install -r {pkg / 'requirements.txt'}",
+                  file=sys.stderr)
+            return 1
+        cmd = [str(venv_py), str(server)] + (["--http", str(args.http)] if args.http else [])
+        # exec, not spawn: on stdio the client owns this process's stdin and stdout, and an
+        # intermediate python would sit in the middle of the transport for no reason.
+        os.execv(cmd[0], cmd)
+
+    try:
+        registry = local_registry()
+        count, groups = len(registry.TOOLS), sorted({t.group for t in registry.TOOLS.values()})
+    except Exception as exc:  # noqa: BLE001
+        count, groups = "?", []
+        print(f"registry did not import: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    def row(label: str, value: str) -> None:
+        print(f"{label:<20} {value}")
+
+    if args.json:
+        print(json.dumps({"server": str(server), "venv": str(venv_py.parent.parent),
+                          "venv_ready": bool(fastmcp), "fastmcp": fastmcp,
+                          "tools": count, "groups": groups,
+                          "stdio": [str(venv_py), str(server)],
+                          "http": [str(venv_py), str(server), "--http", "PORT"]}, indent=2))
+        return 0
+    row("server", str(server))
+    row("transport", "stdio (default), or --http PORT for streamable HTTP")
+    row("fastmcp", f"{fastmcp}  {c(str(venv_py.parent.parent), DIM)}" if fastmcp
+        else c("not installed -- symoneural-cli mcp --serve prints the two commands", AMBER))
+    row("tools", f"{count} in {', '.join(groups)}" if groups else str(count))
+    row("switch", c("on", GREEN) if os.environ.get("SYM_STUDIO_ENABLED") == "1"
+        else c("SYM_STUDIO_ENABLED is not 1 in this shell", AMBER))
+    print()
+    print(f"{c('a client wires it as:', BOLD)}")
+    print(json.dumps({"mcpServers": {"symoneural-studio": {
+        "command": str(venv_py), "args": [str(server)],
+        "env": {"SYM_STUDIO_ENABLED": "1", "SYM_STUDIO_TOKEN": "<secret>",
+                "SYM_STUDIO_ROOT": str(ROOT)}}}}, indent=2))
+    return 0
+
+
 # --------------------------------------------------------------------------
 
 def main() -> int:
@@ -357,6 +815,60 @@ def main() -> int:
     p.add_argument("--point")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_ravencalc)
+
+    # The studio surface. `--url` and `--json` are repeated per subcommand rather than hung on
+    # the top-level parser, because `symoneural-cli --json ravencalc ...` would then parse and
+    # do nothing: ravencalc has its own `--json` and never speaks HTTP.
+    def studio(name: str, help_text: str):
+        q = sub.add_parser(name, help=help_text)
+        q.add_argument("--url", default=DEFAULT_API,
+                       help=f"the API to talk to (default {DEFAULT_API}, or $SYM_API_URL)")
+        return q
+
+    p = studio("agent", "one agent turn, streamed -- thinking, tool calls, results, answer")
+    p.add_argument("query", nargs="*", help="what to ask")
+    p.add_argument("--max-steps", type=int,
+                   help="tool-calling rounds before the loop stops (server default 8)")
+    p.add_argument("--model", help="override the backend's model name")
+    p.add_argument("--context", help="extra context prepended to the system prompt")
+    p.add_argument("--output-format", choices=("text", "json", "stream-json"), default="text",
+                   help="text renders as it arrives; stream-json is one frame per line, "
+                        "and json is a single object at the end")
+    p.add_argument("-v", "--verbose", action="store_true",
+                   help="print whole tool results instead of one line each")
+    p.add_argument("--timeout", type=float, default=900.0)
+    p.set_defaults(fn=cmd_agent)
+
+    p = studio("tools", "the tool registry the model is handed")
+    p.add_argument("name", nargs="?", help="one tool, with its full parameter schema")
+    p.add_argument("--group", help="filter to one group")
+    p.add_argument("--json", action="store_true", help="the OpenAI tool specs, verbatim")
+    p.add_argument("--remote", action="store_true",
+                   help="read the live registry over HTTP instead of this checkout")
+    p.set_defaults(fn=cmd_tools)
+
+    p = studio("tool", "run one tool directly, with no model in the path")
+    p.add_argument("name")
+    p.add_argument("arg", nargs="*", metavar="key=value",
+                   help="values are parsed as JSON when they parse, else as strings")
+    p.add_argument("--body", help="the whole argument object as JSON")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--timeout", type=float, default=300.0)
+    p.set_defaults(fn=cmd_tool)
+
+    p = studio("state", "what the stack reports about itself (no token needed)")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--why", action="store_true",
+                   help="also print each down backend's stated reason")
+    p.set_defaults(fn=cmd_state)
+
+    p = sub.add_parser("mcp", help="the MCP transport: tools, readiness, client wiring")
+    p.add_argument("--serve", action="store_true",
+                   help="exec the MCP server on stdio (this process becomes it)")
+    p.add_argument("--http", type=int, metavar="PORT",
+                   help="with --serve, streamable HTTP on 127.0.0.1:PORT instead of stdio")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_mcp)
 
     sub.add_parser("_stop-chat").set_defaults(fn=cmd_stop_chat)
 
