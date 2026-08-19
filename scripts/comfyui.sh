@@ -92,7 +92,18 @@ case "${1:-status}" in
       pkill -f "$COMFY/main.py" 2>/dev/null
     fi
     rm -f "$PIDFILE"
-    echo "comfyui stopped"
+    # The process exiting is not the memory coming back: SIGTERM returns the process before the
+    # driver returns the device allocation, and the next tenant OOMs at step 0. The loop above
+    # waited for the pid; this waits for the card, against the governor's own floor
+    # (DRAIN_FLOOR_MIB=1500 for DRAIN_TIMEOUT_S=60, gpu-governor.sh:41-42) so there is one
+    # definition of "drained" in this repo rather than two. `drain` takes no argument and
+    # returns 1 on timeout, so its exit status is the whole check.
+    if "$ROOT/scripts/gpu-governor.sh" drain; then
+      echo "comfyui stopped"
+    else
+      echo "comfyui stopped, but the card did not drain -- see gpu-governor.sh status" >&2
+      exit 1
+    fi
     ;;
 
   status)
