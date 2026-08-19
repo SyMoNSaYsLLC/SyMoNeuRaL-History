@@ -166,6 +166,7 @@ that is fine, because it only writes to stdout and sets nothing its caller reads
 node tests/frontend.mjs             # every page, against a running API on :8800
 node tests/tuner_failpaths.mjs      # tuner.html, self-contained -- starts its own fake provider
 node tests/tuner_watch.mjs          # tuner-watch.html, ditto -- no account, no real stream
+node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI up, and the GPU
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
@@ -207,6 +208,33 @@ invocation is the one line. **`frontend.mjs` needs an API**, and if you point it
 service you are testing what is *deployed*, not what you wrote — start your own on a spare port
 and pass the base URL (`node tests/frontend.mjs http://127.0.0.1:8875`), or a red assertion will
 send you hunting a bug you already fixed.
+
+**`tests/studio.mjs` is the fourth suite and is deliberately not part of `frontend.mjs`.** That
+one runs against any instance and asserts what every visitor sees; this one needs the Studio
+surface switched on and it **takes the card for a real render**, so pointing it at the deployed
+service would queue a job on the live GPU. Start ComfyUI and your own API, then run it:
+
+```bash
+bash scripts/comfyui.sh start                       # loopback :8188, no lock held
+cd backend && SYM_STUDIO_ENABLED=1 SYM_STUDIO_TOKEN=devtest \
+    python3 -m uvicorn api:app --port 8876          # a spare port, not the service
+SYM_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
+bash scripts/comfyui.sh stop                        # /free, THEN SIGTERM -- see below
+```
+
+**16/16 passed, measured 2026-08-19 at `d20e09b`**, including a 1024x1024 FLUX-schnell render
+decoding in the browser in 14.5 s. Its three `net::ERR_ABORTED` lines are labelled optional and
+404 upstream at :8188 as well; they are not proxy faults. `.claude/HANDOVER.md` has the reading
+and the VRAM curve. The state document claimed for two days that this suite could not run
+because ComfyUI "has no venv and no torch" — it has both (torch **2.13.0+cu130**, sm_120
+verified by a real CUDA probe, 223 packages), and the suite had simply never been invoked.
+
+**Stop ComfyUI with `scripts/comfyui.sh stop`, never by killing the pid.** The script POSTs
+`/free` and then waits on `gpu-governor.sh drain` — the process exiting is not the memory coming
+back, and the next tenant OOMs at step 0. Measured here: a render peaks at **13,114 MiB of
+16,303** and returns to 666 MiB in **4.1 s**, against the governor's 60 s timeout and 1500 MiB
+floor. `comfyui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
+is taken per render and released after the drain, which is the rule above applied.
 
 These assert on what the DOM *shows*: units render from `/api/status`, the bus plate carries a
 real reading, nothing overlaps at 390px, calc returns `x**3/3`, and a generated image actually
