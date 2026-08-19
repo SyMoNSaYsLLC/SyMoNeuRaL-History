@@ -169,12 +169,18 @@
     var log = $('st-log');
     var kind = ev.event;
     if (kind === 'done') {
+      var used = ev.tools_used || 0;
       var d = el('div', 'st-ev');
       d.appendChild(el('h5', null, LABEL.done));
       d.appendChild(el('p', null,
         ev.steps + ' step' + (ev.steps === 1 ? '' : 's') + ' · '
-        + (ev.tools_used || []).length + ' tool call'
-        + (((ev.tools_used || []).length) === 1 ? '' : 's') + ' · ' + ev.seconds + ' s'
+        /* `tools_used` is a count, not a list. `agent.py:270` opens `used = 0`, `:327`
+         * increments it, and both `done` frames (`:296`, `:353`) yield it as `tools_used`. This
+         * line used to read `(ev.tools_used || []).length`, which is `undefined` on a number, so
+         * every turn that actually called a tool rendered "undefined tool calls" -- and it looked
+         * right in exactly the case nobody checks, a turn with zero calls, where `0 || []` falls
+         * through to the empty array and `.length` is 0. */
+        + used + ' tool call' + (used === 1 ? '' : 's') + ' · ' + ev.seconds + ' s'
         + (ev.hit_step_limit ? ' · stopped at the step limit' : '')));
       log.appendChild(d);
       log.scrollTop = log.scrollHeight;
@@ -295,8 +301,15 @@
         return;
       }
       var lease = b.lease || {};
+      /* `elapsed_s`, not `wall_clock_s`. `/queue` returns `comfy_tool.execute`'s dict
+       * verbatim (`routes.py:547-550`) and that dict is stamped `result["elapsed_s"]` at
+       * `comfy_tool.py:202`; nothing anywhere produces `wall_clock_s`, so this segment never
+       * rendered. It is also not "in ComfyUI" time: `started` is taken at `comfy_tool.py:98`,
+       * above the `/object_info` fetch, the graph validation and `lease()`, so it spans the
+       * queue wait for the card and the VRAM drain as well as the render. The browser's own
+       * figure to its left is the same span plus HTTP, which is why both are printed. */
       note.textContent = ((Date.now() - started) / 1000).toFixed(1) + ' s wall clock'
-        + (b.wall_clock_s ? ' · ' + b.wall_clock_s + ' s in ComfyUI' : '')
+        + (b.elapsed_s ? ' · ' + b.elapsed_s + ' s server-side' : '')
         + (lease.drain_wait_s !== undefined && lease.drain_wait_s !== null
             ? ' · card back in ' + lease.drain_wait_s + ' s' : '')
         + (lease.released ? ' · lock released' : '')

@@ -406,7 +406,17 @@ async def list_workflows(request: Request) -> JSONResponse:
 
 @router.get("/workflow/{name}")
 async def get_workflow(name: str, request: Request) -> JSONResponse:
-    """The prompt graph, plus the same graph as a canvas document, so the editor can open it."""
+    """The prompt graph, plus the same graph run back through `graph.from_prompt`.
+
+    Not for the editor, and nothing in this repo calls it. The embedded editor is ComfyUI's own
+    frontend in an iframe (`page.html:169`), proxied at `/studio/comfy/`; it loads graphs through
+    ComfyUI's own API and has never seen this route or the canvas format -- `graph.py`'s header
+    says the same thing from the other end. Neither `page.js` nor `tests/studio.mjs` fetches it.
+
+    It is here for a client that wants a stored workflow in both shapes without importing the
+    package, and it is the only surface `from_prompt` has: the sole other call is
+    `graph.py`'s own docstring naming this route.
+    """
     try:
         _guard(request)
     except Denied as exc:
