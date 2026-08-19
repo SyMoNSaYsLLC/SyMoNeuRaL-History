@@ -131,14 +131,27 @@ class _LeaseKeeper:
         self._job_error: dict = {}
 
     # -- state for /state ---------------------------------------------------
-    def snapshot(self) -> dict:
+    def snapshot(self, *, full: bool) -> dict:
+        """`full=False` is what a tokenless `/state` gets.
+
+        Everything here except the error is a surface name, a boolean, a VRAM figure or a
+        prompt id, all of which a page has to be able to draw without holding the secret.
+        `last_job_error["error"]` is a formatted exception from a `/history` poll, so it can
+        carry a filesystem path, an upstream URL or a chunk of a response body -- none of which
+        is presence/absence, which is the only thing `/state` says it discloses. Tokenless
+        callers get the fact that a job failed and when; the string itself needs the token.
+        """
+        error = None
+        if self._job_error:
+            error = (dict(self._job_error) if full
+                     else {"present": True, "at": self._job_error["at"]})
         return {
             "in_flight": self._count,
             "holding": self._task is not None and not self._task.done(),
             "linger_s": LINGER_S,
             "current": dict(self._record) if self._record else None,
             "last": dict(self._last) if self._last else None,
-            "last_job_error": dict(self._job_error) if self._job_error else None,
+            "last_job_error": error,
         }
 
     async def _supervise(self, ready: asyncio.Future) -> None:
@@ -192,6 +205,8 @@ class _LeaseKeeper:
 
     def note_job_error(self, prompt_id: str | None, exc: BaseException) -> None:
         """Record why a job's tracking task died. Reported by `/state` as `last_job_error`.
+
+        The string is only handed to a caller that presented the token -- see `snapshot`.
 
         The lease is not at risk here -- it is released in a `finally` -- but a job whose
         `/history` poll blew up has no other surface. Kept to the last one, because this is a
@@ -285,14 +300,26 @@ async def _await_history(client: comfy.ComfyClient, prompt_id: str,
 # /api/studio  --  state, tools, workflows
 # ---------------------------------------------------------------------------
 @router.get("/state")
-async def state() -> JSONResponse:
+async def state(request: Request) -> JSONResponse:
     """Tokenless, and presence/absence only -- the pattern `apps/gateway` established.
 
     A page has to be able to say "the surface is switched off" without holding the secret, so
     this reports whether things are up and what would switch them on. It does not read files,
     does not list the workspace contents and does not run anything.
+
+    Two fields needed work to make that sentence true rather than aspirational. The workspace
+    root is a path and is disclosed deliberately -- `page.js` prints it, and a page that cannot
+    say where it is pointing is not reporting presence, it is hiding it. The other was
+    `last_job_error`, a formatted exception that can carry more than its own existence; it is
+    now reduced to presence and a timestamp unless the caller presented the token. The rest is
+    booleans, counts, names of things that are listed on the page anyway, and a VRAM figure.
     """
     on = enabled()
+    try:
+        _guard(request)
+        privileged = True
+    except Denied:
+        privileged = False
     client = comfy.ComfyClient()
     comfy_state, llm_state = await asyncio.gather(client.alive(), inference.state())
     return JSONResponse({
@@ -308,7 +335,7 @@ async def state() -> JSONResponse:
         "workflows": workflows.names(),
         "inference": llm_state,
         "comfyui": {**comfy_state, "editor": "/studio/comfy/"},
-        "lease": _KEEPER.snapshot(),
+        "lease": _KEEPER.snapshot(full=privileged),
         "max_steps": agent.MAX_STEPS,
     })
 

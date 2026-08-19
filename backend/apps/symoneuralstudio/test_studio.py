@@ -574,12 +574,43 @@ class JobTrackingTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     await task
                 await asyncio.sleep(0)
-            reported = keeper.snapshot()["last_job_error"]
+            reported = keeper.snapshot(full=True)["last_job_error"]
             self.assertIsNotNone(reported, "nobody awaits this task, so /state is the only "
                                            "place its failure can appear")
             self.assertEqual(reported["prompt_id"], "p-2")
             self.assertIn("history poll died", reported["error"])
         asyncio.run(go())
+
+    def test_a_tokenless_reader_gets_the_fact_of_the_failure_and_not_its_text(self):
+        """`/state` says it discloses presence/absence. An exception string is not that.
+
+        A `/history` poll dies with whatever the failure carries -- a filesystem path, an
+        upstream URL, a slice of a response body. The page needs to know a job failed and when,
+        which is presence and a timestamp; the sentence is for whoever holds the token.
+        """
+        async def go():
+            async def body():
+                raise RuntimeError("/home/google/Symoneural/run/secret-path.json is missing")
+
+            keeper = routes._LeaseKeeper()
+            with mock.patch.object(routes, "_KEEPER", keeper):
+                task = routes._track_job(body(), "p-3")
+                with self.assertRaises(RuntimeError):
+                    await task
+                await asyncio.sleep(0)
+            public = keeper.snapshot(full=False)["last_job_error"]
+            self.assertEqual(public, {"present": True, "at": keeper._job_error["at"]})
+            self.assertNotIn("error", public)
+            self.assertNotIn("secret-path", repr(public))
+            # And the token holder still gets the whole thing, or this is a fix that removed the
+            # only place the failure was readable.
+            self.assertIn("secret-path", keeper.snapshot(full=True)["last_job_error"]["error"])
+        asyncio.run(go())
+
+    def test_a_clean_keeper_reports_no_job_error_either_way(self):
+        keeper = routes._LeaseKeeper()
+        self.assertIsNone(keeper.snapshot(full=False)["last_job_error"])
+        self.assertIsNone(keeper.snapshot(full=True)["last_job_error"])
 
 
 class RunCommandTests(unittest.TestCase):
