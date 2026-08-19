@@ -17,7 +17,10 @@ Three things *are* enforced, and none of them is a filter on what may be done:
   dispatch through `anyio.to_thread.run_sync`, enough of those stall the whole serving API and
   not just this app. See `run_command` for the mechanism.
 - **Output truncation.** A `find /` returning 40 MB into a 7B context window helps nobody.
-  Truncation is reported with the byte count that was dropped.
+  Truncation is reported with the character count that was dropped. Characters, not bytes:
+  `Popen(text=True)` hands back decoded `str`, so `MAX_OUTPUT` and the dropped figure are both
+  measured in what the model will actually be charged for, and the keys say `chars` so nobody
+  reads a UTF-8 byte total off them.
 - **`sudo` is passed through, not injected.** If a command needs root it will fail with the
   real permission error. Silently prefixing `sudo` would make the tool's behaviour differ
   from what the model was told it asked for.
@@ -56,6 +59,8 @@ _SECRETISH = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "KEY", "CREDENTIAL", "API
 
 
 def _clip(s: str) -> tuple[str, int]:
+    """(kept, dropped). Both measured in characters -- `s` is already decoded text, and
+    `MAX_OUTPUT` is a context-window budget rather than a wire limit."""
     if len(s) <= MAX_OUTPUT:
         return s, 0
     return s[:MAX_OUTPUT], len(s) - MAX_OUTPUT
@@ -113,7 +118,7 @@ def run_command(command: str, cwd: str = "", timeout: int = DEFAULT_TIMEOUT) -> 
     err, err_dropped = _clip(err_text)
     return {"command": command, "cwd": str(where), "exit_code": proc.returncode,
             "stdout": out, "stderr": err,
-            "stdout_bytes_dropped": out_dropped, "stderr_bytes_dropped": err_dropped}
+            "stdout_chars_dropped": out_dropped, "stderr_chars_dropped": err_dropped}
 
 
 def _show(key: str, value: str) -> str:
