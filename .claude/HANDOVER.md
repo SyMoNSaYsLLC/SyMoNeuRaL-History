@@ -130,44 +130,91 @@ conversation, so every number, path and decision you need is stated here.
   `tools/build_split.py` reads to build the other four, so it cannot simply stop being
   generated. **Whether to retire it is an open question — see §5.** Eleven generators now.
   §3.0 explains the layout and, more usefully, the four ways its tests lied.
-- **Three sections of four fit one screen. `/livestack` no longer does, and that is an open
-  decision for Garrett — not a bug awaiting an agent.** The promise was every section with no
-  internal scroll at every viewport the gate allows, 1301x740 through 2560x1440, and
-  `tests/frontend.mjs` asserted it 43/43. It is **42/43** now. Measured at 1855x745, both
-  counts in a single page load by hiding the last two `.unit` nodes and re-reading:
+- **All four sections fit one screen again. `/livestack` was 42/43; it is 43/43.** Fixed
+  2026-08-19 rather than handed back: an earlier revision of this row called it "an open
+  decision for Garrett — not a bug awaiting an agent", and he answered *"nithing is mine its
+  all you fix it"*. The promise is every section with no internal scroll at every viewport the
+  gate allows, 1301x740 through 2560x1440. `node tests/frontend.mjs http://127.0.0.1:8875`
+  (run from the repo root, not `backend/`) reports **43/43 passed**, 0 failed, and the two
+  assertions that cover this print their own numbers: `livestack@1855x745 [rack] 584/584`,
+  `livestack@1301x740 [rack] 587/587`, `livestack@1990x970 --t3=22.1px --t7=11.6px over=0px`.
 
-  | rack contents | `scrollHeight` / `clientHeight` | verdict |
-  |---|---|---|
-  | thirteen units (today) | 599 / 584 | **15px over** |
-  | eleven units (hidden last two) | 584 / 584 | fits, with **zero** slack |
-  | thirteen at 1990x970 | 807 / 807 | fits |
-  | thirteen at 1301x740 | 587 / 587 | fits |
+  It was 599px of content in a 584px panel at 1855x745 with thirteen units. **Two rules did
+  it, both spacing, neither touching a word, a row or a type token** — the only lever
+  `site/symoneural.css` permits itself here ("The rest has to come from spacing, and ONLY from
+  spacing -- every word stays"):
 
-  So this is one viewport, and the second row is the finding. The rack was **exactly** at its
-  budget at eleven units, because the type scale was tuned until it was:
-  `tests/frontend.mjs:604-615` records Garrett's feedback and states "1.20x is the measured
-  ceiling that still fits (1.30x overflows by 2px at 1855x745 and 20px at 1990x970)". Adding
-  `studio` and `exp` (`e27b9c1`) put two 28px rows into a box with no room. Nothing in
+  | the change | 1301x740 | 1855x745 | 1440x900 | 1990x970 |
+  |---|---|---|---|---|
+  | `html.ns #rack > .wrap > .tnote{max-width:160ch}` — footnote 3 line boxes → 2 | 42.5 → 28.3 | 46 → 30.7 | 57 → 38 | 62.2 → 41.4 |
+  | `.rk-tools` out of the heading's inline run, parked on the `.shead` line | 112.4 → 86.9 | 96.2 → 65.7 | 112.8 → 86.2 | 95.2 → 64.5 |
+  | `#rack` content/panel after both, thirteen units | 587 / 587 | **584 / 584** | 745 / 745 | 807 / 807 |
+
+  The footnote was the 15px: the `html.ns` block relaxed `.sub` to `max-width:none` for this
+  layout and left the note on the 96ch cap it inherits from the `min-width:900px` block, so
+  353 characters rendered in three line boxes inside a 1767px wrap. 160ch is still a cap and
+  not a full-bleed line — it computes to 960.96px inside a 1239px wrap at 1301x740 and
+  1262.68px inside 1902px at 1990x970. The fold pill was a second whole line box: the heading
+  is one inline run (h2, then the lede, then a 225px pill) and the run never had room for the
+  pill on the lede's last line, so `display:inline` bought less than it looked like. It is now
+  absolutely positioned on the `.shead` row, which carries a 22px icon and one short label and
+  is empty to its right — measured clearance between label and pill: **915px at 1301x740,
+  1422px at 1855x745**. DOM order is untouched, so tab order and screen-reader order are what
+  they were, and a real `#rk-fold` click still flips `aria-pressed` to `true` and adds
+  `.rk-open`.
+
+  **The headroom is measured, and the method is the part worth keeping.** `scrollHeight`
+  floors at `clientHeight`, so `584/584` cannot tell you whether a fix bought 1px or 40px —
+  three of these four viewports already read `over=0` *before* the change. The reading that
+  answers it is this file's own trick from `tests/frontend.mjs` ("a simulated tenth unit"):
+  clone a `.unit` and re-measure inside the *same* synchronous `evaluate`, because the rack
+  re-renders from the `/api/status` socket and a clone made in one `evaluate` is gone by the
+  next. By that method, **fourteen units now fit at every in-gate viewport; fifteen fits only
+  at 1990x970**:
+
+  | units | 1301x740 | 1855x745 | 1440x900 | 1990x970 |
+  |---|---|---|---|---|
+  | thirteen (today) | fits | fits | fits | fits |
+  | fourteen | fits | fits | fits | fits |
+  | fifteen | over 13 | over 26 | over 15 | fits |
+  | sixteen | over 40 | over 55 | over 50 | over 4 |
+
+  So the next surface to land costs nothing; the one after that overflows at the three tighter
+  viewports. The next lever after that was measured and **not** taken: ~5px of chrome (`#rack`
+  pad-top 8→4, `.rack` margin-top 6→3, `.chassis` margin-top 4→2) closes 4px of the 13px a
+  fifteenth needs at 1301x740, so it spends spacing Garrett tuned and still does not reach
+  fifteen. 1301x740 is the binding viewport, not 1855x745 — its unit rows are 26.6px against
+  28.3px, and it is where a future fix has to be measured.
+
+  **My own earlier recommendation in this row was wrong and is retracted.** It read *"two
+  columns on wide viewports — the only option that actually scales."* Measured, it is the
+  worst of the four options:
+  - A `.unit` is a **horizontal** five-column grid, so halving its width makes rows *taller*,
+    not shorter: 26.6 → 47.3px at 1301x740 and 32.9 → 53.8px at 1440x900. It only holds one
+    line per unit at ≥1855px. `site/symoneural.css:1927` had already recorded this in full
+    ("NO TWO-COLUMN RACK", measured 2026-08-17) and I priced the option anyway without
+    re-reading the file I was proposing to edit.
+  - With the fold open it makes an already-scrolling state worse: 886/584 against the
+    baseline's 809/584 at 1855x745.
+
+  **The fold-open state still scrolls, and always did.** 763/584 at 1855x745 after this change
+  against 809/584 before, 984/587 against 1024/587 at 1301x740. That is the design — the
+  attribution is parked behind a control "one click from being back" — and the assertion
+  covers the default state, so this is a 40-46px improvement to a state that was never
+  one-screen, not a regression and not a new promise.
+
+  The history that made the box tight is still worth knowing: the rack was **exactly** at its
+  budget at eleven units (584/584 with zero slack), because the type scale was tuned until it
+  was — `tests/frontend.mjs:604-615` records Garrett's feedback and states "1.20x is the
+  measured ceiling that still fits (1.30x overflows by 2px at 1855x745 and 20px at 1990x970)".
+  Adding `studio` and `exp` (`e27b9c1`) put two 28px rows into a box with no room. Nothing in
   `site/index.html` changed — the rack renders client-side from `/api/status`, so the count on
-  the wire *is* the layout input.
+  the wire *is* the layout input, and it will move again without a page edit.
 
-  **Why no agent should quietly fix it.** Two properties are in tension and Garrett set both by
-  hand: the type is large because he asked for it, and the section fits one screen because he
-  asked for that earlier. Every lever spends one of them, and shaving exactly 15px buys one
-  unit — the fourteenth overflows again. The structural options, priced:
-  - **tighten the rows** — 13 rows need ~1.2px each; the rack's non-row chrome (`8px` pad-top,
-    `1px`/`4px` child margins, `2px` pad-bottom) is itself ~15px, so it can come from chrome
-    instead of type. Buys one unit. Cheapest, and does not scale.
-  - **drop the rack's type scale below 1.20x** — scales to ~15 units, and undoes the thing
-    Garrett explicitly asked for.
-  - **two columns on wide viewports** — the only option that actually scales, and the only one
-    that is a real design change. 1855px is wide enough for it; 1301px is not.
-  - **let `#rack` scroll internally** — retires the one-screen promise for this section and so
-    needs the assertion rewritten rather than deleted.
-
-  **Do not** close it by dropping a row or adding `text-overflow: ellipsis`; `.claude/CLAUDE.md`
-  bars both, and the rack is the specific place the ellipsis rule was removed from (it was
-  cutting the Apache-2.0 attribution `built on Qwen2.5-7B-Instruct` down to `…7B-Ins…`).
+  **Do not** close the next overflow by dropping a row or adding `text-overflow: ellipsis`;
+  `.claude/CLAUDE.md` bars both, and the rack is the specific place the ellipsis rule was
+  removed from (it was cutting the Apache-2.0 attribution `built on Qwen2.5-7B-Instruct` down
+  to `…7B-Ins…`).
 
   Below 1301px wide the gate is off and the page scrolls normally with everything visible.
   **Mobile cannot reach zero scroll** — at 390px the rack alone is 2,700px — and should not be
@@ -1058,7 +1105,7 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | Webroot orphans | 0 (35 pruned across two deploys) |
 | Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
-| Pending deploy | **None. All three ran 2026-08-19 08:02-08:0x EDT and production is verified green — read the rest of this row for what the list got wrong, because the ordering cost an outage.** Verified after the fact, from this box: `ss -lptn` shows `symon-gateway` PID 136848 on :8000 and the API PID 90295 on :8800; `https://symoneural.com/api/status` answers **200 with thirteen units**, the same count as `:8000` and `:8800` direct; `/studio`, `/exp`, `/studio.js` and `/exp.js` all answer **200** through Caddy and the served `/studio.js` is byte-identical to `site/studio.js`; `/swagger-ui/` answers 200. `/v1/models` answers **404, and that is the API's route table, not a gateway fault** — `:8800` direct 404s it identically; the gateway registers `/v1/{*path}` and forwards verbatim (`symon-gateway/src/router.rs:55`), and `/v1/chat/completions` answers 400 to a GET, which is a route that exists rejecting a method. The history below is kept because the ordering finding is the reusable part. Originally measured 2026-08-19 05:20 EDT. The service has restarted past the `api.py` rewrite — the invocation running at 06:30 EDT entered active state 05:22:39 EDT — and runs `backend/api.py` out of this repo, so the backend half is live: `/api/status` answers thirteen units and `/studio` and `/exp` both return 200 on 127.0.0.1:8800. What is owed, Garrett only: **(1) `sudo scripts/deploy.sh --prune`** — `/var/www/symoneural/` has no `studio.html`, no `exp.html`, no `studio.js`, no `exp.js`, and its `symoneural.css` predates the masthead change. The two pages would answer through the API even so, because `/studio` and `/exp` are FastAPI routes reading `<root>/site/`; their **scripts** would not, because `/studio.js` and `/exp.js` are plain static paths Caddy serves off the webroot. A page that loads and does nothing is the failure mode here. **(2) `sudo ./scripts/install-caddy.sh`** — the `@studio` and `@exp` delegation blocks in `ops/Caddyfile` are written and `caddy validate` passes, but until they are installed production resolves both paths against the webroot and 404s without asking the API. Neither block is exercised against localhost, which is why local 200s prove nothing about it. Order stays `deploy.sh` first. **(3) `sudo ./scripts/install-gateway.sh` — this row missed it, and the omission took production down at 08:03 EDT on 2026-08-19.** The Caddyfile that `install-caddy.sh` installs routes `/api/*`, `/v1/*`, `/swagger-ui*` and `/api-docs/*` to **`127.0.0.1:8000`** (`symon-gateway`), not to `:8800`. The unit was never installed — `/etc/systemd/system/symoneural-gateway.service` did not exist and nothing listened on :8000 — so the moment the new Caddyfile loaded, every `/api` path returned **502 connection refused**, including `/api/status` and `/api/ws`. The previous installed file (kept as `/etc/caddy/Caddyfile.prev-20260819-080305`) had `/api/*` on `:8800`, which is why this was invisible until the install. `install-caddy.sh` does not check for the gateway and says so in its own header — *it does not touch Caddy's peers, so the two changes fail independently*. **The correct order is `deploy.sh`, then `install-gateway.sh`, then `install-caddy.sh`**: the Caddyfile is the only thing that points at :8000, so installing it before its upstream exists is the outage. The binary is present and works — run as `google` on a spare `:8001` against the live API 2026-08-19, `/healthz` answers `{"status":"ok",...,"validator":"native-fallback"}` and a proxied `/api/status` returns the same **thirteen units** as `:8800` direct, so this is an install, not a build. `limiter.wasm` is absent (Go is not on this box) and the gateway degrades to `native-fallback` by design at `symon-gateway/src/middleware.rs:82` — a warning, not a failure. |
+| Pending deploy | **One, and only one: `sudo scripts/deploy.sh --prune`.** This commit edits `site/symoneural.css` (the rack's one-screen fix) and re-stamps the cache-bust hash across all 23 pages, so `/var/www/symoneural/` is behind again. It matters more than it looks: `/livestack` is a FastAPI route reading `<root>/site/` and so is already current, but `/symoneural.css` is a plain static path **Caddy serves off the webroot**, and the query string is only a cache key — the old stylesheet still answers a request for `?v=<new hash>`. Until the deploy runs, production serves the new page against the old CSS and the rack still overflows there. Nothing under `ops/` changed, so **no `install-caddy.sh` and no `install-gateway.sh` this time**. All three of those ran 2026-08-19 08:02-08:0x EDT and production was verified green after them — read the rest of this row for what the list got wrong, because the ordering cost an outage. Verified after the fact, from this box: `ss -lptn` shows `symon-gateway` PID 136848 on :8000 and the API PID 90295 on :8800; `https://symoneural.com/api/status` answers **200 with thirteen units**, the same count as `:8000` and `:8800` direct; `/studio`, `/exp`, `/studio.js` and `/exp.js` all answer **200** through Caddy and the served `/studio.js` is byte-identical to `site/studio.js`; `/swagger-ui/` answers 200. `/v1/models` answers **404, and that is the API's route table, not a gateway fault** — `:8800` direct 404s it identically; the gateway registers `/v1/{*path}` and forwards verbatim (`symon-gateway/src/router.rs:55`), and `/v1/chat/completions` answers 400 to a GET, which is a route that exists rejecting a method. The history below is kept because the ordering finding is the reusable part. Originally measured 2026-08-19 05:20 EDT. The service has restarted past the `api.py` rewrite — the invocation running at 06:30 EDT entered active state 05:22:39 EDT — and runs `backend/api.py` out of this repo, so the backend half is live: `/api/status` answers thirteen units and `/studio` and `/exp` both return 200 on 127.0.0.1:8800. What is owed, Garrett only: **(1) `sudo scripts/deploy.sh --prune`** — `/var/www/symoneural/` has no `studio.html`, no `exp.html`, no `studio.js`, no `exp.js`, and its `symoneural.css` predates the masthead change. The two pages would answer through the API even so, because `/studio` and `/exp` are FastAPI routes reading `<root>/site/`; their **scripts** would not, because `/studio.js` and `/exp.js` are plain static paths Caddy serves off the webroot. A page that loads and does nothing is the failure mode here. **(2) `sudo ./scripts/install-caddy.sh`** — the `@studio` and `@exp` delegation blocks in `ops/Caddyfile` are written and `caddy validate` passes, but until they are installed production resolves both paths against the webroot and 404s without asking the API. Neither block is exercised against localhost, which is why local 200s prove nothing about it. Order stays `deploy.sh` first. **(3) `sudo ./scripts/install-gateway.sh` — this row missed it, and the omission took production down at 08:03 EDT on 2026-08-19.** The Caddyfile that `install-caddy.sh` installs routes `/api/*`, `/v1/*`, `/swagger-ui*` and `/api-docs/*` to **`127.0.0.1:8000`** (`symon-gateway`), not to `:8800`. The unit was never installed — `/etc/systemd/system/symoneural-gateway.service` did not exist and nothing listened on :8000 — so the moment the new Caddyfile loaded, every `/api` path returned **502 connection refused**, including `/api/status` and `/api/ws`. The previous installed file (kept as `/etc/caddy/Caddyfile.prev-20260819-080305`) had `/api/*` on `:8800`, which is why this was invisible until the install. `install-caddy.sh` does not check for the gateway and says so in its own header — *it does not touch Caddy's peers, so the two changes fail independently*. **The correct order is `deploy.sh`, then `install-gateway.sh`, then `install-caddy.sh`**: the Caddyfile is the only thing that points at :8000, so installing it before its upstream exists is the outage. The binary is present and works — run as `google` on a spare `:8001` against the live API 2026-08-19, `/healthz` answers `{"status":"ok",...,"validator":"native-fallback"}` and a proxied `/api/status` returns the same **thirteen units** as `:8800` direct, so this is an install, not a build. `limiter.wasm` is absent (Go is not on this box) and the gateway degrades to `native-fallback` by design at `symon-gateway/src/middleware.rs:82` — a warning, not a failure. |
 | Backend suites | **1085 passed, 0 failed at `5e68ea3`** (the tree this was measured on; the two commits after it are documentation only), measured 2026-08-19 from `backend/` with `python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests`. Run twice on the same tree: **110.38 s** then **111.55 s** — the count is the reading, the wall time is a range, and quoting one second-precision figure as *the* runtime is how the last one went stale. `--collect-only -q` collects the same **1085** (0.78 s, 0.80 s), which is the check that catches a collection abort (a smaller number is a lost test, *no* number is `Interrupted`). studio + exp alone are **141 passed in 3.69 s** (63 + 78). **The apparent +22 over the morning's 1063 is not twenty-two new tests, and chasing it found a second stale number.** `git diff 0f247cd..HEAD -- '*test_*.py'` adds exactly **one** `def test_`, and the two `subTest` loops it also adds do not raise pytest's count (a `subTest` block reports as one test). So the delta was measured instead of inferred: a detached worktree at **`0f247cd`** — the commit the 1063 was published against — collects **1084**. The real movement to HEAD is **1084 → 1085, +1**, which is that one test function. **1063 was never true of the tree it was written beside**; it is a reading from an earlier tree that got carried forward onto a later commit. Reading a source diff would not have caught that, and the arithmetic +22 would have invented twenty-one tests that do not exist. Earlier figures the same day were 1062 and 1063; treat any of them as provenance-free unless a SHA is beside it, which is why one is beside this. Previous reading for contrast: **679 passed, 1 failed** at `f9f3546` (2026-08-17 14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. That single red was the tuner codec test, owned by a live writer at the time; today's run has no reds. |
 | Frontend suite | **42 of 43** — `node tests/frontend.mjs http://127.0.0.1:8875` against a uvicorn started for the run and stopped after, measured 2026-08-19. The one red is `#rack` on `/livestack` at 1855x745, 599px of content in a 584px panel; §0 has the measured table and the four options. Publishing this as 43/43 would be the exact defect the 2026-08-19 review exists to remove, so it is 42/43 here and in `.claude/CLAUDE.md`. |
 | Link check | **clean** — `python3 tools/check_links.py`, 2026-08-19: 23 pages, 993 links, 285 unique targets (69 resolve, 58 external, 158 in-page), zero dead. This is the check the Voice precedent asks for after adding a route, and `/studio` and `/exp` both resolve in it. |

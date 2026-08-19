@@ -184,19 +184,22 @@ neither is installed on the **system** interpreter and neither may be, since tha
 path (see *Python environments*). They are per-project suites that need their own environment, so
 they are excluded here rather than made to look green.
 
-**`frontend.mjs` is 42/43 today, and the one red is real.** `#rack` on `/livestack` overflows
-its one-screen budget at 1855x745: `scrollHeight` 599 against `clientHeight` 584. It is not a
-regression in any page source — `site/index.html` renders the rack client-side from
-`/api/status`, and the rack went from eleven units to thirteen when `studio` and `exp` landed
-(`e27b9c1`). Measured both ways in one page load: **599/584 at thirteen units, 584/584 at
-eleven.** That second figure is the finding — the type scale this section was tuned to
-(`tests/frontend.mjs:604-615`, "1.20x is the measured ceiling that still fits") had *zero*
-pixels of slack at eleven, so the fourteenth unit overflows again whatever is shaved for the
-thirteenth. Fixing it spends one of two properties Garrett set by hand and is his call, not a
-defect fix; the options are priced in `.claude/HANDOVER.md` §0. Do not close it by dropping a
-row or adding `text-overflow` — both are barred above. The other two suites are green on the same
-tree: `tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19 — so the
-red is one section of one page, not a browser-harness problem.
+**`frontend.mjs` is 43/43, and the rack red that stood here is fixed.** `#rack` on
+`/livestack` overflowed its one-screen budget at 1855x745 — `scrollHeight` 599 against
+`clientHeight` 584 — because `site/index.html` renders the rack client-side from `/api/status`
+and the rack went from eleven units to thirteen when `studio` and `exp` landed (`e27b9c1`).
+Nothing in any page source regressed. Two spacing rules closed it, both in the `html.ns` block
+of `site/symoneural.css`: the rack note's measure (96ch → 160ch, three line boxes → two) and
+the `.rk-fold` pill moved out of the heading's inline run onto the `.shead` row, which was a
+whole line box on its own. No word, row or type token changed. **Measure slack with a cloned
+`.unit`, not with `scrollHeight`** — it floors at `clientHeight`, so `584/584` says "fits" and
+nothing about by how much, and three of the four in-gate viewports read `over=0` before the fix
+as well. By that method fourteen units now fit everywhere and fifteen only at 1990x970; the
+binding viewport is **1301x740**, not 1855x745, because its rows are 26.6px. `.claude/HANDOVER.md`
+§0 has the full table, the retraction of the two-column option it used to recommend, and the one
+lever deliberately left unspent. Do not close the next overflow by dropping a row or adding
+`text-overflow` — both are barred above. The other two suites are green on the same tree:
+`tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19.
 
 System Chrome via Playwright, nothing to download. The two tuner suites need no API and no
 provider account: each starts `tests/tuner_fake_provider.py` and stops it again, so the whole

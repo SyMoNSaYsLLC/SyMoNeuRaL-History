@@ -1930,7 +1930,20 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      row is a HORIZONTAL layout: name and attribution on the left, badges pushed right.
      Halve its width and the attribution wraps to three lines. Measured: units went 76px
      -> 178px each at 1440 (611 -> 775 total) and -> 403px each at 1301 (611 -> 2,696).
-     The unit row needs width; it is the one thing here that must not be narrowed. */
+     The unit row needs width; it is the one thing here that must not be narrowed.
+
+     RE-MEASURED 2026-08-19, because those figures predate the fold and describe units with
+     the attribution shown, which is no longer the default. The conclusion survives; the
+     numbers are now these, at thirteen units with the attribution folded:
+
+       collapsed   unit rows 26.6 -> 47.3px at 1301x740, 32.9 -> 53.8px at 1440x900 --
+                   still TALLER in two columns; one line per unit only holds at >=1855px
+       fold open   886/584 against a baseline 809/584 at 1855x745 -- 77px worse in a state
+                   that already scrolls
+
+     So it fits exactly one state at one width. `.claude/HANDOVER.md` §0 used to price two
+     columns as the option that scales; that recommendation is retracted there, and the 15px
+     it was aimed at came out of the note's measure and the fold pill's line box instead. */
 
   /* The control board's columns are NOT set here, and a rule that used to sit at this
      spot claiming to set them was dead from the day it was written. It read
@@ -2034,9 +2047,36 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
   html.ns :is(#rack,#console,#more) > .wrap > .sub::after{height:6px}
   html.ns #rack > .wrap:last-child{margin-top:4px}
   html.ns #rack .tnote{margin:0}
+  /* The measure, not the words. `.sub` above was relaxed to `max-width:none` for this
+     layout; the note was left on the 96ch cap the min-width:900px block gives it (line
+     ~834), and that cap is where the 15px overflow at 1855x745 came from. Its 353
+     characters are THREE line boxes at 96ch at every in-gate width and TWO at 160ch:
+     42.5 -> 28.3px at 1301x740, 46 -> 30.7 at 1855x745, 57 -> 38 at 1440x900,
+     62.2 -> 41.4 at 1990x970. 160ch is still a cap and not a full-bleed line -- it
+     computes to 960.96px inside a 1239px wrap at 1301x740, 1039.62 inside 1767 at
+     1855x745, 1158.3 at 1440x900 and 1262.68 inside 1902 at 1990x970, so the measure
+     is bounded at all four. Nothing is cut: every word stays, and the /credits.html
+     link the Apache-2.0 credit rides on stays in the open. */
+  html.ns #rack > .wrap > .tnote{max-width:160ch}
   /* The fold control goes on the heading row rather than under it: at wide widths the
-     units are already one line, so the button saved nothing and cost its own 40px. */
-  html.ns .rk-tools{display:inline; margin:0 0 0 12px}
+     units are already one line, so the button saved nothing and cost its own 40px.
+
+     `display:inline` was not far enough. The heading is ONE inline run -- h2, then the
+     lede, then this 225px pill -- and the run never had room for the pill on the lede's
+     last line, so it opened a line box of its own anyway. Measured by taking it out of
+     flow and parking it on the `.shead` line, which carries only a 22px icon and one
+     short label and is empty to the right of it: heading wrap 112.4 -> 86.9px at
+     1301x740, 96.2 -> 65.7 at 1855x745, 112.8 -> 86.2 at 1440x900, 95.2 -> 64.5 at
+     1990x970. That is a whole line box back for no words moved and none dropped.
+
+     DOM order is untouched, so it is the same <button> in the same place for the tab
+     order and for a screen reader; only the box moves. `inset-inline-end` repeats the
+     wrap's own `padding-inline` clamp because an absolute offset is measured from the
+     padding box, so the same value is what lines the pill up with the content edge. */
+  html.ns #rack > .wrap:first-child{position:relative}
+  html.ns #rack > .wrap > .rk-tools{
+    display:block; position:absolute; top:0; inset-inline-end:clamp(20px,2.4vw,44px); margin:0;
+  }
 
   /* The control board folds the same way. Each module carries a reading, a provenance tag,
      a plain-English line and a technical one; the two explanations collapse and the reading
