@@ -230,17 +230,28 @@
     $('ex-acts-h').textContent = s.writable ? 'Do' : '';
 
     var entries = s.entries || [];
-    /* Two different reasons `writable` is false, and they need different fixes. `enabled` is
-     * the switch (`SYM_EXP_ENABLED` + `SYM_EXP_TOKEN` set on the process); with it unset no
-     * token can unlock anything, so telling this reader to present one sends them after a
-     * secret that would not help. Rule 2 at the top of this file, applied to a table cell. */
-    $('ex-entries-note').textContent = entries.length
-      ? (s.writable ? ''
-          : ((s.enabled ? 'Config values are withheld: no valid token was presented.'
-                        : 'Config values are withheld: the surface is switched off, so no token '
-                          + 'unlocks them. Set SYM_EXP_ENABLED=1 and SYM_EXP_TOKEN on the API '
-                          + 'process.')
-             + ' Every other column is the whole truth.'))
+    /* Three conditions make `writable` false and they want three different fixes. It is one
+     * boolean over all of them -- `routes.py:66-67` is `enabled() and token_ok(...)` -- so it
+     * cannot be the whole message. The switch being off means no token helps, so asking for one
+     * sends the reader after a secret that would not work; a token this tab is holding and the
+     * API refused wants replacing, not presenting; and no token at all wants presenting. Saying
+     * "no valid token was presented" covers the last two at once and is wrong for whichever one
+     * the reader is in. The page can tell them apart without asking the API anything further:
+     * `s.enabled` is the switch (`routes.py:118`) and `token()` is what this tab is sending.
+     * Rule 2 at the top of this file, applied to a table cell. */
+    var withheld = '';
+    if (!s.writable) {
+      if (!s.enabled) {
+        withheld = 'Config values are withheld: the surface is switched off, so no token '
+                 + 'unlocks them. Set SYM_EXP_ENABLED=1 and SYM_EXP_TOKEN on the API process.';
+      } else if (token()) {
+        withheld = 'Config values are withheld: the API refused the token this tab is holding.';
+      } else {
+        withheld = 'Config values are withheld: this tab has presented no token.';
+      }
+      withheld += ' Every other column is the whole truth.';
+    }
+    $('ex-entries-note').textContent = entries.length ? withheld
       : 'Nothing is mounted. The container is up and empty, which is a state and not an error.';
 
     entries.forEach(function (e) {
