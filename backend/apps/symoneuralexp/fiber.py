@@ -60,8 +60,6 @@ FAILED = "failed"
 DISPOSING = "disposing"
 DISPOSED = "disposed"
 
-_LIVE = (PENDING, LOADING, ACTIVE, FAILED)
-
 
 class Fiber:
     """The lifecycle handle. Awaitable: `await ctx.plugin(p)` settles and returns it."""
@@ -307,7 +305,21 @@ class Fiber:
 
     async def restart(self, config=None) -> "Fiber":
         """Unload and load again, optionally with new config. The fiber object survives, so a
-        route handler or a UI row holding a reference keeps pointing at the same thing."""
+        route handler or a UI row holding a reference keeps pointing at the same thing.
+
+        Refused on a disposed fiber rather than quietly doing nothing. `dispose` takes the fiber
+        out of `runtime.fibers`, so no settle pass will ever look at it again: a restart unwinds
+        nothing, mounts nothing, leaves the state at DISPOSED, increments `reloads`, and hands
+        back a fiber that answers every question as though it had worked. That is how
+        `POST /reload` came to return 200 for a no-op. What outlives a dispose is the *entry*, so
+        the fix is to mount that again -- which is what `Loader.reload` and `Loader.patch` now
+        do when they find a disposed fiber, rather than calling this and getting the error.
+        """
+        if self.state in (DISPOSING, DISPOSED):
+            raise ContextError(
+                f"{self.label} is {self.state} and cannot be restarted -- a disposed fiber is "
+                f"no longer in the runtime's list, so nothing would start it. Mount the entry "
+                f"again instead.")
         if config is not None:
             self.config = config
         self.reloads += 1

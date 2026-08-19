@@ -45,10 +45,12 @@ import contextlib
 import inspect
 import pathlib
 import re
+import shutil
 import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 from . import fiber as fibermod
 from . import cli, gate, loader as loadermod, registry
@@ -648,6 +650,115 @@ class ReloadTests(unittest.TestCase):
             self.assertIsNone(entry.error)
             self.assertEqual(seen[0], "module-reloaded")
         run(go())
+
+
+class DisposedFiberTests(unittest.TestCase):
+    """A disposed fiber is not restartable, and neither `restart` nor `/reload` may pretend.
+
+    `dispose` takes the fiber out of `runtime.fibers`, so `settle` never looks at it again. Every
+    assertion here failed before B16: `restart` returned the same disposed object having done
+    nothing, with `reloads` one higher, and `Loader.reload` handed that straight back as a 200.
+    """
+
+    def test_restart_on_a_disposed_fiber_raises_instead_of_doing_nothing(self):
+        async def go():
+            loader = await fresh({"plugins": [{"id": "p", "use": f"{__name__}:NAMESPACE_PLUGIN"}]})
+            fiber = loader.find("p").fiber
+            await fiber.dispose()
+            before = fiber.reloads
+            with self.assertRaises(ContextError) as caught:
+                await fiber.restart()
+            self.assertIn("disposed", str(caught.exception))
+            self.assertIn("Mount the entry again", str(caught.exception))
+            # The counter is the tell: a no-op that increments `reloads` puts a number on the
+            # page for work that never happened.
+            self.assertEqual(fiber.reloads, before)
+        run(go())
+
+    def test_reload_of_a_disposed_entry_mounts_a_new_fiber(self):
+        async def go():
+            loader = await fresh({"plugins": [{"id": "p", "use": f"{__name__}:NAMESPACE_PLUGIN"}]})
+            entry = loader.find("p")
+            dead = entry.fiber
+            await dead.dispose()
+            self.assertEqual(dead.state, fibermod.DISPOSED)
+            reloaded = await loader.reload("p")
+            self.assertIsNot(reloaded.fiber, dead, "reload handed back the disposed fiber")
+            self.assertEqual(state_of(loader, "p"), fibermod.ACTIVE)
+            self.assertNotIn(dead, loader.runtime.fibers)
+        run(go())
+
+    def test_patch_of_a_disposed_entry_mounts_a_new_fiber_with_the_new_config(self):
+        async def go():
+            loader = await fresh({"plugins": [{"id": "p", "use": f"{__name__}:NAMESPACE_PLUGIN"}]})
+            dead = loader.find("p").fiber
+            await dead.dispose()
+            entry = await loader.patch("p", {"depth": 3})
+            self.assertIsNot(entry.fiber, dead)
+            self.assertEqual(entry.config, {"depth": 3})
+            self.assertEqual(state_of(loader, "p"), fibermod.ACTIVE)
+        run(go())
+
+
+class GpuPluginTests(unittest.TestCase):
+    """`plugins/gpu.py` promises `available: False` where it cannot read. It used to raise.
+
+    Every shape below is a real `nvidia-smi` output, and three of the four raised out of `vram()`
+    before B17 -- `ValueError` twice and `IndexError` once -- straight through `ctx.call` and out
+    of `POST /call` as a 500 on a method whose entire contract is to report what it has. The
+    fourth did not raise, which is worse: a two-card box was reported as a one-card box.
+
+    This machine has one RTX 5070 Ti, so the multi-card and unreadable-field paths cannot be
+    exercised by the hardware and are stubbed. The single-card path is *also* asserted against
+    the real card in `test_the_live_card_answers_in_the_documented_shape`.
+    """
+
+    @staticmethod
+    def _vram(stdout):
+        from .plugins import gpu
+        completed = types.SimpleNamespace(stdout=stdout, returncode=0)
+        with mock.patch.object(gpu.shutil, "which", return_value="/usr/bin/nvidia-smi"), \
+                mock.patch.object(gpu.subprocess, "run", return_value=completed):
+            return gpu.GPU(3.0).vram()
+
+    def test_every_card_is_reported_and_not_just_the_first(self):
+        got = self._vram("0, 1024, 16384, NVIDIA GeForce RTX 5070 Ti\n"
+                         "1, 2048, 16384, NVIDIA GeForce RTX 5070 Ti\n")
+        self.assertEqual(got["count"], 2)
+        self.assertEqual([c["index"] for c in got["gpus"]], [0, 1])
+        self.assertEqual([c["used_mib"] for c in got["gpus"]], [1024, 2048])
+
+    def test_a_field_nvidia_smi_could_not_read_is_None_and_not_a_zero(self):
+        got = self._vram("0, [N/A], [N/A], NVIDIA GeForce RTX 5070 Ti\n")
+        self.assertTrue(got["available"])
+        card = got["gpus"][0]
+        self.assertIsNone(card["used_mib"])
+        self.assertIsNone(card["total_mib"])
+        # A zero here would draw a full bar for a card whose usage is unknown, which is the
+        # decorative reading CLAUDE.md forbids.
+        self.assertNotEqual(card["used_mib"], 0)
+
+    def test_a_comma_in_the_product_name_survives(self):
+        # "Tesla V100-SXM2, 16GB" is a real product string. An unbounded split made it an
+        # unpacking error; the split is bounded at three commas so the name keeps its own.
+        got = self._vram("0, 1024, 16384, Tesla V100-SXM2, 16GB\n")
+        self.assertEqual(got["gpus"][0]["model"], "Tesla V100-SXM2, 16GB")
+
+    def test_empty_output_is_unavailable_with_a_reason_and_not_an_IndexError(self):
+        got = self._vram("\n")
+        self.assertFalse(got["available"])
+        self.assertIn("nothing parseable", got["reason"])
+
+    @unittest.skipUnless(shutil.which("nvidia-smi"), "no nvidia-smi on this host")
+    def test_the_live_card_answers_in_the_documented_shape(self):
+        from .plugins import gpu
+        got = gpu.GPU(5.0).vram()
+        self.assertTrue(got["available"], got)
+        self.assertEqual(got["source"], "measured")
+        self.assertEqual(got["count"], len(got["gpus"]))
+        for card in got["gpus"]:
+            self.assertEqual(set(card), {"index", "used_mib", "total_mib", "model"})
+            self.assertIsInstance(card["model"], str)
 
 
 class InterceptTests(unittest.TestCase):

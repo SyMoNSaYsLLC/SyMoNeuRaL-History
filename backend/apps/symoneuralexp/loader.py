@@ -85,7 +85,7 @@ import typing
 
 from . import registry
 from .context import Context, ContextError, Runtime
-from .fiber import ACTIVE, FAILED, Fiber
+from .fiber import DISPOSED, FAILED, Fiber
 
 __all__ = ["Loader", "Entry", "load_manifest", "presets", "preset_path"]
 
@@ -474,7 +474,8 @@ class Loader:
         """Replace one entry's config and restart its fiber. The API's config editor."""
         entry = self.find(entry_id)
         old, entry.config = dict(entry.config), dict(config or {})
-        if entry.fiber is None:
+        if entry.fiber is None or entry.fiber.state == DISPOSED:
+            entry.fiber = None                  # same condition as `reload` -- see `Fiber.restart`
             await self._mount(entry, self.root)
         else:
             await self._patch_fiber(entry, old)
@@ -546,7 +547,12 @@ class Loader:
             for child in entry.children:
                 await self.reload(child.id)
             return entry
-        if entry.fiber is None:
+        if entry.fiber is None or entry.fiber.state == DISPOSED:
+            # From this side a disposed fiber and no fiber are the same condition: neither is in
+            # `runtime.fibers`, so neither can be restarted -- see `Fiber.restart`. Mount the
+            # entry again. Dropping the reference first keeps `_mount`'s failure path from
+            # leaving the entry pointing at the dead one.
+            entry.fiber = None
             await self._mount(entry, self._context_for(entry))
             await self.runtime.settle()
             return entry
