@@ -117,10 +117,16 @@ disagree.
 
 | Group | Tools |
 |---|---|
-| `workspace` | `workspace_root` `list_dir` `read_file` `write_file` `delete_path` `search` `find_files` `read_image_file` |
+| `workspace` | `workspace_root` `list_dir` `read_file` `write_file` `delete_path` `search` `find_files` |
 | `host` | `run_command` `env_get` `env_set` `service_status` `gpu_status` `disk_usage` `python_packages` |
 | `stack` | `list_apps` `app_status` `read_app_config` `list_routes` `list_models` `list_generators` |
-| `comfyui` | `generate_image` `run_workflow` `list_workflows` `list_comfy_nodes` `comfy_status` |
+| `comfyui` | `generate_image` `run_workflow` `list_workflows` `list_comfy_nodes` `comfy_status` `read_image_file` |
+
+The four counts are 7 · 7 · 6 · 6 and they are read out of `registry.TOOLS` rather than
+counted by eye — `read_image_file` sat under `workspace` in this table for two weeks because it
+lives in a file about images and reads from disk, while `comfy_tool.py:393` registers it
+`@tool("comfyui")`. The group is what the model is shown, so the table being wrong meant the
+document disagreed with the prompt.
 
 `dangerous: true` on a tool is a **label**, surfaced in the UI and the prompt so the operator
 can see which tools write. It restricts nothing.
@@ -236,15 +242,17 @@ sudo ./scripts/install-caddy.sh            # picks up the /studio block
 ## Tests
 
 ```bash
-cd backend && python3 -m pytest apps/symoneuralstudio/test_studio.py -q     # 32
+cd backend && python3 -m pytest apps/symoneuralstudio/test_studio.py -q     # 61
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
-This package adds **32 tests** and they all pass (941 collected before, 973 after). The suite has
-grown since — 981 collected, 981 passed on 2026-08-19 — so the delta is the durable claim here,
-not the total. `test_studio.py` imports nothing outside the serving path, deliberately: a third
-`--ignore` would turn a four-figure collection into "collected 12" and read exactly like a
-broken suite.
+`test_studio.py` holds **61 tests** and they all pass (`pytest --collect-only -q` says
+"61 tests collected", 2026-08-19). The whole-suite before/after pair that used to sit here —
+"941 collected before, 973 after" — was measured against a tree that has since moved on twice,
+and a delta is not durable either once both ends of it are stale: run the second command above
+for the current total rather than reading one off this page. `test_studio.py` imports nothing
+outside the serving path, deliberately: a third `--ignore` would turn a four-figure collection
+into "collected 12" and read exactly like a broken suite.
 
 What it asserts, and why each one exists rather than being a shape check:
 
