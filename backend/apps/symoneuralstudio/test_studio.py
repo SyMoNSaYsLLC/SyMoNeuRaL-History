@@ -102,17 +102,49 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(len(registry.names()),
                          sum(len(v) for v in self.EXPECTED_TOOLS.values()))
 
+    #: The group table in `README.md`, transcribed row for row. `EXPECTED_TOOLS` above is keyed
+    #: by *defining module* and this is keyed by *group*; they are not the same question, and
+    #: `fs.py` -> `workspace` is where the two names diverge. Written out for the same reason:
+    #: derived from the registry it would assert that the registry equals itself, and the thing
+    #: being guarded is a static table in a document.
+    EXPECTED_GROUPS = {
+        "workspace": {"workspace_root", "list_dir", "read_file", "write_file", "delete_path",
+                      "search", "find_files"},
+        "host": {"run_command", "env_get", "env_set", "service_status", "gpu_status",
+                 "disk_usage", "python_packages"},
+        "stack": {"list_apps", "app_status", "read_app_config", "list_routes", "list_models",
+                  "list_generators"},
+        "comfyui": {"generate_image", "run_workflow", "list_workflows", "list_comfy_nodes",
+                    "comfy_status", "read_image_file"},
+    }
+
     def test_the_group_each_tool_reports_is_the_one_the_readme_documents(self):
         """`README.md` tabulates the tools by group and the page prints the same field, so a
-        group typo shows up in two places and is asserted in neither. `read_image_file` is the
-        one worth naming: it lives in `comfy_tool.py` and is registered `comfyui`, not
-        `workspace`, which is what the README claimed before this test existed."""
-        groups = {name: registry.get(name).group for name in registry.names()}
-        self.assertEqual(groups["read_image_file"], "comfyui")
-        self.assertEqual({g for g in groups.values()},
-                         {"comfyui", "host", "stack", "workspace"})
-        for name in self.EXPECTED_TOOLS["stack"]:
-            self.assertEqual(groups[name], "stack", f"{name} moved out of the stack group")
+        group typo shows up in two places and used to be asserted in neither.
+
+        This test was named for the whole table and checked three things out of it:
+        `read_image_file`, the set of group names, and the six under `stack`. The other
+        nineteen rows were unguarded, so a tool moving between `workspace`, `host` and
+        `comfyui` left the README wrong and every test green. It now compares the entire
+        mapping against `EXPECTED_GROUPS`, which is that table transcribed.
+
+        `read_image_file` is still the row worth naming: it lives in `comfy_tool.py` and is
+        registered `comfyui`, not `workspace`, which is what the README claimed for two weeks
+        because the tool reads a file off disk.
+        """
+        groups: dict[str, set[str]] = {}
+        for name in registry.names():
+            groups.setdefault(registry.get(name).group, set()).add(name)
+        # Without this the four-group diff is 811 characters and unittest replaces it with
+        # "Diff is 811 characters long", so the failure says a group changed and not which tool
+        # moved -- which is the only thing anyone reading it needs.
+        self.maxDiff = None
+        self.assertEqual(groups, self.EXPECTED_GROUPS)
+        # The README states these four numbers in prose under the table ("7 · 7 · 6 · 6"), which
+        # is a second place they can go stale, so assert the shape the sentence claims and not
+        # only the membership above.
+        self.assertEqual({g: len(n) for g, n in sorted(groups.items())},
+                         {"comfyui": 6, "host": 7, "stack": 6, "workspace": 7})
 
     def test_names_are_unique(self):
         names = registry.names()

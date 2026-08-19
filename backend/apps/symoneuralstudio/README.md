@@ -242,12 +242,14 @@ sudo ./scripts/install-caddy.sh            # picks up the /studio block
 ## Tests
 
 ```bash
-cd backend && python3 -m pytest apps/symoneuralstudio/test_studio.py -q     # 61
+cd backend && python3 -m pytest apps/symoneuralstudio/test_studio.py -q     # 63
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
-`test_studio.py` holds **61 tests** and they all pass (`pytest --collect-only -q` says
-"61 tests collected", 2026-08-19). The whole-suite before/after pair that used to sit here —
+`test_studio.py` holds **63 tests** and they all pass in 3.52 s (`pytest --collect-only -q`
+says "63 tests collected", both measured 2026-08-19 06:40 EDT). It said 61 until the tokenless
+`/state` grew two tests of its own; treat the figure as a dated reading, which is why the
+command is printed above it. The whole-suite before/after pair that used to sit here —
 "941 collected before, 973 after" — was measured against a tree that has since moved on twice,
 and a delta is not durable either once both ends of it are stale: run the second command above
 for the current total rather than reading one off this page. `test_studio.py` imports nothing

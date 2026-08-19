@@ -105,8 +105,9 @@ def resolve(plugin, *, name: str | None = None) -> Runner:
     # `target` is where metadata is read from and what the loader reloads; `entry` is what gets
     # called. For a module they differ, which is the whole reason the two names exist -- the
     # manifest points at `plugins.recorder`, the code to run is `plugins.recorder.apply`, and
-    # `inject`/`schema` are module globals sitting between them.
-    target = plugin if entry is not plugin and entry is not None else plugin
+    # `inject`/`schema` are module globals sitting between them. `target` is unconditional: the
+    # four shapes differ in what `entry` becomes, never in this.
+    target = plugin
     if entry is None:
         entry = plugin if callable(plugin) else None
     if entry is None:
