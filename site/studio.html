@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyMoNeuRaL Studio — a local agent and an image bench on one card</title>
+<meta name="description" content="A tool-calling agent running on this machine's own 7B, and ComfyUI's node editor behind the same GPU mutex everything else here waits on. No cloud inference, no hosted queue.">
+<link rel="stylesheet" href="/symoneural.css?v=df4b69fb21">
+<link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
+<link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0823a86bfe">
+<meta name="theme-color" content="#0e100f">
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="/">
+      <img src="/mark-64.png?v=ded4e8a102" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
+      <b>SyMoNeu<i>RaL</i></b>
+    </a>
+    <nav>
+      <a class="navlink" href="/livestack">Live stack</a>
+      <a class="navlink" href="/documentation.html">Documentation</a>
+      <a class="navlink" href="/training.html">Manuals</a>
+      <a class="navlink" href="/docs">API</a>
+      <a class="navlink" href="/account.html">Account</a>
+      <a class="navlink" href="mailto:symonsayadmin@symoneural.com">Contact</a>
+      <a class="cta" href="/build.html">Have one built</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" style="padding:56px 0 26px">
+  <div class="wrap">
+    <p class="eyebrow"><img src="/mark-64.png?v=ded4e8a102" alt="" width="20" height="20"
+       style="display:inline-block;vertical-align:-4px;margin-right:8px">Live surface · GPU · operator token required</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">An agent that can touch the machine it runs on.</h1>
+    <p class="lede" style="font-size:16.5px">The model that answers on this site, given tools: the filesystem, the process table, the GPU governor and the image pipeline. Renders run in ComfyUI's own node editor, embedded here and holding the same single-card lock as chat and training — so this surface accepts work only when the operator switches it on and presents a token.</p>
+  </div>
+</div>
+
+<section style="border-top:0;padding-top:0">
+  <div class="wrap">
+    <div id="studio">
+
+<style>
+/* Every selector here is prefixed `#studio`. That is not style, it is a defence: four bugs on
+   this site have come from generic class names colliding across components -- `.bar` collapsed
+   the site header to 7px, `.live` restyled the control-board legend, `#console .sub` outranked
+   `.mod .sub`. The prefix makes a collision impossible rather than unlikely.
+
+   THERE IS NO `text-overflow: ellipsis` IN THIS FILE AND THERE MUST NEVER BE ONE. Every
+   ellipsis rule on this site has been removed because two were caught truncating real data --
+   an Apache-2.0 attribution line and a control-board reading mid-number. This panel carries
+   filesystem paths, model filenames and governor messages. Let them wrap. */
+
+#studio .st-strip{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));
+  margin:0 0 18px}
+#studio .st-cell{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:11px 13px}
+#studio .st-cell h4{margin:0 0 5px;font:600 var(--t7)/1.2 inherit;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faint)}
+#studio .st-cell p{margin:0;font:600 var(--t4)/1.35 inherit;color:var(--fg);word-break:break-word}
+#studio .st-cell p.sub{margin-top:4px;font:400 var(--t6)/1.45 inherit;color:var(--dim)}
+#studio .st-on{color:var(--accent)}
+#studio .st-off{color:var(--faint)}
+#studio .st-warn{color:var(--amber)}
+
+#studio .st-gate{background:var(--panel2);border:1px solid var(--line);border-left:2px solid
+  var(--amber);border-radius:10px;padding:14px 16px;margin:0 0 18px}
+#studio .st-gate h3{margin:0 0 6px;font:600 var(--t4)/1.3 inherit}
+#studio .st-gate p{margin:0 0 10px;font:400 var(--t5)/1.55 inherit;color:var(--dim);max-width:74ch}
+#studio .st-gate code{background:var(--bg);border:1px solid var(--line);border-radius:4px;
+  padding:1px 5px;font:500 var(--t6)/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
+#studio .st-gate form{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#studio input[type=password],#studio input[type=text],#studio textarea,#studio select{
+  background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:8px 10px;font:400 var(--t5)/1.4 inherit}
+#studio input[type=password]{min-width:230px}
+#studio button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;
+  padding:8px 15px;font:600 var(--t5)/1 inherit;cursor:pointer}
+#studio button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+#studio button[disabled]{opacity:.5;cursor:default}
+
+#studio .st-cols{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:900px){#studio .st-cols{grid-template-columns:minmax(0,1fr)}}
+#studio .st-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:15px 16px;min-width:0}
+#studio .st-panel > h3{margin:0 0 4px;font:600 var(--t3)/1.2 inherit}
+#studio .st-panel > p.lede{margin:0 0 12px;font:400 var(--t5)/1.55 inherit;color:var(--dim)}
+
+#studio .st-log{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:11px;
+  min-height:200px;max-height:460px;overflow:auto;margin:0 0 11px}
+#studio .st-log:empty{display:none}
+#studio .st-ev{border-left:2px solid var(--line);padding:2px 0 2px 10px;margin:0 0 9px}
+#studio .st-ev h5{margin:0 0 3px;font:600 var(--t7)/1.2 inherit;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint)}
+#studio .st-ev p{margin:0;font:400 var(--t5)/1.6 inherit;color:var(--fg);white-space:pre-wrap;
+  word-break:break-word}
+#studio .st-ev pre{margin:4px 0 0;background:var(--panel2);border:1px solid var(--line);
+  border-radius:6px;padding:8px 9px;overflow-x:auto;
+  font:400 var(--t6)/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dim)}
+#studio .st-ev.call{border-left-color:var(--accent)}
+#studio .st-ev.call h5{color:var(--accent)}
+#studio .st-ev.err{border-left-color:var(--amber)}
+#studio .st-ev.err h5{color:var(--amber)}
+#studio .st-ev.answer{border-left-color:var(--fg)}
+
+#studio .st-ask{display:flex;gap:8px;align-items:flex-end}
+#studio .st-ask textarea{flex:1;min-height:62px;resize:vertical}
+
+#studio .st-bench{margin:16px 0 0;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:15px 16px}
+#studio .st-frame{width:100%;height:min(78vh,760px);border:1px solid var(--line);border-radius:9px;
+  background:var(--bg);display:block}
+#studio .st-frame[hidden]{display:none}
+#studio .st-absent{background:var(--bg);border:1px dashed var(--line);border-radius:9px;
+  padding:20px;font:400 var(--t5)/1.6 inherit;color:var(--dim)}
+
+#studio table.st-tbl{width:100%;border-collapse:collapse;font:400 var(--t6)/1.5 inherit}
+#studio table.st-tbl th{text-align:left;font:600 var(--t7)/1.2 inherit;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);padding:5px 9px 5px 0;border-bottom:1px solid var(--line)}
+#studio table.st-tbl td{padding:6px 9px 6px 0;border-bottom:1px solid var(--line);
+  color:var(--dim);vertical-align:top;word-break:break-word}
+#studio table.st-tbl td b{color:var(--fg);font-weight:600}
+#studio .st-danger{color:var(--amber)}
+#studio details{margin:16px 0 0;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:13px 16px}
+#studio details > summary{cursor:pointer;font:600 var(--t4)/1.3 inherit;color:var(--fg)}
+#studio details > summary::marker{color:var(--faint)}
+#studio details > div{margin-top:12px}
+
+#studio .st-shots{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  margin:11px 0 0}
+#studio .st-shots figure{margin:0}
+#studio .st-shots img{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;
+  display:block;background:var(--bg)}
+#studio .st-shots figcaption{margin-top:5px;font:400 var(--t7)/1.45 inherit;color:var(--faint);
+  word-break:break-all}
+#studio .st-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+#studio .st-note{margin:11px 0 0;font:400 var(--t6)/1.6 inherit;color:var(--faint);max-width:80ch}
+</style>
+
+<!-- The gate. Rendered by page.js only when the API says the surface is off or the token is
+     wrong; there is no placeholder state, because a panel that always shows a "connect" box
+     would be a decorative indicator of a condition nobody measured. -->
+<div class="st-gate" id="st-gate" hidden></div>
+
+<!-- Status. Every cell is filled from /api/studio/state or left saying it has no reading.
+     Nothing here is animated and nothing pulses: this rack does not have fake activity lights. -->
+<div class="st-strip" id="st-strip"></div>
+
+<div class="st-cols">
+
+  <div class="st-panel">
+    <h3>Agent</h3>
+    <p class="lede">
+      A local model with the tool list below. It calls a tool, reads the raw result, and calls
+      another until it can answer &mdash; every step is streamed here as it happens, including
+      the arguments it chose and what came back. Nothing is summarised on the way through.
+    </p>
+    <div class="st-log" id="st-log" aria-live="polite"></div>
+    <form class="st-ask" id="st-ask">
+      <textarea id="st-q" placeholder="Ask it to inspect the host, read a file, or render something."
+                autocomplete="off"></textarea>
+      <button type="submit" id="st-send">Send</button>
+    </form>
+    <p class="st-note" id="st-agent-note"></p>
+  </div>
+
+  <div class="st-panel">
+    <h3>Render</h3>
+    <p class="lede">
+      The stock FLUX.1-schnell graph, run through the GPU governor: the card is acquired for
+      the job, released when it finishes, and the drain is waited for rather than assumed.
+      Four steps at cfg&nbsp;1.0 is the design point of this model, not a shortcut.
+    </p>
+    <form id="st-render">
+      <div class="st-row">
+        <select id="st-wf"></select>
+        <select id="st-size">
+          <option value="512x512">512 &times; 512</option>
+          <option value="768x768">768 &times; 768</option>
+          <option value="1024x1024" selected>1024 &times; 1024</option>
+        </select>
+        <button type="submit" id="st-go">Render</button>
+      </div>
+      <textarea id="st-prompt" style="width:100%" rows="3"
+                placeholder="a photograph of a workshop bench at night"></textarea>
+    </form>
+    <p class="st-note" id="st-render-note"></p>
+    <div class="st-shots" id="st-shots"></div>
+  </div>
+
+</div>
+
+<!-- The node editor. This is ComfyUI's own frontend, reverse-proxied on this origin -- not a
+     reimplementation of it. Said plainly on the page because claiming otherwise would be the
+     one dishonest sentence here. -->
+<div class="st-bench">
+  <h3 style="margin:0 0 4px;font:600 var(--t3)/1.2 inherit">Bench</h3>
+  <p class="lede" style="margin:0 0 12px;font:400 var(--t5)/1.55 inherit;color:var(--dim)">
+    ComfyUI's node editor, served from this origin at <code>/studio/comfy/</code> &mdash; its
+    editor, not a copy of it: snap-to-grid, typed links, the node search palette and the
+    release-a-wire suggestions are all upstream's and are better than a hand-written canvas
+    would have been. Queueing from inside it takes the same GPU lease the agent does; a render
+    started here cannot lock out chat or training.
+  </p>
+  <div class="st-absent" id="st-bench-absent">The bench needs the operator token.</div>
+  <iframe class="st-frame" id="st-bench-frame" hidden title="ComfyUI node editor"></iframe>
+</div>
+
+<details id="st-tools-wrap">
+  <summary>Tools the agent can call</summary>
+  <div>
+    <p class="st-note" style="margin:0 0 10px">
+      Generated from the running registry, not maintained by hand &mdash; the same list is
+      rendered into the model's system prompt, so this page cannot show a tool the model does
+      not have. Rows marked <b class="st-danger">writes</b> change the host.
+    </p>
+    <table class="st-tbl"><thead><tr>
+      <th>Tool</th><th>Group</th><th>What it does</th>
+    </tr></thead><tbody id="st-tools"></tbody></table>
+  </div>
+</details>
+
+<p class="st-note">
+  This surface is off unless the operator sets both switches, because its tools reach the whole
+  filesystem and can run commands. That is a switch, not a filter: with it on, nothing here is
+  restricted.
+</p>
+
+    </div>
+
+    <div class="callout" style="margin-top:34px">
+      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <p>
+        Chat and image never run at the same time here. A lock hands the GPU to exactly one
+        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
+        once &mdash; and when they swap, we wait for the driver to actually hand the memory
+        back before the next one starts. If you are queued behind someone, that is not a bug;
+        it is one card doing one thing at a time.
+      </p>
+      <p>
+        <strong>RavenCalc is the exception</strong> &mdash; it is SymPy on the CPU, so it never
+        touches the GPU and never queues. Everything here is a demonstration of the stack on
+        the smallest machine we would ever ship, not a statement of capacity. A server we spec
+        for you would not be sharing one GPU with itself.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+      <img src="/mark-32.png?v=fc9400dc9f" alt="" width="22" height="22">
+      <b style="font-size:14.5px;color:var(--fg)">SyMoNeu<i style="font-style:normal;color:var(--accent)">RaL</i></b>
+    </a>
+    <span>&copy; SymonSays LLC &middot; <a href="mailto:symonsayadmin@symoneural.com"
+      style="color:var(--dim);text-decoration:none">symonsayadmin@symoneural.com</a></span>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/training.html">Training</a>
+      <a href="/documentation.html#hardware">Hardware</a>
+      <a href="/documentation.html#inference">Inference</a>
+      <a href="/credits.html">Credits</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Shared helpers. Every bound below is also enforced on the server -- these exist to make
+// the UI honest about the limits, not to be the limits.
+const $ = (s, r=document) => r.querySelector(s);
+function status(el, text, busy) {
+  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
+  const grow = $('.grow', el); if (grow) grow.textContent = text;
+}
+// These three surfaces use a <textarea> rather than an <input> so a long prompt WRAPS and
+// can be read back. A textarea takes Enter as a newline, so submit is restored explicitly;
+// Shift+Enter still gives a deliberate line break. Applied to whichever box the page has.
+document.addEventListener('DOMContentLoaded', () => {
+  const box = $('#prompt') || $('#expr') || $('#brief');
+  const f = $('#form');
+  if (!box || !f || box.tagName !== 'TEXTAREA' || box.dataset.enterBound) return;
+  box.dataset.enterBound = '1';
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
+  });
+});
+async function api(path, payload) {
+  const r = await fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
+  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+  return body;
+}
+</script>
+<script src="/console.js?v=98984c7915" defer></script>
+<script src="/ui.js?v=f86c53da5d" defer></script>
+<script src="/studio.js?v=db02b0a547" defer></script>
+</body>
+</html>

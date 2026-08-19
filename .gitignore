@@ -102,3 +102,20 @@ symon-gateway/target/
 
 # The compiled Go validator. Built by `make build-wasm`; see ops/middleware/limiter.go.
 ops/middleware/*.wasm
+
+# ---- ComfyUI ----
+# Garrett dropped an upstream clone at the repo root. It carries its own .git, so tracking it
+# would create an embedded-repo gitlink -- a commit recording a hash nobody can resolve,
+# because the submodule was never registered. It is also 8.5 GB with its venv and its
+# frontend package. `ComfyUI/extra_model_paths.yaml` points it at backend/models/image/, so no
+# weights are copied and nothing in there is a second source of truth for them.
+#
+# The one thing in that tree that is OURS is the custom node `symoneural_gguf` -- the
+# DualCLIPLoaderSDCPP that accepts this box's stable-diffusion.cpp T5 file, which upstream's
+# loader rejects outright. It cannot be rescued with a `!` negation here: git does not descend
+# into an excluded directory, so no pattern can re-include a file underneath one. (That was
+# tried; `git check-ignore -v` still reported the exclusion, which is the correct behaviour and
+# not a typo.) The source of truth therefore lives in the repo at
+# backend/apps/symoneuralstudio/custom_nodes/symoneural_gguf/, and scripts/comfyui.sh links it
+# into place on start. Delete ComfyUI/ and reclone it and nothing of ours is lost.
+/ComfyUI/

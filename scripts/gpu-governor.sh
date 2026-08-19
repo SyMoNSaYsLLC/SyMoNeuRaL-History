@@ -99,6 +99,17 @@ evict() {
     # is not resident between jobs, so the window is small -- but it is written down
     # here rather than discovered by whoever next sees an image render die unexplained.
     sigil) pkill -f 'sd-cli' 2>/dev/null || true ;;
+    # ComfyUI. It is a long-lived HTTP server that holds ~12 GB of FLUX weights while
+    # resident, so it MUST have its own arm: the '*)' arm below pkills llama-server and
+    # sd-cli, neither of which is ComfyUI, and would log a successful eviction while the
+    # card stayed full -- the exact failure the miner) comment records.
+    #
+    # The stop is deliberately graceful and staged. `scripts/comfyui.sh stop` asks the
+    # server to unload (POST /free) and then signals its pidfile, because SIGKILLing a
+    # process mid-CUDA-teardown returns the lock before the driver has taken the memory
+    # back and the next tenant OOMs at step 0 -- which is what `drain` below exists to
+    # catch. The pkill is the fallback for a server started outside the script.
+    comfy) "$HERE/comfyui.sh" stop >/dev/null 2>&1 || pkill -f 'ComfyUI/main.py' 2>/dev/null || true ;;
     # A training run holds ~10-13 GB for hours. It is never killed to make room for a demo
     # request -- a half-finished fine-tune is not worth a page view. Serving surfaces queue
     # behind it instead, which is what the acquire timeout is for.
