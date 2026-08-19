@@ -169,16 +169,34 @@ node tests/tuner_watch.mjs          # tuner-watch.html, ditto -- no account, no 
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
-**1063 pass in 111.16 s (measured 2026-08-19, from `backend/`); the two `--ignore`s are not
+**1085 pass, measured twice on the same tree 2026-08-19 from `backend/` — 110.38 s then 111.55 s,
+so treat the wall time as a range and the count as the reading; the two `--ignore`s are not
 optional and not a failure you introduced.** The count drifts upward as apps land — it was 682,
-then 941, then 973, then 981, then 1062 — so treat the absolute number as a date-stamped reading, not a
-contract. `--collect-only` should report the same figure; that comparison is what catches a
-collection abort, which is not a smaller number but no number at all. Without
-them pytest stops at *collection* — `Interrupted: 2 errors`, zero tests run, which reads exactly
-like you broke the suite. `apps/reinforce/tests` imports `cupy` and `apps/remix/tests` imports
-`symon_capture`; neither is installed on the **system** interpreter and neither may be, since
-that is the serving path (see *Python environments*). They are per-project suites that need
-their own environment, so they are excluded here rather than made to look green.
+then 941, then 973, then 981, then 1084 — so treat the absolute number as a date-stamped reading,
+not a contract, and put a commit SHA beside it. A published 1063 turned out never to have been
+true of the commit it sat beside: the tree it named collects 1084, so the figure was carried
+forward from an earlier one. A number with no SHA cannot be checked, only believed.
+`--collect-only` should report the same figure; that comparison is what catches a collection
+abort, which is not a smaller number but no number at all. Without them pytest stops at
+*collection* — `Interrupted: 2 errors`, zero tests run, which reads exactly like you broke the
+suite. `apps/reinforce/tests` imports `cupy` and `apps/remix/tests` imports `symon_capture`;
+neither is installed on the **system** interpreter and neither may be, since that is the serving
+path (see *Python environments*). They are per-project suites that need their own environment, so
+they are excluded here rather than made to look green.
+
+**`frontend.mjs` is 42/43 today, and the one red is real.** `#rack` on `/livestack` overflows
+its one-screen budget at 1855x745: `scrollHeight` 599 against `clientHeight` 584. It is not a
+regression in any page source — `site/index.html` renders the rack client-side from
+`/api/status`, and the rack went from eleven units to thirteen when `studio` and `exp` landed
+(`e27b9c1`). Measured both ways in one page load: **599/584 at thirteen units, 584/584 at
+eleven.** That second figure is the finding — the type scale this section was tuned to
+(`tests/frontend.mjs:604-615`, "1.20x is the measured ceiling that still fits") had *zero*
+pixels of slack at eleven, so the fourteenth unit overflows again whatever is shaved for the
+thirteenth. Fixing it spends one of two properties Garrett set by hand and is his call, not a
+defect fix; the options are priced in `.claude/HANDOVER.md` §0. Do not close it by dropping a
+row or adding `text-overflow` — both are barred above. The other two suites are green on the same
+tree: `tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19 — so the
+red is one section of one page, not a browser-harness problem.
 
 System Chrome via Playwright, nothing to download. The two tuner suites need no API and no
 provider account: each starts `tests/tuner_fake_provider.py` and stops it again, so the whole

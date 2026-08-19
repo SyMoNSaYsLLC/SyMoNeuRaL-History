@@ -9,13 +9,16 @@
 > correction nowhere and the retired claim on `documentation.html`. `sudo scripts/deploy.sh --prune` is Garrett's
 > to run; an agent cannot. Everything else in the repo and production agree. Run
 > `node tests/frontend.mjs` and `node tests/frontend.mjs https://symoneural.com`; the local
-> one says **43/43**. If they disagree, production is behind and only Garrett can fix that —
-> see §0b. Read `git log`, then §5.
+> one says **42/43**, and that one red is a known open item with a measurement behind it, not a
+> break you introduced — the rack overflows one screen by 15px now that it carries thirteen
+> units (§0, last bullet). If the two runs disagree *elsewhere*, production is behind and only
+> Garrett can fix that — see §0b. Read `git log`, then §5.
 >
 > **The 27B work is committed** — `ec9e995` (manual correction + inference measurement) and
 > `4b85bd0` (the QLoRA training path). Both verified 2026-08-18 16:40: pytest **941 passed**
-> (the baseline documented at the time, no regression; it is **981** as of 2026-08-19 — see the
-> stale-numbers table below), `tests/frontend.mjs` **43/43** on a spare port,
+> (the baseline documented at the time, no regression; it is **1085** as of 2026-08-19 — see
+> the stale-numbers table below), `tests/frontend.mjs` **43/43** on a spare port *on that date*
+> (it is 42/43 today, for the rack reason in §0),
 > and `build_training.py` run twice is byte-identical and reproduces the committed HTML
 > exactly, so the generator and the page in git agree.
 
@@ -29,8 +32,9 @@ conversation, so every number, path and decision you need is stated here.
 
 - **Nothing is broken and nothing is blocked; one deploy is pending** (`site/training.html`,
   see the box above). The suite was **26/26** when this line was written on 2026-08-17 08:30
-  and is **43/43** as of 2026-08-18 — it has grown, so trust the run and not this number. It
-  generates a real image on the real card mid-run, so it is a genuine end-to-end check.
+  and is **42/43** as of 2026-08-19 — it has grown, so trust the run and not this number. It
+  generates a real image on the real card mid-run, so it is a genuine end-to-end check. The
+  single red is the rack's one-screen budget and it is the last bullet of this section.
 - **Three deploy commands exist and they are not interchangeable.** `site/` content needs
   `sudo scripts/deploy.sh --prune`; `backend/api.py` needs
   `sudo systemctl restart symoneural-api`; `ops/Caddyfile` needs
@@ -126,10 +130,48 @@ conversation, so every number, path and decision you need is stated here.
   `tools/build_split.py` reads to build the other four, so it cannot simply stop being
   generated. **Whether to retire it is an open question — see §5.** Eleven generators now.
   §3.0 explains the layout and, more usefully, the four ways its tests lied.
-- **Every section fits one screen with no internal scroll**, at every viewport the gate
-  allows, 1301x740 through 2560x1440. Below 1301px wide the gate is off and the page
-  scrolls normally with everything visible. **Mobile cannot reach zero scroll** — at 390px
-  the rack alone is 2,700px — and should not be promised it.
+- **Three sections of four fit one screen. `/livestack` no longer does, and that is an open
+  decision for Garrett — not a bug awaiting an agent.** The promise was every section with no
+  internal scroll at every viewport the gate allows, 1301x740 through 2560x1440, and
+  `tests/frontend.mjs` asserted it 43/43. It is **42/43** now. Measured at 1855x745, both
+  counts in a single page load by hiding the last two `.unit` nodes and re-reading:
+
+  | rack contents | `scrollHeight` / `clientHeight` | verdict |
+  |---|---|---|
+  | thirteen units (today) | 599 / 584 | **15px over** |
+  | eleven units (hidden last two) | 584 / 584 | fits, with **zero** slack |
+  | thirteen at 1990x970 | 807 / 807 | fits |
+  | thirteen at 1301x740 | 587 / 587 | fits |
+
+  So this is one viewport, and the second row is the finding. The rack was **exactly** at its
+  budget at eleven units, because the type scale was tuned until it was:
+  `tests/frontend.mjs:604-615` records Garrett's feedback and states "1.20x is the measured
+  ceiling that still fits (1.30x overflows by 2px at 1855x745 and 20px at 1990x970)". Adding
+  `studio` and `exp` (`e27b9c1`) put two 28px rows into a box with no room. Nothing in
+  `site/index.html` changed — the rack renders client-side from `/api/status`, so the count on
+  the wire *is* the layout input.
+
+  **Why no agent should quietly fix it.** Two properties are in tension and Garrett set both by
+  hand: the type is large because he asked for it, and the section fits one screen because he
+  asked for that earlier. Every lever spends one of them, and shaving exactly 15px buys one
+  unit — the fourteenth overflows again. The structural options, priced:
+  - **tighten the rows** — 13 rows need ~1.2px each; the rack's non-row chrome (`8px` pad-top,
+    `1px`/`4px` child margins, `2px` pad-bottom) is itself ~15px, so it can come from chrome
+    instead of type. Buys one unit. Cheapest, and does not scale.
+  - **drop the rack's type scale below 1.20x** — scales to ~15 units, and undoes the thing
+    Garrett explicitly asked for.
+  - **two columns on wide viewports** — the only option that actually scales, and the only one
+    that is a real design change. 1855px is wide enough for it; 1301px is not.
+  - **let `#rack` scroll internally** — retires the one-screen promise for this section and so
+    needs the assertion rewritten rather than deleted.
+
+  **Do not** close it by dropping a row or adding `text-overflow: ellipsis`; `.claude/CLAUDE.md`
+  bars both, and the rack is the specific place the ellipsis rule was removed from (it was
+  cutting the Apache-2.0 attribution `built on Qwen2.5-7B-Instruct` down to `…7B-Ins…`).
+
+  Below 1301px wide the gate is off and the page scrolls normally with everything visible.
+  **Mobile cannot reach zero scroll** — at 390px the rack alone is 2,700px — and should not be
+  promised it.
 - **The queue in §5 was rewritten** at the end of that session. Read §5, not §5b — the
   latter is the original list kept only for reference and much of it is done.
 - **The training bay now does preference and reinforcement tuning, on branch
@@ -1017,7 +1059,11 @@ finished write-up, so commit early — but if a remote is ever added, audit what
 | Generators | **14 in the chain**, plus `build_gallery.py` which is separate (it is the only one that can take the GPU). The three added since the count of 11 — `build_reinforce.py`, `build_project.py`, `build_sigils.py` — each write one file they own outright, so they add no ordering constraint beyond running before the stamper. |
 | `/overview` `/livestack` `/controlboard` `/receipts` | 200, each fitting one screen |
 | Pending deploy | **Two of the three, and the API is NOT one of them.** Measured 2026-08-19 05:20 EDT. The service has restarted past the `api.py` rewrite — the invocation running at 06:30 EDT entered active state 05:22:39 EDT — and runs `backend/api.py` out of this repo, so the backend half is live: `/api/status` answers thirteen units and `/studio` and `/exp` both return 200 on 127.0.0.1:8800. What is owed, Garrett only: **(1) `sudo scripts/deploy.sh --prune`** — `/var/www/symoneural/` has no `studio.html`, no `exp.html`, no `studio.js`, no `exp.js`, and its `symoneural.css` predates the masthead change. The two pages would answer through the API even so, because `/studio` and `/exp` are FastAPI routes reading `<root>/site/`; their **scripts** would not, because `/studio.js` and `/exp.js` are plain static paths Caddy serves off the webroot. A page that loads and does nothing is the failure mode here. **(2) `sudo ./scripts/install-caddy.sh`** — the `@studio` and `@exp` delegation blocks in `ops/Caddyfile` are written and `caddy validate` passes, but until they are installed production resolves both paths against the webroot and 404s without asking the API. Neither block is exercised against localhost, which is why local 200s prove nothing about it. Order stays `deploy.sh` first. |
-| Backend suites | **1063 passed, 0 failed in 111.16 s**, measured 2026-08-19 from `backend/` with `python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests`; `--collect-only` collects the same 1063 (both re-taken at 05:26 EDT on the committed tree; an earlier reading of 1062/110.75 s in this same session was one test stale, taken before the last of the new tests landed — which is why the two runs are dated to the minute), which is the check that catches a collection abort (a smaller number is a lost test, *no* number is `Interrupted`). Previous reading for contrast: **679 passed, 1 failed** at `f9f3546` (2026-08-17 14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. That single red was the tuner codec test, owned by a live writer at the time; today's run has no reds. |
+| Backend suites | **1085 passed, 0 failed at `5e68ea3`** (the tree this was measured on; the two commits after it are documentation only), measured 2026-08-19 from `backend/` with `python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests`. Run twice on the same tree: **110.38 s** then **111.55 s** — the count is the reading, the wall time is a range, and quoting one second-precision figure as *the* runtime is how the last one went stale. `--collect-only -q` collects the same **1085** (0.78 s, 0.80 s), which is the check that catches a collection abort (a smaller number is a lost test, *no* number is `Interrupted`). studio + exp alone are **141 passed in 3.69 s** (63 + 78). **The apparent +22 over the morning's 1063 is not twenty-two new tests, and chasing it found a second stale number.** `git diff 0f247cd..HEAD -- '*test_*.py'` adds exactly **one** `def test_`, and the two `subTest` loops it also adds do not raise pytest's count (a `subTest` block reports as one test). So the delta was measured instead of inferred: a detached worktree at **`0f247cd`** — the commit the 1063 was published against — collects **1084**. The real movement to HEAD is **1084 → 1085, +1**, which is that one test function. **1063 was never true of the tree it was written beside**; it is a reading from an earlier tree that got carried forward onto a later commit. Reading a source diff would not have caught that, and the arithmetic +22 would have invented twenty-one tests that do not exist. Earlier figures the same day were 1062 and 1063; treat any of them as provenance-free unless a SHA is beside it, which is why one is beside this. Previous reading for contrast: **679 passed, 1 failed** at `f9f3546` (2026-08-17 14:40), excluding `reinforce/tests` and `remix/tests` — those two need venvs this interpreter does not have (`cupy`, `symoneural_dj`) and error at *collection*, which is not the same as failing. That single red was the tuner codec test, owned by a live writer at the time; today's run has no reds. |
+| Frontend suite | **42 of 43** — `node tests/frontend.mjs http://127.0.0.1:8875` against a uvicorn started for the run and stopped after, measured 2026-08-19. The one red is `#rack` on `/livestack` at 1855x745, 599px of content in a 584px panel; §0 has the measured table and the four options. Publishing this as 43/43 would be the exact defect the 2026-08-19 review exists to remove, so it is 42/43 here and in `.claude/CLAUDE.md`. |
+| Link check | **clean** — `python3 tools/check_links.py`, 2026-08-19: 23 pages, 993 links, 285 unique targets (69 resolve, 58 external, 158 in-page), zero dead. This is the check the Voice precedent asks for after adding a route, and `/studio` and `/exp` both resolve in it. |
+| Tuner suites | **32/32** and **8/8** — `node tests/tuner_failpaths.mjs` and `node tests/tuner_watch.mjs`, measured 2026-08-19. These are the other two invocations `.claude/CLAUDE.md` names, and they need no API, no GPU and no ComfyUI: each starts and stops its own `tests/tuner_fake_provider.py`. Both match the 2026-08-18 reading at `.claude/HANDOVER.md:303`, so that dated line is confirmed rather than merely old. The counts have moved before — 21/21, then 23/23, then 27/27, then 28 — so the same SHA-beside-the-number rule applies here as to pytest. |
+| `node tests/studio.mjs` | **NOT RUN, and not because it was skipped.** It needs the Studio surface switched on (`SYM_STUDIO_ENABLED=1` + a token, which an agent can set for its own instance), the GPU, **and ComfyUI answering on 8188** — and ComfyUI is down on this box: it has no venv and no torch, which is Phase 0 of the Studio plan and has never been executed. So every assertion in it about a real graph running, a real progress ring and a real image decoding is **unverified**, and no figure from it appears anywhere. Do not infer it from the 141 studio+exp pytest passes: those are stdlib-only and mock the bridge. |
 | Uncommitted | **The 2026-08-19 review work is committed** — six commits on top of `48fc731`: the Studio app, the plugin runtime, the `api.py` wiring plus the new rack tripwire, the masthead/CSS pass, the Caddy delegation, and this state-document pass. What is left in the tree is the review's own paperwork (`CLOSEOUT-2026-08-19.md`, `REVIEW-LOG.md`, `SWEEP-READY.md`, all mode 600) and material Garrett dropped here (`drive-download-.../`, two NGC captures) — none of it mine to commit. The §4/§5 punch-list items in `REVIEW-LOG.md` are still OPEN and are not in any commit above. **Still no git remote** — history never leaves this box. |
 
 ### The two deploy commands have an order, and the natural one is wrong
