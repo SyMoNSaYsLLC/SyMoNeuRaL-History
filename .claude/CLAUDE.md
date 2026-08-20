@@ -170,27 +170,31 @@ node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI u
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
-**1093 pass at `e81ffa4`, measured 2026-08-19 from `backend/` in 109.36 s, with
-`--collect-only` collecting the same 1093 in 0.81 s; the two `--ignore`s are not optional and
-not a failure you introduced.** The number moved because `e81ffa4` added 8 — the first tests
-against `bin/symoneural-cli`. It was **1085 at `df1d862`**, 110.38 s then 111.55 s on that
-tree: two readings of one tree, so treat the wall time as a range and the count as the reading.
-The count drifts upward as apps land — it was 682, then 941, then 973, then 981, then 1084,
-then 1085 — so treat the absolute number as a date-stamped reading,
-not a contract, and put a commit SHA beside it. A published 1063 turned out never to have been
-true of the commit it sat beside: the tree it named collects 1084, so the figure was carried
-forward from an earlier one. A number with no SHA cannot be checked, only believed.
-`--collect-only` should report the same figure; that comparison is what catches a collection
-abort, which is not a smaller number but no number at all. Without them pytest stops at
-*collection* — `Interrupted: 2 errors`, zero tests run, which reads exactly like you broke the
-suite. `apps/reinforce/tests` imports `cupy` and `apps/remix/tests` imports `symon_capture`;
-neither is installed on the **system** interpreter and neither may be, since that is the serving
-path (see *Python environments*). They are per-project suites that need their own environment, so
-they are excluded here rather than made to look green.
+**1229 pass at `d3a4040`, measured 2026-08-20 from `backend/` in 117.47 s, with `--collect-only`
+collecting the same 1229 in 0.92 s; the two `--ignore`s are not optional and not a failure you
+introduced.** The ladder behind it, each figure read on the tree it names: **1085 at
+`df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**. Do not
+attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
+spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
+a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
+then 111.55 s on that tree: two readings of one tree, so treat the wall time as a range and the
+count as the reading. The count drifts upward as apps land — it was 682, then 941, then 973,
+then 981, then 1084, then 1085 — so treat the absolute number as a date-stamped reading, not a
+contract, and put a commit SHA beside it. A published 1063 turned out never to have been true of
+the commit it sat beside: the tree it named collects 1084, so the figure was carried forward
+from an earlier one. A number with no SHA cannot be checked, only believed. `--collect-only`
+should report the same figure; that comparison is what catches a collection abort, which is not
+a smaller number but no number at all. Without them pytest stops at *collection* — `Interrupted:
+2 errors`, zero tests run, which reads exactly like you broke the suite. `apps/reinforce/tests`
+imports `cupy` and `apps/remix/tests` imports `symon_capture`; neither is installed on the
+**system** interpreter and neither may be, since that is the serving path (see *Python
+environments*). They are per-project suites that need their own environment, so they are
+excluded here rather than made to look green.
 
-**`frontend.mjs` is 43/43 at `e81ffa4`, and the rack red that stood here is fixed.**
-Measured 2026-08-19 on a spare port (`node tests/frontend.mjs http://127.0.0.1:8875`), which
-is the only honest way to run it — see below. `#rack` on
+**`frontend.mjs` is 49/49 at `d3a4040`, measured 2026-08-20 against `http://127.0.0.1:8879`;
+it was 43/43 at `e81ffa4`, and the rack red that stood here is fixed.**
+Always on a spare port, never the service — that is the only honest way to run it, see below.
+The rack red, for the record: `#rack` on
 `/livestack` overflowed its one-screen budget at 1855x745 — `scrollHeight` 599 against
 `clientHeight` 584 — because `site/index.html` renders the rack client-side from `/api/status`
 and the rack went from eleven units to thirteen when `studio` and `exp` landed (`e27b9c1`).
@@ -229,13 +233,20 @@ SYMONEURAL_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
 bash scripts/comfyui.sh stop                        # /free, THEN SIGTERM -- see below
 ```
 
-**16/16 passed, re-measured 2026-08-19 at `1537262`**, including a 1024x1024 FLUX-schnell
-render decoding in the browser in 14.4 s (14.2 s server-side, card back in 4.1 s, lock
-released). The previous reading was the same 16/16 at `d20e09b`; it was re-run rather than
-re-dated because `backend/api.py` had changed underneath it, and studio.mjs runs against
-`api.py`. Its three `net::ERR_ABORTED` lines are labelled optional and
-404 upstream at :8188 as well; they are not proxy faults. `.claude/HANDOVER.md` has the reading
-and the VRAM curve. The state document claimed for two days that this suite could not run
+**16/16 passed, re-measured 2026-08-20 at `d3a4040`**, including a 1024x1024 FLUX-schnell
+render decoding in the browser in 14.4 s (14.2 s server-side, card back in 4.2 s, lock
+released). The same 16/16 stood at `1537262` and, before that, at `d20e09b`; each was re-run
+rather than re-dated because `backend/api.py` had changed underneath it, and studio.mjs runs
+against `api.py`. Its three `net::ERR_ABORTED` lines are labelled optional and 404 upstream at
+:8188 as well; they are not proxy faults. `.claude/HANDOVER.md` has the reading and the VRAM
+curve.
+
+**Run this suite and `frontend.mjs` one after the other, never at once.** Both take the card,
+and `frontend.mjs`'s image assertion evicted ComfyUI out from under a studio render here — the
+lease is released before the browser fetches the PNG, and evicting `comfy` stops the *process*
+that serves it, so the render 503s as `comfyui_unreachable`. That reads as a studio bug and is
+not one. `.claude/HANDOVER.md` §0a-quater has the governor log and the underlying defect, which
+is real for a visitor too. The state document claimed for two days that this suite could not run
 because ComfyUI "has no venv and no torch" — it has both (torch **2.13.0+cu130**, sm_120
 verified by a real CUDA probe, 223 packages), and the suite had simply never been invoked.
 

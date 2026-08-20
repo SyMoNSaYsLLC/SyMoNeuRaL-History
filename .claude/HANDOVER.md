@@ -253,9 +253,19 @@ conversation, so every number, path and decision you need is stated here.
 ## 0a-ter. `SYM_*` -> `SYMONEURAL_*` and `X-Sym-Token` -> `X-Symoneural-Token` — DONE, with a legacy fallback in exactly the places named below (2026-08-20)
 
 Task #19. Three commits: `a833fda` (the one live defect), `74dee33` (the env promotion shim),
-and this one (the header, the docs and the generated pages). **1225 tests pass at this SHA**,
-1225 collected — up from 1200 at `74dee33`. `node tests/frontend.mjs` 49/49 against a spare
-port. Every fallback below was mutation-tested: ten mutations, ten kills.
+and **`d3a4040`** (the header, the docs and the generated pages — 128 files).
+
+All four suites at `d3a4040`, measured 2026-08-20:
+
+| Suite | Reading | How |
+|---|---|---|
+| `pytest apps/` | **1229 passed in 117.47 s**, 1229 collected | from `backend/`, the two standing `--ignore`s. 1225 at the tree before the four tests below; 1200 at `74dee33`. |
+| `tests/frontend.mjs` | **49/49** | `http://127.0.0.1:8879`, my own uvicorn, not the service. |
+| `tests/studio.mjs` | **16/16** | `http://127.0.0.1:8877` with the studio surface on. 1024x1024 FLUX-schnell decoding in the browser in 14.4 s, card back in 4.2 s. |
+| `tuner_failpaths` / `tuner_watch` | not re-run | Neither touches a credential name; last read 32/32 and 8/8 at `e81ffa4`. |
+
+**Eleven mutations, eleven kills — but two of them killed a claim in a docstring rather than
+in the code, and that is the useful part.** See "what the tripwire does not catch" below.
 
 ### Where the legacy fallback exists, and where it deliberately does not
 
@@ -309,7 +319,7 @@ against a spare port: `symoneural_studio=devtest` and `sym_studio=devtest` both 
 
 ### The new tripwire, and the third time this trick has paid
 
-`backend/apps/test_credential_header.py` (19 tests). Its centrepiece is
+`backend/apps/test_credential_header.py` (22 tests). Its centrepiece is
 `test_no_source_file_names_only_the_legacy_header`: **no file in the audited roots may name
 `X-Sym-Token` without also naming `X-Symoneural-Token`.** One-way on purpose — a file naming
 only the new name is the finished state; a file naming only the old one is either a reader
@@ -336,6 +346,55 @@ this repo asserts through `gate.HEADER`, which is the right way to write them an
 symbolic suite plus a wrong constant is a green run and a dead surface. `TheLiterals` pins the
 two strings as literals for exactly that reason.
 
+### The defect a 1225-test suite passed over, and what the tripwire does not catch
+
+`symoneuralexp/page.js` was telling every operator to set `SYM_EXP_ENABLED=1` and
+`SYM_EXP_TOKEN` — four display strings in the config panel, long after the reader was renamed —
+and `site/exp.js` carried the same four. Nothing failed. `test_exp.py` pins
+`gate.ENV_ENABLED`/`ENV_TOKEN` through the constants and byte-compares the generated copy, so
+both halves were self-consistently wrong: the assertions were symbolic, and the panel
+hard-codes the words. **A symbolic suite cannot see a hard-coded string, and the strings are
+the part an operator types.**
+
+So the header tripwire got a sibling: `TheEnvNameTripwire` — no file may name a legacy
+`SYM_<NAME>` without also naming `SYMONEURAL_<NAME>`. It reports **zero** offenders now and
+correctly reported `site/exp.js` before regeneration, which is the evidence it works.
+
+**Then mutation testing killed my claim about it.** Reverting *one* of the four display strings
+leaves that rule green, because the other three still name the new spelling and satisfy its
+pairing, which is scoped to the whole file. So the rule catches a name whose rename never
+happened anywhere in a file — the original defect, where all four were legacy — and **not** a
+single reverted line in a file that is otherwise migrated. Per-occurrence pinning has to live
+with the surface that owns the string, so `test_exp.py::PageTests::
+test_the_page_names_no_legacy_env_var_to_the_operator` asserts `"SYM_EXP_" not in page.js`
+outright. Both docstrings now say which rule reaches what. **The next gated surface wants the
+per-occurrence assertion too; the repo-wide rule alone is not enough for it.**
+
+Its scoping cost two more corrections worth keeping:
+
+* **Vendored trees are pruned, not exempted**, extending the `.claude/worktrees/` lesson to six
+  `.venv/` trees under the audited roots. Third-party code carries incidental `SYM_` constants —
+  `SYM_FN`/`SYM_H` in pygments' MySQL builtins, `SYM_CRLF`/`SYM_DOLLAR`/`SYM_EMPTY`/`SYM_LF`/
+  `SYM_STAR` in redis. The header rule read all 32,654 of those files and survived on luck:
+  `X-Sym-Token` does not appear in redis. Unpruned the walk is **32,925 files and 8 unfixable
+  offenders**; pruned it is **410 files in 0.47 s**. `.venv` and `site-packages` are each
+  sufficient alone on this tree — verified by removing one at a time — and both are kept
+  because they fail differently on the *next* tree.
+* **A retired name is exempted by name, not by file.** `SYM_FETCH_QWEN36` put an upstream
+  company name in our environment and was dropped rather than renamed
+  (`scripts/fetch-models.sh:71`), so it has no new spelling by design. Exempting the name keeps
+  the two files that mention it under the rule. Only two files are exempt wholesale, both being
+  the rename's own machinery: `test_symoneuralenv.py` and `coder/test_coder.py`, whose subject
+  matter *is* the legacy spelling.
+* **`.jsonl` is deliberately absent from `SUFFIXES`**, and that is the only reason this walker
+  never opens `training/corpus.jsonl`. It is load-bearing and now says so in the code. A future
+  rule that printed matching *lines* rather than paths would put the corpus into pytest output,
+  and pytest output ends up in commit messages.
+
+One prose correction in the same pass: `symoneuralenv.py`'s docstring cited
+`fetch-models.sh:90` and quoted its **pre-rename** two-deep form. The real line is three-deep
+and leads with `SYMONEURAL_FETCH_27B`. The quote now matches the line it cites.
+
 ### Owed to Garrett, queued in `GARRETT-INBOX.md`
 
 `/etc/symoneural/api.env` wants rewriting to the new spellings (root, 0600, his action) and the
@@ -358,6 +417,47 @@ The carried-forward task list said task #19 covered "90 vars / 892 sites". The t
 **96 distinct names / 771 occurrences**, unchanged whether or not `references/` is counted, so
 the old figures were measured against a scope that cannot be reconstructed. The re-derived
 numbers are the reading.
+
+---
+
+## 0a-quater. A studio render survives its own lease but not the next tenant — open, measured (2026-08-20)
+
+`tests/studio.mjs` read **15/16** on the first attempt at `d3a4040`: *"render did not decode"*,
+`{"w":0,"h":0}` for `/api/studio/image?filename=studio_00009_.png&…`. Re-run serialized it is
+**16/16**, so the suite figure recorded in §0a-ter is the good one — but the failure was not
+noise and is worth writing down.
+
+**Immediate cause was mine:** I ran `frontend.mjs` and `studio.mjs` concurrently on a
+single-GPU box, and `frontend.mjs` asserts that a generated image decodes, so it queues an
+image render. `run/governor.log` has it exactly:
+
+```
+07:52:05  acquire  'comfy' holds the card -- 14561 MiB free   <- the studio render starts
+07:52:19  release  'comfy' releasing                          <- render done, lease dropped
+07:52:19  wait     'image' wants the card                     <- frontend.mjs
+07:52:20  evict    stopping 'comfy' to make room
+07:52:20  acquire  'image' holds the card
+```
+
+Two GPU suites in parallel is the thing CLAUDE.md's "single, contended resource" section
+forbids, and I did it anyway to save wall clock. **Run `frontend.mjs` and `studio.mjs` one after
+the other.**
+
+**But the underlying defect is real for an actual visitor.** Eviction of `comfy` is
+`scripts/comfyui.sh stop` (`gpu-governor.sh:112`) — the *process* dies, not just the weights —
+and `/api/studio/image` serves the finished PNG by proxying `GET /view` **on that process**,
+after the lease has already been released. So there is a window between "render complete, lock
+released" and "browser has fetched the image" in which any other surface taking the card makes
+an already-rendered image unfetchable. The file is on disk in ComfyUI's output directory the
+whole time; only the HTTP route to it is gone. The visitor sees a broken image, which is the
+exact failure mode `studio.mjs`'s decode assertion was written for after it happened once
+before.
+
+Not fixed — it is outside task #19 and wants a decision. Two candidate directions, neither
+measured: serve the PNG from disk (the output path is known, and `backend/output/` is already
+the precedent for API-generated files), or hold the lease until the outputs have been fetched,
+which contradicts "hold the lock for a job, never for a process lifetime" and is the worse of
+the two. The first looks right and would also make renders survive a ComfyUI restart.
 
 ---
 
