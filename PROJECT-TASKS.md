@@ -163,6 +163,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep prefix="/api/streamer/guide" -- backend/api.py
         check: grep symoneural\.tuner -- site/streamer.html
         check: grep apps\.streamer\.guide -- tests/streamer_guide.mjs
+        check: grep InvocableDocsTests -- backend/apps/test_streamer_migration.py
         check: exists site/streamer.html
         check: absent site/tuner.html
         check: grep "/api/streamer" -- backend/api.py
@@ -236,6 +237,55 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: routing instead of by CSS, which is the one thing this repo bars outright. Both
         note: assertions were broken on purpose first (flatten api.py's prefix; mount the two flat in
         note: setUp) and each failed alone, for its own reason.
+        note: 2026-08-20 coder — item 2 reopened for one thing and closed again: the rename was
+        note: incomplete in the file that ORDERS the rename. `.claude/CLAUDE.md` still told every
+        note: session to run `node tests/tuner_failpaths.mjs`, `node tests/tuner_watch.mjs` and
+        note: `tests/tuner_fake_provider.py`, all three renamed to `streamer_*` by this item, and it
+        note: scoped that rename to item 2 itself ("these become ... under #73 item 2"), so it was
+        note: never #76's to fix. The distinction that keeps holding for everything else: #76 owns
+        note: the FIGURES, because those need re-measuring against a SHA; this item owns the FILE
+        note: NAMES, because a stale count can be re-run by whoever doubts it while a command that
+        note: cannot run just fails and reads as a broken suite. The 32/32 and 8/8 keep `e81ffa4`
+        note: and stay past-tense; only the paths moved, and the paragraph now says the readings
+        note: were taken under the old names rather than re-dating them to today.
+        note: 2026-08-20 coder — and CLAUDE.md named four browser suites when there are five.
+        note: `streamer_guide.mjs` was not in the list, which is how it sat dead for a fortnight
+        note: with nobody running it. Added, ordered last so `studio.mjs` is still "the fourth
+        note: suite" the prose below calls it, with its 17/17 and — the part worth having — its
+        note: failure mode written down, because ERR_CONNECTION_REFUSED from a suite that generates
+        note: its own app.py reads as infrastructure and is this repo's own restructure.
+        note: `InvocableDocsTests` generalises it so this cannot recur: every `tests/<file>` inside
+        note: a fenced bash block in CLAUDE.md must exist, and every `.mjs` in `tests/` must be
+        note: named there. Scoped to the FENCES on purpose — the prose around them deliberately
+        note: names retired files, in one place to say out loud that `node tests/tuner_watch.mjs`
+        note: cannot run any more, and asserting on the whole file would forbid saying that.
+        note: Broken separately: a bash line naming a file that does not exist failed the first and
+        note: not the second; deleting the streamer_guide line failed the second and not the first.
+        note: `account.mjs`, `stickers.mjs`, `project.mjs` and `code_cli.mjs` are exempted BY NAME
+        note: in the test rather than by a loose filter, so it states which suites it is not
+        note: holding; the first two are knowingly red and belong to #74's acceptance work.
+        note: 2026-08-20 coder — the sweep for this item was route-shaped and missed a class.
+        note: Grepping `api/guide` finds route claims; it does not find a sentence that names the
+        note: retired SURFACE without naming a path. Five more in HANDOVER, all live claims rather
+        note: than dated records: §0's rack list (the seventh row is `streamer` now — the wire
+        note: reading itself is left exactly as it came off the wire, with the rename stated
+        note: beneath it, because a reading edited to match today stops being a reading), the two
+        note: readings tables naming `tuner_*` commands, the frontend.mjs "do not chase these"
+        note: line still listing `/api/tuner/{...}`, and the news-bar line saying `tuner-watch.html`
+        note: does not load `ui.js`. The remaining 80-odd mentions are dated session records and
+        note: why-prose and keep the word. That sweep also caught something not mine: the cell
+        note: claiming the only node dependency is vendored at `contrib/llama.cpp/tools/ui/
+        note: node_modules` — a path that moved under `references/`, which #74 bars importing. It
+        note: is `tests/node_modules`, playwright 1.56.1 pinned in `tests/package.json`, resolved
+        note: once in `tests/browser.mjs`; corrected in place with what it used to say, since an
+        note: agent reading the old cell would have restored a barred path to fix a suite.
+        note: 2026-08-20 coder — `test_no_page_calls_the_retired_api_prefix` guarded `/api/tuner`
+        note: and nothing guarded `/api/guide`, so it held one half of a two-half merge. Now both,
+        note: and the guide half is the one that can regress quietly: `/api/streamer/guide/...`
+        note: does not contain `/api/guide`, so the assertion is silent at the correct prefix and
+        note: fires the moment a page reaches for the flat one — which is what the fixture was
+        note: doing while it looked like a port fault. Broken by pointing streamer.html's fetch at
+        note: `/api/guide/filter`: 1 failed, 8 passed, restored to 9.
         note: 2026-08-20 coder — `ngrep ROW_OF_MODULE` was an anti-check for the same reason
         note: `grep tuner_router` was, and is narrowed rather than deleted. The map IS gone; what
         note: kept the check red is the comment in `test_status_rack.py` explaining why it is gone,

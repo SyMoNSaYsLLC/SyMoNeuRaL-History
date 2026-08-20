@@ -316,9 +316,10 @@ that is fine, because it only writes to stdout and sets nothing its caller reads
 
 ```bash
 node tests/frontend.mjs             # every page, against a running API on :8800
-node tests/tuner_failpaths.mjs      # tuner.html, self-contained -- starts its own fake provider
-node tests/tuner_watch.mjs          # tuner-watch.html, ditto -- no account, no real stream
+node tests/streamer_failpaths.mjs   # streamer.html, self-contained -- starts its own fake provider
+node tests/streamer_watch.mjs       # streamer-watch.html, ditto -- no account, no real stream
 node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI up, and the GPU
+node tests/streamer_guide.mjs       # the guide grid on streamer.html -- own API, no GPU, no provider
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 ```
@@ -393,15 +394,19 @@ binding viewport is **1301x740**, not 1855x745, because its rows are 26.6px. `.c
 §0 has the full table, the retraction of the two-column option it used to recommend, and the one
 lever deliberately left unspent. Do not close the next overflow by dropping a row or adding
 `text-overflow` — both are barred above. The other two suites are green on the same tree:
-`tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19 at
+`streamer_failpaths.mjs` **32/32** and `streamer_watch.mjs` **8/8**, measured 2026-08-19 at
 `e81ffa4` — the same tree as the 43/43 above, which is what "same tree" has to mean to be
-worth writing. Both are also unread since, for the same reason, and both are being renamed:
-Garrett *"i said tuner and guide needed to be merged and migrated to streamer"*, so these
-become `streamer_failpaths.mjs` and `streamer_watch.mjs` under #73 item 2.
+worth writing. Both are also unread since, for the same reason. **The rename has landed** — #73
+item 2, Garrett *"i said tuner and guide needed to be merged and migrated to streamer"* — so
+these two readings were taken while the files were still called `tuner_failpaths.mjs` and
+`tuner_watch.mjs`. The figures keep the SHA they were measured at and are not re-dated to the
+rename; the paths above are the ones that exist. This paragraph named the old files for a while
+after they were gone, which is worse than a stale count: a stale count can be checked, and
+`node tests/tuner_watch.mjs` cannot run at all.
 
-System Chrome via Playwright, nothing to download. The two tuner suites need no API and no
-provider account: each starts `tests/tuner_fake_provider.py` and stops it again, so the whole
-invocation is the one line. **`frontend.mjs` needs an API**, and if you point it at the running
+System Chrome via Playwright, nothing to download. The failpaths and watch suites need no API
+and no provider account: each starts `tests/streamer_fake_provider.py` and stops it again, so the
+whole invocation is the one line. **`frontend.mjs` needs an API**, and if you point it at the running
 service you are testing what is *deployed*, not what you wrote — start your own on a spare port
 and pass the base URL (`node tests/frontend.mjs http://127.0.0.1:8875`), or a red assertion will
 send you hunting a bug you already fixed.
@@ -442,6 +447,19 @@ back, and the next tenant OOMs at step 0. Measured here: a render peaks at **13,
 16,303** and returns to 666 MiB in **4.1 s**, against the governor's 60 s timeout and 1500 MiB
 floor. `comfyui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
 is taken per render and released after the drain, which is the rule above applied.
+
+**`tests/streamer_guide.mjs` is the fifth suite, and it was dead for a fortnight because
+nothing in this file told anyone to run it.** It needs no GPU, no provider account and no
+running service — it starts its own uvicorn carrying just the two streamer routers — so there is
+no reason to skip it. **17/17 passed, measured 2026-08-20 at `7a5ced5`**, including that the
+grid re-ticks to exactly the groups Guide returned, that *both* adult groups are found rather
+than only the first, and that nothing overflows at 1440/1301/390px. Its failure mode is the one
+worth knowing: it generates its own `app.py`, so a stale import there kills uvicorn before it
+binds and Chrome reports `ERR_CONNECTION_REFUSED` twenty-four seconds later. That reads as an
+infrastructure fault and is not one — it is this repo's own restructure, unpropagated. It had
+been importing `from guide import routes` against a directory that is now
+`backend/apps/streamer/guide/`, and mounting at `/api/guide` while the page fetches
+`/api/streamer/guide/filter`. Two faults, the second hidden behind the first.
 
 **The Studio agent loop does not stream tokens, so do not quote a first-token latency for
 it.** `inference.Backend.chat` sends `"stream": False` and is the loop's only call site;

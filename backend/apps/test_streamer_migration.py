@@ -23,6 +23,7 @@ Reads generated output, not the generator: what ships is what a visitor gets.
 from __future__ import annotations
 
 import pathlib
+import re
 import unittest
 
 SITE = pathlib.Path(__file__).resolve().parents[2] / "site"
@@ -62,17 +63,27 @@ class StorageMigrationTests(unittest.TestCase):
 
 
 class NamespaceTests(unittest.TestCase):
-    def test_no_page_calls_the_retired_api_prefix(self):
-        """A page calling /api/tuner/* gets a 404: api.py mounts /api/streamer now.
+    def test_no_page_calls_a_retired_api_prefix(self):
+        """A page calling /api/tuner/* or /api/guide/* gets a 404: both prefixes moved.
 
         Deliberately no alias is kept for the API. A stale *bookmark* is permanent and gets
         a redirect; a stale *cached page* resolves itself on the next reload, which is
         Garrett's own test for whether something needs handling at all -- "if it isnt going
         to break our project and its something that will resolve itself naturally DROP IT".
+
+        Both halves of the merge are guarded here, and the guide half is the one that can
+        regress silently. `/api/streamer/guide/...` does not contain `/api/guide`, so this
+        stays quiet at the correct prefix and fires the moment a page reaches for the flat
+        one -- which is exactly what `tests/streamer_guide.mjs` was doing while it looked
+        like a port fault. The concatenation is so this file does not match its own source.
         """
         for page in SITE.glob("*.html"):
-            with self.subTest(page=page.name):
-                self.assertNotIn("/api/" + "tuner", page.read_text())
+            body = page.read_text()
+            for retired in ("/api/" + "tuner", "/api/" + "guide"):
+                with self.subTest(page=page.name, prefix=retired):
+                    self.assertNotIn(retired, body,
+                                     f"site/{page.name} fetches the retired {retired}; the "
+                                     "router that answered it is mounted elsewhere now")
 
     def test_the_retired_pages_are_gone_not_merely_superseded(self):
         for gone in ("tuner.html", "tuner-watch.html"):
@@ -141,3 +152,59 @@ class NestedGuidePrefixTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InvocableDocsTests(unittest.TestCase):
+    """Every command `.claude/CLAUDE.md` hands an agent has to be runnable.
+
+    This lives with the migration because the migration is what broke it, and broke it in
+    the one way a stale figure cannot be broken. CLAUDE.md told three sessions to run
+    `node tests/tuner_failpaths.mjs`, `node tests/tuner_watch.mjs` and (indirectly)
+    `tests/tuner_fake_provider.py` after all three had been renamed to `streamer_*`. A
+    stale count can be re-measured by whoever doubts it; a command that cannot run just
+    fails, and reads as the suite being broken rather than the instruction being wrong.
+
+    Scoped to the fenced ```bash blocks on purpose -- those are the copy-and-paste surface.
+    The prose around them deliberately names retired files, both to record which tree a
+    figure was read on and, in one place, to say out loud that `node tests/tuner_watch.mjs`
+    cannot run any more. Asserting on the whole file would forbid saying that.
+    """
+
+    #: `tests/<name>.<ext>` as it appears inside a fenced bash block.
+    _PATH = re.compile(r"\b(tests/[\w.-]+\.(?:mjs|py|sh))")
+
+    def _commanded_paths(self, doc):
+        text = (pathlib.Path(__file__).resolve().parents[2] / doc).read_text()
+        # Odd-indexed chunks of a ```-split are the fenced blocks; take the bash ones.
+        blocks = [b for i, b in enumerate(text.split("```")) if i % 2 and b.startswith("bash")]
+        return sorted({m for b in blocks for m in self._PATH.findall(b)})
+
+    def test_every_test_file_claude_md_tells_you_to_run_exists(self):
+        paths = self._commanded_paths(".claude/CLAUDE.md")
+        self.assertTrue(paths, "no tests/ invocation found at all -- did the fences move?")
+        root = pathlib.Path(__file__).resolve().parents[2]
+        for rel in paths:
+            with self.subTest(path=rel):
+                self.assertTrue((root / rel).is_file(),
+                                f"CLAUDE.md tells you to run {rel}, which does not exist; a "
+                                "command that cannot run reads as a broken suite")
+
+    def test_the_browser_suites_are_all_named_there(self):
+        """A suite nobody is told to run is a suite that rots unnoticed.
+
+        `streamer_guide.mjs` sat dead for a fortnight -- its generated `app.py` still
+        importing `from guide import routes` -- and the reason nobody caught it is that
+        CLAUDE.md listed four suites and it was the fifth. `browser.mjs` is excluded: it
+        is the shared chromium resolution, not a suite, and has no assertions of its own.
+        """
+        root = pathlib.Path(__file__).resolve().parents[2]
+        on_disk = {p.name for p in (root / "tests").glob("*.mjs")} - {"browser.mjs"}
+        named = {rel.split("/")[-1] for rel in self._commanded_paths(".claude/CLAUDE.md")}
+        # account.mjs and stickers.mjs are knowingly red and belong to #74's acceptance
+        # work; they are named here so this test says which suites it is not holding.
+        unnamed = on_disk - named - {"account.mjs", "stickers.mjs", "code_cli.mjs",
+                                     "project.mjs"}
+        self.assertEqual(set(), unnamed,
+                         f"browser suites exist that CLAUDE.md never tells anyone to run: "
+                         f"{sorted(unnamed)}")
+
