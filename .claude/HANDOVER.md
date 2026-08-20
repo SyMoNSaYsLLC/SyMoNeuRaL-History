@@ -44,6 +44,20 @@ conversation, so every number, path and decision you need is stated here.
 > superseded — do not act on it.
 ## 0. Sixty-second version
 
+- **OUTAGE FIXED 2026-08-20 09:57 EDT, tests landed at `d6104e6`.** From ~04:38 the live
+  rack read chat/image/sigils (and remix) **offline** while every probe target sat on disk:
+  commit `34c5009` (04:31) renamed the weights on disk AND api.py's constants coherently,
+  but the service had started at 03:21 and was never restarted — the running process kept
+  probing the old names from memory. A rename outran the process, not the code; every suite
+  stayed green because nothing pinned code↔disk or live↔disk agreement
+  (`test_status_rack.py`'s docstring admitted the gap). Before: chat/image/remix/sigils
+  offline by real curl. After service restart (`Restart=always`, SIGTERM to the unit's own
+  pid): all four **ready** by real curl at pid 164467. `backend/apps/test_rack_probes.py`
+  now pins all three agreements — the live check skips only where no service answers.
+  Post-fix suites: **pytest 1276 in 118.32s, frontend 49/49 at `d6104e6`**. THE RULE THIS
+  TEACHES: renaming any file a live service probes requires
+  `sudo systemctl restart symoneural-api` in the same breath, exactly like the deploy
+  ordering rule below.
 - **Nothing is broken and nothing is blocked; one deploy is pending** (`site/training.html`,
   see the box above). The suite was **26/26** when this line was written on 2026-08-17 08:30
   and is **49/49** as of 2026-08-20 at `26cb58e` — it has grown, so trust the run and not
