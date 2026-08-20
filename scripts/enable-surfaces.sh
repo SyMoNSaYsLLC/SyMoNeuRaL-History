@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Switch on the token-gated surfaces that ship OFF by default: Coder, Project, and the
-# operator power switch this repo calls Rack. Optionally the TRON licensing Gateway, which
-# needs two facts this script cannot invent.
+# Switch on the token-gated surfaces that ship OFF by default: Coder, Project, Studio, and
+# the operator power switch this repo calls Rack. Optionally the TRON licensing Gateway,
+# which needs two facts this script cannot invent.
 #
 #   sudo ./scripts/enable-surfaces.sh project rack
-#   sudo ./scripts/enable-surfaces.sh coder                       # local-only, see below
+#   sudo ./scripts/enable-surfaces.sh coder studio                # local-only, see below
 #   sudo ./scripts/enable-surfaces.sh gateway --network nile \
 #          --contract TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #   sudo ./scripts/enable-surfaces.sh --show                      # what is set, no secrets
@@ -55,7 +55,10 @@ get_var() {
 
 show() {
   printf 'env file : %s\n' "$ENV_FILE"
-  if [ ! -f "$ENV_FILE" ]; then printf '           (absent -- nothing enabled by this script)\n'; return; fi
+  if [ ! -f "$ENV_FILE" ]; then
+    printf '           (absent -- nothing enabled by this script)\n'
+    return
+  fi
   # Values are never printed. A token is either set or it is not; showing it here would put
   # it in a terminal scrollback and, sooner or later, in a screenshot.
   while IFS='=' read -r k v; do
@@ -69,10 +72,10 @@ show() {
 
 # ---------------------------------------------------------------- arguments
 
-WANT_CODER=0 WANT_PROJECT=0 WANT_RACK=0 WANT_GATEWAY=0
+WANT_CODER=0 WANT_PROJECT=0 WANT_RACK=0 WANT_GATEWAY=0 WANT_STUDIO=0
 GW_NETWORK="" GW_CONTRACT=""
 
-[ $# -gt 0 ] || die "Nothing asked for. Surfaces: coder project rack gateway (or --show)."
+[ $# -gt 0 ] || die "Nothing asked for. Surfaces: coder project studio rack gateway (or --show)."
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -80,6 +83,7 @@ while [ $# -gt 0 ]; do
     project) WANT_PROJECT=1 ;;
     rack)    WANT_RACK=1 ;;
     gateway) WANT_GATEWAY=1 ;;
+    studio)  WANT_STUDIO=1 ;;
     --network)  GW_NETWORK="${2:-}"; shift ;;
     --contract) GW_CONTRACT="${2:-}"; shift ;;
     --show)  show; exit 0 ;;
@@ -93,13 +97,16 @@ done
 if [ "$WANT_GATEWAY" -eq 1 ]; then
   case "$GW_NETWORK" in
     nile|shasta|mainnet) ;;
-    "") die "gateway needs --network nile|shasta|mainnet. There is no sane default: mainnet is real money." ;;
+    "") die "gateway needs --network nile|shasta|mainnet." \
+            "There is no sane default: mainnet is real money." ;;
     *)  die "--network must be one of nile, shasta, mainnet (got '$GW_NETWORK')." ;;
   esac
-  [ -n "$GW_CONTRACT" ] || die "gateway needs --contract, the deployed licensing contract address (34 chars, begins with T)."
+  [ -n "$GW_CONTRACT" ] || die "gateway needs --contract, the deployed licensing contract" \
+                               "address (34 chars, begins with T)."
   case "$GW_CONTRACT" in
     T?????????????????????????????????) ;;
-    *) die "--contract does not look like a TRON address: expected 34 characters beginning with T." ;;
+    *) die "--contract does not look like a TRON address:" \
+           "expected 34 characters beginning with T." ;;
   esac
 fi
 
@@ -140,9 +147,18 @@ set_kv() {
 gen_token() { /usr/bin/python3 -c 'import secrets; print(secrets.token_urlsafe(32))'; }
 
 printf 'Writing %s\n' "$ENV_FILE"
-[ "$WANT_CODER" -eq 1 ] && { set_kv SYM_CODER_ENABLED 1;   set_kv SYM_CODER_TOKEN   "$(gen_token)"; }
-[ "$WANT_PROJECT" -eq 1 ] && { set_kv SYM_PROJECT_ENABLED 1; set_kv SYM_PROJECT_TOKEN "$(gen_token)"; }
-[ "$WANT_RACK" -eq 1 ] && { set_kv SYM_RACK_ENABLED 1;     set_kv SYM_RACK_TOKEN    "$(gen_token)"; }
+# Four surfaces, one shape: SYM_<NAME>_ENABLED=1 plus a fresh token. This was four aligned
+# one-liners; each of the three that existed already ran past this repo's 100-column limit and
+# adding Studio would have made a fourth, so the shape is a loop over "want-flag NAME" pairs.
+# Gateway is not in here because it takes two more values and cannot share the body.
+for pair in "$WANT_CODER CODER" "$WANT_PROJECT PROJECT" "$WANT_RACK RACK" \
+            "$WANT_STUDIO STUDIO"; do
+  want=${pair% *}
+  name=${pair#* }
+  [ "$want" -eq 1 ] || continue
+  set_kv "SYM_${name}_ENABLED" 1
+  set_kv "SYM_${name}_TOKEN" "$(gen_token)"
+done
 if [ "$WANT_GATEWAY" -eq 1 ]; then
   set_kv SYM_GATEWAY_ENABLED 1
   set_kv SYM_GATEWAY_NETWORK "$GW_NETWORK"
@@ -207,10 +223,13 @@ try:
 except Exception as e:
     sys.exit(f"/api/status did not parse: {e}")
 for u in doc.get("units", []):
-    if u.get("id") in {"coder", "project", "gateway"}:
+    if u.get("id") in {"coder", "project", "studio", "gateway"}:
         print(f'  {u["id"]:<9} {u["state"]:<8} {u["detail"]}')
 PYEOF
 
 printf '\nDone. Tokens are in %s (root, 0600). Read one with:\n' "$ENV_FILE"
 printf '    sudo sed -n "s/^SYM_PROJECT_TOKEN=//p" %s\n' "$ENV_FILE"
 printf '\nBoth Coder and Rack remain loopback-only: SYM_*_ALLOW_REMOTE is deliberately unset.\n'
+printf 'Studio is not loopback-gated in the same way -- it has no ALLOW_REMOTE switch, so its\n'
+printf 'token is the whole gate. backend/apps/symoneuralstudio/__init__.py:42 is explicit that\n'
+printf 'the surface can write to the host. Treat SYM_STUDIO_TOKEN accordingly.\n'
