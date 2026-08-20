@@ -57,7 +57,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 SITE = ROOT / "site"
-APP = ROOT / "backend" / "apps" / "symoneuralexp"
+APP = ROOT / "backend" / "apps" / "studio" / "plugins" / "exp"
 sys.path.insert(0, str(ROOT / "tools"))
 
 import build_pages  # noqa: E402  -- for NAV and SHELL. Read, never called: `page()` writes the

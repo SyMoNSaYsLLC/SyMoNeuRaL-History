@@ -129,7 +129,7 @@ ops/middleware/*.wasm
 # into an excluded directory, so no pattern can re-include a file underneath one. (That was
 # tried; `git check-ignore -v` still reported the exclusion, which is the correct behaviour and
 # not a typo.) The source of truth therefore lives in the repo at
-# backend/apps/symoneuralstudio/custom_nodes/symoneural_gguf/, and scripts/comfyui.sh links it
+# backend/apps/studio/custom_nodes/symoneural_gguf/, and scripts/comfyui.sh links it
 # into place on start. Delete ComfyUI/ and reclone it and nothing of ours is lost.
 /ComfyUI/
 
@@ -139,7 +139,7 @@ ops/middleware/*.wasm
 # the line below. It is listed BEFORE the file exists on purpose: backend/apps/remix/.env is
 # tracked with live secret-shaped values and rides inside any archive carrying .git, and the
 # only reason that happened is that nothing excluded it until after the first `git add -A`.
-backend/apps/symoneuraldiscovery/symoneural-discovery.env
+backend/apps/studio/plugins/discovery/symoneural-discovery.env
 
 # Real env files never travel; the .example files do.
 .env

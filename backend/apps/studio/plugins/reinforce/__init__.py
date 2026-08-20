@@ -2,7 +2,7 @@
 
 Two exports, and they are the whole contract with `backend/api.py`:
 
-    from apps.reinforce import router, status
+    from apps.studio.plugins.reinforce import router, status
     app.include_router(router, prefix="/api/train", tags=["reinforce"])
     ...
     Unit(**status())            # the rack unit; keys match api.py's Unit model
@@ -12,7 +12,7 @@ Two exports, and they are the whole contract with `backend/api.py`:
 This directory holds **both**, and an agent told to "look at Reinforce" will otherwise find
 the wrong one:
 
-* `backend/apps/reinforce/symoneural/` -- the **CUDA engine**. 35 Python files building an
+* `backend/apps/studio/plugins/reinforce/symoneural/` -- the **CUDA engine**. 35 Python files building an
   inference and compute engine out of `cuda.core` primitives and NVRTC-compiled kernels. It
   has its own `pyproject.toml`, its own venv, its own pytest suite and its own FastAPI app on
   port 8000. **Nothing in the training bay imports it**, and its server must never be mounted

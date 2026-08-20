@@ -18,7 +18,7 @@ import pathlib
 
 import pytest
 
-from apps import rackpower as rp
+from apps import controlboard as rp
 
 API = pathlib.Path(__file__).resolve().parent.parent.parent / "api.py"
 ENV_KEYS = ("SYMONEURAL_RACK_ENABLED", "SYMONEURAL_RACK_TOKEN", "SYMONEURAL_RACK_ALLOW_REMOTE",

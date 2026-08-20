@@ -351,8 +351,8 @@ now is zero:
 - **No cookies, no server-side session.** Authentication, where it exists, is the
   `X-Symoneural-Token` header — a header any client can set, including one that is not a browser.
 - **State is addressed by an explicit id in the path**, the way
-  `backend/apps/tuner/routes.py` does with `/session/{sid}`.
-- **Credentials never appear in a path.** `backend/apps/tuner/test_tuner.py` has
+  `backend/apps/streamer/routes.py` does with `/session/{sid}`.
+- **Credentials never appear in a path.** `backend/apps/streamer/test_tuner.py` has
   `test_router_paths_never_carry_a_credential`, which walks `router.routes` and asserts it.
   Copy that test rather than the intention.
 - **A stable JSON contract**, versioned in the response, not implied by the page that calls it.

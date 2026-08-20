@@ -1,6 +1,6 @@
 // The training bay's panel, in a real browser.
 //
-//   node backend/apps/reinforce/test_page.mjs
+//   node backend/apps/studio/plugins/reinforce/test_page.mjs
 //
 // `test_reinforce.py` asserts on the arithmetic and the protocol. This asserts on what the DOM
 // actually SHOWS, which is a different question and the one this repo keeps getting wrong: three

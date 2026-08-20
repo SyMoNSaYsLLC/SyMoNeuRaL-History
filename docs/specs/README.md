@@ -43,7 +43,7 @@ report is not evidence:
   padding:22px`). This line said "live bug" for a day after it stopped being one, which is the
   drift this directory's own preamble warns about.
 - **The CUDA engine is not where the brief said it was.** There is no `symoneural_reinforce/`;
-  it is `backend/apps/reinforce/`, moved in `9b5da84`, and it is 35 Python files with no
+  it is `backend/apps/studio/plugins/reinforce/`, moved in `9b5da84`, and it is 35 Python files with no
   `.cu` and no CMake — it compiles through NVRTC at runtime. HANDOVER §10's layout block
   still showed the old path and has been corrected.
 - **`context.py:149`** is the only `_attr` call in that file without an explicit default,

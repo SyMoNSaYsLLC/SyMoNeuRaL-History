@@ -185,7 +185,7 @@ wall-clock training figure may be quoted from this log.**
 ## 2. What to take from SyMoNeuRaL Reinforce
 
 Correcting the record first, because a previous brief got it wrong and sent an agent hunting
-a build system that never existed: the engine is `backend/apps/reinforce/`, **35 Python
+a build system that never existed: the engine is `backend/apps/studio/plugins/reinforce/`, **35 Python
 files** (the `symoneural/` package itself is 4,090 lines; the rest is `bench/`, `tests/` and
 `scripts/`), moved there in `9b5da84`. There is **no `symoneural_reinforce/`
 directory, no `.cu` file and no `CMakeLists.txt`** — kernels are C++ source strings in
@@ -204,7 +204,7 @@ asking for. It declares tiers with a VRAM cost each (`TIER_VRAM`, `:49-54`), and
 Its docstring also supplies the budget figure this whole spec hangs on:
 
 > *"This box has 15.9 GiB of VRAM, of which **~14.2 GiB is free in practice**."*
-> — `backend/apps/reinforce/symoneural/agents/registry.py:6-7`
+> — `backend/apps/studio/plugins/reinforce/symoneural/agents/registry.py:6-7`
 
 Corroborated live: `nvidia-smi` reports 16,303 MiB total, 14,832 MiB free, 1,027 MiB already
 used with nothing of ours running. **Budget against ~14.2 GiB, never the 15.92 GiB
@@ -247,7 +247,7 @@ against it. That test is a deliverable, not a nicety.
 
 - **Its own FastAPI app on port 8000.** `.claude/CLAUDE.md` is explicit that FastAPI does all
   the routing and `api.py` mounts `site/` last. The QLoRA surface must be an `APIRouter`
-  mounted into `backend/api.py`, exactly as `apps/tuner` is at `api.py:1888`. A second origin
+  mounted into `backend/api.py`, exactly as `apps/streamer` is at `api.py:1888`. A second origin
   breaks `console.js`'s WebSocket-with-polling-fallback.
 - **Its licensing/checkpoint-sealing subsystem.** Out of scope, and `docs/specs/symon-ml-review.md`
   §3 already argues client-side DRM has a structural ceiling.
@@ -678,7 +678,7 @@ class of finding.
    too: cannot-here, not broken.
 
 7. **CPU offload is not a rescue.** ZeRO-style optimizer offload crosses PCIe, and this host
-   is capped at **Gen 3 ×8, ~7 GB/s measured** (`backend/apps/reinforce/.../registry.py:21-27`,
+   is capped at **Gen 3 ×8, ~7 GB/s measured** (`backend/apps/studio/plugins/reinforce/.../registry.py:21-27`,
    and the ×8 ceiling is already published on the site). Offloading optimizer state per step
    over a link that slow converts a VRAM problem into a wall-clock one. *(That specific
    throughput figure is among those `cuda-audit.md` §4.3 questions — it alleges the published

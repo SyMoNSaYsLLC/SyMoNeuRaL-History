@@ -14,9 +14,9 @@
 # in a diff or an editor tab says which app it belongs to without its path. Run these four
 # from the repo root:
 #
-#   V=backend/apps/symoneuraldiscovery/symoneural-discovery.venv
+#   V=backend/apps/studio/plugins/discovery/symoneural-discovery.venv
 #   python3 -m venv $V
-#   $V/bin/pip install -r backend/apps/symoneuraldiscovery/symoneural-discovery.requirements.txt
+#   $V/bin/pip install -r backend/apps/studio/plugins/discovery/symoneural-discovery.requirements.txt
 #   $V/bin/playwright install chromium
 #
 # The last one is a separate step and is not optional: pip installs the Playwright *library*,

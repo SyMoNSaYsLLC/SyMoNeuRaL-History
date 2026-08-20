@@ -37,7 +37,7 @@ idiom for the whole environment.
     silent promotion would mean nobody ever fixes the env file.
 
 Stdlib only, and it must stay that way: `backend/api.py` calls this above its own app
-imports, which is the whole point -- `apps/symoneuralstudio/inference.py` reads two variables
+imports, which is the whole point -- `apps/studio/inference.py` reads two variables
 at module scope, so a promotion that ran after the app packages were imported would be too
 late for them.
 """

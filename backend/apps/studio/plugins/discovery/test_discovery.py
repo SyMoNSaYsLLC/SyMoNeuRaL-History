@@ -1,7 +1,7 @@
 """Symon Say Discovery — the tests that keep its four load-bearing decisions honest.
 
 Stdlib only, and collected by the ordinary `python3 -m pytest apps/ -q` run. That is not a
-style preference: `apps/reinforce/tests` and `apps/remix/tests` are both excluded by `--ignore`
+style preference: `apps/studio/plugins/reinforce/tests` and `apps/remix/tests` are both excluded by `--ignore`
 because they import a package the system interpreter does not have, and an import error in a
 pytest root does not fail one test, it aborts *collection* — `Interrupted: 2 errors`, zero
 tests run, which reads exactly like the suite was broken by whatever landed last. This app
@@ -28,13 +28,13 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
-PKG = HERE / "symoneuraldiscovery"
+REPO = HERE.parents[4]
+PKG = HERE
 
-sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE.parents[3]))
 
-from apps import symoneuraldiscovery as app  # noqa: E402
-from apps.symoneuraldiscovery import discovery, envfile  # noqa: E402
+from apps.studio.plugins import discovery as app  # noqa: E402
+from apps.studio.plugins.discovery import discovery, envfile  # noqa: E402
 
 
 def _git(*args: str) -> str:
@@ -82,8 +82,8 @@ class ImportShapeTests(unittest.TestCase):
             "import sys\n"
             "for name in ('playwright', 'anthropic', 'requests', 'bs4', 'lxml'):\n"
             "    sys.modules[name] = None\n"
-            f"sys.path.insert(0, {str(HERE.parent)!r})\n"
-            "from apps import symoneuraldiscovery as d\n"
+            f"sys.path.insert(0, {str(HERE.parents[3])!r})\n"
+            "from apps.studio.plugins import discovery as d\n"
             "print(d.status()['state'])\n"
         )
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
@@ -109,8 +109,8 @@ class CredentialContainmentTests(unittest.TestCase):
         `symoneural-discovery.venv` and does not. Asking git is the only check that cannot be
         fooled by a plausible-looking line.
         """
-        for rel in ("backend/apps/symoneuraldiscovery/symoneural-discovery.env",
-                    "backend/apps/symoneuraldiscovery/symoneural-discovery.venv/bin/pip"):
+        for rel in ("backend/apps/studio/plugins/discovery/symoneural-discovery.env",
+                    "backend/apps/studio/plugins/discovery/symoneural-discovery.venv/bin/pip"):
             with self.subTest(rel=rel):
                 proc = subprocess.run(("git", "-C", str(REPO), "check-ignore", "-q", rel),
                                       capture_output=True)
@@ -121,7 +121,7 @@ class CredentialContainmentTests(unittest.TestCase):
         the index, so a file added before the rule existed stays tracked and stays ignored-
         looking. Only `git ls-files` settles it."""
         tracked = set(_git("ls-files").split())
-        self.assertNotIn("backend/apps/symoneuraldiscovery/symoneural-discovery.env", tracked)
+        self.assertNotIn("backend/apps/studio/plugins/discovery/symoneural-discovery.env", tracked)
 
     def test_every_tracked_example_has_empty_credential_values(self):
         """Repo-wide, not just this app's template.
@@ -263,7 +263,14 @@ class RackRowTests(unittest.TestCase):
         no `include_router` for this app, and this test is what makes the pair move together."""
         self.assertFalse(hasattr(app, "router"))
         api = (REPO / "backend" / "api.py").read_text()
-        self.assertNotIn("symoneuraldiscovery", api)
+        # Match the import path this app has NOW. The old assertion read
+        # `assertNotIn("symoneuraldiscovery", api)`, and after the move to
+        # `studio/plugins/discovery` that string could never appear in `api.py` again --
+        # so the test would have passed even with the router wired, which is the one
+        # thing it exists to catch. A rename can turn a real check into a tautology.
+        for wiring in ("plugins.discovery", "plugins import discovery"):
+            self.assertNotIn(wiring, api, f"api.py wires {wiring} but /discovery.html "
+                                          "is not built -- a rack row pointing at a 404")
 
 
 class BackendSelectionTests(unittest.TestCase):

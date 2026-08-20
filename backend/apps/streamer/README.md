@@ -9,7 +9,7 @@ Standard library plus `fastapi` and `pydantic`, which the system interpreter alr
 Nothing was installed, no venv was created. `ffmpeg` 7.1.5 is the transcoder.
 
 ```
-backend/apps/tuner/
+backend/apps/streamer/
   __init__.py     exports `router` and `status` — the whole contract with api.py
   safefetch.py    the SSRF door: validate, pin, connect, redirect, redact
   m3u.py          M3U/EXTINF channel parser + a separate HLS playlist parser
@@ -30,7 +30,7 @@ backend/apps/tuner/
 
 ```python
 # backend/api.py — the whole of it
-from apps.tuner import router as tuner_router, status as tuner_status
+from apps.streamer import router as tuner_router, status as tuner_status
 
 app.include_router(tuner_router, prefix="/api/tuner")
 ```
@@ -44,7 +44,7 @@ Unit(**tuner_status()),
 Points that matter:
 
 - **`backend/` must be on `sys.path`.** It already is when `api.py` runs, and `apps` is an
-  implicit namespace package, so `import apps.tuner` works with no `__init__.py` in `apps/`.
+  implicit namespace package, so `import apps.streamer` works with no `__init__.py` in `apps/`.
   This module is *not* added to `sys.path` the way `ravencalc` is — it is a package, imported
   as one.
 - **The prefix is assumed to be `/api/tuner` but not hardcoded.** The router declares relative
@@ -57,7 +57,7 @@ Points that matter:
   `Unit(**tuner_status())` works. It deliberately does not import `Unit` — that would put this
   module inside `api.py`'s import graph, which is outside the scope this was built in. If you
   prefer the import, the change is yours to make.
-- **Shutdown hook:** call `apps.tuner.sessions.MANAGER.shutdown()` from the API's lifespan
+- **Shutdown hook:** call `apps.streamer.sessions.MANAGER.shutdown()` from the API's lifespan
   teardown. Without it, a reload leaves ffmpeg processes running until their lifetime cap.
   Not fatal, but untidy on a box with a contended GPU. Note this takes no governor lock and
   must never take one — see below.
@@ -80,7 +80,7 @@ which is a rack disagreeing with itself about how many things this box runs. `st
 returns one unit, labelled *SyMoNeuRaL Tuner & Guide*, and `api.py` no longer builds a `guide`
 unit.
 
-**Nothing was deleted to achieve it.** `backend/apps/guide/` is untouched and `/api/guide/*`
+**Nothing was deleted to achieve it.** `backend/apps/streamer/guide/` is untouched and `/api/guide/*`
 still serves the page's filter — the fold is in what the rack claims, not in what runs. The
 guide half's own claim is carried in the tuner unit's detail line in every state, because it is
 the thing a visitor cannot check by looking: *guide filtering on the CPU, never takes the GPU
@@ -215,7 +215,7 @@ everything" grid is a page hammering a third party. Measured against a real acco
 10,072 live channels, **5,304 (52%) carry a `tvg_id`** — the rest genuinely have no guide, and
 the page says so per row rather than drawing an empty box.
 
-`backend/apps/tuner/test_epg.py` covers all of the above against a scripted panel: 34 tests,
+`backend/apps/streamer/test_epg.py` covers all of the above against a scripted panel: 34 tests,
 no network.
 
 ---

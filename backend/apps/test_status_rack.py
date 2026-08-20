@@ -37,6 +37,16 @@ EXPECTED = ["chat", "image", "remix", "ravencalc", "train", "miner", "tuner", "c
             "gateway", "project", "sigils", "studio", "exp"]
 
 
+#: Packages whose name is NOT the row id they build. Inferring the row from the module name is
+#: right for twelve of the thirteen, and this map is the exception rather than a licence to
+#: guess: `apps/tuner` and `apps/guide` were merged into `apps/streamer` (Garrett: "you need to
+#: migrate tuner and guide to be 1"), and the merged package still publishes `id="tuner"` --
+#: deliberately, because that id reaches `site/console.js`, `site/tuner.html` and the frontend
+#: suite, and renaming a rack row to tidy a module name would be a visitor-facing change made
+#: for an internal reason. Read the id from `apps/streamer/routes.py::status()`, not from here.
+ROW_OF_MODULE = {"streamer": "tuner"}
+
+
 def _build_status() -> ast.FunctionDef:
     for node in ast.walk(TREE):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
@@ -78,7 +88,7 @@ def _row_id(call: ast.Call) -> str:
             while isinstance(func, ast.Attribute):
                 func = func.value          # `sigils.status` -> `sigils`
             if isinstance(func, ast.Name):
-                return func.id
+                return ROW_OF_MODULE.get(func.id, func.id)
     raise AssertionError(f"cannot tell which row line {call.lineno} builds")
 
 

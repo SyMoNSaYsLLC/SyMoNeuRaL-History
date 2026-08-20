@@ -21,7 +21,7 @@ Drop that in `plugins/`, then add three lines to a manifest:
 ```yaml
 plugins:
   - id: bus
-    use: apps.symoneuralexp.plugins.bus
+    use: apps.studio.plugins.exp.plugins.bus
     config: {history: 200}
 ```
 
@@ -135,7 +135,7 @@ are for:
 - id: session-a
   isolate: [llm, memory]      # this group gets its own llm and memory
   plugins:
-    - {id: a.llm, use: apps.symoneuralexp.plugins.echo_llm, config: {prefix: "a> "}}
+    - {id: a.llm, use: apps.studio.plugins.exp.plugins.echo_llm, config: {prefix: "a> "}}
 ```
 
 Names not listed in `isolate` still resolve in the root realm, so `presets/sessions.yaml` forks
@@ -163,7 +163,7 @@ its children get:
   intercept:
     llm: {temperature: 0.0}
   plugins:
-    - {id: b.llm, use: apps.symoneuralexp.plugins.echo_llm}
+    - {id: b.llm, use: apps.studio.plugins.exp.plugins.echo_llm}
 ```
 
 `intercept` supplies default keyword arguments to every call on that service for plugins under the

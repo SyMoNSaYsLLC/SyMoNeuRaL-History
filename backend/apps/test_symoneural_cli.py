@@ -49,7 +49,7 @@ all idempotent and safe to repeat, so every mutating class loads a FRESH module 
 `setUp` and rebinds the module's *names* (`cli.smi = ...`,
 `cli.subprocess = SimpleNamespace(...)`), never the shared modules behind them: the
 first version of `test_cli_upgrade.py` stubbed `subprocess.run` itself and 27 tests in
-apps/voice and apps/tuner failed, handed a stub they never asked for. Two exceptions are
+apps/voice and apps/streamer failed, handed a stub they never asked for. Two exceptions are
 taken deliberately and restored via `addCleanup`: `urllib.request.urlopen` (`api_open`
 imports it function-locally, so a module-name rebinding cannot intercept it) and
 `sys.modules["ravencalc"]` (what `import ravencalc` reads; injecting a fake there is
@@ -381,7 +381,10 @@ class StatusNoDeviceTests(unittest.TestCase):
         self.assertEqual(out.count("weights missing"), 2, out)
         self.assertIn("always available", line_with("ravencalc", out))
         self.assertNotIn("last deploy", out)
-        self.assertNotIn("never", out.lower())
+        # "never deployed", not the bare word. `ravencalc` legitimately prints "never
+        # queues" -- that is the CPU-only fact the surface exists to make visible -- and a
+        # substring rule that forbids the word forbids the truth along with the invention.
+        self.assertNotIn("never deployed", out.lower())
 
     def test_status_shows_the_lock_holder_and_resident_surface(self):
         """The lock directory and the resident marker are the two facts an operator needs
@@ -448,7 +451,15 @@ class ResidencyArithmeticTests(unittest.TestCase):
 
     def test_no_driver_reads_zero_not_a_crash(self):
         """`float('' or 0)` is the deliberate degrade: a silent driver plans with zeros
-        and exits 0, because the command must work on the day the driver is the problem."""
+        and exits 0, because the command must work on the day the driver is the problem.
+
+        The silence is STUBBED. Without the stub this read the real `nvidia-smi` and so
+        asserted "0.0 GiB" against a live card -- green on a box with no driver, red here
+        with 4.3 GiB of real headroom, and in neither case testing the degrade path it
+        names. A test whose verdict depends on the hardware it is meant to be simulating
+        the absence of is not testing anything.
+        """
+        self.stub_smi()          # every field "" -- exactly what a silent driver returns
         rc, out, _ = call(self.cli.cmd_residency, None)
         self.assertEqual(rc, 0)
         self.assertIn("0.0 GiB", line_with("headroom", out))
@@ -1497,7 +1508,11 @@ class StructuralRuleTests(unittest.TestCase):
         self.assertIn("verdict = last_deploy()", src)
         self.assertRegex(src, r"if verdict:",
                          "the verdict row lost its written-file guard")
-        self.assertNotIn("never deployed", SRC.lower())
+        # Comments stripped first. `bin/symoneural-cli:161` explains the rule by quoting
+        # the very phrase the rule bans, so a raw-source match indicts the explanation.
+        # The rule is about wording that can be PRINTED, which a comment cannot be.
+        code = "\n".join(l.split("#", 1)[0] for l in SRC.lower().splitlines())
+        self.assertNotIn("never deployed", code)
 
     def test_upgrade_check_returns_before_the_root_check(self):
         """--check promises 'without root and without deploying'. If the euid test ever

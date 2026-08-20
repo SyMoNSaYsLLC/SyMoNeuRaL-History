@@ -1,4 +1,4 @@
-"""Tests for on-chain settlement. Run: cd backend && python3 -m pytest apps/settlement -q
+"""Tests for on-chain settlement. Run: cd backend && python3 -m pytest apps/gateway -q
 
 The important ones here are not the happy paths. `docs/specs/symon-ml-review.md` finding 1 is
 a licence check that returned True when the chain was unreachable, and its second half is a
@@ -22,8 +22,8 @@ if str(_APPS) not in sys.path:
     sys.path.insert(0, str(_APPS))
 
 from gateway import abi, chain                                      # noqa: E402
-from settlement import entitlement, store, verify                   # noqa: E402
-from settlement.verify import Granted, Refused, verify_payment      # noqa: E402
+from gateway import entitlement, store, verify                   # noqa: E402
+from gateway.verify import Granted, Refused, verify_payment      # noqa: E402
 
 # The canonical chain key -- what readings, `verify` and the clearance store are keyed by.
 NET = "nile"
@@ -467,7 +467,7 @@ class TestRecorder:
         return store.ClearanceStore(tmp_path / "clearances.jsonl")
 
     def test_a_verified_settlement_is_recorded_once(self, tmp_path):
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
         s = self._store(tmp_path)
         r = record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()),
                               **ok_args())
@@ -478,7 +478,7 @@ class TestRecorder:
         assert (c.network, c.contract) == (NET, CONTRACT)
 
     def test_an_unreachable_chain_records_nothing(self, tmp_path):
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
         s = self._store(tmp_path)
         r = record_settlement(NET, CONTRACT, 7, store=s, fetch=exploding(), **ok_args())
         assert not r
@@ -486,7 +486,7 @@ class TestRecorder:
 
     def test_a_refused_settlement_records_nothing(self, tmp_path):
         """One case per field, because a single 'it refuses' test hides three live bugs."""
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
         for label, over in (("payer", dict(expect_payer=OTHER)),
                             ("token", dict(expect_token=OTHER)),
                             ("workspace", dict(expect_workspace=OTHER_WS)),
@@ -498,7 +498,7 @@ class TestRecorder:
             assert s.count() == 0, f"wrong {label} was recorded anyway"
 
     def test_recording_the_same_nonce_twice_appends_once(self, tmp_path):
-        from settlement.record import record_settlement, AlreadyRecorded
+        from gateway.record import record_settlement, AlreadyRecorded
         s = self._store(tmp_path)
         first = record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()),
                                   **ok_args())
@@ -509,7 +509,7 @@ class TestRecorder:
         assert s.count() == 1
 
     def test_the_same_nonce_on_another_contract_is_a_different_licence(self, tmp_path):
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
         s = self._store(tmp_path)
         record_settlement(NET, CONTRACT, 7, store=s, fetch=node(encode_licence()), **ok_args())
         r = record_settlement("shasta", CONTRACT, 7, store=s, fetch=node(encode_licence()),
@@ -524,7 +524,7 @@ class TestRecorder:
         licence covers a different workspace. This is the one place the two CLIs could
         disagree while both looking right.
         """
-        from settlement.record import workspace_key
+        from gateway.record import workspace_key
         human = "debian-13 · cuda-12.8 · sm_120"
         word = workspace_key(human)
         assert word.startswith("0x") and len(word) == 66
@@ -538,7 +538,7 @@ class TestRecorder:
         assert "keccak256(workspace.encode())" in cli
 
     def test_recording_by_readable_workspace_matches_the_quoted_licence(self, tmp_path):
-        from settlement.record import record_settlement, workspace_key
+        from gateway.record import record_settlement, workspace_key
         human = "debian-13 · cuda-12.8 · sm_120"
         onchain = workspace_key(human)
         s = self._store(tmp_path)
@@ -554,7 +554,7 @@ class TestRecorder:
         Exit codes matter here because the command is meant to be usable from a shell script:
         0 for a fresh recording and for a repeat, non-zero for any refusal.
         """
-        from settlement import record as rec_mod
+        from gateway import record as rec_mod
         monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
         monkeypatch.setattr(rec_mod, "verify_payment",
                             lambda *a, **k: verify.verify_payment(*a, **{**k, "fetch": node(
@@ -623,7 +623,7 @@ class TestRecordingIsWhatLightsTheLed:
     def test_unit_state_goes_from_offline_to_ready_when_a_settlement_is_recorded(
             self, tmp_path, monkeypatch):
         import gateway
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
 
         monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
         monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)
@@ -672,7 +672,7 @@ class TestRecordingIsWhatLightsTheLed:
     def test_a_corrupt_line_is_disclosed_rather_than_silently_skipped(
             self, tmp_path, monkeypatch):
         import gateway
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
         monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
         monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)
         monkeypatch.setenv("SYMONEURAL_GATEWAY_CONTRACT", CONTRACT)
@@ -690,7 +690,7 @@ class TestRecordingIsWhatLightsTheLed:
     def test_a_settlement_on_a_different_contract_does_not_light_it(
             self, tmp_path, monkeypatch):
         import gateway
-        from settlement.record import record_settlement
+        from gateway.record import record_settlement
 
         monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
         monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)

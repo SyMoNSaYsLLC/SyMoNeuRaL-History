@@ -48,7 +48,7 @@ class Recorder:
         self.unsubscribe()
 
 
-#: What the loader mounts for `use: apps.symoneuralexp.plugins.recorder`. The class *is* the
+#: What the loader mounts for `use: apps.studio.plugins.exp.plugins.recorder`. The class *is* the
 #: plugin; `registry.resolve` sees a class behind `apply` and takes the class path, so `stop()`
 #: below is registered as an effect without this file asking for it.
 apply = Recorder

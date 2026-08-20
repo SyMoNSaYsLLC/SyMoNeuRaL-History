@@ -119,12 +119,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 # any future module here named `torch.py`, `peft.py` or `accelerate.py` would do the same
 # thing, and the failure surfaces only after the card has been acquired.
 sys.path[:] = [p for p in sys.path if pathlib.Path(p or ".").resolve() != HERE]
-# backend/apps/reinforce -> backend/apps -> backend -> repo root. This calculation has been
 # wrong three times in this repo and it fails silently, because the wrong parent is usually a
 # directory that exists -- `training/train_lora.py` has it wrong right now, producing an
 # HF_HOME of /home/google/models/hf, which does not exist. Assert, the way
 # tools/build_training.py does, so a misresolution is immediate and obvious.
-ROOT = HERE.parent.parent.parent
+# `backend/api.py` is the marker, and it is WALKED for rather than counted to. The counted
+# form (`HERE.parent.parent.parent`) has now been wrong a FOURTH time: moving this app to
+# `backend/apps/studio/plugins/reinforce` added two levels and the count resolved to
+# `backend/apps`, which exists, so the only thing that caught it was the assert below.
+# A walk survives the next move; a count has to be found and fixed by hand every time.
+ROOT = next((_p for _p in (HERE, *HERE.parents) if (_p / "backend" / "api.py").is_file()), HERE)
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root misresolved to {ROOT}"
 
 HF_HOME = ROOT / "backend" / "models" / "hf"

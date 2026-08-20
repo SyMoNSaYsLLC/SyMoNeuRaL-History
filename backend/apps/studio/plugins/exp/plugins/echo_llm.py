@@ -2,7 +2,7 @@
 
 It does not call a model. It echoes, deterministically, so a test can assert on the result and
 a preset can be exercised on a box with no GPU lease available. The real inference path in this
-repo is `apps/symoneuralstudio/inference.py`, behind the governor; a plugin wanting that should
+repo is `apps/studio/inference.py`, behind the governor; a plugin wanting that should
 provide a service wrapping it rather than duplicating it.
 
 What this file demonstrates is the call surface. `complete()` takes `temperature` and `model`

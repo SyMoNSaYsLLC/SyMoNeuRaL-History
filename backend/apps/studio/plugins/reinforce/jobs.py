@@ -796,7 +796,7 @@ def stop() -> dict:
 def status() -> dict:
     """The rack unit, as a plain dict whose keys match `backend/api.py`'s `Unit` model.
 
-    Built as a dict rather than from `Unit` itself, for the reason `apps/tuner` gives: importing
+    Built as a dict rather than from `Unit` itself, for the reason `apps/streamer` gives: importing
     `api.py` would put this module inside its import graph. The wiring engineer splats it:
     `Unit(**reinforce.status())`.
 

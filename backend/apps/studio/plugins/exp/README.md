@@ -8,7 +8,7 @@ is a manifest entry rather than the process.
 Live at **`/exp`**. Reads are open; writes need two environment variables.
 
 ```
-backend/apps/symoneuralexp/
+backend/apps/studio/plugins/exp/
   context.py    the container: services, events, provide/inject/isolate/intercept
   fiber.py      one mounted plugin instance -- states, effects, reverse teardown, rebind
   registry.py   what counts as a plugin, and config validation
@@ -29,10 +29,10 @@ backend/apps/symoneuralexp/
 
 ```bash
 cd backend
-python3 -m apps.symoneuralexp.cli                    # the dev preset
-python3 -m apps.symoneuralexp.cli --preset sessions   # two isolated sessions, one shared bus
-python3 -m apps.symoneuralexp.cli failures --strict   # every failure mode; exits 1
-python3 -m apps.symoneuralexp.cli --json --trace 20   # the same structure /api/exp/state returns
+python3 -m apps.studio.plugins.exp.cli                    # the dev preset
+python3 -m apps.studio.plugins.exp.cli --preset sessions   # two isolated sessions, one shared bus
+python3 -m apps.studio.plugins.exp.cli failures --strict   # every failure mode; exits 1
+python3 -m apps.studio.plugins.exp.cli --json --trace 20   # the same structure /api/exp/state returns
 ```
 
 `--preset sessions` is the fastest way to see what `isolate()` does: two services named `llm`,
@@ -115,7 +115,7 @@ them sends you looking for the wrong thing.
 ## Tests
 
 ```bash
-cd backend && python3 -m pytest apps/symoneuralexp/test_exp.py -q
+cd backend && python3 -m pytest apps/studio/plugins/exp/test_exp.py -q
 ```
 
 Standard library and `unittest` only, so it is collected by the suite rather than needing an

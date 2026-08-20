@@ -17,7 +17,7 @@ iPhone app against this server:
   "error": "..."}` on every failure, with a machine code a shipped binary can branch on.
   This is why every pydantic field below has a default: a *missing required* field makes
   pydantic raise, and FastAPI serialises that into a 422 shaped nothing like the envelope —
-  and, as `apps/tuner` found, one that echoes the whole request body back. With defaults
+  and, as `apps/streamer` found, one that echoes the whole request body back. With defaults
   there is no validation path that can fire, and the handlers check by hand.
 
 Every store call goes through `asyncio.to_thread`. SQLite is fast but it is blocking, and

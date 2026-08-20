@@ -22,7 +22,7 @@ CLI is shaped to make it visible.
 
 A fourth surface joined them and is not on that table because it does not own the
 card: `agent`, `tools`, `tool`, `state` and `mcp` are a client for
-`backend/apps/symoneuralstudio` -- 26 registered tools in four groups, native tool
+`backend/apps/studio` -- 26 registered tools in four groups, native tool
 calling, and an MCP transport. `agent` streams one turn's frames as they arrive and
 takes the GPU only for as long as a tool it calls does. Its options are exactly the
 five parameters `POST /api/studio/agent` reads -- `query`, `history` (`-c`, from a
@@ -460,7 +460,7 @@ def cmd_ravencalc(args) -> int:
 # ---------------------------------------------------------------------------
 # The studio surface: connectors, tools, and the agent loop.
 #
-# `backend/apps/symoneuralstudio` is the capable half of this stack -- 26 registered tools in
+# `backend/apps/studio` is the capable half of this stack -- 26 registered tools in
 # four groups, native tool calling, an SSE agent loop and an MCP transport -- and until now
 # none of it was reachable without a browser or a hand-written curl. The four subcommands
 # below are that surface in a terminal.
@@ -559,7 +559,7 @@ def local_registry():
     and `tools --remote` is there for when the live reading is the point.
     """
     sys.path.insert(0, str(ROOT / "backend"))
-    from apps.symoneuralstudio import registry, tools_impl  # noqa: F401  (registers the tools)
+    from apps.studio import registry, tools_impl  # noqa: F401  (registers the tools)
     return registry
 
 

@@ -8,11 +8,11 @@ container, which is the whole argument for a container.
     - id: session-a
       isolate: [memory]
       plugins:
-        - {id: a.memory, use: apps.symoneuralexp.plugins.memory}
+        - {id: a.memory, use: apps.studio.plugins.exp.plugins.memory}
     - id: session-b
       isolate: [memory]
       plugins:
-        - {id: b.memory, use: apps.symoneuralexp.plugins.memory}
+        - {id: b.memory, use: apps.studio.plugins.exp.plugins.memory}
 """
 from __future__ import annotations
 

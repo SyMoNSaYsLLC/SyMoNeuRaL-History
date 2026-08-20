@@ -86,7 +86,7 @@ below stands on.
 ```bash
 cd backend && python3 -m apps.gateway          # reads three real TRON networks
 cd ops/gateway && node test_contracts.mjs      # executes the contracts in a local EVM
-cd backend && python3 -m pytest apps/gateway apps/settlement -q   # 120 offline tests
+cd backend && python3 -m pytest apps/gateway apps/gateway -q   # 120 offline tests
 ```
 
 Measured 2026-08-17 from this box:
@@ -303,16 +303,16 @@ click it.* For the Gateway that means a visitor can obtain a licence. Phase C do
 that, and lighting the LED on a deployed contract would be the decorative indicator
 `.claude/CLAUDE.md` forbids.
 
-**Three of the five are now built.** `backend/apps/settlement/` verifies a settlement — payer,
+**Three of the five are now built.** `backend/apps/gateway/` verifies a settlement — payer,
 token, amount and workspace, fail-closed — records it, and issues a short-lived Ed25519
-entitlement for it. `python3 -m apps.settlement` walks the whole round trip and prints each
+entitlement for it. `python3 -m apps.gateway` walks the whole round trip and prints each
 step.
 
 | | | |
 |---|---|---|
-| 1 | **The off-chain verifier** | **done** — `apps/settlement/`, each fail-closed case verified to go red with the bug put back |
+| 1 | **The off-chain verifier** | **done** — `apps/gateway/`, each fail-closed case verified to go red with the bug put back |
 | 2 | **The unlock decision** | **answered** — payment rail, not DRM; see below |
-| 3 | **The writer that records a settlement** | **done** — `apps/settlement/record.py`. This was missing and nobody had noticed, because both halves it joins were tested and passing |
+| 3 | **The writer that records a settlement** | **done** — `apps/gateway/record.py`. This was missing and nobody had noticed, because both halves it joins were tested and passing |
 | 4 | **A payment path a real person can complete** | not built. Quoting is a CLI invocation today (`gateway-cli.py quote`); a buyer needs a page |
 | 5 | **One complete round trip against a real chain** | not done, and cannot be until Phase B deploys something |
 
@@ -338,7 +338,7 @@ written down and acted on rather than left open, which is what was blocking item
 
 ### The signing key is still yours
 
-`apps/settlement/entitlement.py` needs an Ed25519 authority key to mint with. Generating it is
+`apps/gateway/entitlement.py` needs an Ed25519 authority key to mint with. Generating it is
 the same class of decision as the TRON key in Phase A — a company artefact with an owner — and
 `.claude/HANDOVER.md` §5 item 0 sets the precedent. **The serving process only ever needs the
 public half**, and the code is built so it cannot use anything else: `entitlement.verify` takes
@@ -357,7 +357,7 @@ further code". That was false, and it was the most misleading sentence in this d
 Nothing wrote a clearance. The verifier could prove a settlement and the rack could read one,
 but no code path joined them, so a real customer could have paid on a real chain and the lamp
 would have stayed dark for ever — with every test passing, because each half worked. That gap
-is now closed by `apps/settlement/record.py`, and the honest version is below.
+is now closed by `apps/gateway/record.py`, and the honest version is below.
 
 ### Recording a settlement — the step that actually lights it
 
@@ -365,7 +365,7 @@ After a customer redeems a quote, verify and record it. This reads the chain; it
 told to trust you:
 
 ```bash
-cd backend && python3 -m apps.settlement.record \
+cd backend && python3 -m apps.gateway.record \
     --network nile --contract <licence address> --nonce <the quote's nonce> \
     --payer <customer address> --token <token address> \
     --workspace "debian-13 · cuda-12.8 · sm_120" --min-amount 250000000

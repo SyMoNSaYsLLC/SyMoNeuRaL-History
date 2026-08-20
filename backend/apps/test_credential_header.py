@@ -42,8 +42,8 @@ NEW = "X-Symoneural-Token"
 LEGACY = "X-Sym-Token"
 
 sys.path.insert(0, str(BACKEND / "apps"))
-from symoneuralexp import gate as exp_gate                                   # noqa: E402
-from symoneuralstudio import gate as studio_gate                             # noqa: E402
+from apps.studio.plugins.exp import gate as exp_gate                                   # noqa: E402
+from apps.studio import gate as studio_gate                             # noqa: E402
 
 
 def _extract(*names: str) -> dict:
@@ -207,7 +207,7 @@ class TheGates(unittest.TestCase):
 
     def test_only_the_new_cookie_is_ever_minted(self):
         """Read both, set one. Minting the legacy name would give the deprecation no end."""
-        src = (BACKEND / "apps" / "symoneuralstudio" / "routes.py").read_text()
+        src = (BACKEND / "apps" / "studio" / "routes.py").read_text()
         self.assertIn("response.set_cookie(COOKIE,", src)
         self.assertNotIn("set_cookie(COOKIE_LEGACY", src)
 
@@ -327,7 +327,14 @@ class TheTripwire(unittest.TestCase):
                 text = p.read_text(errors="replace")
             except OSError:
                 continue
-            if LEGACY in text and NEW not in text:
+            # Case-insensitively, both sides. HTTP header names are case-insensitive by
+            # RFC 9110, and a file that reads them out of a normalised dict spells them
+            # lowercase -- `test_symoneural_cli.py` asserts on `x-symoneural-token` and
+            # `x-sym-token`, names BOTH, and was still reported as legacy-only. That false
+            # positive was invisible for as long as this module could not be imported at all,
+            # which is its own lesson: a collection error hides every assertion behind it.
+            low = text.lower()
+            if LEGACY.lower() in low and NEW.lower() not in low:
                 offenders.append(str(rel))
         self.assertEqual(offenders, [],
                          "these name the legacy credential header and not the new one; "
@@ -345,7 +352,7 @@ class TheTripwire(unittest.TestCase):
         self.assertGreater(len(seen), 8,
                            f"the walker found only {len(seen)} files naming the legacy "
                            f"header; the fallbacks are in more places than that")
-        self.assertIn("backend/apps/symoneuralstudio/gate.py", seen)
+        self.assertIn("backend/apps/studio/gate.py", seen)
         self.assertIn("backend/api.py", seen)
 
 

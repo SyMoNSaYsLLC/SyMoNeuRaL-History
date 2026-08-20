@@ -2,7 +2,7 @@
 
     plugins:
       - id: bus
-        use: apps.symoneuralexp.plugins.bus
+        use: apps.studio.plugins.exp.plugins.bus
 
 `ctx.provide` returns a disposer and registers it as an effect, so unmounting this plugin
 revokes `bus` and -- because `Fiber._unwind` unwinds dependents first -- every plugin that

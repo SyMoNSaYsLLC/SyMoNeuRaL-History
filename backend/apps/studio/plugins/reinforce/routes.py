@@ -6,7 +6,7 @@ reference to this package at all, so every route here was unreachable and the do
 otherwise. Verified rather than assumed -- with the gate shut every route answers 503, and with
 it open `/presets` answers 200 while `/start` still answers 403 without the token.
 
-Nothing here assumes that prefix, the way `apps/tuner` does not assume its own. Mounting is
+Nothing here assumes that prefix, the way `apps/streamer` does not assume its own. Mounting is
 necessary to reach these routes and **not** sufficient to start a run -- the gate below is what
 decides that, and it is shut by default.
 
@@ -41,7 +41,7 @@ the repo's own line: publish the numbers, keep the methods.
 ## The token arrives in a header, never in a URL
 
 uvicorn's access log records the full request line, so a secret in a query string is a secret
-written to `run/api.log` on every request. `apps/tuner` learned this and has no GET route that
+written to `run/api.log` on every request. `apps/streamer` learned this and has no GET route that
 takes a credential; neither does this one.
 
 ## What this surface does NOT do
@@ -91,7 +91,7 @@ def _require_token(token: str | None) -> None:
 
 
 class StartBody(BaseModel):
-    # `extra="ignore"` and a default for every field, for the reason `apps/tuner` documents: a
+    # `extra="ignore"` and a default for every field, for the reason `apps/streamer` documents: a
     # *missing* required field makes pydantic raise a ValidationError whose `input` is the whole
     # request body, and FastAPI serialises that into the 422 response. On this surface the body
     # carries a dataset path, so an echoed body is a path disclosure. With defaults there is no

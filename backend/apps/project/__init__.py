@@ -26,7 +26,7 @@ property and RavenCalc's reasoning, adopted on purpose.
 
 When it does want a model -- drafting a session summary, turning a rambling note into work
 items -- it asks the chat surface through an injected `str -> str` callable, exactly as
-`apps/guide` and `remix()` in `backend/api.py` do. This package never imports the API,
+`apps/streamer/guide` and `remix()` in `backend/api.py` do. This package never imports the API,
 never touches `scripts/gpu-governor.sh` and never opens a socket.
 
 ## Off by default, and the token is the only gate

@@ -89,7 +89,7 @@ class UpgradeRootPathTests(unittest.TestCase):
         # Rebind the module's *names*, never the modules behind them. The first version of
         # this file did `self.cli.subprocess.run = fake_run`, which reaches through to the one
         # `subprocess` module every test in the process shares: 27 tests in apps/voice and
-        # apps/tuner then failed, because they shell out to ffmpeg and were handed this stub.
+        # apps/streamer then failed, because they shell out to ffmpeg and were handed this stub.
         # A shim object bound to `symoneural_cli.subprocess` is visible to the code under
         # test and to nothing else.
         self.shim_subprocess(fake_run)

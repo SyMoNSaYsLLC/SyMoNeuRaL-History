@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Tests for SyMoNeuRaL Guide. System interpreter, stdlib only, no network, no GPU, no card.
 
-    python3 backend/apps/guide/test_guide.py
+    python3 backend/apps/streamer/guide/test_guide.py
 
 Every fixture in this file is synthetic and was written here. No playlist from `references/`
 is read, quoted or shipped -- those files carry real provider credentials in their URLs, which
-is the same rule `backend/apps/tuner/m3u.py` states for itself. The fixtures carry no `url`
+is the same rule `backend/apps/streamer/m3u.py` states for itself. The fixtures carry no `url`
 field at all, and one test asserts that nothing this module returns ever contains one.
 
 The tests that matter most are the ones about the model, and they exist because of a measured
@@ -21,8 +21,8 @@ import pathlib
 import sys
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import guide  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from apps.streamer import guide  # noqa: E402
 
 
 # A small synthetic playlist. Three spellings of one sports group on purpose, a numbered pair

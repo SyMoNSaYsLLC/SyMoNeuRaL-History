@@ -21,7 +21,7 @@ more. What changed, against §7's own numbering:
 | 6 | frontend assertion | **done** — two, in `tests/frontend.mjs`; both verified to go red when broken |
 | 8 (a) | draft the Solidity | **done** — `ops/gateway/contracts/`, compiled AND executed, 17/17 |
 | 7, 8 (b), 8b, 9 | keypair, deployment, page redeploy, service env | **not done — yours.** `ops/gateway/DEPLOY.md` is the procedure |
-| 10, 11 | the off-chain verifier, and gating that actually gates | **done** — `backend/apps/settlement/`, 47 tests. Every fail-closed case was verified to go red with the bug put back |
+| 10, 11 | the off-chain verifier, and gating that actually gates | **done** — `backend/apps/gateway/`, 47 tests. Every fail-closed case was verified to go red with the bug put back |
 | 12 | key exchange, or an explicit decision not to do DRM | **decided** — payment rail, not DRM, per the review's own recommendation. Written into `settlement/__init__.py`, `ops/gateway/DEPLOY.md` and the page |
 | 13 | `ready` | **reachable, and correctly not reached.** `unit_state` can now return it, through exactly one route: a settlement recorded against the configured network *and* contract. None has ever settled, so the rack reads `offline` |
 | — | a payment path a real person can complete | **not built.** Quoting is a CLI invocation; a buyer needs a page. This is now the only engineering left before `ready` |

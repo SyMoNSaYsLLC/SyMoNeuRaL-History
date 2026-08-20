@@ -218,7 +218,7 @@ fi
 #                 it unset. gate.py:26-27 gates mutation only, so an arm would change no
 #                 reading on the rack and its whole visible effect would be zero.
 #   reinforce  -- the surface imports and serves without torch (the import is inside a
-#                 function, apps/reinforce/runner.py:299), and torch is not installed on this
+#                 function, apps/studio/plugins/reinforce/runner.py:299), and torch is not installed on this
 #                 box. An arm would green a training surface whose every run fails. Installing
 #                 torch is the prerequisite, and it is not this script's business.
 #   mining     -- it already has a sanctioned path, and this would break it. load_env()
@@ -235,7 +235,7 @@ fi
 #                 fresh secret, does not fit it. It is switched by hand, deliberately, in the
 #                 order recorded in the package README: deploy the site, set the variable,
 #                 then restart.
-#   discovery  -- there is nothing yet for the switch to switch. apps/symoneuraldiscovery has
+#   discovery  -- there is nothing yet for the switch to switch. apps/studio/plugins/discovery has
 #                 no router, no page and no rack row, and its __init__.py docstring says why
 #                 in the terms api.py:2317-2319 set for voice: a row pointing at a 404 is
 #                 worse than no row. So enabled() gates no endpoint and an arm here would
@@ -314,5 +314,5 @@ printf '\nDone. Tokens are in %s (root, 0600). Read one with:\n' "$ENV_FILE"
 printf '    sudo sed -n "s/^SYMONEURAL_PROJECT_TOKEN=//p" %s\n' "$ENV_FILE"
 printf '\nBoth Coder and Rack remain loopback-only: SYMONEURAL_*_ALLOW_REMOTE is deliberately unset.\n'
 printf 'Studio is not loopback-gated in the same way -- it has no ALLOW_REMOTE switch, so its\n'
-printf 'token is the whole gate. backend/apps/symoneuralstudio/__init__.py:42 is explicit that\n'
+printf 'token is the whole gate. backend/apps/studio/__init__.py:42 is explicit that\n'
 printf 'the surface can write to the host. Treat SYMONEURAL_STUDIO_TOKEN accordingly.\n'

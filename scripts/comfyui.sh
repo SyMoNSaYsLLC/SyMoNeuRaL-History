@@ -7,7 +7,7 @@
 #   comfyui.sh log       recent server output
 #
 # Loopback only, deliberately. The public surface is FastAPI's -- the Studio page reaches
-# this server through `/studio/comfy/*`, which is proxied by `backend/apps/symoneuralstudio`.
+# this server through `/studio/comfy/*`, which is proxied by `backend/apps/studio`.
 # Binding 0.0.0.0 here would put an unauthenticated node editor with filesystem access on a
 # box with a public IP.
 #
@@ -54,7 +54,7 @@ case "${1:-status}" in
     # it carries its own .git), so the source of truth for `symoneural_gguf` lives in the
     # repo and this is what puts it where ComfyUI looks. Delete ComfyUI/ and reclone it and
     # the node comes back on the next start rather than having to be remembered.
-    NODE_SRC="$ROOT/backend/apps/symoneuralstudio/custom_nodes/symoneural_gguf"
+    NODE_SRC="$ROOT/backend/apps/studio/custom_nodes/symoneural_gguf"
     NODE_DST="$COMFY/custom_nodes/symoneural_gguf"
     if [ -d "$NODE_SRC" ] && [ ! -e "$NODE_DST" ]; then
       ln -s "$NODE_SRC" "$NODE_DST" && echo "linked symoneural_gguf into custom_nodes/"

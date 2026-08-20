@@ -1,7 +1,7 @@
 """A service that reports a real reading, or says it cannot.
 
 The module form: no class, no decorator, just a module-level `apply`. This is what the loader's
-`use: apps.symoneuralexp.plugins.gpu` resolves to.
+`use: apps.studio.plugins.exp.plugins.gpu` resolves to.
 
 It is here because every other example in this directory is synthetic, and a plugin runtime
 whose examples all invent their data teaches the wrong habit. This one shells out to

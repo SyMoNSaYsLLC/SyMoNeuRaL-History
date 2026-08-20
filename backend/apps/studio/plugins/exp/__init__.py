@@ -79,7 +79,7 @@ def __getattr__(name: str):
 
     The same reason as studio's: `routes.py` imports FastAPI, and the runtime modules under it
     import nothing outside the standard library. That is not a stylistic constraint -- it is
-    what lets `python3 -m apps.symoneuralexp.cli` and the test file run under a bare interpreter,
+    what lets `python3 -m apps.studio.plugins.exp.cli` and the test file run under a bare interpreter,
     and what keeps a missing FastAPI or a missing PyYAML from turning into an aborted pytest
     *collection* rather than one failed test.
 

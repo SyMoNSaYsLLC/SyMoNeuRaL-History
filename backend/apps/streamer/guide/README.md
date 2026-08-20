@@ -159,7 +159,7 @@ Say so or change it — but a two-value field cannot carry three provenances.
 
 ## 5. Kind vocabulary: `live`, `series`, `vod`
 
-`backend/apps/tuner/m3u.py::_classify()` emits exactly those three and **never** `movie`. A
+`backend/apps/streamer/m3u.py::_classify()` emits exactly those three and **never** `movie`. A
 frontend testing for `"movie"` is why "we are completely missing the movie category" was
 reported.
 
@@ -225,7 +225,7 @@ answers *"this playlist has no vod entries"*. It looks at the group titles first
 `VOD | Movies` instead — telling somebody staring at a Movies category that they have no movies
 is the most confusing possible way to be right.
 
-**This is a real bug in `backend/apps/tuner/m3u.py`, not just a Guide concern.** Guide works
+**This is a real bug in `backend/apps/streamer/m3u.py`, not just a Guide concern.** Guide works
 around it for anything routed through Guide; the Tuner's own kind chips are still counted from
 the raw field and will still under-report movies until `_classify()` consults `group-title`.
 Whoever owns that file should decide — one line in `_classify()`, or leave it and let the
@@ -324,7 +324,7 @@ a one-GPU box owes the reader that.
 ## 9. Tests
 
 ```bash
-python3 backend/apps/guide/test_guide.py     # 46 tests, 0.010s, no GPU, no network
+python3 backend/apps/streamer/guide/test_guide.py     # 46 tests, 0.010s, no GPU, no network
 ```
 
 Stdlib `unittest` on the system interpreter. **No new Python packages** — `difflib`,
@@ -333,10 +333,10 @@ virtualenv by design.
 
 ## 10. Wiring — NOT applied, for whoever owns `api.py`
 
-Guide is a library. It is deliberately not wired in: `backend/api.py`, `backend/apps/tuner/`,
+Guide is a library. It is deliberately not wired in: `backend/api.py`, `backend/apps/streamer/`,
 `tools/build_pages.py` and `site/` all belong to other agents in this session.
 
-The two-export contract mirrors `apps/tuner/__init__.py`:
+The two-export contract mirrors `apps/streamer/__init__.py`:
 
 ```python
 from apps import guide
@@ -374,7 +374,7 @@ Four notes for that wiring, each one a real trap:
 ## 11. Open, for Garrett to decide
 
 1. **Three-valued `source`** — §4. The brief said two; three is what can be told honestly.
-1b. **`_classify()` in `backend/apps/tuner/m3u.py` under-reports movies** — §5c. Guide works
+1b. **`_classify()` in `backend/apps/streamer/m3u.py` under-reports movies** — §5c. Guide works
    around it; the Tuner's own kind chips do not. One line in a file this agent does not own.
 2. **Is Guide its own rack unit, or a capability of the Tuner?** Built as its own module so it
    can be either. As a ninth unit it is honest (`ready`, no weights) but it is the first unit

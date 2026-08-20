@@ -221,7 +221,7 @@ maps codes to HTTP status, so a code cannot mean 404 on one route and 400 on ano
 **Every pydantic field on every request body has a default.** That is a 422-avoidance measure,
 not laziness: a *missing required* field makes pydantic raise, and FastAPI serialises that
 into a body shaped `{"detail": ...}` — a second error shape a shipped app cannot parse, and,
-as `apps/tuner` found the hard way, one that echoes the whole request back. With defaults
+as `apps/streamer` found the hard way, one that echoes the whole request back. With defaults
 there is no validation path that can fire and the handlers check by hand. A test asserts it
 for every model.
 
@@ -351,7 +351,7 @@ query is not inspected for *what it asks about*, only for whether SQLite can par
 ## Where a model is involved, and where it is not
 
 Project owns no weights. `POST /{pid}/draft/summary` and `POST /{pid}/draft/items` ask the
-chat surface through an injected `str -> str` callable, exactly as `apps/guide` and `remix()`
+chat surface through an injected `str -> str` callable, exactly as `apps/streamer/guide` and `remix()`
 in `api.py` do. This package never imports the API, never touches `scripts/gpu-governor.sh`
 and never opens a socket; whatever the caller does about the GPU lock is the caller's
 business. That is what keeps it importable and fully testable with no card, no network and no

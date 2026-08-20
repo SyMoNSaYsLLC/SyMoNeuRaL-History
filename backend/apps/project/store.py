@@ -1121,7 +1121,7 @@ def backup(dest: str | None = None) -> dict:
 # ------------------------------------------------------------------ the model, borrowed
 #
 # Project owns no weights. When it needs a model it asks the chat surface through an
-# injected callable, exactly as `apps/guide` does and as `remix()` in `backend/api.py`
+# injected callable, exactly as `apps/streamer/guide` does and as `remix()` in `backend/api.py`
 # does. This module never imports the API, never touches `scripts/gpu-governor.sh` and
 # never opens a socket -- whatever the caller does about the GPU lock is the caller's
 # business, and that is what keeps this package importable and fully testable with no card,
@@ -1164,7 +1164,7 @@ BREAKDOWN_PROMPT = (
 #: The model's answer is a plain list; anything with JSON punctuation in it means the model
 #: started emitting an object. `.claude/HANDOVER.md` §2c-bis, measured: asking this 7B for a
 #: JSON object made it loop until the token cap, so nothing ever parsed and the fallback
-#: fired on every request while the feature looked fine. `apps/guide` rejects the same
+#: fired on every request while the feature looked fine. `apps/streamer/guide` rejects the same
 #: shape for the same reason.
 _JSON_ISH = re.compile(r'[{}\[\]"]|^\s*\w+\s*:', re.M)
 

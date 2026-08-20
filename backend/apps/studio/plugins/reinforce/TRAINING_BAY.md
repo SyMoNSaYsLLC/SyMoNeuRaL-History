@@ -197,7 +197,7 @@ traceback can carry a training example in it.
 # The suites. 124 python assertions, 50 in a real browser. Six of the 124 read trl's real
 # dataclasses out of `training/.venv` in a subprocess and SKIP if that venv is absent -- so
 # "124 passed, 0 skipped" is a claim about a box that has it.
-python3 backend/apps/reinforce/test_reinforce.py
+python3 backend/apps/studio/plugins/reinforce/test_reinforce.py
 
 # The last FOUR of the 50 load the deployed `site/reinforce.html` rather than the `page.html`
 # fragment, so generate it first or they fail on a file that is merely absent. They exist
@@ -208,7 +208,7 @@ python3 backend/apps/reinforce/test_reinforce.py
 # colour -- `.rf-lab-measured` must be rgb(127,215,164). Confirmed against a negative control:
 # dropping the id fails exactly those two assertions and leaves the other 48 passing.
 python3 tools/build_reinforce.py
-node    backend/apps/reinforce/test_page.mjs
+node    backend/apps/studio/plugins/reinforce/test_page.mjs
 
 # The surface is off unless BOTH are set. A never-evicted GPU route open to the world is a
 # rack-wide denial of service costing one HTTP request.
@@ -267,7 +267,7 @@ a test enforces >80 characters of it:
 `backend/api.py` on this branch is an **old copy** — it branched before several other sessions
 landed their own mounts. Take the two lines by hand; do not merge this file wholesale.
 
-The whole bay is also **untracked in the main checkout** — `git ls-files backend/apps/reinforce`
+The whole bay is also **untracked in the main checkout** — `git ls-files backend/apps/studio/plugins/reinforce`
 returns only the CUDA engine's 62 files. It lives on the `worktree-reinforce-rl` branch.
 
 No preference or reinforcement run has been executed on this box. Every RL number in this package

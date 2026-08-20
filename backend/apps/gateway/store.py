@@ -32,7 +32,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-# backend/apps/settlement/store.py -> backend/
+# backend/apps/gateway/store.py -> backend/
 _BACKEND = Path(__file__).resolve().parent.parent.parent
 DEFAULT_PATH = _BACKEND / "state" / "clearances.jsonl"
 

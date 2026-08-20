@@ -1,6 +1,6 @@
 """Exp tests. Standard library and `unittest` only -- no network, no GPU, no fixtures.
 
-**Why the import list matters more than usual here.** `apps/reinforce/tests` and
+**Why the import list matters more than usual here.** `apps/studio/plugins/reinforce/tests` and
 `apps/remix/tests` are excluded from the suite by `--ignore` because they import `cupy` and
 `symon_capture`, which are not installed on the system interpreter and never may be: it is the
 serving path. A test file that needs a third dependency would make this a third `--ignore`, and
@@ -59,8 +59,16 @@ from .plugins import CATALOGUE
 
 APP = pathlib.Path(__file__).resolve().parent
 
+#: The repository root, WALKED for by its marker rather than counted to. `APP.parents[2]`
+#: was the root while this package sat at `backend/apps/symoneuralexp`; moving it to
+#: `backend/apps/studio/plugins/exp` made the same expression resolve to `backend/apps`,
+#: which exists -- so the docs assertions below started reporting that repo-level docs were
+#: missing, three directories from the cause. Counting levels breaks silently every time
+#: this tree is reorganised; a walk does not.
+ROOT = next(_p for _p in APP.parents if (_p / "backend" / "api.py").is_file())
+
 #: This module's own import name, used to build `module:attribute` refs for the plugins defined
-#: below. `__name__` and not the literal `apps.symoneuralexp.test_exp`: pytest imports this file
+#: below. `__name__` and not the literal `apps.studio.plugins.exp.test_exp`: pytest imports this file
 #: as `symoneuralexp.test_exp` (it inserts `apps/` on the path), so a hard-coded ref makes
 #: `importlib` load a *second copy* of this module, and the plugins then append to a different
 #: `ORDER` list than the one the assertion reads. That failure looks like "teardown did not run".
@@ -323,7 +331,7 @@ class RegistryTests(unittest.TestCase):
         for short in CATALOGUE:
             with self.subTest(plugin=short):
                 described = registry.describe(
-                    loadermod.resolve_ref(f"apps.symoneuralexp.plugins.{short}"))
+                    loadermod.resolve_ref(f"apps.studio.plugins.exp.plugins.{short}"))
                 self.assertIn(described["kind"],
                               ("function", "class", "object", "module"))
                 self.assertTrue(described["doc"],
@@ -1145,7 +1153,7 @@ class RegressionTests(unittest.TestCase):
         async def go():
             loader = await fresh({"plugins": [
                 {"id": "session", "isolate": ["memory"], "plugins": [
-                    {"id": "session.memory", "use": "apps.symoneuralexp.plugins.memory"},
+                    {"id": "session.memory", "use": "apps.studio.plugins.exp.plugins.memory"},
                 ]},
             ]})
             keys = loader.state()["services"]
@@ -1335,7 +1343,7 @@ class PageTests(unittest.TestCase):
         import tempfile
         from unittest import mock
 
-        root = APP.parents[2]                       # backend/apps/symoneuralexp -> repo root
+        root = ROOT
         built = root / "site" / "exp.html"
         if not built.is_file():
             self.skipTest("site/exp.html not generated in this checkout")
@@ -1513,7 +1521,7 @@ class DocsTests(unittest.TestCase):
         # `Symoneural/docs/`. `trace.py` cites `docs/integration-sources.md`, which is the
         # repo-level one -- it is the file that records the verdict this package argues with --
         # so a citation resolves if it exists in either place.
-        repo_docs = APP.parents[2] / "docs"
+        repo_docs = ROOT / "docs"
         for ref in sorted(cited):
             with self.subTest(doc=ref):
                 self.assertTrue((APP / "docs" / ref).is_file() or (repo_docs / ref).is_file(),
@@ -1524,7 +1532,7 @@ class DocsTests(unittest.TestCase):
         """Cross-references between the three docs and the README. A dead link in shipped prose
         is the same defect whether the citation is in a docstring or in Markdown."""
         docs = APP / "docs"
-        repo_docs = APP.parents[2] / "docs"
+        repo_docs = ROOT / "docs"
         for path in sorted(list(docs.glob("*.md")) + [APP / "README.md"]):
             for ref in re.findall(r"docs/([a-z0-9-]+\.md)", path.read_text()):
                 with self.subTest(source=path.name, doc=ref):

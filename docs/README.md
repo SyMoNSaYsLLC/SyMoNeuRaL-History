@@ -12,7 +12,7 @@ concern can be read on its own.
 > that nothing remains after it runs, and the live page carries zero occurrences.
 > Anything user-facing is already clean; this heading is build input.
 
-> **This is not the only copy of files 01 through 05.** `backend/apps/reinforce/docs/`
+> **This is not the only copy of files 01 through 05.** `backend/apps/studio/plugins/reinforce/docs/`
 > holds a second set, because the CUDA engine ships with its own documentation.
 > The two overlap on twenty files and differ only in that header line. If you are
 > editing one, check whether the other needs the same change.

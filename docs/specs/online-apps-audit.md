@@ -141,7 +141,7 @@ Three reds, and **none of them is a new regression**:
    it by deciding what the correct despill output *is*, not by moving the threshold. Nobody held
    this file during the pass, and that is still not permission. Left alone.
 3. **`tuner`** — 123 tests where HANDOVER records 121. Another agent was mid-build on the
-   EPG work (`backend/apps/tuner/epg.py` did not exist when the running API started). This is a
+   EPG work (`backend/apps/streamer/epg.py` did not exist when the running API started). This is a
    snapshot of somebody's work in progress, timestamped, **not a bug report**.
 
 ### Browser — the assertion that counts

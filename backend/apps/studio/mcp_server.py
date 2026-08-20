@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The MCP surface: the same tools, over FastMCP, for clients that are not this website.
 
-    backend/apps/symoneuralstudio/.venv/bin/python -m apps.symoneuralstudio.mcp_server
+    backend/apps/studio/.venv/bin/python -m apps.studio.mcp_server
     # or, from the repo root:
-    backend/apps/symoneuralstudio/.venv/bin/python backend/apps/symoneuralstudio/mcp_server.py
+    backend/apps/studio/.venv/bin/python backend/apps/studio/mcp_server.py
 
 ## Why this file has no tools in it
 
@@ -25,8 +25,8 @@ stdio by default -- that is what Claude Desktop, Claude Code and every other MCP
 without configuration:
 
     {"mcpServers": {"symoneural-studio": {
-        "command": "/home/google/Symoneural/backend/apps/symoneuralstudio/.venv/bin/python",
-        "args": ["/home/google/Symoneural/backend/apps/symoneuralstudio/mcp_server.py"],
+        "command": "/home/google/Symoneural/backend/apps/studio/.venv/bin/python",
+        "args": ["/home/google/Symoneural/backend/apps/studio/mcp_server.py"],
         "env": {"SYMONEURAL_STUDIO_ENABLED": "1", "SYMONEURAL_STUDIO_TOKEN": "..."}}}}
 
 `--http PORT` serves FastMCP's streamable HTTP transport instead, for a client that cannot
@@ -54,7 +54,7 @@ import inspect
 import pathlib
 import sys
 
-# Run as a script *or* as a module. As a script, `apps.symoneuralstudio` is not importable
+# Run as a script *or* as a module. As a script, `apps.studio` is not importable
 # until `backend/` is on the path -- and it must be imported as a package, not as loose
 # modules, because `tools_impl` registers itself through relative imports.
 _HERE = pathlib.Path(__file__).resolve()
@@ -62,8 +62,8 @@ _BACKEND = _HERE.parents[2]
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from apps.symoneuralstudio import gate, registry, workspace  # noqa: E402
-from apps.symoneuralstudio import tools_impl  # noqa: E402,F401  -- imported to register
+from apps.studio import gate, registry, workspace  # noqa: E402
+from apps.studio import tools_impl  # noqa: E402,F401  -- imported to register
 
 try:
     from fastmcp import FastMCP

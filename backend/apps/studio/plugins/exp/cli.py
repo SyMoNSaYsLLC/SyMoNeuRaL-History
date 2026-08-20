@@ -1,11 +1,11 @@
 """Mount a manifest, print what happened, exit. No FastAPI, no gate, no HTTP.
 
-    python3 -m apps.symoneuralexp.cli                       # the dev preset, as a table
-    python3 -m apps.symoneuralexp.cli --preset sessions      # two isolated sessions
-    python3 -m apps.symoneuralexp.cli --preset failures      # every failure mode at once
-    python3 -m apps.symoneuralexp.cli path/to/manifest.yaml   # your own
-    python3 -m apps.symoneuralexp.cli --json                 # `Loader.state()`, verbatim
-    python3 -m apps.symoneuralexp.cli --trace 40             # and the last 40 trace events
+    python3 -m apps.studio.plugins.exp.cli                       # the dev preset, as a table
+    python3 -m apps.studio.plugins.exp.cli --preset sessions      # two isolated sessions
+    python3 -m apps.studio.plugins.exp.cli --preset failures      # every failure mode at once
+    python3 -m apps.studio.plugins.exp.cli path/to/manifest.yaml   # your own
+    python3 -m apps.studio.plugins.exp.cli --json                 # `Loader.state()`, verbatim
+    python3 -m apps.studio.plugins.exp.cli --trace 40             # and the last 40 trace events
 
 Run from `backend/`, which is where `apps` is importable from.
 
@@ -129,7 +129,7 @@ async def _run(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python3 -m apps.symoneuralexp.cli",
+        prog="python3 -m apps.studio.plugins.exp.cli",
         description="Mount a manifest in-process, print the plugin table, tear it down again.")
     # Two spellings, two dests, resolved below. Sharing one `dest` does not work: a positional
     # with `nargs="?"` is always "parsed", consuming zero arguments, and argparse applies its

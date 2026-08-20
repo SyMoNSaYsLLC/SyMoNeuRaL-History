@@ -1,4 +1,4 @@
-# CUDA engine audit — `backend/apps/reinforce/`
+# CUDA engine audit — `backend/apps/studio/plugins/reinforce/`
 
 Read-only audit, 2026-08-17. Queue item 8 of `.claude/HANDOVER.md` §5.
 Nothing in the repo was modified. No kernel was executed on the GPU.
@@ -10,7 +10,7 @@ The task brief (and `.claude/HANDOVER.md` §10's layout block) describes
 `bin/`, `CHANGELOG.md`. **None of that describes the engine.** Those five artefacts are the
 *vendored NVIDIA samples* tree, `contrib/cuda-samples/`.
 
-The first-party engine is at **`/home/google/Symoneural/backend/apps/reinforce/`**, moved
+The first-party engine is at **`/home/google/Symoneural/backend/apps/studio/plugins/reinforce/`**, moved
 there in commit `9b5da84`. It is **pure Python + NVRTC**: 7 CUDA C++ kernel sources held as
 Python strings in `symoneural/compute/kernels.py`, compiled at runtime through
 `cuda.core.Program`. There is **no C++ build system, no `.cu` file on disk, no CMake, no
@@ -203,14 +203,14 @@ introduced by the caching layer that warns about it. It should raise when `buffe
 from the captured set.
 
 ### 1.10 `scripts/run_tests.sh` — the venv guard points at a path that cannot exist
-**`backend/apps/reinforce/scripts/run_tests.sh:42, 159-165`** — confidence **high**, verified
+**`backend/apps/studio/plugins/reinforce/scripts/run_tests.sh:42, 159-165`** — confidence **high**, verified
 by path expansion.
 
 ```bash
 PROTECTED="$(cd "$REPO/.." 2>/dev/null && pwd)/cuda-samples/python/.venv"
 ```
 
-`REPO` = `…/backend/apps/reinforce`, so `$REPO/..` = `…/backend/apps` and `PROTECTED`
+`REPO` = `…/backend/apps/studio/plugins/reinforce`, so `$REPO/..` = `…/backend/apps` and `PROTECTED`
 resolves to `/home/google/Symoneural/backend/apps/cuda-samples/python/.venv`. The real path
 is `/home/google/Symoneural/contrib/cuda-samples/python/.venv` — the tree moved under
 `contrib/` in the restructure (`4b6eaba`). Consequences:
@@ -619,7 +619,7 @@ Not part of the audit; the fixes are a separate decision.
 
 ---
 
-*Audited read-only. `git status` shows no change under `backend/apps/reinforce/` or
+*Audited read-only. `git status` shows no change under `backend/apps/studio/plugins/reinforce/` or
 `contrib/cuda-samples/`. Compilation was done into a scratch directory outside the repo.
 `contrib/cuda-samples/python/.venv` verified at 7 packages, unmodified. Nothing was
 installed into any environment.*

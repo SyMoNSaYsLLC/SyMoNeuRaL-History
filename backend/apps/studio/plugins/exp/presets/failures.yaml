@@ -2,7 +2,7 @@
 #
 # Nothing here is a trap: mounting this preset is safe, and the failures stay inside the entries
 # that cause them. Mounted as written, the eight entries below land like this -- measured, run
-# `python3 -m apps.symoneuralexp.cli --preset failures` and read the table:
+# `python3 -m apps.studio.plugins.exp.cli --preset failures` and read the table:
 #
 #   bus            active     the one entry here that does its job
 #   no-such-module failed     `use:` names a module that does not import
@@ -23,22 +23,22 @@ plugins:
   # so a different `history` here would make the one example chosen to illustrate "left alone"
   # the one that restarts.
   - id: bus
-    use: apps.symoneuralexp.plugins.bus
+    use: apps.studio.plugins.exp.plugins.bus
     config: {history: 200}
 
   - id: no-such-module
-    use: apps.symoneuralexp.plugins.does_not_exist
+    use: apps.studio.plugins.exp.plugins.does_not_exist
 
   - id: bad-config
-    use: apps.symoneuralexp.plugins.clock
+    use: apps.studio.plugins.exp.plugins.clock
     config: {interval: "not a number"}
 
   - id: raises
-    use: apps.symoneuralexp.plugins.explode
+    use: apps.studio.plugins.exp.plugins.explode
     config: {mode: body}
 
   - id: undeclared
-    use: apps.symoneuralexp.plugins.explode
+    use: apps.studio.plugins.exp.plugins.explode
     config: {mode: undeclared}
 
   # PENDING, not failed. Its `bus` is isolated into this group's realm and nothing inside the
@@ -47,9 +47,9 @@ plugins:
   - id: waiting-room
     isolate: [bus]
     plugins:
-      - {id: waiting, use: apps.symoneuralexp.plugins.recorder}
+      - {id: waiting, use: apps.studio.plugins.exp.plugins.recorder}
 
   # Quoted deliberately: YAML 1.1 reads a bare `off` as the boolean false. See `Entry.__init__`.
   - id: "off"
-    use: apps.symoneuralexp.plugins.memory
+    use: apps.studio.plugins.exp.plugins.memory
     disabled: true

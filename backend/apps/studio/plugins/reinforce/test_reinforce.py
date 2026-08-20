@@ -173,7 +173,9 @@ class TrlContractTests(unittest.TestCase):
     def _trl(cls):
         """The trl facts, or a skip. Never an import into this interpreter."""
         import subprocess
-        repo = pathlib.Path(__file__).resolve().parents[3]
+        repo = next((_p for _p in pathlib.Path(__file__).resolve().parents
+                     if (_p / "backend" / "api.py").is_file()), None)
+        assert repo is not None, "repo root not found above this test file"
         python = repo / "training" / ".venv" / "bin" / "python"
         if not python.exists():
             raise unittest.SkipTest(f"no training venv at {python}; trl cannot be inspected")
@@ -231,7 +233,9 @@ class TrlContractTests(unittest.TestCase):
         Nothing had ever constructed `vllm_mode="server"` at all.
         """
         import subprocess
-        repo = pathlib.Path(__file__).resolve().parents[3]
+        repo = next((_p for _p in pathlib.Path(__file__).resolve().parents
+                     if (_p / "backend" / "api.py").is_file()), None)
+        assert repo is not None, "repo root not found above this test file"
         python = repo / "training" / ".venv" / "bin" / "python"
         if not python.exists():
             raise unittest.SkipTest(f"no training venv at {python}")
@@ -297,7 +301,9 @@ class TrlContractTests(unittest.TestCase):
         rollout to a co-tenant that cannot fit.
         """
         import subprocess
-        repo = pathlib.Path(__file__).resolve().parents[3]
+        repo = next((_p for _p in pathlib.Path(__file__).resolve().parents
+                     if (_p / "backend" / "api.py").is_file()), None)
+        assert repo is not None, "repo root not found above this test file"
         python = repo / "training" / ".venv" / "bin" / "python"
         if not python.exists():
             raise unittest.SkipTest(f"no training venv at {python}")

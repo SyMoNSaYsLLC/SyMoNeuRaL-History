@@ -79,7 +79,7 @@ sys.path.insert(0, str(HERE / "apps"))
 # env file on a running box (`/etc/symoneural/api.env`, root-owned and hand-edited) still
 # carries the old spelling, so this copies each legacy name onto its new one and logs a
 # deprecation notice. It has to run above the imports because
-# `apps/symoneuralstudio/inference.py` reads two variables at MODULE scope -- a promotion
+# `apps/studio/inference.py` reads two variables at MODULE scope -- a promotion
 # after the app packages were imported would be too late for those two and for any that
 # join them. See `apps/symoneuralenv.py` for why this is promotion rather than a
 # read-both-spellings helper at 771 call sites.
@@ -93,16 +93,20 @@ import coder      # noqa: E402  -- local-only developer surface. Takes NO GPU le
                   # has NO route: it is driven from the desktop session. See §2g.
 import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
 import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
-from apps import tuner  # noqa: E402  -- IPTV surface, brings its own APIRouter
+from apps import streamer  # noqa: E402  -- the IPTV surface AND the Guide that filters
+# it, merged into one package on Garrett's instruction ("you need to migrate tuner and
+# guide to be 1"). It exports `tuner_router` and `guide_router` separately, so a line here
+# says which of the two surfaces it wires; `status()` is the tuner's, because the merged
+# pair is ONE rack row and always was -- the two used to share an href and disagree.
 from apps import project  # noqa: E402  -- the shared workspace surface. Brings its
 # own APIRouter. Note it never invokes coder and imports no subprocess/socket/urllib;
 # a test in that package enforces it, and making Coder poll Project for work would
 # turn Project's token into an RCE gate.
-from apps import guide  # noqa: E402  -- the library half: matching, clustering,
+from apps.streamer import guide  # noqa: E402  -- the library half: matching, clustering,
 # ModelUnusable. Bound to the package, not its names, so nothing of its vocabulary
 # (catalogue, status, unit_state) lands in this module's namespace.
-from apps.guide import routes as guide_routes  # noqa: E402  -- question -> channel
-# filter. Imported as `routes` for the same reason accounts is: the package exports
+from apps.streamer.guide import routes as guide_routes  # noqa: E402  -- question ->
+# channel filter. Imported as `routes` for the same reason accounts is: the package exports
 # bare names (catalogue, status, unit_state) that would shadow this module's own.
 from apps import sigils  # noqa: E402  -- the sticker surface. Bound to the package for
 # the same reason as guide: it exports `status`, `router` and `PACKS`, and a bare `status`
@@ -114,21 +118,21 @@ from apps.accounts import routes as accounts_routes  # noqa: E402  -- signup,
 from apps import voice  # noqa: E402  -- speech to text on the CPU. Bound to the package so
 # its bare `status`/`enabled`/`installed` cannot shadow this module's own. Importing it drags
 # in no new dependency: the engine is a subprocess, not a library.
-from apps import reinforce  # noqa: E402  -- the training bay. Bound to the package so its
+from apps.studio.plugins import reinforce  # noqa: E402  -- the training bay. Bound to the package so its
 # bare `status`/`enabled` cannot shadow this module's own. Importing it is cheap and safe
-# whether or not the surface is switched on: `apps/reinforce/__init__.py` defines
+# whether or not the surface is switched on: `apps/studio/plugins/reinforce/__init__.py` defines
 # `enabled()` BEFORE it imports `.routes`, and every route calls it and answers 503 when
 # both SYMONEURAL_REINFORCE_ENABLED and SYMONEURAL_REINFORCE_TOKEN are not set. Mounting an off surface
 # is not the same as enabling it. What it now mounts does preference and reinforcement
-# tuning as well as supervised -- see `apps/reinforce/TRAINING_BAY.md`.
-from apps import symoneuralstudio as studio  # noqa: E402  -- the local agent and the
+# tuning as well as supervised -- see `apps/studio/plugins/reinforce/TRAINING_BAY.md`.
+from apps import studio  # noqa: E402  -- the local agent and the
 # visual bench it drives. Bound to an alias because `studio` is already the name of a concept
 # in this file (`/api/studio/models`, the `studio` rate bucket) and a bare `enabled`/`status`
 # from the package would shadow this module's own. Importing it is free with the switch off:
-# `apps/symoneuralstudio/gate.py` is stdlib-only, and every route calls `enabled()` first and
+# `apps/studio/gate.py` is stdlib-only, and every route calls `enabled()` first and
 # answers 503 when SYMONEURAL_STUDIO_ENABLED and SYMONEURAL_STUDIO_TOKEN are not both set. It imports no
 # torch, spawns no process, and does not touch the GPU until a job is queued.
-from apps import symoneuralexp as exp  # noqa: E402  -- the plugin runtime. Bound to an
+from apps.studio.plugins import exp  # noqa: E402  -- the plugin runtime. Bound to an
 # alias for the same reason as `studio`: a bare `enabled`/`status` from the package would
 # shadow this module's own. Importing it starts nothing -- `runtime()` is created on first
 # request and `boot()` mounts the preset there, not here -- and the runtime modules under it
@@ -143,7 +147,7 @@ from apps import news  # noqa: E402  -- the ticker's collector. Bound to
 # request: `feeds.py` is a tuple of literals, and nothing fetches until `refresher()` is
 # started below, which only happens when SYMONEURAL_NEWS_ENABLED=1. Placed above `rackpower`
 # because that import claims the last word and should keep it.
-from apps import rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
+from apps import controlboard as rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
 # so its bare `enabled`/`status_rows`/`apply` cannot shadow anything here. Importing it is
 # free and safe with the switch off: it reads no file until `enabled()` passes, spawns
 # nothing, and `apply()` returns its argument unchanged. It is imported LAST of the apps
@@ -1332,7 +1336,7 @@ async def lifespan(_: FastAPI):
         newsfeed.cancel()
     # Without this a reload leaks one ffmpeg per live stream: the sessions outlive the
     # process that spawned them and nothing else knows their pids.
-    tuner.sessions.MANAGER.shutdown()
+    streamer.sessions.MANAGER.shutdown()
     await stop_llama()
 
 
@@ -1626,7 +1630,7 @@ def build_status() -> Status:
             # by a wide margin and wrapped to FIVE lines in the compact GPU panel beside
             # every prompt box, which is what made that stack look out of proportion.
             #
-            # NOTE FOR WHOEVER READS THIS NEXT: `backend/apps/reinforce/` holds two things
+            # NOTE FOR WHOEVER READS THIS NEXT: `backend/apps/studio/plugins/reinforce/` holds two things
             # that answer to "Reinforce" -- the CUDA engine (the `symoneural/` subpackage,
             # with its own FastAPI app on port 8000, which must NOT be reused here) and the
             # training bay built on it. An agent told to "look at Reinforce" will land on
@@ -1635,7 +1639,7 @@ def build_status() -> Status:
             #
             # The href now points at the bay rather than at the manual. `site/reinforce.html`
             # is written by `tools/build_reinforce.py`, which wires up the `page.html` and
-            # `page.js` that the bay's author left in `apps/reinforce/` with nothing
+            # `page.js` that the bay's author left in `apps/studio/plugins/reinforce/` with nothing
             # referencing them. THIS MEANS THE PAGE MUST BE DEPLOYED BEFORE THE API IS
             # RESTARTED: `sudo scripts/deploy.sh --prune` first, then
             # `sudo systemctl restart symoneural-api`. Reversed, the rack advertises a page
@@ -1691,7 +1695,7 @@ def build_status() -> Status:
             # contends for the card. `ready` is honest here -- unlike the mining surfaces
             # this one is functional right now; it holds no content of its own because the
             # visitor supplies the playlist and nothing is stored on the box.
-            Unit(**{**tuner.status(), "bus": "net"}),
+            Unit(**{**streamer.status(), "bus": "net"}),
             # The developer surface. It appears on the rack as a peer because Garrett asked
             # for it there -- "it will be symoneural coder and in the live stack just like
             # the other agents" -- but note what it is NOT: it holds no weights, takes no
@@ -1725,10 +1729,10 @@ def build_status() -> Status:
             # overruled only because Garrett had named it separately in the live stack. He
             # has now decided the other way, so the code and the intent finally agree.
             #
-            # Nothing is dropped. `apps.guide` is untouched, `/api/guide/*` still serves the
+            # Nothing is dropped. `apps.streamer.guide` is untouched, `/api/guide/*` still serves the
             # page's filter, and the claim that made Guide worth showing -- that it answers
             # on the CPU while the card is busy, never taking the GPU lock -- is now in the
-            # Tuner unit's own detail line. See `apps/tuner/routes.py::status()`.
+            # Tuner unit's own detail line. See `apps/streamer/routes.py::status()`.
             #
             # The rack is therefore THIRTEEN units, in the order they are built below:
             # chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project,
@@ -2344,10 +2348,10 @@ async def gpuminer_control(request: Request, body: MinerBody) -> dict:
 # declared before it: StaticFiles at "/" matches everything, so anything mounted after it
 # is unreachable. Prefix matches the Backstage shape the backend is heading towards
 # (§5 item 13) -- a surface answers at /api/<id>.
-app.include_router(tuner.router, prefix="/api/tuner", tags=["tuner"])
+app.include_router(streamer.tuner_router, prefix="/api/tuner", tags=["tuner"])
 app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
-app.include_router(guide_routes.router, prefix="/api/guide", tags=["guide"])
+app.include_router(streamer.guide_router, prefix="/api/guide", tags=["guide"])
 app.include_router(project.router, prefix="/api/project", tags=["project"])
 # The per-unit power switch. Mounting it is not enabling it: with SYMONEURAL_RACK_ENABLED unset
 # every route answers 404 -- absent rather than forbidden, because the rack is public and a
@@ -2355,7 +2359,7 @@ app.include_router(project.router, prefix="/api/project", tags=["project"])
 app.include_router(rackpower.router, prefix="/api/rack", tags=["rack"])
 # `/api/train`, not `/api/reinforce`: the router's own first line names this prefix, `page.js`
 # hard-codes it, and the rack unit has been `train` since before either existed. The docstring
-# in apps/reinforce/routes.py said "Mounted at /api/train by backend/api.py" from the day it was
+# in apps/studio/plugins/reinforce/routes.py said "Mounted at /api/train by backend/api.py" from the day it was
 # written -- it simply was not true until this line, so every route in that package answered 404
 # rather than the 503 it was designed to give. A 404 reads as "this was never built"; the 503
 # names the two switches that turn it on, which is the difference between a missing surface and
@@ -2432,7 +2436,7 @@ app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=F
 # plugin table nobody reads. One thing is withheld from a tokenless caller -- each entry's
 # `config`, which is where a plugin's credentials would live.
 #
-# Touching `exp.router` here is what imports `apps/symoneuralexp/routes.py`, so a syntax error
+# Touching `exp.router` here is what imports `apps/studio/plugins/exp/routes.py`, so a syntax error
 # in it still fails the boot loudly despite the PEP 562 lazy attribute on the package.
 app.include_router(exp.router, prefix="/api/exp", tags=["exp"])
 # Tokenless and read-only, like `/api/gateway/state` and for the same reason: everything it
@@ -2446,7 +2450,7 @@ app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 # ---- the studio model list -------------------------------------------------
 # A read of one pre-computed file, and deliberately nothing else.
 #
-# `apps/reinforce/registry.py` can enumerate every model on this box, and it is stdlib-only
+# `apps/studio/plugins/reinforce/registry.py` can enumerate every model on this box, and it is stdlib-only
 # specifically so this module may import it -- which it already does, at /api/train/models.
 # That route walks the HF cache, opens each `config.json`, and parses the key/value header out
 # of every GGUF present. It is the right thing behind the training bay, where an operator has
@@ -2462,7 +2466,7 @@ app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 STUDIO_REGISTRY_FILE = RUN / "registry.json"
 
 # Only these keys survive a read, and each is checked against the type it must be. Re-validated
-# even though `tools/build_registry.py` wrote it, exactly as `apps/reinforce/jobs.py` re-validates
+# even though `tools/build_registry.py` wrote it, exactly as `apps/studio/plugins/reinforce/jobs.py` re-validates
 # `progress.json`: `run/` is world-readable state on a box that also runs a web server, and
 # trusting a field because we wrote it is how a validated field silently becomes an unvalidated
 # one the next time somebody edits the writer.

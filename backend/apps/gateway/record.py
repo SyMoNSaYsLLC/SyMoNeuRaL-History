@@ -130,13 +130,13 @@ def record_settlement(network: str, contract: str, nonce: int, *,
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`python3 -m apps.settlement.record` — the operator's post-purchase step.
+    """`python3 -m apps.gateway.record` — the operator's post-purchase step.
 
     Prints the refusal reason and exits non-zero on anything but a fresh recording, so it can
     be run from a shell script without the caller having to parse the output.
     """
     p = argparse.ArgumentParser(
-        prog="python3 -m apps.settlement.record",
+        prog="python3 -m apps.gateway.record",
         description="Verify one settled licence against the chain and record it.")
     # The operator vocabulary, not `chain.NODES`' keys -- one set of names for a human to
     # type, resolved to the canonical key before anything reaches a chain.

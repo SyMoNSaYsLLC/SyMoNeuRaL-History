@@ -67,7 +67,7 @@ def __getattr__(name: str):
     the workspace do not. `mcp_server.py` runs from an isolated venv holding only `fastmcp`
     -- the house convention for extra dependencies here, and every other app venv in this
     repo is `include-system-site-packages = false` -- so an eager `from .routes import router`
-    at the top of this file made `import apps.symoneuralstudio` fail with
+    at the top of this file made `import apps.studio` fail with
     `ModuleNotFoundError: fastapi` inside that venv, which is a real thing that happened
     rather than a hypothetical.
 

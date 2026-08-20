@@ -89,7 +89,7 @@ import pathlib
 import time
 
 HERE = pathlib.Path(__file__).resolve().parent
-# backend/apps/rackpower -> backend/apps -> backend -> repo root. Same walk as
+# backend/apps/controlboard -> backend/apps -> backend -> repo root. Same walk as
 # `apps/coder` and `apps/project`; keeping it identical means a future move breaks all
 # three at once and visibly, rather than one of them silently.
 ROOT = HERE.parent.parent.parent
@@ -207,7 +207,7 @@ def authorize(token: str | None, peer: str | None) -> tuple[bool, str]:
     """
     if not enabled():
         return False, ("rack power surface is off — set SYMONEURAL_RACK_ENABLED=1 and "
-                       "SYMONEURAL_RACK_TOKEN, and read backend/apps/rackpower/README.md first")
+                       "SYMONEURAL_RACK_TOKEN, and read backend/apps/controlboard/README.md first")
     if not peer_ok(peer):
         return False, (f"peer {peer!r} is not loopback; SYMONEURAL_RACK_ALLOW_REMOTE is not set. "
                        "This surface is local-only by design.")
@@ -250,7 +250,7 @@ def load() -> dict:
 
 
 def _write_atomic(payload: dict) -> None:
-    """Same shape as `apps/reinforce/runner.py:_write_atomic`, and for the same reason.
+    """Same shape as `apps/studio/plugins/reinforce/runner.py:_write_atomic`, and for the same reason.
 
     `/api/status` may be reading this file on a request while a POST is rewriting it, and
     that path drives the WebSocket for every connected visitor. Without the rename a reader
@@ -400,4 +400,4 @@ def status_rows() -> list[dict]:
 
 from .routes import router  # noqa: E402,F401 -- mounted by api.py; imported last so the
 # gates above are defined before the routes that call them, matching the order
-# `apps/reinforce/__init__.py` uses for the same reason.
+# `apps/studio/plugins/reinforce/__init__.py` uses for the same reason.

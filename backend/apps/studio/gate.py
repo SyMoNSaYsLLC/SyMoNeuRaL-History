@@ -61,7 +61,7 @@ def token_ok(presented: str | None) -> bool:
     raises `TypeError` otherwise, so a presented token carrying one non-ASCII character -- a
     pasted em-dash, a smart quote, anything a phone keyboard produces -- was a 500 out of a
     gate that had already decided the answer was no. It matters more here than in
-    `apps/symoneuralexp/gate.py`, where the same fix landed first: this is the gate in front of
+    `apps/studio/plugins/exp/gate.py`, where the same fix landed first: this is the gate in front of
     `run_command` and `write_file`, and `present_token` below also reads a **cookie**, which is
     a third path whose contents this process does not choose. Comparing UTF-8 bytes is the same
     constant-time compare and answers a plain no for every input.

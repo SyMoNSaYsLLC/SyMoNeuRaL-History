@@ -856,7 +856,7 @@ class TestRoutes(Base):
         self.auth = {routes.HEADER: TOKEN}
 
     def test_no_route_path_carries_a_credential(self):
-        """Caddy and uvicorn both log the request line. Structural, per apps/tuner."""
+        """Caddy and uvicorn both log the request line. Structural, per apps/streamer."""
         for route in routes.router.routes:
             path = getattr(route, "path", "").lower()
             for bad in ("token", "password", "secret", "key", "creds", "auth"):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests for the Tuner. Standard library only, no network, no IPTV provider.
 
-    python3 backend/apps/tuner/test_tuner.py           # from the repo root
-    python3 -m apps.tuner.test_tuner                   # from backend/
+    python3 backend/apps/streamer/test_tuner.py           # from the repo root
+    python3 -m apps.streamer.test_tuner                   # from backend/
 
 Three things are actually being defended here and the rest is parsing:
 
@@ -35,8 +35,8 @@ import urllib.parse
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from apps.tuner import m3u, routes, safefetch, sessions, xtream          # noqa: E402
-from apps.tuner.safefetch import BlockedURL, Policy, Scrubber            # noqa: E402
+from apps.streamer import m3u, routes, safefetch, sessions, xtream          # noqa: E402
+from apps.streamer.safefetch import BlockedURL, Policy, Scrubber            # noqa: E402
 
 SENTINEL_USER = "zz-tuner-test-user-zz"
 SENTINEL_PASS = "Hunter2-CorrectHorseBatteryStaple-9times"
@@ -248,7 +248,7 @@ class TestValidateUrl(unittest.TestCase):
         out = subprocess.run(
             [sys.executable, "-c",
              "import sys; sys.path.insert(0, %r)\n"
-             "from apps.tuner.safefetch import Policy\n"
+             "from apps.streamer.safefetch import Policy\n"
              "print(Policy().allow_private)"
              % str(pathlib.Path(__file__).resolve().parents[2])],
             capture_output=True, text=True, timeout=60, env=env)
@@ -703,13 +703,13 @@ class TestCapsAndPaths(unittest.TestCase):
             [sys.executable, "-c",
              "import sys; sys.path.insert(0, %r)\n"
              "import threading\n"
-             "import apps.tuner\n"
+             "import apps.streamer\n"
              "print([t.name for t in threading.enumerate() if t.name.startswith('tuner-')])"
              % str(pathlib.Path(__file__).resolve().parents[2])],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(), "[]",
-                         "importing apps.tuner started a background thread")
+                         "importing apps.streamer started a background thread")
 
     def test_manager_makes_no_directory_until_used(self):
         mgr = sessions.SessionManager()
@@ -1007,7 +1007,7 @@ class TestUserAgent(unittest.TestCase):
         out = subprocess.run(
             [sys.executable, "-c",
              "import sys; sys.path.insert(0, %r)\n"
-             "from apps.tuner.safefetch import Policy\n"
+             "from apps.streamer.safefetch import Policy\n"
              "print(Policy().user_agent)"
              % str(pathlib.Path(__file__).resolve().parents[2])],
             capture_output=True, text=True, timeout=60, env=env)

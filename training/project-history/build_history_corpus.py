@@ -226,7 +226,7 @@ q("architecture",
   "and inside a <nav> that would have deleted every conversation link on a phone.")
 
 q("architecture",
-  "What is backend/apps/reinforce/?",
+  "What is backend/apps/studio/plugins/reinforce/?",
   "The native CUDA engine -- 35 Python files whose kernels are C++ source strings compiled "
   "through NVRTC at runtime. There is no .cu file and no CMakeLists; the CMake you may be "
   "thinking of belongs to contrib/cuda-samples/. It is not referenced by the API, the CLI, "

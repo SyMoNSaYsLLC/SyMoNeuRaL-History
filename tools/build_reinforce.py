@@ -5,8 +5,8 @@
 
 ## This generator writes almost nothing of its own. It is wiring.
 
-`backend/apps/reinforce/page.html` and `page.js` were written by the author of
-`backend/apps/reinforce/routes.py`, committed in `170692e`, and then referenced by **nothing**.
+`backend/apps/studio/plugins/reinforce/page.html` and `page.js` were written by the author of
+`backend/apps/studio/plugins/reinforce/routes.py`, committed in `170692e`, and then referenced by **nothing**.
 No generator built them into a page, no script copied them, no test loaded them. `page.js` says
 in its own second line where it was meant to go:
 
@@ -60,7 +60,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 SITE = ROOT / "site"
-APP = ROOT / "backend" / "apps" / "reinforce"
+APP = ROOT / "backend" / "apps" / "studio" / "plugins" / "reinforce"
 sys.path.insert(0, str(ROOT / "tools"))
 
 import build_pages  # noqa: E402  -- for NAV and SHELL. Read, never called: `page()` writes the

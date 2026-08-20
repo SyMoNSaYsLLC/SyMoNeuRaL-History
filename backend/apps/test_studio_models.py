@@ -104,7 +104,7 @@ class RouteIsReachable(unittest.TestCase):
         It is recorded in `.claude/HANDOVER.md`; if this fails, one of the two is wrong and
         it is worth finding out which before changing the number here.
 
-        Was 8 until `apps/rackpower` was mounted at `/api/rack` -- the per-unit power
+        Was 8 until `apps/controlboard` was mounted at `/api/rack` -- the per-unit power
         switch. That is a deliberate ninth surface, so this number moved in the same commit
         that mounted it, which is the whole point of the tripwire: it should be impossible
         to add a router without someone typing the new number and meaning it.
@@ -116,7 +116,7 @@ class RouteIsReachable(unittest.TestCase):
         separate `include_router` rather than a sub-prefix because a router's prefix cannot
         put half its routes outside its own tree.
 
-        Then 11 -> 12 for `apps/symoneuralexp` at `/api/exp` -- the plugin runtime. One
+        Then 11 -> 12 for `apps/studio/plugins/exp` at `/api/exp` -- the plugin runtime. One
         router, and the page it serves is a generated file behind a plain `@app.get("/exp")`
         rather than a second router, so this moved by one and not by two.
 
@@ -134,7 +134,7 @@ class ValidatorRejectsJunk(unittest.TestCase):
     """`run/` is world-readable state on a box that also runs a web server.
 
     The file is re-validated on read even though `tools/build_registry.py` wrote it, exactly as
-    `apps/reinforce/jobs.py` re-validates `progress.json`. These cases are what that buys.
+    `apps/studio/plugins/reinforce/jobs.py` re-validates `progress.json`. These cases are what that buys.
     """
 
     @classmethod

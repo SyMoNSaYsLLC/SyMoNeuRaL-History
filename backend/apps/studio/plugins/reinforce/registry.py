@@ -57,8 +57,12 @@ import subprocess
 from dataclasses import dataclass, field, asdict
 
 HERE = pathlib.Path(__file__).resolve().parent
-# backend/apps/reinforce -> backend/apps -> backend -> repo root.
-ROOT = HERE.parent.parent.parent
+# `backend/api.py` is the marker, and it is WALKED for rather than counted to. The counted
+# form (`HERE.parent.parent.parent`) has now been wrong a FOURTH time: moving this app to
+# `backend/apps/studio/plugins/reinforce` added two levels and the count resolved to
+# `backend/apps`, which exists, so the only thing that caught it was the assert below.
+# A walk survives the next move; a count has to be found and fixed by hand every time.
+ROOT = next((_p for _p in (HERE, *HERE.parents) if (_p / "backend" / "api.py").is_file()), HERE)
 # This calculation has been wrong three times in this repo's history (the demo/ flatten, the
 # tools/ move, and `train_lora.py`'s HF_HOME, which is still wrong today -- it resolves to
 # /home/google/models/hf, a path that does not exist). It fails silently, because the wrong

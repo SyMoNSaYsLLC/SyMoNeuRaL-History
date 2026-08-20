@@ -22,7 +22,7 @@ import os
 import socket
 import unittest
 
-from apps.symoneuralstudio import status
+from apps.studio import status
 
 ENV_KEYS = ("SYMONEURAL_STUDIO_ENABLED", "SYMONEURAL_STUDIO_TOKEN", "SYMONEURAL_COMFY_URL")
 

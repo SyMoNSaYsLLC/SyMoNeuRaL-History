@@ -176,7 +176,7 @@ async def catalogue():
 
     out = []
     for short in CATALOGUE:
-        ref = f"apps.symoneuralexp.plugins.{short}"
+        ref = f"apps.studio.plugins.exp.plugins.{short}"
         try:
             described = registrymod.describe(loadermod.resolve_ref(ref))
         except (ContextError, ImportError) as exc:                # pragma: no cover
@@ -236,7 +236,7 @@ async def apply_manifest(request: Request):
 @router.post("/add")
 async def add_entry(request: Request):
     """Mount one entry without touching anything else. The body is a manifest entry:
-    `{"id": "clock2", "use": "apps.symoneuralexp.plugins.clock", "config": {...}}`."""
+    `{"id": "clock2", "use": "apps.studio.plugins.exp.plugins.clock", "config": {...}}`."""
     try:
         _guard(request)
         loader = await _loaded()

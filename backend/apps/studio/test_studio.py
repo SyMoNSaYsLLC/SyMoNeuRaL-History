@@ -1,6 +1,6 @@
 """Studio tests. Standard library and `unittest` only -- no network, no GPU, no fixtures.
 
-**Why the import list matters more than usual here.** `apps/reinforce/tests` and
+**Why the import list matters more than usual here.** `apps/studio/plugins/reinforce/tests` and
 `apps/remix/tests` are excluded from the suite by `--ignore` because they import `cupy` and
 `symon_capture`, which are not installed on the system interpreter and never may be: it is the
 serving path. A test file that needs a third dependency would make this a third `--ignore`, and
@@ -850,7 +850,7 @@ class MissingWorkspaceTests(unittest.TestCase):
     def test_the_rack_row_reports_a_missing_checkout_instead_of_raising(self):
         import sys
 
-        # This module's own package object, not `apps.symoneuralstudio`: pytest imports the
+        # This module's own package object, not `apps.studio`: pytest imports the
         # test file as `symoneuralstudio.test_studio`, so the two are different module objects
         # with different `workspace` attributes and the patch below would miss.
         pkg = sys.modules[__package__]

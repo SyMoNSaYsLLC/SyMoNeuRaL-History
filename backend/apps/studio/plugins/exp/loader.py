@@ -8,23 +8,23 @@ declarative configuration, plugins named as strings, hot-plug, and presets.
 
     plugins:
       - id: bus
-        use: apps.symoneuralexp.plugins.bus
+        use: apps.studio.plugins.exp.plugins.bus
       - id: clock
-        use: apps.symoneuralexp.plugins.clock
+        use: apps.studio.plugins.exp.plugins.clock
         config: {interval: 5}
       - id: session
         isolate: [llm, memory]        # a group -- see below
         plugins:
           - id: session.llm
-            use: apps.symoneuralexp.plugins.echo_llm
+            use: apps.studio.plugins.exp.plugins.echo_llm
       - id: broken
-        use: apps.symoneuralexp.plugins.explode
+        use: apps.studio.plugins.exp.plugins.explode
         disabled: true
 
 `use` is resolved three ways, tried in this order:
 
-    apps.symoneuralexp.plugins.clock         an importable module with a module-level `apply`
-    apps.symoneuralexp.plugins:clock         an attribute of an importable module
+    apps.studio.plugins.exp.plugins.clock         an importable module with a module-level `apply`
+    apps.studio.plugins.exp.plugins:clock         an attribute of an importable module
     ./plugins/clock.py                       a filesystem path, loaded by spec
 
 The path form exists because dropping a `.py` file next to the manifest and reloading is the

@@ -282,7 +282,7 @@ line, not adapted later:
 - **Every request is self-contained.** No hidden "currently open project" on the server. The
   client names the project in the path. Two clients — laptop and phone — must be able to
   interleave requests with no notion of whose turn it is.
-- **Credentials never appear in a path or a query string.** `backend/apps/tuner/` already
+- **Credentials never appear in a path or a query string.** `backend/apps/streamer/` already
   enforces this with `test_router_paths_never_carry_a_credential`, which walks
   `router.routes` and asserts it structurally. **Copy that test, not just the intention** —
   an intention is not checked at the next refactor. It matters more here: a token in a path

@@ -39,7 +39,7 @@ now; every rendering path and `answer` raise `MissingDependency` naming the inst
 `backend/apps/` is a pytest root. A module-level `from playwright.async_api import ...` on a box
 without playwright does not fail the one test that needs it — it aborts *collection*, and an
 aborted collection is not a smaller pass count, it is `Interrupted: 2 errors` and no count at
-all. Two suites in this repo (`apps/reinforce/tests`, `apps/remix/tests`) are already excluded
+all. Two suites in this repo (`apps/studio/plugins/reinforce/tests`, `apps/remix/tests`) are already excluded
 by `--ignore` for exactly that reason and this app declines to become the third.
 
 ## Credentials
@@ -52,11 +52,11 @@ kept as the vendors spell them because their SDKs read those exact names; our ow
 
 ## Usage
 
-    python3 -m apps.symoneuraldiscovery.discovery search "EU AI Act enforcement 2026"
-    python3 -m apps.symoneuraldiscovery.discovery discover "…" --backends google --n 8 --depth 1
-    python3 -m apps.symoneuraldiscovery.discovery crawl --seeds seeds.txt --depth 2 --same-domain
-    python3 -m apps.symoneuraldiscovery.discovery answer "…" --backends google --n 6
-    python3 -m apps.symoneuraldiscovery.discovery stats
+    python3 -m apps.studio.plugins.discovery.discovery search "EU AI Act enforcement 2026"
+    python3 -m apps.studio.plugins.discovery.discovery discover "…" --backends google --n 8 --depth 1
+    python3 -m apps.studio.plugins.discovery.discovery crawl --seeds seeds.txt --depth 2 --same-domain
+    python3 -m apps.studio.plugins.discovery.discovery answer "…" --backends google --n 6
+    python3 -m apps.studio.plugins.discovery.discovery stats
 
 or `bin/symoneural-discovery <subcommand>` from anywhere, which is the same code with the
 import path already set up.
@@ -141,7 +141,7 @@ class MissingDependency(RuntimeError):
     """
 
 
-_VENV = "backend/apps/symoneuraldiscovery/symoneural-discovery.venv"
+_VENV = "backend/apps/studio/plugins/discovery/symoneural-discovery.venv"
 
 _INSTALL_HINT = {
     "playwright": (f"{_VENV}/bin/pip install playwright && "
@@ -1361,6 +1361,6 @@ if __name__ == "__main__":
         # envfile needs a package, so give it one by name instead of failing at the first
         # `from . import`.
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        __package__ = "symoneuraldiscovery"
+        __package__ = "discovery"
         importlib.import_module(__package__)
     raise SystemExit(main())

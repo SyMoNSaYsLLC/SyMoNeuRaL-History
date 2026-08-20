@@ -119,7 +119,7 @@ class ShareableModeRefuses(unittest.TestCase):
         # It documents which keys exist and carries no values. Refusing it would push
         # people to delete the documentation, which is the wrong direction.
         with tempfile.TemporaryDirectory() as td:
-            make_tree(td, {"backend/apps/symoneuraldiscovery/symoneural-discovery.env.example": "VLLM_API_KEY=\n"})
+            make_tree(td, {"backend/apps/studio/plugins/discovery/symoneural-discovery.env.example": "VLLM_API_KEY=\n"})
             rc, err = run_guard("shareable", td)
         self.assertEqual(rc, 0, err)
 

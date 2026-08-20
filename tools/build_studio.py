@@ -8,7 +8,7 @@
 The Studio is the local agent (tool-calling, over llama.cpp) plus the image bench (ComfyUI,
 behind the GPU governor), on one page. The bench is **ComfyUI's own node editor**, in an
 iframe, served same-origin through `/studio/comfy/` by a reverse proxy in
-`backend/apps/symoneuralstudio/routes.py`.
+`backend/apps/studio/routes.py`.
 
 That last point is the largest single decision in this app, so it is written down here as well
 as in the routes: **no node canvas was written for this page.** An earlier draft had one --
@@ -64,7 +64,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 SITE = ROOT / "site"
-APP = ROOT / "backend" / "apps" / "symoneuralstudio"
+APP = ROOT / "backend" / "apps" / "studio"
 sys.path.insert(0, str(ROOT / "tools"))
 
 import build_pages  # noqa: E402  -- for NAV and SHELL. Read, never called: `page()` writes the

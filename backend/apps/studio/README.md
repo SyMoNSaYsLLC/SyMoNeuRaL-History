@@ -150,16 +150,16 @@ FastMCP must never be installed into the system interpreter (that is the serving
 lives in an isolated venv, by full path:
 
 ```bash
-python3 -m venv backend/apps/symoneuralstudio/.venv
-backend/apps/symoneuralstudio/.venv/bin/pip install -r backend/apps/symoneuralstudio/requirements.txt
+python3 -m venv backend/apps/studio/.venv
+backend/apps/studio/.venv/bin/pip install -r backend/apps/studio/requirements.txt
 ```
 
 Claude Desktop / Claude Code config:
 
 ```json
 {"mcpServers": {"symoneural-studio": {
-  "command": "/home/google/Symoneural/backend/apps/symoneuralstudio/.venv/bin/python",
-  "args": ["/home/google/Symoneural/backend/apps/symoneuralstudio/mcp_server.py"],
+  "command": "/home/google/Symoneural/backend/apps/studio/.venv/bin/python",
+  "args": ["/home/google/Symoneural/backend/apps/studio/mcp_server.py"],
   "env": {"SYMONEURAL_STUDIO_ENABLED": "1", "SYMONEURAL_STUDIO_TOKEN": "..."}}}}
 ```
 
@@ -177,7 +177,7 @@ the code as comments:
 
 1. FastMCP rejects `**kwargs` wrappers outright. `functools.wraps` on the registry's own
    function is what makes the client see the real typed signature.
-2. `apps/symoneuralstudio/__init__.py` cannot eagerly import `routes.py`, because that imports
+2. `apps/studio/__init__.py` cannot eagerly import `routes.py`, because that imports
    FastAPI and this venv has only `fastmcp`. `router`/`ui_router` are resolved through a PEP
    562 `__getattr__` instead.
 
@@ -245,8 +245,8 @@ sudo ./scripts/install-caddy.sh            # picks up the /studio block
 ## Tests
 
 ```bash
-cd backend && python3 -m pytest apps/symoneuralstudio/test_studio.py -q     # 63
-cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
+cd backend && python3 -m pytest apps/studio/test_studio.py -q     # 63
+cd backend && python3 -m pytest apps/ -q --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 ```
 
 `test_studio.py` holds **63 tests** and they all pass in 3.52 s (`pytest --collect-only -q`

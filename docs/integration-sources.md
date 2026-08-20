@@ -34,7 +34,7 @@ The honest summary: **adopt the data layers, skip the orchestration layers.**
 | LLM serving | vLLM, Triton, BentoML, KServe | **llama.cpp** `llama-server` + persona LoRA, started on demand inside `gpu.hold("chat")` | done — see the vLLM note below, and the BentoML note |
 | Model registry | MLflow, BentoML | **`run/registry.json`**, built out-of-band by `tools/build_registry.py`, read by `/api/studio/models` | done, deliberately minimal |
 | Image models | diffusers, A1111, ComfyUI, InvokeAI | **ComfyUI** (+ `ComfyUI-GGUF`, `custom_nodes/symoneural_gguf`) and **stable-diffusion.cpp** | done |
-| Agents / tools | LangChain, AutoGen, Semantic Kernel | **`apps/symoneuralstudio/agent.py`** + a stdlib tool registry + FastMCP | done, no framework |
+| Agents / tools | LangChain, AutoGen, Semantic Kernel | **`apps/studio/agent.py`** + a stdlib tool registry + FastMCP | done, no framework |
 | Orchestration | Temporal, Ray, Celery, Airflow | **`scripts/gpu-governor.sh`** — a mutex, because there is one worker | see below |
 | Object store | S3 / MinIO | the filesystem, `backend/output/`, served by `/api/gen/<name>` | done |
 | Metadata | Postgres | SQLite (`apps/project`), JSON files | adequate |
@@ -131,7 +131,7 @@ A curated MCP server directory (`mcpserver.ever.works`). The README did not come
 fetch, so the categories and count here are **unread, not summarised** — do not quote a number
 from this line.
 
-- Directly relevant: `apps/symoneuralstudio/mcp_server.py` exposes 26 tools over FastMCP. This
+- Directly relevant: `apps/studio/mcp_server.py` exposes 26 tools over FastMCP. This
   list is where to look for servers worth *consuming* (search, browser, filesystem) rather than
   writing, and where a SyMoNeuRaL MCP server would eventually be listed.
 - **Licence note:** CC-BY-SA-4.0 is share-alike. Fine to read, fine to link. Copying its list

@@ -33,7 +33,7 @@ should not refuse to start on a box that has no trace service.
 `schema` maps a config key to `(type, default)`. This is deliberately not jsonschema, pydantic
 or attrs: the serving interpreter carries pydantic already, but the runtime here has to be
 importable from a bare interpreter with nothing installed (the same constraint that shaped
-`apps/symoneuralstudio/registry.py`), and a plugin's config is a flat dict of scalars in every
+`apps/studio/registry.py`), and a plugin's config is a flat dict of scalars in every
 case that exists. When that stops being true the honest fix is to say so, not to grow a
 half-jsonschema here.
 

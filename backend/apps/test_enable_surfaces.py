@@ -143,7 +143,7 @@ class EnableSurfacesTests(unittest.TestCase):
         script with the others.
 
         DISCOVERY is the first name this test caught on the way in rather than after the fact.
-        apps/symoneuraldiscovery reads SYMONEURAL_DISCOVERY_ENABLED, so it joined `gated` the
+        apps/studio/plugins/discovery reads SYMONEURAL_DISCOVERY_ENABLED, so it joined `gated` the
         moment the package existed, and this assertion failed in the same run that first
         collected that package's own 37 tests -- before its first commit, not after an
         operator found a rack row stuck on `offline`. That is the whole intended behaviour of

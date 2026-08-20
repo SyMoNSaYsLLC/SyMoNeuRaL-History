@@ -12,7 +12,7 @@ Three strategies, in order, first hit wins:
 
 1. `SYMONEURAL_STUDIO_ROOT` if it is set and passes the signature test. An explicit override always
    beats a search.
-2. Walk up from this file. The package lives at `<root>/backend/apps/symoneuralstudio/`, so
+2. Walk up from this file. The package lives at `<root>/backend/apps/studio/`, so
    the root is three parents up -- but the walk is written as a loop rather than
    `parents[2]` so that moving the package one level does not silently resolve to `/home`.
 3. Scan `~` one level deep for a directory that passes the signature test, preferring the

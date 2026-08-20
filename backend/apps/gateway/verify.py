@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 
 # Two ways in, because there are two legitimate ways to run this. `api.py` puts `backend/apps`
 # on `sys.path` and imports `settlement` as a top-level package, so `gateway` is top-level too;
-# `python3 -m apps.settlement` from `backend/` makes both of them submodules of `apps`, where
+# `python3 -m apps.gateway.settlement_roundtrip` from `backend/` makes both of them submodules of `apps`, where
 # only the relative form resolves. Supporting one and not the other means either the server or
 # the round-trip rehearsal is broken, and which one is broken is not obvious from the error.
 try:

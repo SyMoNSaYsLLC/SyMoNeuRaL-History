@@ -1,6 +1,6 @@
 """The structural switch, in its own leaf module so nothing has to import the package to ask.
 
-Same shape as `apps/symoneuralstudio/gate.py`, and split out for the same reason: `routes.py`
+Same shape as `apps/studio/gate.py`, and split out for the same reason: `routes.py`
 is imported *by* `__init__.py`, so a module-level `from . import enabled` inside routes would
 run against a half-initialised package.
 

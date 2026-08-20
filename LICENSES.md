@@ -199,7 +199,7 @@ clause first.** It is the only thing in this stack that can stop you shipping.
 Proprietary to SymonSays LLC, all rights reserved, and **not** covered by any licence above:
 
 - `api.py`, the `build_*.py` generators, `symoneural`, `ravencalc.py`, the shell tooling
-- `backend/apps/reinforce/` (the CUDA engine) and `backend/apps/remix/`
+- `backend/apps/studio/plugins/reinforce/` (the CUDA engine) and `backend/apps/remix/`
 - **`training/corpus.jsonl`** and **`training/build_dataset.py`** — the authored identity
   corpus and the method that produces it
 - **`training/adapter/`** — the LoRA weights
