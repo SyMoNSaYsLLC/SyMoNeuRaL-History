@@ -166,9 +166,9 @@ config", which is a different and false statement.
 
 Two more honest edges:
 
-* `POST /call` has no method allow-list. Any public method on any mounted service, with whatever
-  arguments are posted. That is Garrett's standing instruction applied rather than half-applied:
-  the token is the line, and past it there is nothing.
+* `POST /call` implements no method allow-list as of 2026-08-20. Any public method on any mounted
+  service, with whatever arguments are posted: the token is the line, and past it there is
+  nothing. A deliberate pre-launch state, not a cleared posture — request ledger R-98, held.
 * The trace redacts nothing a plugin puts in it. A plugin that traces a secret has traced a
   secret, into the ring and into `run/exp-events.jsonl` if a file sink is configured. The runtime
   does not inspect what it is given, and a filter there would be worse than none because it would

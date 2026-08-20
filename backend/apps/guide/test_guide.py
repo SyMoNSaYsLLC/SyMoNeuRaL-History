@@ -429,16 +429,68 @@ class NothingIsBlocked(unittest.TestCase):
         self.assertEqual(r["source"], "fallback")
         self.assertIn("prose", r["why"])
 
-    def test_this_module_carries_no_denylist(self):
-        # Stated as a test so it cannot quietly stop being true. Every one of these is an
-        # ordinary question and must produce an ordinary filter.
-        for q in ["adult", "xxx", "porn"]:
+    def test_every_synonym_row_reaches_the_playlists_groups(self):
+        """Each route into GROUP_SYNONYMS resolves to the visitor's own lineup, not just one.
+
+        `filter_from_question` expands the visitor's word through `GROUP_SYNONYMS`
+        (`__init__.py:147`) before matching group names, and those rows are independent data:
+        `"adult" -> (xxx, 18, adults, porn, erotic)` is a different row from
+        `"porn" -> (xxx, adult, 18)`, and `"xxx"` matches a group name directly with no
+        expansion at all. `test_the_visitors_word_reaches_the_playlists_word` covers the first
+        of those three paths; this covers all three, so a dropped or mistyped row shows up as
+        a query that quietly returns nothing instead of the channels the visitor pays for.
+
+        Rewritten 2026-08-20. This was `test_this_module_carries_no_denylist` and its second
+        half grepped `guide.py` for the strings BLOCKLIST / DENYLIST / BANNED -- an
+        absence-of-mechanism assertion, which forbids ever adding a content control rather
+        than testing anything the module does. It had already been patched with
+        `.replace("NO DENYLIST", "")` to stop it failing on this module's own documentation,
+        which was the signal it was testing prose. The exact-set assertions below are strictly
+        stronger than the `assertTrue(r["groups"])` it used to make.
+
+        If a denylist is added here later this test fails, and that failure is the honest
+        kind: it says a group in the visitor's own playlist stopped being reachable by name.
+        That is a product decision to take deliberately, not a mechanism to forbid.
+
+        **`"porn"` is asserted as reaching two of the three groups, not all three, because
+        that is what it does today -- and that is a live defect, not a design.** `_SYNONYMS`
+        is hand-maintained and asymmetric: the `adult`, `adults` and `xxx` rows all carry the
+        token `adults`, which is what reaches the group literally named `FOR ADULTS`, and the
+        `porn` row (`__init__.py:150`) carries `adult` singular instead. Matching is
+        token-equality, not substring, so `adult` does not reach `FOR ADULTS` and a visitor
+        who types "porn" silently gets a smaller lineup than one who types "adult" for the
+        same intent -- the Bug-1 class this whole class exists to catch. Related, from the
+        same probe: `erotic` appears as a value in the `adult` row but has no row of its own,
+        so `filter_from_question("erotic", ...)` returns `ok: True` with **zero** groups -- a
+        legitimate query dropped while reporting success.
+        Both are recorded rather than fixed here on purpose: Garrett's 2026-08-20 instruction
+        with R-98 held was "NO runtime behavior changes anywhere", and widening a synonym row
+        changes what real queries return. Pinned as-is so the asymmetry cannot drift further
+        unnoticed; awaiting his call on the table.
+        """
+        reaches = {"adult": {"XXX", "18+", "FOR ADULTS"},
+                   "xxx": {"XXX", "18+", "FOR ADULTS"},
+                   "porn": {"XXX", "18+"}}          # see the docstring: missing FOR ADULTS
+        for q, expected in reaches.items():
             r = guide.filter_from_question(q, ["live"], self.ADULT)
-            self.assertTrue(r["ok"], q)
-            self.assertTrue(r["groups"], q)
-        src = pathlib.Path(guide.__file__).read_text()
-        for word in ("BLOCKLIST", "DENYLIST", "BANNED"):
-            self.assertNotIn(word, src.upper().replace("NO DENYLIST", ""))
+            self.assertTrue(r["ok"], f"{q!r} produced no filter at all")
+            self.assertEqual(set(r["groups"]), expected,
+                             f"{q!r} no longer reaches exactly the groups it used to")
+            self.assertNotIn("UK| SPORTS", r["groups"], f"{q!r} over-matched the lineup")
+
+    def test_a_synonym_value_with_no_row_of_its_own_returns_ok_with_nothing(self):
+        """`erotic` is a value in the `adult` row and not a key, so it matches nothing.
+
+        Pinned as the defect it is, with the same reasoning as above: asserted rather than
+        fixed because the fix is a runtime behaviour change and those are held. When the
+        synonym table is repaired this test should start failing, and the repair should
+        replace it with the positive assertion.
+        """
+        r = guide.filter_from_question("erotic", ["live"], self.ADULT)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["groups"], [],
+                         "`erotic` now reaches groups -- the synonym table was repaired; "
+                         "assert the groups it reaches and delete this test")
 
 
 class Honesty(unittest.TestCase):

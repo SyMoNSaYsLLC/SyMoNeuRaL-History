@@ -96,9 +96,10 @@ def base_url() -> str:
     `http://169.254.169.254:80` -- the link-local metadata address, fetched by the API process
     on behalf of whoever is driving the agent.
 
-    There is no allow-list and none is added here, per the standing no-filters instruction.
-    What keeps this shut is the gate in front of the agent, not this function, so do not read
-    the first line as a bound on where requests go.
+    No allow-list is implemented here as of 2026-08-20 -- a deliberate pre-launch state, not a
+    cleared posture (request ledger R-98, held, awaiting re-scope). What keeps this shut is the
+    gate in front of the agent, not this function, so do not read the first line as a bound on
+    where requests go.
     """
     if (env := os.environ.get("SYMONEURAL_COMFY_URL")):
         return env.rstrip("/")

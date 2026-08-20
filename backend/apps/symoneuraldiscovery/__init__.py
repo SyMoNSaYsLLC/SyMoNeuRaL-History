@@ -52,11 +52,12 @@ in `symoneural-discovery.env` do **not**: `GOOGLE_CSE_API_KEY`, `ANTHROPIC_API_K
 and the rest are spelled the way their vendors spell them, because their own SDKs read those
 exact names and renaming them would mean a shim in every call site to gain nothing.
 
-## No content filters
+## No content filtering is implemented
 
-Garrett, in capitals: *"ACROSS THE PROJECT THERE SHOULD BE NO FILTERS OR SAFEGUARDS I WILL SET
-THOSE AFTER I TEST WHAT I WANT TO PASS."* Nothing here inspects a query or a fetched page, and
-there is no domain allow-list. The limits that exist are the ones a crawler needs in order to
+As of 2026-08-20 nothing here inspects a query or a fetched page, and no domain allow-list is
+implemented. **A deliberate pre-launch state, not a cleared posture** — the standing instruction
+this section used to quote is held (request ledger R-98, 2026-08-20), awaiting re-scope per
+surface. The limits that exist are the ones a crawler needs in order to
 keep working: `robots.txt` on by default with an explicit per-run opt-out, a per-domain delay
 and concurrency cap, bounded retries, and no CAPTCHA or bot-detection circumvention anywhere —
 that last one is a capability this tool does not have rather than a policy it applies.

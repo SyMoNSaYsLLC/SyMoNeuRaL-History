@@ -525,25 +525,31 @@ class TestSearch(Base):
         self.assertEqual(len(store.search("buffalo")["results"]), 1)
 
 
-# ====================================================================== no filters
+# ====================================================================== content fidelity
 
-class TestNoContentFilters(Base):
-    """Garrett: no filters, no safeguards -- he sets those after testing what passes.
+class TestTheStoreHoldsWhatItIsGiven(Base):
+    """A store is a store: what goes in comes out, byte for byte, and nothing is lost.
 
-    The caps that remain are structural. These tests exist so that somebody adding a
-    keyword list later has to delete a test that says, in words, why it is not wanted.
+    These assert the store's data-integrity contract -- verbatim round-trip, no silent write
+    loss, and the one cap that does exist enforced exactly at its boundary. Escaping is the
+    renderer's job and happens at render time; a store that sanitised on the way in would
+    corrupt the only copy of the user's text.
+
+    This class used to be `TestNoContentFilters` and carried a fourth test that grepped this
+    package's own source for the strings "blocklist", "profanity", "moderat", "throttle",
+    "429" and friends, so that anyone adding a keyword list would have to delete a test
+    arguing against it. That test is gone (2026-08-20). It asserted the *absence of a
+    mechanism* rather than any behaviour, which made it a ratchet against ever adding a safety
+    control -- and the instruction it encoded was "not yet", never "never". It was also
+    already self-contradictory: `test_the_only_code_naming_the_corpus_is_the_denylist_that_
+    refuses_it`, thirty lines up, asserts this package *does* carry a denylist, because the
+    corpus is a trade secret. Forbidding the word while requiring the thing was incoherent.
+    The banned-token list would also have failed on ordinary code -- a `429` from an upstream
+    API, a variable named `moderate_size`.
+
+    What the deleted test genuinely cared about is below and unchanged: arbitrary bytes
+    survive, and a hundred writes are all kept.
     """
-
-    def test_no_code_in_this_package_filters_or_throttles(self):
-        banned = ("blocklist", "blocked_words", "banned_words", "profanity", "moderat",
-                  "censor", "ratelimit", "rate_limit", "ratelimiter", "throttle",
-                  "429")
-        for f in SOURCES:
-            for lineno, line in code_lines(f):
-                for token in banned:
-                    self.assertNotIn(token, line.lower(),
-                                     f"{f}:{lineno} looks like a filter or a limiter: "
-                                     f"{line.strip()}")
 
     def test_arbitrary_content_round_trips_byte_for_byte(self):
         p = self.mkproject()
@@ -554,13 +560,25 @@ class TestNoContentFilters(Base):
         self.assertEqual(store.list_items(p["id"])["items"][0]["body"], nasty)
         self.assertEqual(i["body"], nasty)
 
-    def test_a_hundred_writes_in_a_row_are_all_served(self):
-        """No throttle, by instruction. If one of these 429s, a limiter has crept in."""
+    def test_a_hundred_writes_are_all_persisted_and_none_is_silently_dropped(self):
+        """No silent write loss, and no undocumented cap on how many items a project holds.
+
+        Asserts the writes are *readable back* afterwards, not merely that each call returned
+        ok -- a store that accepted every write and kept the last ten would pass the weaker
+        form. Rewritten 2026-08-20: this previously read "no throttle, by instruction. If one
+        of these 429s, a limiter has crept in", which made a rate limiter anywhere in the
+        stack fail a store-layer test. Rate limiting is an HTTP concern and does not belong at
+        this layer either way; what belongs here is that the store keeps what it accepted.
+        """
         p = self.mkproject()
         for n in range(100):
-            self.assertTrue(store.create_item(p["id"], f"item {n}")["ok"])
+            self.assertTrue(store.create_item(p["id"], f"item {n}")["ok"],
+                            f"write {n} was refused")
+        titles = {i["title"] for i in store.list_items(p["id"])["items"]}
+        self.assertEqual(titles, {f"item {n}" for n in range(100)},
+                         "the store accepted writes it did not keep")
 
-    def test_the_caps_that_remain_are_size_caps_and_they_bite(self):
+    def test_the_size_cap_is_enforced_at_exactly_max_text(self):
         p = self.mkproject()
         self.assertRefused(store.create_item(p["id"], "x", "y" * (store.MAX_TEXT + 1)),
                            "too_large")

@@ -2,9 +2,10 @@
 
 This is the group the brief meant by "configure existing apps, tools etc and have full access
 to host system". `run_command` runs what it is given, `env_set` writes to the process
-environment and optionally to a persisted env file, and `service_status` reads systemd. There
-is no command blocklist and no argument sanitiser, per the standing instruction in
-`apps/voice/__init__.py`.
+environment and optionally to a persisted env file, and `service_status` reads systemd. As of
+2026-08-20 no command blocklist and no argument sanitiser are implemented here -- a deliberate
+pre-launch state, not a cleared posture (request ledger R-98, held, being re-scoped per
+surface).
 
 Three things *are* enforced, and none of them is a filter on what may be done:
 
@@ -141,9 +142,9 @@ def env_get(name: str = "") -> dict:
     `SYMONEURAL_STUDIO_TOKEN=s3cret-token-abcdefgh` set: this tool answered
     `<set, 21 chars, ends 'efgh'>` and `run_command("printenv SYMONEURAL_STUDIO_TOKEN")` answered
     `s3cret-token-abcdefgh`. So the mask keeps a secret out of a context window that did not
-    ask for one; it does not keep it from an agent that asks. No blocklist is added to
-    `run_command` for it -- the standing instruction is that this project carries no filters --
-    and the gate in front of the surface is what stands between the two.
+    ask for one; it does not keep it from an agent that asks. No blocklist is implemented on
+    `run_command` for it as of 2026-08-20 -- a deliberate pre-launch state, not a cleared
+    posture (R-98, held) -- and the gate in front of the surface is what stands between the two.
 
     Args:
         name: A single variable to read. Empty returns every name currently set.

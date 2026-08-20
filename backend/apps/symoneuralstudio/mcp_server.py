@@ -41,8 +41,10 @@ exactly as for the HTTP surface. Without it the server still starts and still li
 and every call returns the same "switched off" structure the API returns -- listing is how a
 client discovers why it is being refused, and a server that exits on startup tells it nothing.
 
-Per Garrett's standing instruction there are no content filters, no path allow-list and no
-command blocklist. With the switch set, `run_command` and `write_file` reach the whole host.
+As of 2026-08-20 no content filtering, no path allow-list and no command blocklist are
+implemented on this surface: with the switch set, `run_command` and `write_file` reach the
+whole host. That is a deliberate pre-launch state, not a cleared posture -- see request ledger
+R-98, held 2026-08-20, awaiting re-scope per surface.
 """
 from __future__ import annotations
 

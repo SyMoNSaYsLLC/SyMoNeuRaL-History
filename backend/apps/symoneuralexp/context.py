@@ -43,9 +43,10 @@ thing that mounts them.
 ## Nothing here is a sandbox
 
 `docs/isolation.md` explains at length why not, and what the options actually cost. The short
-version: Garrett's standing instruction is that this project carries no filters or safeguards
-until he has tested what he wants to pass, and every plugin in this repository was written in
-this repository. In-process isolation of Python from Python is not achievable anyway -- `vm2`,
+version: no filtering or sandboxing is implemented as of 2026-08-20 (a deliberate pre-launch
+state, not a cleared posture -- request ledger R-98, held), and every plugin in this repository
+was written in this repository. In-process isolation of Python from Python is not achievable
+anyway -- `vm2`,
 the JavaScript answer to this problem, was archived by its author after escapes that could not
 be fixed. The seam for real isolation is out-of-process, and a plugin that spawns a subprocess
 is just a plugin.

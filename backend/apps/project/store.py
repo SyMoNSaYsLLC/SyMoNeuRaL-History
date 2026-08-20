@@ -45,11 +45,11 @@ SCHEMA_VERSION = 1
 
 # ------------------------------------------------------------------ structural caps
 #
-# These stop the box falling over. They are NOT content policy: nothing here inspects what
-# a note says, and there is no keyword list anywhere in this package. Garrett's instruction
-# is explicit -- no filters, no safeguards, he sets those after testing what he wants to
-# pass -- so the only limits are the ones that keep a request from exhausting memory or a
-# response from being unbounded.
+# These stop the box falling over. They are NOT content policy: as of 2026-08-20 nothing here
+# inspects what a note says and no keyword list is implemented anywhere in this package, so the
+# only limits are the ones that keep a request from exhausting memory or a response from being
+# unbounded. That absence is a deliberate pre-launch state and not a cleared posture -- request
+# ledger R-98, held, being re-scoped per surface.
 
 MAX_NAME = 400                  # a project name / item title
 MAX_TEXT = 200_000              # an item body, a note, an event record
@@ -143,9 +143,9 @@ def enabled() -> bool:
 def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time.
 
-    Rate limiting is off across this API by Garrett's instruction (`backend/api.py`:
-    "The token IS the gate now"), so entropy is the only thing between this token and a
-    guess. Generate it with `secrets.token_urlsafe(32)` and never by hand.
+    No rate limiting is implemented across this API as of 2026-08-20 (`backend/api.py`: "The
+    token IS the gate now"; request ledger R-98, held), so entropy is the only thing between
+    this token and a guess. Generate it with `secrets.token_urlsafe(32)` and never by hand.
     """
     want = os.environ.get("SYMONEURAL_PROJECT_TOKEN") or ""
     if not want or not presented:
@@ -532,10 +532,11 @@ def _now() -> float:
 def _text(value: object, field: str, *, limit: int, required: bool = False) -> str:
     """Length-check and nothing else.
 
-    There is no content inspection here and there never may be: no keyword list, no
-    profanity check, no "does this look like a prompt injection" heuristic. The cap exists
-    so a single POST cannot pin memory. Garrett: *"ACROSS THE PROJECT THERE SHOULD BE NO
-    FILTERS OR SAFEGUARDS I WILL SET THOSE AFTER I TEST WHAT I WANT TO PASS."*
+    No content inspection is implemented here as of 2026-08-20: no keyword list, no profanity
+    check, no "does this look like a prompt injection" heuristic. The cap exists so a single
+    POST cannot pin memory. That absence is a deliberate pre-launch state and not a cleared
+    posture -- request ledger R-98, held, being re-scoped per surface. (This docstring used to
+    read "and there never may be", which overstated a "not yet" into a permanent bar.)
     """
     if value is None:
         value = ""

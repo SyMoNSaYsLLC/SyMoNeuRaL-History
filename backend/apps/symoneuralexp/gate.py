@@ -4,11 +4,13 @@ Same shape as `apps/symoneuralstudio/gate.py`, and split out for the same reason
 is imported *by* `__init__.py`, so a module-level `from . import enabled` inside routes would
 run against a half-initialised package.
 
-There is no filter here. Garrett's standing instruction is that the project carries no filters
-or safeguards until he has tested what he wants to pass, and a plugin runtime is the last place
-to start adding them -- a plugin is imported into the serving process and can do anything the
-process can do, so a gate on the HTTP surface is honest about being a switch and dishonest the
-moment it is described as containment. `docs/isolation.md` says what containment would take.
+As of 2026-08-20 no filtering is implemented here -- a deliberate pre-launch state, not a
+cleared posture (request ledger R-98, held, being re-scoped per surface). Worth keeping in view
+when that re-scope reaches this app: a plugin is imported into the serving process and can do
+anything the process can do, so a gate on the HTTP surface is honest about being a switch and
+dishonest the moment it is described as containment. A filter here would not change that, which
+is an argument about where a control belongs and not an argument against having one.
+`docs/isolation.md` says what containment would actually take.
 
 What the token divides is narrower than in studio and worth stating: **reads are open, writes
 and config are not.** Anyone may see which plugins are mounted, in what state, and what they

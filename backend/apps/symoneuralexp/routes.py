@@ -24,9 +24,10 @@ and a plugin table nobody can see without a secret is a plugin table nobody look
 is withheld from a tokenless reader and it is named precisely: **an entry's `config`**. That is
 where a plugin's credentials live, and `Fiber.snapshot` leaves it out for the same reason.
 
-`POST /call` is genuinely unrestricted -- any method on any mounted service, with whatever
-arguments are posted. That is Garrett's standing instruction applied honestly rather than
-half-applied: the token is the line, and past it there is no allow-list of callable methods.
+`POST /call` is genuinely unrestricted as of 2026-08-20 -- any method on any mounted service,
+with whatever arguments are posted. The token is the line, and past it no allow-list of
+callable methods is implemented. That is a deliberate pre-launch state, not a cleared posture
+(request ledger R-98, held, being re-scoped per surface).
 
 ## Errors
 
@@ -318,9 +319,10 @@ async def reload_entry(request: Request):
 async def call_service(request: Request):
     """Call a method on a live service: `{"service": "gpu", "method": "vram", "args": []}`.
 
-    No allow-list of methods, by instruction and by design. A plugin runtime whose services can
-    only be poked through endpoints written in advance is a runtime you cannot experiment with,
-    and experimenting is what the app is called. The token is the line.
+    No allow-list of methods is implemented as of 2026-08-20 (R-98, held). The design argument
+    for that stands on its own: a plugin runtime whose services can only be poked through
+    endpoints written in advance is a runtime you cannot experiment with, and experimenting is
+    what the app is called. The token is the line.
 
     `service` is a realm-qualified key when the service lives in one -- `GET /services` returns
     exactly the string to send. A plain name resolves in the root realm.

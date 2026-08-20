@@ -253,9 +253,11 @@ Three specific problems with the blueprint as written:
   does not have.
 - **`vm2` is not a sandbox.** Its author archived it after unfixable escapes; recommending it in
   2026 is a sign the blueprint was not checked against the present.
-- **Landlock and seccomp are exactly what Garrett said not to build.** *"ACROSS THE PROJECT
-  THERE SHOULD BE NO FILTERS OR SAFEGUARDS I WILL SET THOSE AFTER I TEST WHAT I WANT TO PASS."*
-  A capability model that has to approve `run_command` is the opposite instruction.
+- **Landlock and seccomp are not built here as of 2026-08-20.** A deliberate pre-launch state,
+  not a cleared posture — the instruction this bullet used to quote is held (request ledger
+  R-98), awaiting re-scope per surface, so this is a "not yet" and not a rejection. The
+  substantive objection to the blueprint stands on its own and is the bullet above: this
+  deployment runs only code written in this repo, read by the person who runs it.
 
 Hot-reload deserves its own line, because it is the one item that sounds unarguable. It is not
 free: it means every plugin must declare how to snapshot and restore state, and the failure

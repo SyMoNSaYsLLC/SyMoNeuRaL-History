@@ -33,18 +33,19 @@ never touches `scripts/gpu-governor.sh` and never opens a socket.
 
 `SYMONEURAL_PROJECT_ENABLED=1` **and** `SYMONEURAL_PROJECT_TOKEN` -- both, or the surface does not exist.
 Requiring both is what makes a misconfiguration fail closed on a box with a public IP.
-Rate limiting is off across this API by Garrett's instruction, so the token is carrying the
-whole load: generate it with `secrets.token_urlsafe(32)`, put it in the systemd unit's
-environment, and never in a URL.
+No rate limiting is implemented across this API as of 2026-08-20 (see R-98, held), so the token
+is carrying the whole load: generate it with `secrets.token_urlsafe(32)`, put it in the systemd
+unit's environment, and never in a URL.
 
-## No content filters. Structural guards only
+## No content filtering is implemented. Structural guards only
 
-Garrett, repeatedly and in capitals: *"ACROSS THE PROJECT THERE SHOULD BE NO FILTERS OR
-SAFEGUARDS I WILL SET THOSE AFTER I TEST WHAT I WANT TO PASS."* There is no keyword list in
-this package, nothing inspects what a note says, and there is no rate limiter. What is here
-instead is structural: path containment and a resolved-path denylist so a file reference
-cannot escape into `training/`, byte and row caps so one request cannot exhaust the box,
-and WAL plus version checks so two clients cannot silently lose each other's writes.
+As of 2026-08-20 there is no keyword list in this package, nothing inspects what a note says,
+and there is no rate limiter. **This is a deliberate pre-launch state, not a cleared posture:**
+the standing instruction this section used to quote is held (request ledger R-98, 2026-08-20)
+and is being re-scoped per surface. What is here instead is structural: path containment and a
+resolved-path denylist so a file reference cannot escape into `training/`, byte and row caps so
+one request cannot exhaust the box, and WAL plus version checks so two clients cannot silently
+lose each other's writes.
 
 See `README.md` for what works today, what is stubbed, and the three lines somebody else
 has to write.

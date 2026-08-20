@@ -151,10 +151,10 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
 
     def test_the_dangerous_ones_are_labelled_as_such(self):
-        """Not a guard -- a label. Garrett's instruction is that this project carries no
-        filters; `run_command` and `write_file` run unrestricted. But the UI prints which
-        tools write, and that flag has to come from the registry rather than a list in the
-        page that drifts."""
+        """Not a guard -- a label. No filtering is implemented as of 2026-08-20 (R-98, held),
+        so `run_command` and `write_file` run unrestricted. But the UI prints which tools
+        write, and that flag has to come from the registry rather than a list in the page that
+        drifts. This asserts the label, and stays true either way."""
         for name in ("run_command", "write_file", "delete_path", "env_set"):
             self.assertTrue(registry.get(name).dangerous, f"{name} is not flagged as writing")
         for name in ("list_dir", "read_file", "gpu_status"):

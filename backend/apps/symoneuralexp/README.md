@@ -83,9 +83,9 @@ Mounted by `api.py` as `app.include_router(exp.router, prefix="/api/exp")`.
 ¹ answers without a token, but omits each entry's `config`.
 
 `/events` takes a sequence cursor rather than a timestamp, because two events can share a
-millisecond and a timestamp cursor either re-delivers one or drops one. `/call` has no method
-allow-list: any public method on any mounted service, which is Garrett's standing instruction
-applied rather than half-applied.
+millisecond and a timestamp cursor either re-delivers one or drops one. As of 2026-08-20
+`/call` implements no method allow-list: any public method on any mounted service. That is a
+deliberate pre-launch state, not a cleared posture — see request ledger R-98, held.
 
 ## The page
 

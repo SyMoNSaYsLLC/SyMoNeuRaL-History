@@ -2416,8 +2416,9 @@ app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
 # the timing channel and nothing closes the rate, so the guess budget is the network's. The
 # token is the whole boundary in front of `run_command`, so it wants to be long and random --
 # `openssl rand -hex 32`, not a word -- and that is a property of how it is set, which no code
-# here can enforce. A lockout is the guard that would close this and it is deliberately not
-# written: it is a filter, and this project carries none by standing instruction.
+# here can enforce. A lockout is the guard that would close this and is not implemented as of
+# 2026-08-20 -- a deliberate pre-launch state, not a cleared posture (request ledger R-98, held,
+# being re-scoped per surface). This is the strongest candidate on the list when it is.
 app.include_router(studio.router, prefix="/api/studio", tags=["studio"])
 app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=False)
 

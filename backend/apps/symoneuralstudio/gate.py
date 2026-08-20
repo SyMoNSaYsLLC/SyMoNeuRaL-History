@@ -5,10 +5,13 @@ not decoration: `routes.py` is imported *by* `__init__.py`, so a module-level
 `from . import enabled` inside routes would run against a half-initialised package. One tiny
 leaf module removes the cycle instead of hiding it behind a function-local import.
 
-There is no content filter here and no allow-list -- Garrett's standing instruction is that
-the project carries no filters or safeguards until he has tested what he wants to pass. This
-is the same on/off switch `apps/voice` and `apps/asicminer` already put on write-capable
-surfaces, and nothing more: with both variables set, every tool runs unrestricted.
+As of 2026-08-20 no content filtering and no allow-list are implemented here. That is a
+deliberate pre-launch state, not a cleared posture: the standing instruction this used to cite
+is **held** (request ledger R-98, 2026-08-20) pending re-scope per surface, so read the
+sentence above as a description of what the code does today and not as authority to remove a
+control or to leave one out. This module is the same on/off switch `apps/voice` and
+`apps/asicminer` already put on write-capable surfaces, and nothing more: with both variables
+set, every tool runs unrestricted.
 """
 from __future__ import annotations
 

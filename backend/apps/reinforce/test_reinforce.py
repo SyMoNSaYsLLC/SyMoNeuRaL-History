@@ -1066,7 +1066,16 @@ class TradeSecretTests(unittest.TestCase):
             p.write_text("\n".join(json.dumps(r) for r in rows))
             info = dataset_guard.admit(str(p))
             self.assertEqual(info.rows, 5)
-            payload = json.dumps(info.to_dict())
+            d = info.to_dict()
+            # `path` is metadata the caller passed in and is legitimately echoed back; every
+            # other field must be shape only. Excluding it here is not a loophole -- row
+            # content never travels in `path`, and scanning it made this test fail roughly 1%
+            # of runs: `tempfile` names its directory from `[a-z0-9_]{8}`, so an adjacent "q0"
+            # or "a0" lands about once in 1369 per position, seven positions, two needles. Seen
+            # for real on 2026-08-20 (`/tmp/...q0.../ok.jsonl`), which read as a trade-secret
+            # leak and was a filename.
+            self.assertIn("path", d, "the report stopped naming the dataset it admitted")
+            payload = json.dumps({k: v for k, v in d.items() if k != "path"})
             self.assertNotIn("q0", payload)
             self.assertNotIn("a0", payload)
 

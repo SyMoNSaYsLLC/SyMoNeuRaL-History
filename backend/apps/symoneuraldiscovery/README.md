@@ -76,9 +76,10 @@ No CAPTCHA solving, no defeating bot-detection or fingerprinting, no paywall byp
 scraping a search engine's own results page — the keyed backends are official APIs. If a target
 is actively blocking automated access that is a signal to stop, not a gap to route around.
 
-`robots.txt` is honoured by default, with a per-run `--ignore-robots` opt-out because Garrett's
-standing instruction is that he sets the safeguards, not me. There is no content filter, no
-domain allow-list and no query inspection. The limits that do exist are the ones a crawler
+`robots.txt` is honoured by default, with a per-run `--ignore-robots` opt-out that exists so the
+owner of the run makes that call rather than this tool making it for him. As of 2026-08-20 no
+content filter, domain allow-list or query inspection is implemented — a deliberate pre-launch
+state, not a cleared posture (request ledger R-98, held). The limits that do exist are the ones a crawler
 needs in order to keep working: a per-domain delay and concurrency cap, bounded retries with
 backoff, and a `User-Agent` that says who is calling and gives a human to write to.
 

@@ -62,10 +62,11 @@ misconfiguration fail closed on a box with a public IP -- the pattern is
 `GET /api/voice/state` needs no token: it publishes presence and absence, and there is no key
 material in this package to leak. `apps/gateway` is the precedent for that.
 
-## No content filters
+## No content filtering is implemented
 
-Garrett, in capitals: *"ACROSS THE PROJECT THERE SHOULD BE NO FILTERS OR SAFEGUARDS I WILL SET
-THOSE AFTER I TEST WHAT I WANT TO PASS."* Nothing here inspects what was said. The guards are
+As of 2026-08-20 nothing here inspects what was said. **A deliberate pre-launch state, not a
+cleared posture** — the standing instruction this section used to quote is held (request ledger
+R-98, 2026-08-20) and is being re-scoped per surface. The guards that do exist are
 structural: a scratch directory per request that is deleted with it, a suffix taken from the
 caller only after it has been proved to be alphanumeric, subprocess timeouts instead of byte
 caps, and a semaphore so two requests cannot thrash 20 cores into a third's latency.

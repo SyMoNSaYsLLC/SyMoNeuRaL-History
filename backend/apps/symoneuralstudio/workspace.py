@@ -148,9 +148,9 @@ def resolve(path: str) -> pathlib.Path:
     the operator asked for host-wide access and `/etc/systemd/system/symoneural-api.service`
     is a legitimate target for a tool whose job is configuring services. `~` expands.
 
-    There is deliberately no containment check. Per the standing instruction in
-    `apps/voice/__init__.py`, the guard on this surface is the two-switch token gate in
-    `__init__.py`, not a path allow-list here.
+    No containment check is implemented here as of 2026-08-20 -- a deliberate pre-launch state,
+    not a cleared posture (request ledger R-98, held). The guard on this surface today is the
+    two-switch token gate in `__init__.py`, not a path allow-list here.
     """
     p = pathlib.Path(path).expanduser()
     if not p.is_absolute():

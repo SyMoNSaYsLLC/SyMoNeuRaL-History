@@ -21,10 +21,11 @@ SYMONEURAL_STUDIO_TOKEN=<secret>          # presented as X-Symoneural-Token
 ```
 
 This is the structural switch `apps/voice` and `apps/asicminer` already use, and it is the
-only gate in the package. There is **no content filter, no path allow-list and no command
-blocklist** — Garrett's standing instruction is that the project carries none until he has
-tested what he wants to pass. With both variables set, `run_command` and `write_file` reach the
-whole host, exactly as intended. The switch is the difference between that being reachable by
+only gate in the package. As of 2026-08-20 there is **no content filter, no path allow-list and
+no command blocklist** implemented on this surface. That is a deliberate pre-launch state, not
+a cleared posture — the standing instruction this used to cite is held (request ledger R-98,
+2026-08-20) and is being re-scoped per surface. With both variables set, `run_command` and
+`write_file` reach the whole host. The switch is the difference between that being reachable by
 him and being reachable by anyone who finds the box's IP.
 
 `GET /api/studio/state` stays tokenless and reports presence and absence only, so the page can

@@ -211,8 +211,9 @@ def tool(group: str = "misc", *, name: str | None = None, dangerous: bool = Fals
 
     `dangerous` does not restrict anything -- nothing in this package refuses a call. It is
     a label, surfaced in the UI and in the system prompt, so the operator can see at a glance
-    which tools write to the host. Per Garrett's standing instruction there are no filters
-    here; the switch that controls this surface is the token gate in `__init__.py`.
+    which tools write to the host. No filtering is implemented here as of 2026-08-20 (a
+    deliberate pre-launch state, not a cleared posture -- request ledger R-98, held); the
+    switch that controls this surface is the token gate in `__init__.py`.
     """
     def deco(fn: typing.Callable) -> typing.Callable:
         summary, params = schema_for(fn)

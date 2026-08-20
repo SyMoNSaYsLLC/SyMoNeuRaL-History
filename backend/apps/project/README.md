@@ -128,10 +128,11 @@ request line, so a token in a query string is a token written to disk on every r
 travels in the `X-Symoneural-Token` header, and a test walks `router.routes` asserting no path
 segment is ever named for a credential.
 
-**Rate limiting is off across this API by Garrett's instruction, so the token is the only
-gate.** That is not an argument to turn limiting back on — his reasoning holds, and on one GPU
-a rate limit never bought throughput because the queue rations the card by itself. It *is* an
-argument for the token's length and entropy, which are now carrying the whole load. One
+**No rate limiting is implemented across this API as of 2026-08-20, so the token is the only
+gate.** A deliberate pre-launch state, not a cleared posture — request ledger R-98, held. One
+part of the original reasoning is worth carrying into that re-scope on its own merits: on one
+GPU a rate limit never bought throughput, because the queue rations the card by itself. Either
+way it is an argument for the token's length and entropy, which are carrying the whole load. One
 asymmetry worth knowing: this surface is CPU-only, so unlike the GPU surfaces there is no
 one-deep queue implicitly rationing it. An unauthenticated flood of `/api/project/search`
 would be served as fast as SQLite can answer. FTS5 over a few hundred rows is cheap enough
@@ -299,17 +300,24 @@ rather than as a live file. There is a test for that too.
 the package with `ast` and `tokenize`, strips docstrings and comments, and asserts the only
 *code* that names the corpus is the denylist entry that refuses it.
 
-## No content filters. Structural guards only
+## No content filtering is implemented. Structural guards only
 
-Garrett, repeatedly and in capitals: *"ACROSS THE PROJECT THERE SHOULD BE NO FILTERS OR
-SAFEGUARDS I WILL SET THOSE AFTER I TEST WHAT I WANT TO PASS."*
+As of 2026-08-20: no keyword list, no profanity check, no prompt-injection heuristic, no rate
+limiter, no content inspection of any kind. **A deliberate pre-launch state, not a cleared
+posture** — the standing instruction this section used to quote is held (request ledger R-98,
+2026-08-20), awaiting re-scope per surface.
 
-So: no keyword list, no profanity check, no prompt-injection heuristic, no rate limiter, no
-content inspection of any kind. A note is stored byte for byte — a test round-trips a string
-containing script tags, shell metacharacters, SQL, ANSI escapes, a right-to-left override and
-the literal words *"ignore previous instructions"* and asserts it comes back unchanged. A test
-also scans the package's code for anything that looks like a filter or a throttle and fails if
-one appears.
+What is asserted is the store's data-integrity contract: a note is stored byte for byte — a
+test round-trips a string containing script tags, shell metacharacters, SQL, ANSI escapes, a
+right-to-left override and the literal words *"ignore previous instructions"* and asserts it
+comes back unchanged, and another asserts a hundred writes are all persisted and readable back.
+
+There used to be a further test here that scanned the package's own code for anything that
+looked like a filter or a throttle and failed if one appeared. It was deleted on 2026-08-20: it
+asserted the *absence of a mechanism* rather than any behaviour, which made it a ratchet against
+ever adding a safety control — and the instruction behind it was "not yet", not "never". It also
+contradicted the test two paragraphs up, which requires this package to carry a denylist
+protecting the corpus.
 
 What **is** enforced is structural, and the README calls it that rather than dressing it as
 policy: path containment (above), and size caps that stop one request pinning memory.
