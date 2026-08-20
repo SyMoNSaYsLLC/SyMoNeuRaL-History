@@ -2,7 +2,7 @@
 
 ## The problem this solves, precisely
 
-`backend/models/image/t5xxl-Q8_0.gguf` is a **stable-diffusion.cpp** GGUF: it carries no
+`backend/models/image/symoneural-image-t5-q8_0.gguf` is a **stable-diffusion.cpp** GGUF: it carries no
 `general.architecture` field, and its tensors use the original HuggingFace T5 names
 (`encoder.block.0.layer.0.SelfAttention.k.weight`, `shared.weight`,
 `encoder.final_layer_norm.weight`).

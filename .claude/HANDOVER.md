@@ -3455,3 +3455,16 @@ Three independent grounds: 16303 MiB measured against a 19000 MiB floor (which i
 *27B's* number, deliberately not retuned upward); NGC marks `nvcr.io/nim/qwen/qwen3-32b:1.0.0`
 "End of Support"; and NVIDIA AI Enterprise licenses the container for use, not
 redistribution — so no .deb, no Yocto recipe and no backup archive may carry it.
+
+**Weight files carry house names as of 2026-08-20.** `backend/models/` holds no upstream
+filename any more: `symon-1.0-{7b,14b,draft-0.5b,27b,27b-vision}-*` for the language tiers,
+`symoneural-image-*` for FLUX, `symoneural-listen-base-en.bin` for whisper.
+`backend/models/PROVENANCE.json` is the only record of which upstream artefact each name came
+from, and `backend/apps/test_weight_names.py` fails if a weight appears on disk that is not in
+the manifest or not named to the rule. `scripts/fetch-models.sh` gained an `adopt()` step, so
+an existing box renames in place instead of re-downloading 40 GB, and a fresh clone downloads
+straight to the house name. Three things are exempt with reasons recorded in the manifest:
+`rembg/u2net.onnx` (rembg resolves `<name>.onnx` by model name), `hf/hub/models--*` (the
+huggingface_hub cache layout *is* the index), and `licenses/*` (a licence that does not name
+its licensor is not a licence). Dated documents under `docs/archive/` keep the old names and
+carry a header note pointing here — they are records of what was read at the time.

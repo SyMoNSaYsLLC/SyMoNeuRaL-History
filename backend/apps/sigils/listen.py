@@ -46,7 +46,7 @@ MODELS = ROOT / "backend" / "models" / "whisper"
 #: `base.en` is the default the fetch script pulls. English-only, 142 MB, and enough for
 #: an utterance that is a handful of words describing a sticker. A larger model is a
 #: straight swap -- the file name is the only thing that changes.
-DEFAULT_MODEL = "ggml-base.en.bin"
+DEFAULT_MODEL = "symoneural-listen-base-en.bin"
 
 #: Decoded audio is capped by *duration*, not only by bytes, and both caps are structural:
 #: a sticker subject is a few words, and a surface that will transcribe an hour of audio on

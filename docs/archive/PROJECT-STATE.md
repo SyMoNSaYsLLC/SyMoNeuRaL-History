@@ -1,5 +1,11 @@
 # SyMoNeuRaL — project state
 
+> **Weight filenames in this document predate the 2026-08-20 house-name migration.**
+> The files themselves were not modified, only renamed: `Qwen2.5-7B-Instruct-Q4_K_M.gguf`
+> is now `symon-1.0-7b-q4_k_m.gguf`, and so on. `backend/models/PROVENANCE.json` is the
+> full mapping. This is a dated record of what was observed at the time, so the names in
+> it are left as they were read rather than rewritten to match today's disk.
+
 > **⚠ SUPERSEDED by `HANDOVER.md` (2026-08-16, ~19:10). Read that instead.**
 > Everything here is folded into it, plus a request-by-request audit, the ten-item work queue,
 > and the unattended-run setup. Where the two disagree, **HANDOVER.md wins.**

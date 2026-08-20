@@ -20,7 +20,7 @@ Two backends, and the response always names which one answered:
 
 * **`llama.cpp`** -- if `SYM_LLAMA_URL` points at a reachable OpenAI-compatible endpoint, the
   runner POSTs `/v1/chat/completions` to it. That is the repo's real inference path
-  (`contrib/llama.cpp/build/bin/llama-server`, Qwen2.5-7B-Instruct-Q4_K_M + persona LoRA).
+  (`contrib/llama.cpp/build/bin/llama-server`, symon-1.0-7b-q4_k_m + persona LoRA).
 * **`stub`** -- otherwise, the deterministic echo saved by `save_model.py`. No weights are in
   this image; a CPU-only CI runner builds it and a 4.4 GB GGUF is not going in.
 

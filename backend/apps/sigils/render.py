@@ -80,10 +80,10 @@ RENDERS = ROOT / "backend" / "output"
 SURFACE = "sigil"
 
 WEIGHTS = {
-    "unet": MODELS / "flux1-schnell-q4_k.gguf",
-    "vae": MODELS / "ae.safetensors",
-    "clip": MODELS / "clip_l.safetensors",
-    "t5": MODELS / "t5xxl-Q8_0.gguf",
+    "unet": MODELS / "symoneural-image-unet-q4_k.gguf",
+    "vae": MODELS / "symoneural-image-vae.safetensors",
+    "clip": MODELS / "symoneural-image-clip.safetensors",
+    "t5": MODELS / "symoneural-image-t5-q8_0.gguf",
 }
 
 #: The product name for the engine. The site uses SyMoNeuRaL product names; the upstream

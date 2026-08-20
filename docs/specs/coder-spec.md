@@ -87,7 +87,7 @@ tenant at a time. `run/resident` holds exactly **one** surface name.
 `~5 GB resident`, which is therefore a **measured** figure and correctly labelled.
 
 Image is `~7 GB resident` per the rack. The weight *files* are larger than that —
-`flux1-schnell-q4_k.gguf` 6.41 GiB plus `t5xxl-Q8_0.gguf` 4.84 GiB plus the VAE and CLIP —
+`symoneural-image-unet-q4_k.gguf` 6.41 GiB plus `symoneural-image-t5-q8_0.gguf` 4.84 GiB plus the VAE and CLIP —
 which is the ordinary gap between a file and what is resident at any one moment, and is the
 reason the file sizes below are labelled as file sizes and nothing more.
 
@@ -122,11 +122,11 @@ CLAUDE.md is stale. File sizes read off disk 2026-08-17:
 
 | File | Size on disk | Role |
 |---|---|---|
-| `llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | 4.36 GiB | `CHAT_MODEL` — SymonChat S1-7B |
-| `llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf` | 8.37 GiB | present, **not wired to any surface** |
-| `llm/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf` | 379 MiB | `DRAFT_MODEL` — speculative decoding for chat |
-| `image/flux1-schnell-q4_k.gguf` | 6.41 GiB | SymonImage F1 |
-| `image/t5xxl-Q8_0.gguf` | 4.84 GiB | text encoder for the above |
+| `llm/symon-1.0-7b-q4_k_m.gguf` | 4.36 GiB | `CHAT_MODEL` — SymonChat S1-7B |
+| `llm/symon-1.0-14b-q4_k_m.gguf` | 8.37 GiB | present, **not wired to any surface** |
+| `llm/symon-1.0-draft-0.5b-q4_k_m.gguf` | 379 MiB | `DRAFT_MODEL` — speculative decoding for chat |
+| `image/symoneural-image-unet-q4_k.gguf` | 6.41 GiB | SymonImage F1 |
+| `image/symoneural-image-t5-q8_0.gguf` | 4.84 GiB | text encoder for the above |
 
 **There is no code model on this box.** Nothing named `Coder`, nothing from the
 Qwen2.5-Coder family, no StarCoder, no DeepSeek-Coder. Anyone who assumed otherwise —
@@ -173,7 +173,7 @@ than for coding. **Rejected**: it costs the most and buys the wrong axis.
 
 Same architecture family and same quantisation as the 7B already on disk, so the file size
 is **projected at ≈ 4.4 GiB by direct analogy** with the measured 4.36 GiB of
-`Qwen2.5-7B-Instruct-Q4_K_M.gguf`. That is a projection, not a measurement, and must be
+`symon-1.0-7b-q4_k_m.gguf`. That is a projection, not a measurement, and must be
 labelled as one until the file is actually downloaded and `stat`'d.
 
 It is the obvious candidate for the ordinary reason: it is the same family the rest of the

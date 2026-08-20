@@ -1,5 +1,12 @@
 # ---- Model weights (40 GB) — fetched by fetch-models.sh, never committed ----
-backend/models/
+# Contents, not the directory itself: git does not descend into an excluded directory, so
+# `backend/models/` would make the `!` below unreachable. `backend/models/*` excludes every
+# child exactly the same way while leaving the parent visible enough to re-include one file.
+backend/models/*
+# The one committed file under models/. It records which upstream artefact each house-named
+# weight came from, which is the only place that mapping exists -- the weights themselves are
+# 40 GB and are fetched, so if the manifest is not in git it is not anywhere.
+!backend/models/PROVENANCE.json
 
 # ---- Vendored third-party checkouts (each carries its own .git) ----
 cuda-samples/

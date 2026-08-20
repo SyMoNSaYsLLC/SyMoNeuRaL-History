@@ -192,10 +192,10 @@ idle, 0% utilisation** — 15.92 GiB, matching HANDOVER §8.
 **What the image surface occupies (file sizes measured, residency from HANDOVER §8):**
 
 ```
-flux1-schnell-q4_k.gguf   6,884,606,880 B   6.41 GiB   on card
-ae.safetensors              335,304,388 B   0.31 GiB   on card
-clip_l.safetensors          246,144,152 B   0.23 GiB   text encoder
-t5xxl-Q8_0.gguf           5,199,794,784 B   4.84 GiB   on CPU -- api.py passes --backend te=cpu
+symoneural-image-unet-q4_k.gguf   6,884,606,880 B   6.41 GiB   on card
+symoneural-image-vae.safetensors              335,304,388 B   0.31 GiB   on card
+symoneural-image-clip.safetensors          246,144,152 B   0.23 GiB   text encoder
+symoneural-image-t5-q8_0.gguf           5,199,794,784 B   4.84 GiB   on CPU -- api.py passes --backend te=cpu
 ```
 
 `/api/image` already fights for this space, and `backend/api.py` documents why: without

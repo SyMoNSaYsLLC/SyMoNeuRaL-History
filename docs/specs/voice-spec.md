@@ -26,7 +26,7 @@ Somebody prepared the ASR half at ~14:03 today and their session is no longer in
 | Artefact | When | Note |
 |---|---|---|
 | `contrib/whisper.cpp` @ `1fe009c` | 14:03 | cloned **and built** — `build/bin/whisper-cli`, `whisper-server`, `whisper-bench` all present. Gitignored (`.gitignore:41`). |
-| `backend/models/whisper/ggml-base.en.bin` | 14:04 | 141 MB, the real `base.en` weights. Gitignored (`.gitignore:2`). |
+| `backend/models/whisper/symoneural-listen-base-en.bin` | 14:04 | 141 MB, the real `base.en` weights. Gitignored (`.gitignore:2`). |
 | `backend/models/licenses/whisper.cpp.LICENSE.txt` | 14:46 | MIT, "Copyright (c) 2023-2026 The ggml authors". |
 | `backend/models/licenses/openai-whisper.LICENSE.txt` | 14:46 | the model's own licence. |
 
@@ -64,7 +64,7 @@ Reproduce any of it:
 
 ```bash
 W=contrib/whisper.cpp/build/bin/whisper-cli
-M=backend/models/whisper/ggml-base.en.bin
+M=backend/models/whisper/symoneural-listen-base-en.bin
 $W -m $M -t 8 -nt -f contrib/whisper.cpp/samples/jfk.wav
 ```
 

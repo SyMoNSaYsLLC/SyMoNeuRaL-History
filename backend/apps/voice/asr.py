@@ -53,7 +53,7 @@ assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 WHISPER_CLI = Path(os.environ.get("SYM_WHISPER_CLI")
                    or ROOT / "contrib" / "whisper.cpp" / "build" / "bin" / "whisper-cli")
 MODEL = Path(os.environ.get("SYM_WHISPER_MODEL")
-             or ROOT / "backend" / "models" / "whisper" / "ggml-base.en.bin")
+             or ROOT / "backend" / "models" / "whisper" / "symoneural-listen-base-en.bin")
 
 # Whisper pads its input to a fixed window and encodes the window, not the speech. This is
 # the number behind the flat 353-414 ms `encode` column for every clip from 3 s to 22 s, and

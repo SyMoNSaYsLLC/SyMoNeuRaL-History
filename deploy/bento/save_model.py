@@ -6,7 +6,7 @@ Bento with a missing tensor -- which is the correct failure, but it means CI has
 first. That is the whole reason this file exists as a separate step in the workflow.
 
 **What is saved is a generation *policy*, not weights.** The real language model on this box is
-`contrib/llama.cpp/build/bin/llama-server` serving Qwen2.5-7B-Instruct-Q4_K_M with the persona
+`contrib/llama.cpp/build/bin/llama-server` serving symon-1.0-7b-q4_k_m with the persona
 LoRA, behind `scripts/gpu-governor.sh`; it is 4.4 GB and it is not going into a container image
 built by a CPU-only CI runner. The runner in `bentoml_service_runner.py` calls that server when
 one is reachable and falls back to the deterministic stub saved here when one is not, and it

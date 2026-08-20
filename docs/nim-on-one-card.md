@@ -73,11 +73,11 @@ nothing has been pulled and nothing here has been scanned by us.
 
 ## What is actually installed
 
-    backend/models/llm/Qwen3.6-27B-UD-Q2_K_XL.gguf      11 849 779 424 B   opt-in
-    backend/models/llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf  8 988 110 976 B   heavy tier
-    backend/models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf   4 683 074 240 B   chat (api.py:142)
-    backend/models/llm/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf   397 808 192 B   draft
-    backend/models/llm/mmproj-F16.gguf                     927 607 360 B   vision tower
+    backend/models/llm/symon-1.0-27b-q2_k_xl.gguf      11 849 779 424 B   opt-in
+    backend/models/llm/symon-1.0-14b-q4_k_m.gguf  8 988 110 976 B   heavy tier
+    backend/models/llm/symon-1.0-7b-q4_k_m.gguf   4 683 074 240 B   chat (api.py:142)
+    backend/models/llm/symon-1.0-draft-0.5b-q4_k_m.gguf   397 808 192 B   draft
+    backend/models/llm/symon-1.0-27b-vision-f16.gguf                     927 607 360 B   vision tower
     training/adapter-qwen36/adapter_model.safetensors       200 384 784 B   persona, 27B
     training/adapter/adapter_model.safetensors             161 533 192 B   persona, 7B
 

@@ -69,7 +69,7 @@ done
 
 say "Weights"
 missing_w=0
-for w in backend/models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf backend/models/image/flux1-schnell-q4_k.gguf; do
+for w in backend/models/llm/symon-1.0-7b-q4_k_m.gguf backend/models/image/symoneural-image-unet-q4_k.gguf; do
   [ -s "$w" ] && pass "$(basename "$w")" || { note "$(basename "$w") missing"; missing_w=1; }
 done
 [ "$missing_w" = "1" ] && note "run ./scripts/fetch-models.sh to download weights and their licences"

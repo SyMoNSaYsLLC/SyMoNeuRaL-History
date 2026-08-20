@@ -45,10 +45,10 @@ import copy
 
 __all__ = ["FLUX_SCHNELL", "DEFAULT", "get", "names", "PARAMETER_MAP"]
 
-UNET = "flux1-schnell-q4_k.gguf"
-T5 = "t5xxl-Q8_0.gguf"
-CLIP_L = "clip_l.safetensors"
-VAE = "ae.safetensors"
+UNET = "symoneural-image-unet-q4_k.gguf"
+T5 = "symoneural-image-t5-q8_0.gguf"
+CLIP_L = "symoneural-image-clip.safetensors"
+VAE = "symoneural-image-vae.safetensors"
 
 FLUX_SCHNELL: dict = {
     "1": {"class_type": "UnetLoaderGGUF",
@@ -59,7 +59,7 @@ FLUX_SCHNELL: dict = {
     # DualCLIPLoaderSDCPP, not DualCLIPLoaderGGUF. This was found by running a render, not by
     # reading the catalogue: the stock GGUF loader validates fine against /object_info and
     # then fails at execution with "This gguf file is incompatible with llama.cpp!", because
-    # the local t5xxl-Q8_0.gguf is a stable-diffusion.cpp file (no `general.architecture`,
+    # the local symoneural-image-t5-q8_0.gguf is a stable-diffusion.cpp file (no `general.architecture`,
     # original HuggingFace tensor names) and upstream's text-model branch rejects those.
     # `custom_nodes/symoneural_gguf` accepts them; its docstring explains why that is safe.
     "2": {"class_type": "DualCLIPLoaderSDCPP",

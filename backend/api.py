@@ -139,11 +139,11 @@ SITE = ROOT / "site"          # the website: static files Caddy serves and deplo
 RENDERS = HERE / "output"
 RENDERS.mkdir(exist_ok=True)
 
-CHAT_MODEL = MODELS / "llm" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+CHAT_MODEL = MODELS / "llm" / "symon-1.0-7b-q4_k_m.gguf"
 CHAT_ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"
 # Draft model for speculative decoding. Measured on this box: shallow drafting wins and
 # deep drafting loses badly -- see SPEC_DRAFT_MAX.
-DRAFT_MODEL = MODELS / "llm" / "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
+DRAFT_MODEL = MODELS / "llm" / "symon-1.0-draft-0.5b-q4_k_m.gguf"
 # Two, not the default. Speculative decoding trades compute for bandwidth, and this box has
 # spare compute but no spare bandwidth -- the draft model reads its own weights through the
 # same 752 GB/s everything else is queuing for. Measured here at 150 tokens, temp 0.2:
@@ -154,10 +154,10 @@ DRAFT_MODEL = MODELS / "llm" / "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
 # The default configuration is a net loss on this hardware. Depth 2 is a modest real win.
 SPEC_DRAFT_MAX = 2
 FLUX = {
-    "unet": MODELS / "image" / "flux1-schnell-q4_k.gguf",
-    "vae": MODELS / "image" / "ae.safetensors",
-    "clip": MODELS / "image" / "clip_l.safetensors",
-    "t5": MODELS / "image" / "t5xxl-Q8_0.gguf",
+    "unet": MODELS / "image" / "symoneural-image-unet-q4_k.gguf",
+    "vae": MODELS / "image" / "symoneural-image-vae.safetensors",
+    "clip": MODELS / "image" / "symoneural-image-clip.safetensors",
+    "t5": MODELS / "image" / "symoneural-image-t5-q8_0.gguf",
 }
 
 PORT = int(os.getenv("SYMONEURAL_PORT", "8800"))

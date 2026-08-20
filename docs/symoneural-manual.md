@@ -212,7 +212,7 @@ context.
 The "does not fit" row above came from parameter-count arithmetic, never from a load
 attempt. This is the load attempt. All figures **measured on this machine**, llama.cpp
 build `4df29be`, `llama-bench -p 512 -n 128`, weights
-`Qwen3.6-27B-UD-Q2_K_XL.gguf` (11,849,779,424 bytes on disk):
+`symon-1.0-27b-q2_k_xl.gguf` (11,849,779,424 bytes on disk):
 
 | | Reading |
 |---|---|

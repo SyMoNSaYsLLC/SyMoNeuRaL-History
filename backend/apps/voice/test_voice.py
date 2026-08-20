@@ -7,7 +7,7 @@
 Three properties this suite is built for, beyond checking the code works.
 
 **It must SKIP, not fail, on a fresh checkout.** `contrib/` and `backend/models/` are both
-gitignored, so `whisper-cli` and `ggml-base.en.bin` are absent from a clone. A suite that went
+gitignored, so `whisper-cli` and `symoneural-listen-base-en.bin` are absent from a clone. A suite that went
 red there would be a false alarm the next agent has to disprove before they can trust
 `pytest apps/`, and this repo has already paid for that lesson five times. Everything that
 needs the engine lives in `EngineTests` and skips as a unit; everything above it is pure.

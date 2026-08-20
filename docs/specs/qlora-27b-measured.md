@@ -243,7 +243,7 @@ adapter over the hybrid layers can be converted and served through `api.py`'s `-
 
 ## Open risk, not yet evaluated
 
-The serving base is `Qwen3.6-27B-UD-Q2_K_XL`. An adapter trained against NF4 weights would
+The serving base is `symon-1.0-27b-q2_k_xl`. An adapter trained against NF4 weights would
 meet a **~2.5 bpw** base at inference. The 7B path is NF4 → Q4_K_M, roughly matched; this is
 a materially wider gap, and `UD-Q4_K_XL` at 17.61 GB does not fit the card, so it is
 structural rather than something a different quant fixes. Untested either way.

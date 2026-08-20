@@ -183,7 +183,7 @@ the code as comments:
 ## The custom node
 
 `custom_nodes/symoneural_gguf/` provides `DualCLIPLoaderSDCPP`, which loads this box's
-`t5xxl-Q8_0.gguf`. Upstream's `DualCLIPLoaderGGUF` validates fine against `/object_info` and
+`symoneural-image-t5-q8_0.gguf`. Upstream's `DualCLIPLoaderGGUF` validates fine against `/object_info` and
 then fails at execution with *"This gguf file is incompatible with llama.cpp!"* — the local
 file is a stable-diffusion.cpp export with no `general.architecture` key and original
 HuggingFace tensor names, which upstream's text-model branch rejects. That was found by running

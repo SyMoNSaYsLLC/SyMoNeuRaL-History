@@ -8,6 +8,19 @@
 #
 # FLUX.1-schnell ONLY. FLUX.1-dev is non-commercial and must never be substituted into
 # anything customer-facing. See LICENSES.md.
+#
+# HOUSE NAMES. Nothing under backend/models/ keeps an upstream filename. What lands on disk
+# is symon-1.0-* for the language tiers and symoneural-image-* / symoneural-listen-* for the
+# rest; backend/models/PROVENANCE.json records which upstream artefact each one came from,
+# and backend/apps/test_weight_names.py fails if a file appears that is not in the manifest
+# or not named to the rule. The upstream URLs below are the one thing that cannot be
+# rebranded -- you cannot fetch from a repository without naming it -- and the manifest is
+# where that mapping is kept honest.
+#
+# `adopt` below is what makes this safe to run on a box that already downloaded the old
+# names: it renames in place. A rename is not a re-quantisation and not a merge, so the
+# bytes are untouched and 40 GB is not re-transferred. On a fresh clone the adopt calls are
+# all no-ops and the house name is simply what gets downloaded.
 set -euo pipefail
 # Repo root is one level up now that this lives in scripts/. This calculation has
 # been wrong three times in this repo (the demo/ flatten, the tools/ move, here) and
@@ -23,14 +36,35 @@ get() { # url dest
   curl -fL --retry 5 --retry-delay 3 -C - -o "$dest.part" "$url"
   mv "$dest.part" "$dest"
 }
+adopt() { # legacy-path house-path
+  local old="$1" new="$2"
+  [ -s "$new" ] && return 0            # already adopted; say nothing
+  [ -s "$old" ] || return 0            # never downloaded under the old name
+  mv "$old" "$new"
+  echo "  adopt $(basename "$new") <- $(basename "$old")"
+}
+# Unconditional, and deliberately above the opt-in gate below: a 27B that was fetched under
+# its upstream name must be renamed whether or not this run would fetch it.
+echo "house names:"
+adopt "$M/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf"   "$M/llm/symon-1.0-7b-q4_k_m.gguf"
+adopt "$M/llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf"  "$M/llm/symon-1.0-14b-q4_k_m.gguf"
+adopt "$M/llm/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-draft-0.5b-q4_k_m.gguf"
+adopt "$M/llm/Qwen3.6-27B-UD-Q2_K_XL.gguf"       "$M/llm/symon-1.0-27b-q2_k_xl.gguf"
+adopt "$M/llm/mmproj-F16.gguf"                   "$M/llm/symon-1.0-27b-vision-f16.gguf"
+adopt "$M/image/flux1-schnell-q4_k.gguf"         "$M/image/symoneural-image-unet-q4_k.gguf"
+adopt "$M/image/t5xxl-Q8_0.gguf"                 "$M/image/symoneural-image-t5-q8_0.gguf"
+adopt "$M/image/clip_l.safetensors"              "$M/image/symoneural-image-clip.safetensors"
+adopt "$M/image/ae.safetensors"                  "$M/image/symoneural-image-vae.safetensors"
+adopt "$M/whisper/ggml-base.en.bin"              "$M/whisper/symoneural-listen-base-en.bin"
 HF=https://huggingface.co
 echo "chat surface:"
 # 7B is the resident workhorse and the base the SyMoNeuRaL LoRA is trained against -- the
 # adapter is rank-compatible with these weights and with nothing else. 14B is the heavy tier,
 # loaded only when it is the whole job.
-get "$HF/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"   "$M/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
-get "$HF/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf" "$M/llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
-# Qwen3.6-27B is opt-in, not part of a default install: it is 11.85 GB on its own and is
+get "$HF/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"   "$M/llm/symon-1.0-7b-q4_k_m.gguf"
+get "$HF/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-14b-q4_k_m.gguf"
+get "$HF/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-draft-0.5b-q4_k_m.gguf"
+# The 27B tier is opt-in, not part of a default install: it is 11.85 GB on its own and is
 # still being evaluated as a chat base, so a fresh clone should not pay for it silently.
 #   SYM_FETCH_QWEN36=1 ./scripts/fetch-models.sh
 #
@@ -47,23 +81,28 @@ get "$HF/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q
 #
 # The engine already understands these: the GGUF header declares
 # general.architecture = qwen35, and contrib/llama.cpp carries LLM_ARCH_QWEN35. No build
-# work was needed. mmproj-F16.gguf is the vision tower -- Qwen3.6 is multimodal, and text
-# inference works without it, so it is fetched but not required.
+# work was needed. The vision tower is fetched but not required -- text inference works
+# without it.
 if [ "${SYM_FETCH_QWEN36:-0}" = "1" ]; then
-  echo "chat surface (Qwen3.6-27B, opt-in):"
-  get "$HF/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-UD-Q2_K_XL.gguf" "$M/llm/Qwen3.6-27B-UD-Q2_K_XL.gguf"
-  get "$HF/unsloth/Qwen3.6-27B-GGUF/resolve/main/mmproj-F16.gguf"             "$M/llm/mmproj-F16.gguf"
+  echo "chat surface (27B tier, opt-in):"
+  get "$HF/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-UD-Q2_K_XL.gguf" "$M/llm/symon-1.0-27b-q2_k_xl.gguf"
+  get "$HF/unsloth/Qwen3.6-27B-GGUF/resolve/main/mmproj-F16.gguf"             "$M/llm/symon-1.0-27b-vision-f16.gguf"
 else
-  echo "chat surface (Qwen3.6-27B): skipped -- set SYM_FETCH_QWEN36=1 to fetch 12.8 GB"
+  echo "chat surface (27B tier): skipped -- set SYM_FETCH_QWEN36=1 to fetch 12.8 GB"
 fi
 echo "image surface:"
-get "$HF/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf"                 "$M/image/flux1-schnell-q4_k.gguf"
-get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/ae.safetensors"                    "$M/image/ae.safetensors"
-get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/clip_l.safetensors"                "$M/image/clip_l.safetensors"
-get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/t5xxl-Q8_0.gguf"                   "$M/image/t5xxl-Q8_0.gguf"
+get "$HF/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf"                 "$M/image/symoneural-image-unet-q4_k.gguf"
+get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/ae.safetensors"                    "$M/image/symoneural-image-vae.safetensors"
+get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/clip_l.safetensors"                "$M/image/symoneural-image-clip.safetensors"
+get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/t5xxl-Q8_0.gguf"                   "$M/image/symoneural-image-t5-q8_0.gguf"
 # Licences travel with the weights. models/ is gitignored (40 GB), so these files exist
 # on disk beside what they cover rather than in git -- and they must be included in any
 # customer image. Apache-2.0 obliges shipping the licence text with the artefact.
+#
+# These filenames keep the upstream name on purpose, and they are the one exception to the
+# house-name rule. A licence text is an attribution artefact: a file called
+# symon-1.0-7b.LICENSE.txt would be asserting that we licensed those weights, which is not
+# what the document says. PROVENANCE.json points each house name at the licence covering it.
 echo "licences:"
 L="$M/licenses"; mkdir -p "$L"
 lic() { # url dest

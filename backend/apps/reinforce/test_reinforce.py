@@ -727,8 +727,8 @@ class RegistryTests(unittest.TestCase):
 
     def test_tied_embeddings_detected_from_the_tensor_table(self):
         """The 0.5B is tied (no output.weight); the 14B is not. Worth ~0.9 GiB on the 14B."""
-        small = registry.find("Qwen2.5-0.5B-Instruct-Q4_K_M")
-        big = registry.find("Qwen2.5-14B-Instruct-Q4_K_M")
+        small = registry.find("symon-1.0-draft-0.5b-q4_k_m")
+        big = registry.find("symon-1.0-14b-q4_k_m")
         if not small or not big:
             self.skipTest("the 0.5B/14B GGUFs are not on this box")
         self.assertTrue(registry.Arch(**small.arch).tied_embeddings)

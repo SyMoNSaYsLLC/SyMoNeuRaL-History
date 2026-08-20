@@ -355,9 +355,9 @@ owner meant. `references/Projects_Crypto` (5.4 GB) is Antminer firmware and is u
 | File | Size on disk | Format | Fine-tunable with peft + bitsandbytes? |
 |---|---|---|---|
 | `backend/models/hf/hub/models--Qwen--Qwen2.5-7B-Instruct` | 14.2 GiB (`total_size` 15,231,233,024 B) | HF safetensors, bf16, 4 shards | **Yes — the only one** |
-| `backend/models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | 4.36 GiB | GGUF Q4_K_M | No |
-| `backend/models/llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf` | 8.37 GiB | GGUF Q4_K_M | No |
-| `backend/models/llm/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf` | 0.37 GiB | GGUF Q4_K_M | No |
+| `backend/models/llm/symon-1.0-7b-q4_k_m.gguf` | 4.36 GiB | GGUF Q4_K_M | No |
+| `backend/models/llm/symon-1.0-14b-q4_k_m.gguf` | 8.37 GiB | GGUF Q4_K_M | No |
+| `backend/models/llm/symon-1.0-draft-0.5b-q4_k_m.gguf` | 0.37 GiB | GGUF Q4_K_M | No |
 | `backend/models/image/*` (FLUX.1-schnell, ae, clip_l, t5xxl) | 11.8 GiB | GGUF + safetensors | No — diffusion, different surface |
 | `training/adapter/adapter_model.safetensors` | 154 MiB | PEFT LoRA, fp32 | output, not a base |
 

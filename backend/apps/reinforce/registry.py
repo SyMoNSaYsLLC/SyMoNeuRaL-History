@@ -581,8 +581,8 @@ def fetchable() -> list[Entry]:
     out: list[Entry] = []
     have = {e.id for e in scan_hf_cache() if e.trainable}
     for gguf_name, repo_id in (
-        ("Qwen2.5-0.5B-Instruct-Q4_K_M.gguf", "Qwen/Qwen2.5-0.5B-Instruct"),
-        ("Qwen2.5-14B-Instruct-Q4_K_M.gguf", "Qwen/Qwen2.5-14B-Instruct"),
+        ("symon-1.0-draft-0.5b-q4_k_m.gguf", "Qwen/Qwen2.5-0.5B-Instruct"),
+        ("symon-1.0-14b-q4_k_m.gguf", "Qwen/Qwen2.5-14B-Instruct"),
     ):
         if repo_id in have:
             continue
