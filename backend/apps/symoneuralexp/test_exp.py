@@ -1237,13 +1237,13 @@ class RouteTests(unittest.TestCase):
         self.assertIn("503", src)
         self.assertIn("401", src)
         # The 503 has to name both variables, because "not enabled" without them is a dead end.
-        # `_guard` interpolates the *constants*, so the literal "SYM_EXP_ENABLED" never appears
+        # `_guard` interpolates the *constants*, so the literal "SYMONEURAL_EXP_ENABLED" never appears
         # in its source -- assert the interpolation is there, and pin the values separately, or
         # this passes while the message says `{ENV_ENABLED}` to the operator.
         self.assertIn("{ENV_ENABLED}", src)
         self.assertIn("{ENV_TOKEN}", src)
-        self.assertEqual(gate.ENV_ENABLED, "SYM_EXP_ENABLED")
-        self.assertEqual(gate.ENV_TOKEN, "SYM_EXP_TOKEN")
+        self.assertEqual(gate.ENV_ENABLED, "SYMONEURAL_EXP_ENABLED")
+        self.assertEqual(gate.ENV_TOKEN, "SYMONEURAL_EXP_TOKEN")
 
     def test_the_message_the_operator_actually_sees_names_both_variables(self):
         """The assertion above reads source; this one reads the rendered detail."""
@@ -1255,8 +1255,8 @@ class RouteTests(unittest.TestCase):
                 self.routes._guard(_FakeRequest())
         detail = caught.exception.payload["detail"]
         self.assertEqual(caught.exception.status, 503)
-        self.assertIn("SYM_EXP_ENABLED", detail)
-        self.assertIn("SYM_EXP_TOKEN", detail)
+        self.assertIn("SYMONEURAL_EXP_ENABLED", detail)
+        self.assertIn("SYMONEURAL_EXP_TOKEN", detail)
 
 
 class GateTests(unittest.TestCase):
@@ -1360,6 +1360,29 @@ class PageTests(unittest.TestCase):
                         "cacheable for a week with no way to invalidate them")
         self.assertEqual((root / "site" / "exp.js").read_text(), generated_js,
                          "site/exp.js is not a copy of this app's page.js")
+
+    def test_the_page_names_no_legacy_env_var_to_the_operator(self):
+        """The four strings an operator actually types, pinned as literals.
+
+        These are the *display* names -- what the panel tells you to set on the API process --
+        and they are the one part of the rename that no symbolic assertion can reach.
+        `GateTests` above pins `gate.ENV_ENABLED`/`ENV_TOKEN` through the constants, which is
+        the right way to write that test and is exactly why it cannot notice this: the panel
+        does not read the constants, it hard-codes the words. All four sat at the legacy
+        spelling through a 1225-test run, telling every operator to set a variable nothing
+        reads any more.
+
+        `SYM_EXP_` is checked as a whole-file absence rather than paired against the new
+        spelling, because a single reverted line is the realistic regression and pairing
+        cannot see it -- three correct occurrences elsewhere in the file satisfy a pairing
+        rule. `SYM_EXP_` is not a substring of `SYMONEURAL_EXP_`, so this is unambiguous.
+        `apps/test_credential_header.py::TheEnvNameTripwire` is the repo-wide net; this is the
+        per-occurrence one, and the byte-copy assertion above carries it to `site/exp.js`.
+        """
+        self.assertNotIn("SYM_EXP_", self.js,
+                         "page.js names a legacy SYM_EXP_* variable to the operator")
+        for want in ("SYMONEURAL_EXP_ENABLED=1", "SYMONEURAL_EXP_TOKEN"):
+            self.assertIn(want, self.js)
 
     def test_every_id_the_script_reaches_for_exists_in_the_markup(self):
         ids = set(re.findall(r'id="([^"]+)"', self.html))

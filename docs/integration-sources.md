@@ -39,7 +39,7 @@ The honest summary: **adopt the data layers, skip the orchestration layers.**
 | Object store | S3 / MinIO | the filesystem, `backend/output/`, served by `/api/gen/<name>` | done |
 | Metadata | Postgres | SQLite (`apps/project`), JSON files | adequate |
 | Observability | Prometheus, Grafana, OTel, ELK | `/api/status`, the rack, `run/` logs | **gap, but a small one** |
-| Auth | Keycloak, Auth0, Okta | `apps/accounts` + per-surface `SYM_*_TOKEN` | gap: no self-serve keys |
+| Auth | Keycloak, Auth0, Okta | `apps/accounts` + per-surface `SYMONEURAL_*_TOKEN` | gap: no self-serve keys |
 | **Vector store / RAG** | Qdrant, Milvus, Weaviate, Chroma | **nothing** | **real gap** |
 | **Embeddings** | sentence-transformers | **nothing** | **real gap** |
 | **Web search** | SerpAPI, Bing, MeiliSearch | **nothing** | **real gap** |
@@ -123,7 +123,7 @@ JSON/CSV out, `-f-` for stdin piping.
   emitting a compliance grid. It would have caught the Voice surface shipping a rack row with no
   page (the failure that produced the "page first" rule).
 - **The multi-tenant config-file pattern** (`~/.cortex/config`, env override, `-t/--tenant`) is a
-  better shape than this stack's current per-surface `SYM_*_TOKEN` sprawl, and is the obvious
+  better shape than this stack's current per-surface `SYMONEURAL_*_TOKEN` sprawl, and is the obvious
   model if `apps/accounts` ever issues self-serve keys.
 
 ### `ever-works/awesome-mcp-servers` — CC-BY-SA-4.0

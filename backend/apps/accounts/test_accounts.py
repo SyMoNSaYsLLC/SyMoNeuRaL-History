@@ -3,7 +3,7 @@
 
     python3 backend/apps/accounts/test_accounts.py
 
-Every test runs against a throwaway sqlite file in a temp directory -- `SYM_ACCOUNTS_DB`
+Every test runs against a throwaway sqlite file in a temp directory -- `SYMONEURAL_ACCOUNTS_DB`
 exists for exactly this and for nothing else. Nothing here touches `run/`.
 
 The cases that matter most are the ones where a bug looks like success:
@@ -11,7 +11,7 @@ The cases that matter most are the ones where a bug looks like success:
   * a hash that equals the password, or that reaches a response dict
   * a session that outlives its expiry or its revocation
   * a throttle that engages and never lifts (a self-DoS that a "does it engage" test passes)
-  * a missing `SYM_SESSION_SECRET` that returns None instead of raising -- indistinguishable
+  * a missing `SYMONEURAL_SESSION_SECRET` that returns None instead of raising -- indistinguishable
     from a wrong password to the caller, which is the fail-open shape recorded as the most
     serious open finding in `.claude/HANDOVER.md` §5 item 1
 
@@ -44,9 +44,9 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix="symacct-test-"))
         self._env = dict(os.environ)
-        os.environ["SYM_ACCOUNTS_DB"] = str(self.dir / "accounts.db")
-        os.environ["SYM_SESSION_SECRET"] = SECRET
-        os.environ["SYM_ACCOUNTS_ENABLED"] = "1"
+        os.environ["SYMONEURAL_ACCOUNTS_DB"] = str(self.dir / "accounts.db")
+        os.environ["SYMONEURAL_SESSION_SECRET"] = SECRET
+        os.environ["SYMONEURAL_ACCOUNTS_ENABLED"] = "1"
 
     def tearDown(self):
         os.environ.clear()
@@ -54,7 +54,7 @@ class Base(unittest.TestCase):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def stored_hash(self, email=EMAIL) -> str:
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             row = c.execute("SELECT pw_hash FROM accounts WHERE email=?",
                             (accounts.normalise_email(email),)).fetchone()
         return row[0]
@@ -66,7 +66,7 @@ class TestFailsClosed(Base):
     """No secret means refuse. Not "no session", not "wrong password" -- refuse."""
 
     def test_every_entry_point_raises_with_no_session_secret(self):
-        del os.environ["SYM_SESSION_SECRET"]
+        del os.environ["SYMONEURAL_SESSION_SECRET"]
         calls = {
             "create_account": lambda: accounts.create_account(EMAIL, PASSWORD),
             "verify": lambda: accounts.verify(EMAIL, PASSWORD),
@@ -86,29 +86,29 @@ class TestFailsClosed(Base):
                     fn()
 
     def test_a_short_secret_is_treated_as_no_secret(self):
-        os.environ["SYM_SESSION_SECRET"] = "tooshort"
+        os.environ["SYMONEURAL_SESSION_SECRET"] = "tooshort"
         self.assertFalse(accounts.enabled())
         with self.assertRaises(accounts.AccountsUnavailable):
             accounts.verify(EMAIL, PASSWORD)
 
     def test_the_surface_is_off_by_default(self):
-        del os.environ["SYM_ACCOUNTS_ENABLED"]
+        del os.environ["SYMONEURAL_ACCOUNTS_ENABLED"]
         self.assertFalse(accounts.enabled())
-        del os.environ["SYM_SESSION_SECRET"]
+        del os.environ["SYMONEURAL_SESSION_SECRET"]
         self.assertFalse(accounts.enabled())
 
     def test_enabled_needs_both_switches(self):
-        os.environ["SYM_ACCOUNTS_ENABLED"] = "1"
-        del os.environ["SYM_SESSION_SECRET"]
+        os.environ["SYMONEURAL_ACCOUNTS_ENABLED"] = "1"
+        del os.environ["SYMONEURAL_SESSION_SECRET"]
         self.assertFalse(accounts.enabled())
-        os.environ["SYM_SESSION_SECRET"] = SECRET
+        os.environ["SYMONEURAL_SESSION_SECRET"] = SECRET
         self.assertTrue(accounts.enabled())
 
     def test_unit_state_is_offline_when_not_configured(self):
-        del os.environ["SYM_ACCOUNTS_ENABLED"]
+        del os.environ["SYMONEURAL_ACCOUNTS_ENABLED"]
         state, detail = accounts.unit_state()
         self.assertEqual(state, "offline")
-        self.assertIn("SYM_ACCOUNTS_ENABLED", detail)
+        self.assertIn("SYMONEURAL_ACCOUNTS_ENABLED", detail)
 
 
 # --------------------------------------------------------------------- passwords
@@ -215,7 +215,7 @@ class TestRegistration(Base):
     def test_the_address_the_visitor_typed_is_kept_alongside_the_normalised_one(self):
         made = accounts.create_account("  Garrett@SymOneural.com ", PASSWORD)
         self.assertEqual(made["email"], EMAIL)
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             shown = c.execute("SELECT email_shown FROM accounts").fetchone()[0]
         self.assertEqual(shown, "Garrett@SymOneural.com")
 
@@ -224,7 +224,7 @@ class TestRegistration(Base):
         self.assertEqual(made["quote_id"], "Q-2026-0001")
         # The schema must not have grown anything price-shaped. This is a rule from
         # .claude/CLAUDE.md, not a preference, and a column is how it would get broken.
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             cols = {r[1].lower() for r in c.execute("PRAGMA table_info(accounts)")}
         for banned in ("price", "amount", "plan", "tier", "cost", "usd", "cents",
                        "subscription", "seats", "billing"):
@@ -256,7 +256,7 @@ class TestNothingLeaksTheHash(Base):
         published by a dict comprehension over `row.keys()`.
         """
         made = accounts.create_account(EMAIL, PASSWORD)
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             c.execute("ALTER TABLE accounts ADD COLUMN secret_note TEXT")
             c.execute("UPDATE accounts SET secret_note='do-not-publish'")
             c.commit()
@@ -312,7 +312,7 @@ class TestSessions(Base):
 
     def test_the_database_stores_a_verifier_and_not_the_token(self):
         t = accounts.issue_session(self.acct["id"], now=1000.0)
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             rows = c.execute("SELECT sid, verifier FROM sessions").fetchall()
         self.assertEqual(len(rows), 1)
         sid, verifier = rows[0]
@@ -329,7 +329,7 @@ class TestSessions(Base):
         when the rows are already authoritative.
         """
         t = accounts.issue_session(self.acct["id"], now=1000.0)
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             sid, verifier = c.execute("SELECT sid, verifier FROM sessions").fetchone()
         for stolen in (verifier,
                        f"symses1.{sid}.{verifier}",
@@ -359,7 +359,7 @@ class TestSessions(Base):
     def test_rotating_the_server_secret_invalidates_every_session(self):
         t = accounts.issue_session(self.acct["id"], now=1000.0)
         self.assertIsNotNone(accounts.read_session(t, now=1001.0))
-        os.environ["SYM_SESSION_SECRET"] = SECRET[::-1]
+        os.environ["SYMONEURAL_SESSION_SECRET"] = SECRET[::-1]
         self.assertIsNone(accounts.read_session(t, now=1001.0))
 
     def test_a_disabled_account_has_no_live_session(self):
@@ -494,7 +494,7 @@ class TestThrottle(Base):
         last = self.fail_until_locked(1000.0)
         # Simulating a restart is simply talking to the same file again -- there is no
         # process-local state to clear, and that is the property under test.
-        with sqlite3.connect(os.environ["SYM_ACCOUNTS_DB"]) as c:
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
             n = c.execute("SELECT fails FROM attempts WHERE scope='account'").fetchone()[0]
         self.assertGreaterEqual(n, accounts.ACCOUNT_FREE_FAILS + 1)
         with self.assertRaises(accounts.Throttled):
@@ -513,14 +513,14 @@ class TestSelftest(Base):
         self.assertGreater(r["hash_ms"], 0)
 
     def test_selftest_reports_the_fail_closed_path_rather_than_raising(self):
-        del os.environ["SYM_SESSION_SECRET"]
+        del os.environ["SYMONEURAL_SESSION_SECRET"]
         r = accounts.selftest()
         self.assertFalse(r["ok"])
         self.assertFalse(r["secret_present"])
-        self.assertIn("SYM_SESSION_SECRET", r["error"])
+        self.assertIn("SYMONEURAL_SESSION_SECRET", r["error"])
 
     def test_the_database_is_not_under_site(self):
-        os.environ.pop("SYM_ACCOUNTS_DB")
+        os.environ.pop("SYMONEURAL_ACCOUNTS_DB")
         p = str(accounts.db_path())
         self.assertNotIn("/site/", p)
         self.assertIn("/run/accounts/", p)

@@ -10,7 +10,7 @@
 Run from `backend/`, which is where `apps` is importable from.
 
 This exists for two reasons. The first is that the page and the API are behind
-`SYM_EXP_ENABLED` and `SYM_EXP_TOKEN`, and a manifest you are still writing should not need a
+`SYMONEURAL_EXP_ENABLED` and `SYMONEURAL_EXP_TOKEN`, and a manifest you are still writing should not need a
 live process and a secret to check -- `--json` here and `GET /api/exp/state` there return the
 same structure from the same `Loader.state()`. The second is that it is the standing proof that
 everything under `routes.py` is standard-library only: if an import creeps into `context.py`,

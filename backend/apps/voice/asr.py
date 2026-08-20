@@ -50,9 +50,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 
-WHISPER_CLI = Path(os.environ.get("SYM_WHISPER_CLI")
+WHISPER_CLI = Path(os.environ.get("SYMONEURAL_WHISPER_CLI")
                    or ROOT / "contrib" / "whisper.cpp" / "build" / "bin" / "whisper-cli")
-MODEL = Path(os.environ.get("SYM_WHISPER_MODEL")
+MODEL = Path(os.environ.get("SYMONEURAL_WHISPER_MODEL")
              or ROOT / "backend" / "models" / "whisper" / "symoneural-listen-base-en.bin")
 
 # Whisper pads its input to a fixed window and encodes the window, not the speech. This is
@@ -61,19 +61,19 @@ MODEL = Path(os.environ.get("SYM_WHISPER_MODEL")
 WINDOW_S = 30.0
 
 # 8 threads measured ~1.5x faster than 4 on the same clip (0.60 s vs 0.89 s) on 20 CPUs.
-THREADS = max(1, int(os.environ.get("SYM_VOICE_THREADS") or 8))
+THREADS = max(1, int(os.environ.get("SYMONEURAL_VOICE_THREADS") or 8))
 
 # Two concurrent transcriptions are 16 of 20 threads. A third makes all three slower than
 # serving them in turn would have been, and also slows the chat generation the visitor is
 # waiting on. A 0.6 s job that waits 0.6 s is still a good answer, so queue instead.
-CONCURRENCY = max(1, int(os.environ.get("SYM_VOICE_CONCURRENCY") or 2))
+CONCURRENCY = max(1, int(os.environ.get("SYMONEURAL_VOICE_CONCURRENCY") or 2))
 
 # There is no byte cap on the upload, deliberately: Garrett removed every size cap on the
 # tuner and the wall clock was always the bound doing the real work. A 30-minute recording
 # is a legitimate request that takes a while; a hang is not, and this is what catches it.
-TIMEOUT_S = float(os.environ.get("SYM_VOICE_TIMEOUT_S") or 300)
+TIMEOUT_S = float(os.environ.get("SYMONEURAL_VOICE_TIMEOUT_S") or 300)
 
-TRANSCODE_TIMEOUT_S = float(os.environ.get("SYM_VOICE_TRANSCODE_TIMEOUT_S") or 120)
+TRANSCODE_TIMEOUT_S = float(os.environ.get("SYMONEURAL_VOICE_TRANSCODE_TIMEOUT_S") or 120)
 
 
 class AsrError(RuntimeError):
@@ -97,7 +97,7 @@ class AsrUnavailable(AsrError):
 
 
 def ffmpeg_path() -> str | None:
-    return shutil.which(os.environ.get("SYM_FFMPEG") or "ffmpeg")
+    return shutil.which(os.environ.get("SYMONEURAL_FFMPEG") or "ffmpeg")
 
 
 def installed() -> tuple[bool, str]:

@@ -273,8 +273,8 @@ q("architecture",
 
 q("architecture",
   "How are the ASIC routes protected?",
-  "SYM_ASIC_ENABLED=1 and SYM_ASIC_TOKEN must both be set or the surface 503s, so a "
-  "misconfiguration fails closed on a box with a public IP. The token arrives in X-Sym-Token "
+  "SYMONEURAL_ASIC_ENABLED=1 and SYMONEURAL_ASIC_TOKEN must both be set or the surface 503s, so a "
+  "misconfiguration fails closed on a box with a public IP. The token arrives in X-Symoneural-Token "
   "and is compared in constant time. It lives in the browser's sessionStorage rather than "
   "localStorage, because it authorises scanning and starting processes and should not "
   "outlive the tab; a 401 clears it so a wrong token is not cached.")
@@ -449,8 +449,8 @@ q("governor",
   "Should a training route be world-callable?",
   "No -- it is a hard requirement, not a hardening task for later. A world-callable, "
   "never-evicted, long-running GPU route is a rack-wide denial of service that costs one HTTP "
-  "request. The pattern already in this repo is the ASIC gate: SYM_ASIC_ENABLED plus "
-  "SYM_ASIC_TOKEN, off by default.")
+  "request. The pattern already in this repo is the ASIC gate: SYMONEURAL_ASIC_ENABLED plus "
+  "SYMONEURAL_ASIC_TOKEN, off by default.")
 
 q("governor",
   "Would CPU offload rescue a run that does not fit?",

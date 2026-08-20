@@ -128,7 +128,7 @@ evict() {
     # leaves the actual miner orphaned and still resident, which reads as a clean stop and
     # is not one.
     #
-    # This case is inert until SYM_MINER_CMD names a real binary: nothing writes 'miner'
+    # This case is inert until SYMONEURAL_MINER_CMD names a real binary: nothing writes 'miner'
     # into run/resident before then. Without it, a miner tenant would fall through to the
     # '*)' arm below and be "evicted" by pkilling llama-server -- which would leave the
     # miner holding the card while the governor logged a successful eviction.

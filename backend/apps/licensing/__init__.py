@@ -180,8 +180,8 @@ def parse(contract_key: str, pubkey: pathlib.Path | None = None,
 
 
 def current(now: float | None = None) -> dict:
-    """The licence this installation is running under, from SYM_CONTRACT_KEY."""
-    return parse(os.environ.get("SYM_CONTRACT_KEY", ""), now=now)
+    """The licence this installation is running under, from SYMONEURAL_CONTRACT_KEY."""
+    return parse(os.environ.get("SYMONEURAL_CONTRACT_KEY", ""), now=now)
 
 
 def disclosure(lic: dict | None = None) -> dict:
@@ -215,7 +215,7 @@ def _terms(lic: dict) -> str:
     st = lic["state"]
     if st == STATE_NONE:
         return ("No contract key is installed, so no dev fee applies and none is being "
-                "charged. Set SYM_CONTRACT_KEY to apply one.")
+                "charged. Set SYMONEURAL_CONTRACT_KEY to apply one.")
     if st == STATE_INVALID:
         return (f"A contract key is present but did not verify ({lic['error']}). It is being "
                 "ignored — an unverifiable contract is never treated as valid, and never "

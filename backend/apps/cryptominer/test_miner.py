@@ -201,8 +201,8 @@ class TestOffByDefault(unittest.TestCase):
 
     def setUp(self):
         self.saved = {k: os.environ.get(k) for k in
-                      ("SYM_MINING_ENABLED", "SYM_MINER_CMD", "SYM_MINER_TOKEN",
-                       "SYM_MINER_ENV")}
+                      ("SYMONEURAL_MINING_ENABLED", "SYMONEURAL_MINER_CMD", "SYMONEURAL_MINER_TOKEN",
+                       "SYMONEURAL_MINER_ENV")}
         for k in self.saved:
             os.environ.pop(k, None)
         self.envdir = tempfile.TemporaryDirectory()
@@ -227,7 +227,7 @@ class TestOffByDefault(unittest.TestCase):
         self.assertFalse(cryptominer.enabled())
         state, detail = cryptominer.unit_state()
         self.assertEqual(state, "offline")
-        self.assertIn("SYM_MINING_ENABLED=1", detail)
+        self.assertIn("SYMONEURAL_MINING_ENABLED=1", detail)
 
     def test_the_shipped_example_arms_nothing(self):
         # Somebody will `cp miner.env.example miner.env` and walk away. That must be inert.
@@ -239,63 +239,63 @@ class TestOffByDefault(unittest.TestCase):
 
     def test_all_three_are_required(self):
         cmd = "/bin/echo mining"
-        for missing in ("SYM_MINING_ENABLED", "SYM_MINER_CMD", "SYM_MINER_TOKEN"):
-            lines = {"SYM_MINING_ENABLED": "1", "SYM_MINER_CMD": cmd,
-                     "SYM_MINER_TOKEN": "s3cret"}
+        for missing in ("SYMONEURAL_MINING_ENABLED", "SYMONEURAL_MINER_CMD", "SYMONEURAL_MINER_TOKEN"):
+            lines = {"SYMONEURAL_MINING_ENABLED": "1", "SYMONEURAL_MINER_CMD": cmd,
+                     "SYMONEURAL_MINER_TOKEN": "s3cret"}
             lines.pop(missing)
             self.envfile.write_text("".join(f"{k}={v}\n" for k, v in lines.items()))
             cryptominer._env_key = None
             cryptominer._env_applied.clear()
-            for k in ("SYM_MINING_ENABLED", "SYM_MINER_CMD", "SYM_MINER_TOKEN"):
+            for k in ("SYMONEURAL_MINING_ENABLED", "SYMONEURAL_MINER_CMD", "SYMONEURAL_MINER_TOKEN"):
                 os.environ.pop(k, None)
             self.assertFalse(cryptominer.enabled(), f"enabled without {missing}")
 
     def test_a_full_config_enables_and_reads_ready(self):
-        self.envfile.write_text("SYM_MINING_ENABLED=1\n"
-                                "SYM_MINER_CMD=/bin/echo mining\n"
-                                "SYM_MINER_TOKEN=s3cret\n")
+        self.envfile.write_text("SYMONEURAL_MINING_ENABLED=1\n"
+                                "SYMONEURAL_MINER_CMD=/bin/echo mining\n"
+                                "SYMONEURAL_MINER_TOKEN=s3cret\n")
         self.assertTrue(cryptominer.enabled())
         self.assertEqual(cryptominer.unit_state()[0], "ready")
 
     def test_an_edit_is_picked_up_without_a_restart(self):
-        self.envfile.write_text("SYM_MINING_ENABLED=0\n")
+        self.envfile.write_text("SYMONEURAL_MINING_ENABLED=0\n")
         self.assertFalse(cryptominer.enabled())
         os.utime(self.envfile, (0, 0))          # force a distinct mtime
-        self.envfile.write_text("SYM_MINING_ENABLED=1\n"
-                                "SYM_MINER_CMD=/bin/echo mining\n"
-                                "SYM_MINER_TOKEN=s3cret\n")
+        self.envfile.write_text("SYMONEURAL_MINING_ENABLED=1\n"
+                                "SYMONEURAL_MINER_CMD=/bin/echo mining\n"
+                                "SYMONEURAL_MINER_TOKEN=s3cret\n")
         self.assertTrue(cryptominer.enabled(),
                         "the file changed and enabled() did not notice")
 
     def test_a_real_exported_variable_beats_the_file(self):
-        os.environ["SYM_MINING_ENABLED"] = "0"
-        self.envfile.write_text("SYM_MINING_ENABLED=1\nSYM_MINER_CMD=/bin/echo\n"
-                                "SYM_MINER_TOKEN=s3cret\n")
+        os.environ["SYMONEURAL_MINING_ENABLED"] = "0"
+        self.envfile.write_text("SYMONEURAL_MINING_ENABLED=1\nSYMONEURAL_MINER_CMD=/bin/echo\n"
+                                "SYMONEURAL_MINER_TOKEN=s3cret\n")
         cryptominer.load_env(force=True)
-        self.assertEqual(os.environ["SYM_MINING_ENABLED"], "0",
+        self.assertEqual(os.environ["SYMONEURAL_MINING_ENABLED"], "0",
                          "the file overrode a variable the operator exported")
 
     def test_the_file_cannot_set_arbitrary_variables(self):
         self.envfile.write_text("LD_PRELOAD=/tmp/evil.so\nPATH=/tmp\n"
-                                "SYM_MINER_TOKEN=s3cret\n")
+                                "SYMONEURAL_MINER_TOKEN=s3cret\n")
         report = cryptominer.load_env(force=True)
         self.assertNotEqual(os.environ.get("LD_PRELOAD"), "/tmp/evil.so")
         self.assertNotEqual(os.environ.get("PATH"), "/tmp")
         self.assertIn("LD_PRELOAD", report["ignored_keys"])
 
     def test_quotes_and_comments(self):
-        self.envfile.write_text('# a comment\n\nexport SYM_MINER_TOKEN="s3 cret"\n')
+        self.envfile.write_text('# a comment\n\nexport SYMONEURAL_MINER_TOKEN="s3 cret"\n')
         cryptominer.load_env(force=True)
-        self.assertEqual(os.environ["SYM_MINER_TOKEN"], "s3 cret")
+        self.assertEqual(os.environ["SYMONEURAL_MINER_TOKEN"], "s3 cret")
 
     def test_a_missing_binary_is_offline_not_ready(self):
-        self.envfile.write_text("SYM_MINING_ENABLED=1\n"
-                                "SYM_MINER_CMD=/no/such/miner --algo kawpow\n"
-                                "SYM_MINER_TOKEN=s3cret\n")
+        self.envfile.write_text("SYMONEURAL_MINING_ENABLED=1\n"
+                                "SYMONEURAL_MINER_CMD=/no/such/miner --algo kawpow\n"
+                                "SYMONEURAL_MINER_TOKEN=s3cret\n")
         self.assertEqual(cryptominer.unit_state()[0], "offline")
 
     def test_token_compare(self):
-        self.envfile.write_text("SYM_MINER_TOKEN=s3cret\n")
+        self.envfile.write_text("SYMONEURAL_MINER_TOKEN=s3cret\n")
         cryptominer.load_env(force=True)
         self.assertTrue(cryptominer.token_ok("s3cret"))
         self.assertFalse(cryptominer.token_ok("s3cre"))
@@ -303,7 +303,7 @@ class TestOffByDefault(unittest.TestCase):
         self.assertFalse(cryptominer.token_ok(None))
 
     def test_an_empty_token_never_authenticates(self):
-        self.envfile.write_text("SYM_MINER_TOKEN=\n")
+        self.envfile.write_text("SYMONEURAL_MINER_TOKEN=\n")
         cryptominer.load_env(force=True)
         self.assertFalse(cryptominer.token_ok(""))
         self.assertFalse(cryptominer.token_ok("anything"))
@@ -443,7 +443,7 @@ class TestGovernorContract(unittest.TestCase):
 
 
 class _Cmd:
-    """Run a test against one `SYM_MINER_CMD`, with the env file out of the way.
+    """Run a test against one `SYMONEURAL_MINER_CMD`, with the env file out of the way.
 
     The file is pointed at a path that does not exist, so `load_env()` finds nothing and the
     exported variable is the only source. Without this a developer's own `miner.env` would
@@ -455,12 +455,12 @@ class _Cmd:
 
     def __enter__(self):
         self.saved_file = cryptominer.ENVFILE
-        self.saved_cmd = os.environ.get("SYM_MINER_CMD")
+        self.saved_cmd = os.environ.get("SYMONEURAL_MINER_CMD")
         self.saved_key = cryptominer._env_key
         cryptominer.ENVFILE = pathlib.Path(tempfile.gettempdir()) / "sym-no-such-miner.env"
         cryptominer._env_key = None
         cryptominer._env_applied.clear()
-        os.environ["SYM_MINER_CMD"] = self.cmd
+        os.environ["SYMONEURAL_MINER_CMD"] = self.cmd
         return self
 
     def __exit__(self, *exc):
@@ -468,9 +468,9 @@ class _Cmd:
         cryptominer._env_key = self.saved_key
         cryptominer._env_applied.clear()
         if self.saved_cmd is None:
-            os.environ.pop("SYM_MINER_CMD", None)
+            os.environ.pop("SYMONEURAL_MINER_CMD", None)
         else:
-            os.environ["SYM_MINER_CMD"] = self.saved_cmd
+            os.environ["SYMONEURAL_MINER_CMD"] = self.saved_cmd
 
 
 class TestPoolDetection(unittest.TestCase):
@@ -593,7 +593,7 @@ class TestEnvCacheKey(unittest.TestCase):
     """`_env_key` must hold the stat stamp, not the last config name parsed out of the file.
 
     The bug: the stat tuple and the loop variable were both called `key`, so `_env_key` ended
-    up as the string "SYM_MINER_GPU". A tuple never equals a string, the cache never hit, and
+    up as the string "SYMONEURAL_MINER_GPU". A tuple never equals a string, the cache never hit, and
     every `enabled()` / `token_ok()` / `gpu_index()` call re-read and re-parsed the file and
     re-wrote os.environ — five file reads per `status()`, on the rack's poll path.
     """
@@ -613,7 +613,7 @@ class TestEnvCacheKey(unittest.TestCase):
         self.dir.cleanup()
 
     def test_the_stamp_is_a_stat_tuple(self):
-        self.f.write_text("SYM_MINER_GPU=0\nSYM_MINER_TOKEN=s3cret\n")
+        self.f.write_text("SYMONEURAL_MINER_GPU=0\nSYMONEURAL_MINER_TOKEN=s3cret\n")
         cryptominer.load_env()
         self.assertIsInstance(cryptominer._env_key, tuple,
                               "_env_key is not the stat stamp — the loop variable has "
@@ -621,19 +621,19 @@ class TestEnvCacheKey(unittest.TestCase):
         self.assertEqual(len(cryptominer._env_key), 3)
 
     def test_the_second_read_is_a_cache_hit(self):
-        self.f.write_text("SYM_MINER_TOKEN=s3cret\n")
+        self.f.write_text("SYMONEURAL_MINER_TOKEN=s3cret\n")
         self.assertTrue(cryptominer.load_env()["reread"])
         self.assertFalse(cryptominer.load_env()["reread"])
         self.assertFalse(cryptominer.load_env()["reread"])
 
     def test_force_reads_through_the_cache(self):
-        self.f.write_text("SYM_MINER_TOKEN=s3cret\n")
+        self.f.write_text("SYMONEURAL_MINER_TOKEN=s3cret\n")
         cryptominer.load_env()
         self.assertTrue(cryptominer.load_env(force=True)["reread"])
 
     def test_every_branch_returns_the_same_shape(self):
         missing = cryptominer.load_env()                  # no file
-        self.f.write_text("LD_PRELOAD=/tmp/evil.so\nSYM_MINER_TOKEN=s3cret\n")
+        self.f.write_text("LD_PRELOAD=/tmp/evil.so\nSYMONEURAL_MINER_TOKEN=s3cret\n")
         full = cryptominer.load_env()                     # full parse
         cached = cryptominer.load_env()                   # cache hit
         for a, b in (("missing", missing), ("full", full), ("cached", cached)):
@@ -645,15 +645,15 @@ class TestEnvCacheKey(unittest.TestCase):
                          "/api/gpuminer/status changed depending on cache state")
 
     def test_a_deleted_and_recreated_file_is_re_read(self):
-        self.f.write_text("SYM_MINER_TOKEN=first\n")
+        self.f.write_text("SYMONEURAL_MINER_TOKEN=first\n")
         cryptominer.load_env()
         self.f.unlink()
         self.assertFalse(cryptominer.load_env()["found"])
-        os.environ.pop("SYM_MINER_TOKEN", None)
+        os.environ.pop("SYMONEURAL_MINER_TOKEN", None)
         cryptominer._env_applied.clear()
-        self.f.write_text("SYM_MINER_TOKEN=second\n")
+        self.f.write_text("SYMONEURAL_MINER_TOKEN=second\n")
         self.assertTrue(cryptominer.load_env()["reread"])
-        self.assertEqual(os.environ.get("SYM_MINER_TOKEN"), "second")
+        self.assertEqual(os.environ.get("SYMONEURAL_MINER_TOKEN"), "second")
 
 
 class TestDocumentation(unittest.TestCase):
@@ -679,8 +679,8 @@ class TestDocumentation(unittest.TestCase):
         # A README naming a variable the parser drops sends an operator to debug a token.
         import re as _re
         text = self.readme.read_text()
-        for name in set(_re.findall(r"\bSYM_[A-Z_]+\b", text)):
-            self.assertIn(name, cryptominer._ENV_KEYS | {"SYM_ASIC_TOKEN", "SYM_MINER_ENV"},
+        for name in set(_re.findall(r"\bSYMONEURAL_[A-Z_]+\b", text)):
+            self.assertIn(name, cryptominer._ENV_KEYS | {"SYMONEURAL_ASIC_TOKEN", "SYMONEURAL_MINER_ENV"},
                           f"README documents {name}, which load_env() would ignore")
 
     def test_the_test_count_it_quotes_is_the_real_one(self):
@@ -718,7 +718,7 @@ class TestDocumentation(unittest.TestCase):
         # The one number this surface must never invent. Pricing goes to the mailbox.
         #
         # A bare "$" is NOT the test: the README legitimately contains `$EDITOR` and
-        # `$SYM_MINER_TOKEN` in shell examples. What must not appear is a currency amount or
+        # `$SYMONEURAL_MINER_TOKEN` in shell examples. What must not appear is a currency amount or
         # a per-period rate. `assertNotRegex`'s own message quotes the whole document, which
         # for a file this size buries the finding, so each check carries a short one.
         import re as _re
@@ -738,7 +738,7 @@ class TestDocumentation(unittest.TestCase):
     def test_it_leaks_no_secret(self):
         # Guards against somebody pasting a working miner.env into the docs.
         text = self.readme.read_text()
-        for token in ("SYM_MINER_TOKEN=", "stratum+tcp://R"):
+        for token in ("SYMONEURAL_MINER_TOKEN=", "stratum+tcp://R"):
             self.assertNotIn(token, text, f"{token!r} looks like real config, not an example")
 
 

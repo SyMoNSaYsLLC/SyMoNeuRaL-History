@@ -208,7 +208,7 @@ class ValidatorRejectsJunk(unittest.TestCase):
 
 
 class TheRouteIsMeterable(unittest.TestCase):
-    """`SYM_RATE_STUDIO` must be read by something.
+    """`SYMONEURAL_RATE_STUDIO` must be read by something.
 
     No limit is set on any surface here today -- that was the operator's call on 2026-08-17 --
     so this asserts the knob exists, not that it is turned. A surface missing from
@@ -237,7 +237,7 @@ class TheRouteIsMeterable(unittest.TestCase):
                     isinstance(t, ast.Name) and t.id == "_RATE_SUGGESTED" for t in node.targets):
                 names = [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
                 self.assertIn("studio", names,
-                              "studio is absent from _RATE_SUGGESTED, so SYM_RATE_STUDIO "
+                              "studio is absent from _RATE_SUGGESTED, so SYMONEURAL_RATE_STUDIO "
                               "would be read by nothing and the surface is unmeterable")
                 return
         self.fail("_RATE_SUGGESTED not found")

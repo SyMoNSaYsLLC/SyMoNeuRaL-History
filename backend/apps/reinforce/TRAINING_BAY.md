@@ -60,7 +60,7 @@ answers. `rollout.py` is the whole argument; the short version:
   copy of the weights plus a pre-allocated KV pool; the training process alone projects near
   12 GiB of a ~14.2 GiB practical budget, and there is no value of `vllm_gpu_memory_utilization`
   that leaves both alive. Server mode is genuinely how RL is done at scale and needs a machine that
-  is not this one. Configure with `SYM_REINFORCE_VLLM_URL`; an unreachable endpoint **refuses the
+  is not this one. Configure with `SYMONEURAL_REINFORCE_VLLM_URL`; an unreachable endpoint **refuses the
   run** rather than falling back, because a silent fallback changes the sampling implementation
   without changing the label on the run.
 - **llama.cpp — refused for rollouts, on correctness.** It is already built here and already fast,
@@ -212,9 +212,9 @@ node    backend/apps/reinforce/test_page.mjs
 
 # The surface is off unless BOTH are set. A never-evicted GPU route open to the world is a
 # rack-wide denial of service costing one HTTP request.
-export SYM_REINFORCE_ENABLED=1
-export SYM_REINFORCE_TOKEN=...
-export SYM_REINFORCE_VLLM_URL=...      # optional; external rollout server, never localhost
+export SYMONEURAL_REINFORCE_ENABLED=1
+export SYMONEURAL_REINFORCE_TOKEN=...
+export SYMONEURAL_REINFORCE_VLLM_URL=...      # optional; external rollout server, never localhost
 
 # Everything touching the GPU goes through the governor, which always releases.
 scripts/gpu-governor.sh with train -- <cmd>

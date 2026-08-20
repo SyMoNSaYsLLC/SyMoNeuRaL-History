@@ -45,7 +45,7 @@ class UpgradeSubcommandTests(unittest.TestCase):
         nothing, so this asserts the subcommand exists and that it delegates rather than
         reimplementing. If the parser entry is deleted, argparse exits 2 here."""
         with tempfile.TemporaryDirectory(dir=ROOT / "run") as tmp:
-            env = {**os.environ, "SYM_STATE_DIR": tmp}
+            env = {**os.environ, "SYMONEURAL_STATE_DIR": tmp}
             out = subprocess.run([sys.executable, str(CLI), "upgrade", "--check"],
                                  capture_output=True, text=True, timeout=60, env=env)
             self.assertEqual(out.returncode, 0, out.stderr)
@@ -59,7 +59,7 @@ class UpgradeSubcommandTests(unittest.TestCase):
         /var/lib/symoneural/last-deploy back. Both halves are asserted: the line appears when
         the postinst has written a verdict, and no line appears when it has not."""
         with tempfile.TemporaryDirectory(dir=ROOT / "run") as tmp:
-            env = {**os.environ, "SYM_STATE_DIR": tmp}
+            env = {**os.environ, "SYMONEURAL_STATE_DIR": tmp}
             bare = subprocess.run([sys.executable, str(CLI), "status"],
                                   capture_output=True, text=True, timeout=60, env=env)
             self.assertEqual(bare.returncode, 0, bare.stderr)

@@ -27,7 +27,7 @@ without configuration:
     {"mcpServers": {"symoneural-studio": {
         "command": "/home/google/Symoneural/backend/apps/symoneuralstudio/.venv/bin/python",
         "args": ["/home/google/Symoneural/backend/apps/symoneuralstudio/mcp_server.py"],
-        "env": {"SYM_STUDIO_ENABLED": "1", "SYM_STUDIO_TOKEN": "..."}}}}
+        "env": {"SYMONEURAL_STUDIO_ENABLED": "1", "SYMONEURAL_STUDIO_TOKEN": "..."}}}}
 
 `--http PORT` serves FastMCP's streamable HTTP transport instead, for a client that cannot
 spawn a process. It binds 127.0.0.1 and nothing in `ops/Caddyfile` exposes it; a stdio server
@@ -35,8 +35,8 @@ inherits its client's trust, an HTTP one does not, and this box has a public IP.
 
 ## The gate applies here too
 
-An MCP client is not a browser and does not present `X-Sym-Token`, so the check is on the
-*process*: `SYM_STUDIO_ENABLED=1` must be set in the environment the server is launched with,
+An MCP client is not a browser and does not present `X-Symoneural-Token`, so the check is on the
+*process*: `SYMONEURAL_STUDIO_ENABLED=1` must be set in the environment the server is launched with,
 exactly as for the HTTP surface. Without it the server still starts and still lists its tools,
 and every call returns the same "switched off" structure the API returns -- listing is how a
 client discovers why it is being refused, and a server that exits on startup tells it nothing.
@@ -90,8 +90,8 @@ mcp = FastMCP(
 
 _OFF = {
     "error": "studio_disabled",
-    "detail": ("this MCP server was launched without SYM_STUDIO_ENABLED=1 (and a "
-               "SYM_STUDIO_TOKEN). It reaches the whole host, so it is off unless the "
+    "detail": ("this MCP server was launched without SYMONEURAL_STUDIO_ENABLED=1 (and a "
+               "SYMONEURAL_STUDIO_TOKEN). It reaches the whole host, so it is off unless the "
                "operator switches it on in the environment it is launched with."),
 }
 
@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     # the server refuses to start on a checkout it cannot locate, when most of what it serves
     # (`env_get`, `gpu_status`, `service_status`) does not need a workspace at all.
     print(f"symoneural-studio: {len(registry.names())} tools, "
-          f"workspace {workspace.ROOT or 'NOT FOUND (set SYM_STUDIO_ROOT)'}, "
+          f"workspace {workspace.ROOT or 'NOT FOUND (set SYMONEURAL_STUDIO_ROOT)'}, "
           f"switch {'on' if gate.enabled() else 'OFF'}", file=sys.stderr)
 
     if args.http:

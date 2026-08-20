@@ -1,4 +1,4 @@
-# The operator's real configuration. It carries SYM_MINER_TOKEN — the shared secret that
+# The operator's real configuration. It carries SYMONEURAL_MINER_TOKEN — the shared secret that
 # gates start/stop of a process which takes the GPU — and a wallet address. The tracked
 # file is miner.env.example, which is inert by design.
 miner.env

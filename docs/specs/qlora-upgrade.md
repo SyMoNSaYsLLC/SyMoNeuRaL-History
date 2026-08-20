@@ -669,7 +669,7 @@ class of finding.
    long-running GPU route is a rack-wide denial of service that costs one HTTP request.
    `.claude/HANDOVER.md` §5 item 12 already notes `/api/chat` is open to whatever reaches the
    origin. The in-repo pattern to copy is the ASIC gate —
-   `SYM_ASIC_ENABLED` + `SYM_ASIC_TOKEN` in `backend/apps/asicminer/__init__.py`, off by
+   `SYMONEURAL_ASIC_ENABLED` + `SYMONEURAL_ASIC_TOKEN` in `backend/apps/asicminer/__init__.py`, off by
    default. This is a hard requirement, not a hardening task for later.
 
 6. **No multi-GPU anything.** One card. No FSDP, no DeepSpeed ZeRO-3, no tensor parallelism,

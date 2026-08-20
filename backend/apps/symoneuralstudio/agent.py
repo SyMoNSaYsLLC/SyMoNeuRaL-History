@@ -8,7 +8,7 @@
       -> did it ask for a tool?
            yes -> execute the local Python function
                 -> append the RAW result as a `tool` message
-                -> back to the backend                      (up to SYM_STUDIO_MAX_STEPS)
+                -> back to the backend                      (up to SYMONEURAL_STUDIO_MAX_STEPS)
            no  -> that is the answer
 
 "Raw" is meant literally. The tool's return value is JSON-serialised and handed back
@@ -33,7 +33,7 @@ normalised to the same internal shape before anything downstream sees them.
 ## What this does not do
 
 There is no output filter, no refusal path and no prompt-injection guard, per the standing
-instruction in `apps/voice/__init__.py`. `SYM_STUDIO_MAX_STEPS` bounds the loop so a model
+instruction in `apps/voice/__init__.py`. `SYMONEURAL_STUDIO_MAX_STEPS` bounds the loop so a model
 that gets stuck calling `list_dir` forever eventually stops and says what it found; that is a
 termination condition, not a restriction on what may be called.
 """
@@ -49,7 +49,7 @@ from . import inference, registry
 
 __all__ = ["system_prompt", "run", "MAX_STEPS"]
 
-MAX_STEPS = int(os.environ.get("SYM_STUDIO_MAX_STEPS", "8"))
+MAX_STEPS = int(os.environ.get("SYMONEURAL_STUDIO_MAX_STEPS", "8"))
 
 IDENTITY = """\
 You are SyMoNeuRaL Studio, the local orchestration agent for the SyMoNeuRaL stack.

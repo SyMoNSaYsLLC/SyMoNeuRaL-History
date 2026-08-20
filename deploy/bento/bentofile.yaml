@@ -5,7 +5,7 @@ service: "bentoml_service_runner:svc"
 name: "text_gen"
 description: |
   Runner-based text generation. Forwards to a local llama.cpp OpenAI-compatible server when
-  SYM_LLAMA_URL is set; falls back to the deterministic stub packed as `text_gen:latest`, and
+  SYMONEURAL_LLAMA_URL is set; falls back to the deterministic stub packed as `text_gen:latest`, and
   names the backend that answered in every response. No weights are in this image.
 labels:
   owner: symoneural

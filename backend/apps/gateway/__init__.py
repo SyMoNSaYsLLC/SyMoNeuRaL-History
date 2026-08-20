@@ -56,10 +56,10 @@ to break it. Fee questions go to symonsayadmin@symoneural.com.
 
 ## Switches, off by default -- and there are exactly three
 
-    SYM_GATEWAY_ENABLED=1        # the surface exists at all
-    SYM_GATEWAY_NETWORK=symoneural-test      # or symoneural-live (REAL money),
+    SYMONEURAL_GATEWAY_ENABLED=1        # the surface exists at all
+    SYMONEURAL_GATEWAY_NETWORK=symoneural-test      # or symoneural-live (REAL money),
                                              # or symoneural-test-old
-    SYM_GATEWAY_CONTRACT=T...    # deployed licensing contract address, base58check
+    SYMONEURAL_GATEWAY_CONTRACT=T...    # deployed licensing contract address, base58check
 
 Mainnet moves real money, so it is never the default and the state line always names the
 network it is pointed at. A gateway that does not say which chain it is on is one
@@ -70,7 +70,7 @@ this package does -- is unauthenticated: no address, no key, no signature. A wal
 to *receive* a payment and a private key to *sign* one, and neither belongs in the
 environment of a public-facing web process. Signing belongs in the off-chain daemon on the
 operator's own machine, which is exactly where the PoC puts it. There is also deliberately no
-`SYM_GATEWAY_NODE_URL`: endpoints come from `chain.NODES`, keyed by the validated network
+`SYMONEURAL_GATEWAY_NODE_URL`: endpoints come from `chain.NODES`, keyed by the validated network
 name, so this process can never be pointed at an arbitrary host.
 
 ## Switching it on -- the whole operator procedure
@@ -83,9 +83,9 @@ move them into the `@@ROOT@@` template so a reinstall carries them.
     sudo install -d /etc/systemd/system/symoneural-api.service.d
     sudo tee /etc/systemd/system/symoneural-api.service.d/gateway.conf >/dev/null <<'EOF'
     [Service]
-    Environment=SYM_GATEWAY_ENABLED=1
-    Environment=SYM_GATEWAY_NETWORK=symoneural-test
-    Environment=SYM_GATEWAY_CONTRACT=T...
+    Environment=SYMONEURAL_GATEWAY_ENABLED=1
+    Environment=SYMONEURAL_GATEWAY_NETWORK=symoneural-test
+    Environment=SYMONEURAL_GATEWAY_CONTRACT=T...
     EOF
     sudo systemctl daemon-reload && sudo systemctl restart symoneural-api
     curl -s localhost:8800/api/gateway/state | python3 -m json.tool
@@ -141,12 +141,12 @@ log = logging.getLogger("symoneural.gateway")
 
 
 def enabled() -> bool:
-    return os.environ.get("SYM_GATEWAY_ENABLED") == "1"
+    return os.environ.get("SYMONEURAL_GATEWAY_ENABLED") == "1"
 
 
 def network_raw() -> str:
     """Exactly what the operator set, for error messages. Never used to reach a chain."""
-    return (os.environ.get("SYM_GATEWAY_NETWORK") or "").strip().lower()
+    return (os.environ.get("SYMONEURAL_GATEWAY_NETWORK") or "").strip().lower()
 
 
 def network() -> str:
@@ -161,7 +161,7 @@ def network() -> str:
 
 
 def contract() -> str:
-    return (os.environ.get("SYM_GATEWAY_CONTRACT") or "").strip()
+    return (os.environ.get("SYMONEURAL_GATEWAY_CONTRACT") or "").strip()
 
 
 def configured() -> tuple[bool, str]:
@@ -172,20 +172,20 @@ def configured() -> tuple[bool, str]:
     broken unit from one awaiting configuration.
     """
     if not enabled():
-        return False, ("not configured — set SYM_GATEWAY_ENABLED=1, SYM_GATEWAY_NETWORK "
+        return False, ("not configured — set SYMONEURAL_GATEWAY_ENABLED=1, SYMONEURAL_GATEWAY_NETWORK "
                        "(symoneural-live|symoneural-test|symoneural-test-old) and "
-                       "SYM_GATEWAY_CONTRACT (a T… address) · see /gateway.html")
+                       "SYMONEURAL_GATEWAY_CONTRACT (a T… address) · see /gateway.html")
     net = network()
     if net not in NODES:
-        return False, (f"SYM_GATEWAY_NETWORK={network_raw() or 'unset'} — expected one of "
+        return False, (f"SYMONEURAL_GATEWAY_NETWORK={network_raw() or 'unset'} — expected one of "
                        + ", ".join(OPERATOR_NETWORKS))
     addr = contract()
     if not addr:
-        return False, (f"{NODES[net][0]} — SYM_GATEWAY_CONTRACT unset; it takes the deployed "
+        return False, (f"{NODES[net][0]} — SYMONEURAL_GATEWAY_CONTRACT unset; it takes the deployed "
                        "licensing contract address, 34 characters beginning with T")
     why = address.reason(addr)
     if why:
-        return False, f"{NODES[net][0]} — SYM_GATEWAY_CONTRACT is malformed: {why}"
+        return False, f"{NODES[net][0]} — SYMONEURAL_GATEWAY_CONTRACT is malformed: {why}"
     return True, ""
 
 
@@ -253,7 +253,7 @@ async def refresher() -> None:
     It logs its first pass, once. `asicminer`'s equivalent is announced by `api.py` at start
     (`log.info("asic surface enabled; probing %d configured rig(s)")`); this task cannot be
     announced there because whether it has anything to do depends on all three switches, not
-    just the one `api.py` checks. Without the line, an operator who set `SYM_GATEWAY_ENABLED`
+    just the one `api.py` checks. Without the line, an operator who set `SYMONEURAL_GATEWAY_ENABLED`
     and mistyped the network would see a loop that runs forever, does nothing, and says
     nothing in `journalctl -u symoneural-api`.
     """

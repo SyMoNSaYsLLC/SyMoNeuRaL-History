@@ -18,7 +18,7 @@ decorators become `bentoml.api`.
 
 Two backends, and the response always names which one answered:
 
-* **`llama.cpp`** -- if `SYM_LLAMA_URL` points at a reachable OpenAI-compatible endpoint, the
+* **`llama.cpp`** -- if `SYMONEURAL_LLAMA_URL` points at a reachable OpenAI-compatible endpoint, the
   runner POSTs `/v1/chat/completions` to it. That is the repo's real inference path
   (`contrib/llama.cpp/build/bin/llama-server`, symon-1.0-7b-q4_k_m + persona LoRA).
 * **`stub`** -- otherwise, the deterministic echo saved by `save_model.py`. No weights are in
@@ -84,9 +84,22 @@ import text_gen_stub  # noqa: F401  -- registers the class for unpickling; see a
 import bentoml  # noqa: E402
 from bentoml.io import JSON  # noqa: E402
 
-MODEL_TAG = os.environ.get("SYM_BENTO_MODEL", "text_gen:latest")
-LLAMA_URL = os.environ.get("SYM_LLAMA_URL", "").rstrip("/")
-LLAMA_TIMEOUT = float(os.environ.get("SYM_LLAMA_TIMEOUT", "60"))
+def _env(name: str, default: str) -> str:
+    """The new spelling, then the legacy `SYM_` one it replaced, then the default.
+
+    This file cannot use `apps/symoneuralenv.promote()` the way `backend/api.py` and
+    `bin/symoneural-cli` do: it runs inside the packaged Bento container, where the repo is
+    not on disk, and the three reads below happen at module scope before any service code
+    runs. Three variables and one helper is the whole cost of not stranding a container
+    launched from an older compose file or workflow env.
+    """
+    return os.environ.get(name) or os.environ.get("SYM_" + name[len("SYMONEURAL_"):]) \
+        or default
+
+
+MODEL_TAG = _env("SYMONEURAL_BENTO_MODEL", "text_gen:latest")
+LLAMA_URL = _env("SYMONEURAL_LLAMA_URL", "").rstrip("/")
+LLAMA_TIMEOUT = float(_env("SYMONEURAL_LLAMA_TIMEOUT", "60"))
 
 text_gen_model = bentoml.picklable_model.get(MODEL_TAG)
 
@@ -132,7 +145,7 @@ class TextGenRunnable(bentoml.legacy.Runnable):
         out = dict(self.model.generate(prompt, max_tokens))
         if LLAMA_URL:
             # Say so. A silent fallback is how a broken deployment reads as a working one.
-            out["note"] = f"SYM_LLAMA_URL={LLAMA_URL} did not answer; this is stub output"
+            out["note"] = f"SYMONEURAL_LLAMA_URL={LLAMA_URL} did not answer; this is stub output"
         return out
 
     def _via_llama(self, prompt: str, max_tokens: int) -> dict | None:

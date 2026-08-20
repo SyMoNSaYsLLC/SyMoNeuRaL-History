@@ -155,7 +155,7 @@ did the runner load its model, and which backend will answer — and the smoke t
 
 `save_model.py` saves a generation *policy*, not a model: a deterministic echo that prefixes its
 output with `[stub]`. The real model is 4.4 GB and is not going into an image built by a
-CPU-only runner. The runner prefers a real `llama-server` when `SYM_LLAMA_URL` is set and
+CPU-only runner. The runner prefers a real `llama-server` when `SYMONEURAL_LLAMA_URL` is set and
 **names the backend that answered in every response**, including a `note` field when it fell
 back. Per CLAUDE.md's honesty rules, stub output is never returned as if a model produced it,
 and the stub deliberately does not try to sound like one — a stub that produced plausible prose

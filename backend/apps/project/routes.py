@@ -4,8 +4,9 @@ Three properties this router is built around, all of them from
 `docs/specs/project-spec.md` §3.3, and all of them because Garrett intends to write an
 iPhone app against this server:
 
-* **No cookies, no server-side session, no login flow.** Authentication is the `X-Sym-Token`
-  header, which any HTTP client can set. There is nothing a browser provides that a Swift
+* **No cookies, no server-side session, no login flow.** Authentication is the
+  `X-Symoneural-Token` header (and `X-Sym-Token`, the name it replaced, still read by `_deny`
+  below), which any HTTP client can set. There is nothing a browser provides that a Swift
   `URLRequest` does not, and there is no "currently open project" held on the server — the
   client names the project in every request. Two clients must be able to interleave.
 * **No credential in a path or a query string.** Caddy writes
@@ -34,6 +35,12 @@ from pydantic import BaseModel, ConfigDict
 
 from . import store
 from .store import API_VERSION
+
+# The credential header, and the name it replaced. Declared here rather than in `store`
+# because `store.authorize` takes a token, not a request: the wire spelling is this
+# module's business and the comparison is that one's.
+HEADER = "X-Symoneural-Token"
+HEADER_LEGACY = "X-Sym-Token"
 
 router = APIRouter(tags=["project"])
 
@@ -126,7 +133,12 @@ def _deny(request: Request) -> JSONResponse | None:
     `{"detail": ...}` — a second error shape, which is the thing the envelope exists to
     prevent.
     """
-    ok, code, why = store.authorize(request.headers.get("X-Sym-Token"))
+    # New header name first, then the one it replaced. The legacy read is here because the
+    # sender is cached JavaScript -- `site/project.html` holds the fetch at :336 -- so a
+    # browser with yesterday's copy presents the old name while its token is perfectly good.
+    # `request.headers` is case-insensitive, so one spelling of each is enough.
+    ok, code, why = store.authorize(request.headers.get(HEADER)
+                                    or request.headers.get(HEADER_LEGACY))
     if ok:
         return None
     return _out({"ok": False, "api_version": API_VERSION, "code": code, "error": why})

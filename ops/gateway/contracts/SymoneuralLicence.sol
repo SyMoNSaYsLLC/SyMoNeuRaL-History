@@ -37,7 +37,7 @@ pragma solidity 0.8.18;
 ///   `docs/specs/symon-ml-review.md` finding 2 is the reason: a blockchain is public, so a
 ///   decryption key cannot live in it, and a contract cannot be the thing that keeps a secret.
 /// - **It is not upgradeable.** No proxy, no `delegatecall`, no `selfdestruct`. If the terms
-///   change, deploy a new one and point `SYM_GATEWAY_CONTRACT` at it. An upgradeable licensing
+///   change, deploy a new one and point `SYMONEURAL_GATEWAY_CONTRACT` at it. An upgradeable licensing
 ///   contract means the operator can rewrite the terms of a licence somebody already bought.
 ///
 /// ## Compilation target — this matters on TRON and is easy to get wrong

@@ -175,11 +175,11 @@ def main(argv: list[str] | None = None) -> int:
     # comparison that is only correct because of that would break silently the first time one
     # side moved. An env value outside the map resolves to "" and takes the mismatch branch,
     # which is the honest answer: a surface configured with a name it refuses is not lit.
-    raw_env = (os.environ.get("SYM_GATEWAY_NETWORK") or "").strip().lower()
+    raw_env = (os.environ.get("SYMONEURAL_GATEWAY_NETWORK") or "").strip().lower()
     net_env = chain.OPERATOR_NETWORKS.get(raw_env, "")
-    addr_env = (os.environ.get("SYM_GATEWAY_CONTRACT") or "").strip()
+    addr_env = (os.environ.get("SYMONEURAL_GATEWAY_CONTRACT") or "").strip()
     if not raw_env or not addr_env:
-        print("recorded. This shell has no SYM_GATEWAY_NETWORK/CONTRACT set, so whether the "
+        print("recorded. This shell has no SYMONEURAL_GATEWAY_NETWORK/CONTRACT set, so whether the "
               "rack turns green depends on what the API service is configured for.")
     elif (net_env, addr_env) == (net, a.contract):
         print("recorded — the Gateway unit will read `ready` on the next status poll")

@@ -39,20 +39,21 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 import voice  # noqa: E402
-from voice import asr, tts  # noqa: E402
+from voice import asr, routes, tts  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 TOKEN = "test-token-not-a-real-secret"
-ON = {"SYM_VOICE_ENABLED": "1", "SYM_VOICE_TOKEN": TOKEN}
-AUTH = {"X-Sym-Token": TOKEN}
+ON = {"SYMONEURAL_VOICE_ENABLED": "1", "SYMONEURAL_VOICE_TOKEN": TOKEN}
+AUTH = {"X-Symoneural-Token": TOKEN}
+LEGACY_AUTH = {"X-Sym-Token": TOKEN}
 
-# Every SYM_VOICE_* name this package reads. Cleared before each case so a value set in the
+# Every SYMONEURAL_VOICE_* name this package reads. Cleared before each case so a value set in the
 # shell -- or by a peer suite -- cannot make a gate test pass for the wrong reason.
-_OWN_ENV = ("SYM_VOICE_ENABLED", "SYM_VOICE_TOKEN", "SYM_VOICE_THREADS",
-            "SYM_VOICE_CONCURRENCY", "SYM_VOICE_TIMEOUT_S", "SYM_VOICE_TRANSCODE_TIMEOUT_S",
-            "SYM_WHISPER_CLI", "SYM_WHISPER_MODEL", "SYM_FFMPEG")
+_OWN_ENV = ("SYMONEURAL_VOICE_ENABLED", "SYMONEURAL_VOICE_TOKEN", "SYMONEURAL_VOICE_THREADS",
+            "SYMONEURAL_VOICE_CONCURRENCY", "SYMONEURAL_VOICE_TIMEOUT_S", "SYMONEURAL_VOICE_TRANSCODE_TIMEOUT_S",
+            "SYMONEURAL_WHISPER_CLI", "SYMONEURAL_WHISPER_MODEL", "SYMONEURAL_FFMPEG")
 
 
 def clean_env(**overrides: str) -> mock._patch:
@@ -74,7 +75,7 @@ class GateTests(unittest.TestCase):
     """The two switches, and the header. No audio is touched by any of these."""
 
     def test_both_variables_are_required(self):
-        for env in ({}, {"SYM_VOICE_ENABLED": "1"}, {"SYM_VOICE_TOKEN": TOKEN}):
+        for env in ({}, {"SYMONEURAL_VOICE_ENABLED": "1"}, {"SYMONEURAL_VOICE_TOKEN": TOKEN}):
             with clean_env(**env):
                 self.assertFalse(voice.enabled(), env)
         with clean_env(**ON):
@@ -82,10 +83,10 @@ class GateTests(unittest.TestCase):
 
     def test_enabled_is_the_literal_string_one(self):
         """`true`/`yes`/`on` leave the surface off and say nothing. This is the single most
-        reported confusion about `SYM_ASIC_ENABLED`, and it is consistent here on purpose --
+        reported confusion about `SYMONEURAL_ASIC_ENABLED`, and it is consistent here on purpose --
         so the test states the behaviour rather than letting somebody 'fix' it."""
         for value in ("true", "True", "yes", "on", "0", " 1", ""):
-            with clean_env(SYM_VOICE_ENABLED=value, SYM_VOICE_TOKEN=TOKEN):
+            with clean_env(SYMONEURAL_VOICE_ENABLED=value, SYMONEURAL_VOICE_TOKEN=TOKEN):
                 self.assertFalse(voice.enabled(), value)
 
     def test_token_compare_refuses_empty_and_wrong(self):
@@ -95,7 +96,7 @@ class GateTests(unittest.TestCase):
                 self.assertFalse(voice.token_ok(bad), repr(bad))
 
     def test_no_token_configured_refuses_every_presented_token(self):
-        with clean_env(SYM_VOICE_ENABLED="1"):
+        with clean_env(SYMONEURAL_VOICE_ENABLED="1"):
             for presented in (None, "", "anything"):
                 self.assertFalse(voice.token_ok(presented))
 
@@ -110,19 +111,56 @@ class GateTests(unittest.TestCase):
             r = c.post("/api/voice/transcribe", headers=AUTH,
                        files={"audio": ("a.wav", b"not audio", "audio/wav")})
             self.assertEqual(r.status_code, 503)
-            self.assertIn("SYM_VOICE_ENABLED", r.json()["detail"])
-            self.assertIn("SYM_VOICE_TOKEN", r.json()["detail"])
+            self.assertIn("SYMONEURAL_VOICE_ENABLED", r.json()["detail"])
+            self.assertIn("SYMONEURAL_VOICE_TOKEN", r.json()["detail"])
 
     def test_enabled_but_unauthenticated_is_401(self):
         with clean_env(**ON):
             c = client()
-            for headers in ({}, {"X-Sym-Token": "wrong"}):
+            # Wrong under both spellings, plus absent. A wrong token in the legacy header
+            # must be refused for being wrong rather than ignored for being unrecognised.
+            for headers in ({}, {"X-Symoneural-Token": "wrong"}, {"X-Sym-Token": "wrong"}):
                 r = c.post("/api/voice/transcribe", headers=headers,
                            files={"audio": ("a.wav", b"not audio", "audio/wav")})
                 self.assertEqual(r.status_code, 401, headers)
             # /state is open once enabled: it publishes presence and absence, and there is no
             # key material in this package. apps/gateway is the precedent.
             self.assertEqual(c.get("/api/voice/state").status_code, 200)
+
+    def test_the_legacy_header_alone_still_authenticates(self):
+        """`X-Sym-Token` is the name this credential had until the rename.
+
+        This surface needs its own case rather than leaning on the others, because it is the
+        only one that cannot read two names off a request object: these are FastAPI routes
+        whose credential arrives as a declared parameter, and `Header(alias=...)` binds
+        exactly one name. Each gated route therefore declares BOTH and passes `new or legacy`
+        to `_require` -- an arrangement a reviewer can get wrong in a way no other surface can,
+        by deleting one parameter and leaving the `or`, which still compiles.
+
+        Presented alone. Sending both would pass with the legacy parameter removed.
+        401 is asserted rather than 200 because there is no ASR engine on a bare box and a
+        successful authentication lands on 503 or 400 depending on what is installed; what is
+        being pinned is that it is NOT 401.
+        """
+        with clean_env(**ON):
+            r = client().post("/api/voice/transcribe", headers=LEGACY_AUTH,
+                              files={"audio": ("a.wav", b"not audio", "audio/wav")})
+            self.assertNotEqual(r.status_code, 401, r.text)
+
+    def test_both_header_names_are_declared_on_both_gated_routes(self):
+        """The OpenAPI schema advertises both, because both are accepted. A schema naming one
+        would describe a stricter server than this is, and it is the only artefact an iPhone
+        client or a curl user reads before choosing a header name."""
+        import inspect
+
+        import fastapi.params
+        for fn in (routes.transcribe, routes.speak):
+            # Filtered on the Header type, not on "has an alias". `File(...)` is a FieldInfo
+            # too and carries `alias="audio"`, so the looser check picked up the upload.
+            aliases = {p.default.alias for p in inspect.signature(fn).parameters.values()
+                       if isinstance(p.default, fastapi.params.Header)}
+            self.assertEqual(aliases, {"X-Symoneural-Token", "X-Sym-Token"},
+                             f"{fn.__name__} does not declare both header names")
 
     def test_an_empty_upload_is_rejected_before_any_subprocess(self):
         with clean_env(**ON):

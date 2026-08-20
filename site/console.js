@@ -389,7 +389,7 @@
 
     function askForToken(why) {
       body.innerHTML =
-        '<div class="op-row"><input type="password" id="op-tok" placeholder="SYM_RACK_TOKEN" ' +
+        '<div class="op-row"><input type="password" id="op-tok" placeholder="SYMONEURAL_RACK_TOKEN" ' +
         'autocomplete="off"><button type="button" id="op-go">unlock</button></div>' +
         '<div class="op-msg"></div>';
       if (why) body.querySelector('.op-msg').textContent = why;
@@ -408,15 +408,27 @@
     // The panel reports what the API says and nothing else. It never guesses a unit's
     // state from the rack it sits under, because that reading and this one would drift and
     // an operator would be looking at two answers to one question.
+    // Both header spellings on every send. The site and the API deploy by two separate
+    // commands (`deploy.sh`, then `systemctl restart`), so this file can be the new one
+    // talking to a server that has not been restarted; the server reads both as well, which
+    // covers a cached copy of this file against a new API. One secret, one origin, named
+    // twice -- the legacy key comes out once the deployed API is known to read the new name.
+    function opHeaders(extra) {
+      var h = extra || {};
+      var t = opToken();
+      h['X-Symoneural-Token'] = t;
+      h['X-Sym-Token'] = t;
+      return h;
+    }
     function load() {
-      fetch('/api/rack/power', {headers: {'X-Sym-Token': opToken()}})
+      fetch('/api/rack/power', {headers: opHeaders()})
         .then(function (r) {
           if (r.status === 404) {
-            // Absent, not forbidden. With SYM_RACK_ENABLED unset there is nothing here to
+            // Absent, not forbidden. With SYMONEURAL_RACK_ENABLED unset there is nothing here to
             // unlock, so say that rather than asking for a token that cannot work.
             setOpToken('');
             throw new Error('The power surface is off on this installation. ' +
-                            'Set SYM_RACK_ENABLED=1 and SYM_RACK_TOKEN to use it.');
+                            'Set SYMONEURAL_RACK_ENABLED=1 and SYMONEURAL_RACK_TOKEN to use it.');
           }
           if (r.status === 403) { setOpToken(''); throw new Error('__token__'); }
           if (!r.ok) throw new Error('The API answered ' + r.status + '.');
@@ -456,7 +468,7 @@
           btn.disabled = true;
           fetch('/api/rack/power/' + encodeURIComponent(u.id), {
             method: 'POST',
-            headers: {'X-Sym-Token': opToken(), 'Content-Type': 'application/json'},
+            headers: opHeaders({'Content-Type': 'application/json'}),
             body: JSON.stringify({offline: !u.disabled})
           }).then(function (r) {
             if (!r.ok) throw new Error('The API answered ' + r.status + '.');

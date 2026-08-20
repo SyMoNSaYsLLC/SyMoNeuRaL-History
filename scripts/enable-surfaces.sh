@@ -25,8 +25,8 @@
 #
 # ## What this script will not do
 #
-# It will not enable remote access to anything. SYM_CODER_ALLOW_REMOTE and
-# SYM_RACK_ALLOW_REMOTE are never written here, so both surfaces stay loopback-only, which
+# It will not enable remote access to anything. SYMONEURAL_CODER_ALLOW_REMOTE and
+# SYMONEURAL_RACK_ALLOW_REMOTE are never written here, so both surfaces stay loopback-only, which
 # is the shape their own documentation argues for: backend/apps/coder/README.md is explicit
 # that an agent which can develop the site is arbitrary code execution on the box that
 # serves the public internet. Opening either one to the network is a deliberate act and
@@ -169,7 +169,7 @@ set_kv() {
 gen_token() { /usr/bin/python3 -c 'import secrets; print(secrets.token_urlsafe(32))'; }
 
 printf 'Writing %s\n' "$ENV_FILE"
-# Four surfaces, one shape: SYM_<NAME>_ENABLED=1 plus a fresh token. This was four aligned
+# Four surfaces, one shape: SYMONEURAL_<NAME>_ENABLED=1 plus a fresh token. This was four aligned
 # one-liners; each of the three that existed already ran past this repo's 100-column limit and
 # adding Studio would have made a fourth, so the shape is a loop over "want-flag NAME" pairs.
 # Gateway is not in here because it takes two more values and cannot share the body.
@@ -178,8 +178,8 @@ for pair in "$WANT_CODER CODER" "$WANT_PROJECT PROJECT" "$WANT_RACK RACK" \
   want=${pair% *}
   name=${pair#* }
   [ "$want" -eq 1 ] || continue
-  set_kv "SYM_${name}_ENABLED" 1
-  set_kv "SYM_${name}_TOKEN" "$(gen_token)"
+  set_kv "SYMONEURAL_${name}_ENABLED" 1
+  set_kv "SYMONEURAL_${name}_TOKEN" "$(gen_token)"
 done
 # Not a token, so it is printed rather than reported as "generated", and it goes in the same
 # 0600 file anyway rather than an `Environment=` line -- backend/apps/asicminer/README.md:65
@@ -187,25 +187,27 @@ done
 # One file, one place to look. Empty stays empty: `rigs()` at asicminer/__init__.py:80 treats
 # unset and "" identically, so there is nothing to write when the operator gave no addresses.
 if [ "$WANT_ASIC" -eq 1 ] && [ -n "$ASIC_RIGS" ]; then
-  set_kv SYM_ASIC_RIGS "$ASIC_RIGS"
+  set_kv SYMONEURAL_ASIC_RIGS "$ASIC_RIGS"
 fi
 if [ "$WANT_GATEWAY" -eq 1 ]; then
-  set_kv SYM_GATEWAY_ENABLED 1
-  set_kv SYM_GATEWAY_NETWORK "$GW_NETWORK"
-  set_kv SYM_GATEWAY_CONTRACT "$GW_CONTRACT"
+  set_kv SYMONEURAL_GATEWAY_ENABLED 1
+  set_kv SYMONEURAL_GATEWAY_NETWORK "$GW_NETWORK"
+  set_kv SYMONEURAL_GATEWAY_CONTRACT "$GW_CONTRACT"
 fi
 
 # ## The gated surfaces this script deliberately does not switch
 #
 # Six env-gated surfaces had no arm here. Asic gained one above, because its rack row was in
 # exactly the state Studio's was -- SubUnit `asicminer` (backend/api.py:1655) told an operator
-# to "set SYM_ASIC_ENABLED=1 ... and SYM_ASIC_TOKEN" and nothing sanctioned would do it. The
-# other five are not oversights and each is a different reason, so they are named rather than
-# left as a silence someone has to re-derive:
+# to "set SYMONEURAL_ASIC_ENABLED=1 ... and SYMONEURAL_ASIC_TOKEN" and nothing sanctioned would
+# do it. News then joined the list -- it was always in this state and the test could not see
+# it, because the test's regex looked for the `SYM_` prefix and news was the first surface
+# named `SYMONEURAL_*` from the start. The six are not oversights and each is a different
+# reason, so they are named rather than left as a silence someone has to re-derive:
 #
 #   accounts   -- the key is not a token. `enabled()` (apps/accounts/__init__.py:233) wants
-#                 SYM_SESSION_SECRET of at least MIN_SECRET_CHARS=32 (:139), and minting a
-#                 SYM_ACCOUNTS_TOKEN here would write a key nothing reads. Its unit_state()
+#                 SYMONEURAL_SESSION_SECRET of at least MIN_SECRET_CHARS=32 (:139), and minting a
+#                 SYMONEURAL_ACCOUNTS_TOKEN here would write a key nothing reads. Its unit_state()
 #                 at :865 says "if this ever becomes a rack unit" -- prospective, no row.
 #   voice      -- backend/api.py:2317-2319 says in the source that the row is deliberately
 #                 absent because href /voice.html does not exist. Switching it on would light
@@ -221,7 +223,16 @@ fi
 #                 (apps/cryptominer/__init__.py:134) merges apps/cryptominer/miner.env and
 #                 never overrides an exported variable, so a key written here would be
 #                 exported by EnvironmentFile= and permanently beat the file the package
-#                 documents as the operator channel. SYM_MINER_CMD cannot be invented either.
+#                 documents as the operator channel. SYMONEURAL_MINER_CMD cannot be invented either.
+#   news       -- the switch is not a surface toggle, it is an outbound-network decision.
+#                 Setting SYMONEURAL_NEWS_ENABLED=1 takes the box from "makes no outbound
+#                 requests at all" (apps/symoneuralnews/__init__.py:20-21) to a periodic
+#                 fetcher against eight third-party hosts, ~112 requests an hour on the
+#                 default interval. There is also no token to mint -- the read endpoint is
+#                 public and serves a cache -- so the loop's shape above, `_ENABLED=1` plus a
+#                 fresh secret, does not fit it. It is switched by hand, deliberately, in the
+#                 order recorded in the package README: deploy the site, set the variable,
+#                 then restart.
 #
 # apps/test_enable_surfaces.py pins this list in both directions: it fails if a twelfth gated
 # switch appears, if one of these five quietly gains an arm, and if a name is dropped from
@@ -290,8 +301,8 @@ for u in doc.get("units", []):
 PYEOF
 
 printf '\nDone. Tokens are in %s (root, 0600). Read one with:\n' "$ENV_FILE"
-printf '    sudo sed -n "s/^SYM_PROJECT_TOKEN=//p" %s\n' "$ENV_FILE"
-printf '\nBoth Coder and Rack remain loopback-only: SYM_*_ALLOW_REMOTE is deliberately unset.\n'
+printf '    sudo sed -n "s/^SYMONEURAL_PROJECT_TOKEN=//p" %s\n' "$ENV_FILE"
+printf '\nBoth Coder and Rack remain loopback-only: SYMONEURAL_*_ALLOW_REMOTE is deliberately unset.\n'
 printf 'Studio is not loopback-gated in the same way -- it has no ALLOW_REMOTE switch, so its\n'
 printf 'token is the whole gate. backend/apps/symoneuralstudio/__init__.py:42 is explicit that\n'
-printf 'the surface can write to the host. Treat SYM_STUDIO_TOKEN accordingly.\n'
+printf 'the surface can write to the host. Treat SYMONEURAL_STUDIO_TOKEN accordingly.\n'

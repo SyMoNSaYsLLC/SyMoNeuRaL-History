@@ -14,11 +14,11 @@ is no honest public version of a live panel.
 
 ## Two switches, and it is off unless both are set
 
-    SYM_ASIC_ENABLED=1              # the surface exists at all
-    SYM_ASIC_TOKEN=<shared secret>  # every request must present it
-    SYM_ASIC_RIGS=10.0.0.11,10.0.0.12   # optional; addresses to probe
+    SYMONEURAL_ASIC_ENABLED=1              # the surface exists at all
+    SYMONEURAL_ASIC_TOKEN=<shared secret>  # every request must present it
+    SYMONEURAL_ASIC_RIGS=10.0.0.11,10.0.0.12   # optional; addresses to probe
 
-`SYM_ASIC_ENABLED` must be the **literal string `1`**. `true`, `yes` and `on` all leave the
+`SYMONEURAL_ASIC_ENABLED` must be the **literal string `1`**. `true`, `yes` and `on` all leave the
 surface off, and silently -- the check is `== "1"`, not truthiness. It reads like a boolean
 and is not one, which is the single most reported confusion about this surface.
 
@@ -36,7 +36,7 @@ the panel will correctly read **offline**. The emulator is for the firmware/flas
 file. A rig is the only thing that produces telemetry.
 
 Off by default and 503 with both unset. That mirrors `backend/apps/cryptominer/`, which
-already refuses to start without `SYM_MINING_ENABLED=1`, and it matters more here: this box
+already refuses to start without `SYMONEURAL_MINING_ENABLED=1`, and it matters more here: this box
 serves the public internet, and rig control is not something to expose by accident. Without
 a token there is no route, so a misconfiguration fails closed rather than open.
 
@@ -72,12 +72,12 @@ PROBE_TIMEOUT = 30.0        # probe.py already caps each rig at 8s; this bounds 
 
 
 def enabled() -> bool:
-    return os.environ.get("SYM_ASIC_ENABLED") == "1" and bool(os.environ.get("SYM_ASIC_TOKEN"))
+    return os.environ.get("SYMONEURAL_ASIC_ENABLED") == "1" and bool(os.environ.get("SYMONEURAL_ASIC_TOKEN"))
 
 
 def rigs() -> list[str]:
     """Configured rig addresses. Empty is the normal state on a box with no ASICs."""
-    raw = os.environ.get("SYM_ASIC_RIGS", "")
+    raw = os.environ.get("SYMONEURAL_ASIC_RIGS", "")
     return [h.strip() for h in raw.split(",") if h.strip()]
 
 
@@ -88,7 +88,7 @@ def installed() -> bool:
 def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time."""
     import hmac
-    want = os.environ.get("SYM_ASIC_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_ASIC_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)
@@ -135,8 +135,8 @@ async def discover(cidr: str) -> dict:
     if not enabled():
         # The value is spelled out because `ENABLED` reads like a boolean and is not one:
         # the check is `== "1"`, so `true` leaves the surface off and says nothing.
-        return {"rigs": [], "error": "surface disabled — set SYM_ASIC_ENABLED=1 (the "
-                                     "literal string 1, not true) and SYM_ASIC_TOKEN. "
+        return {"rigs": [], "error": "surface disabled — set SYMONEURAL_ASIC_ENABLED=1 (the "
+                                     "literal string 1, not true) and SYMONEURAL_ASIC_TOKEN. "
                                      "Both gate this API only; scripts/qemu-antminer.sh "
                                      "needs neither"}
     if not (VENV_PY.is_file() and SCAN.is_file()):
@@ -183,8 +183,8 @@ def unit_state(result: dict | None) -> tuple[str, str]:
     must never show a mining surface as `ready` on the strength of the code existing.
     """
     if not enabled():
-        return "offline", ("disabled — set SYM_ASIC_ENABLED=1 (the literal string 1, "
-                           "not true) and SYM_ASIC_TOKEN")
+        return "offline", ("disabled — set SYMONEURAL_ASIC_ENABLED=1 (the literal string 1, "
+                           "not true) and SYMONEURAL_ASIC_TOKEN")
     if not installed():
         return "offline", "control venv not installed"
     if result is None:

@@ -119,7 +119,7 @@ esac
 # NIM caches the model outside the container so a re-run does not re-extract it. This is
 # gitignored space on the big filesystem, not /home root and not the repo's models/ tree --
 # NIM owns the layout in here and it is not a GGUF.
-CACHE="${SYM_NIM_CACHE:-$HOME/.cache/nim}"
+CACHE="${SYMONEURAL_NIM_CACHE:-${SYM_NIM_CACHE:-$HOME/.cache/nim}}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }

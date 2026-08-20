@@ -14,8 +14,10 @@ RTX 5070 Ti that chat and training queue for.
 Off unless **both** are set in the API's environment, then restart the service:
 
 ```bash
-SYM_STUDIO_ENABLED=1
-SYM_STUDIO_TOKEN=<secret>          # presented as X-Sym-Token
+SYMONEURAL_STUDIO_ENABLED=1
+SYMONEURAL_STUDIO_TOKEN=<secret>          # presented as X-Symoneural-Token
+                                          # (X-Sym-Token, the name it replaced, is
+                                          #  still read -- see gate.HEADER_LEGACY)
 ```
 
 This is the structural switch `apps/voice` and `apps/asicminer` already use, and it is the
@@ -97,7 +99,7 @@ queues them itself and knows nothing about a mutex. `routes.py` intercepts
 * first in-flight job acquires the lease;
 * further jobs queued while it is held share it, rather than each unloading and reloading
   12 GB of weights;
-* when the count reaches zero the keeper waits `SYM_STUDIO_LEASE_LINGER` (default 8 s) before
+* when the count reaches zero the keeper waits `SYMONEURAL_STUDIO_LEASE_LINGER` (default 8 s) before
   releasing, so a burst of queued renders is one lease, not six;
 * if the governor refuses, the editor gets a 409 shaped exactly like ComfyUI's own error
   (`{"error": {...}, "node_errors": {}}`), so its UI reports it rather than hanging.
@@ -157,10 +159,10 @@ Claude Desktop / Claude Code config:
 {"mcpServers": {"symoneural-studio": {
   "command": "/home/google/Symoneural/backend/apps/symoneuralstudio/.venv/bin/python",
   "args": ["/home/google/Symoneural/backend/apps/symoneuralstudio/mcp_server.py"],
-  "env": {"SYM_STUDIO_ENABLED": "1", "SYM_STUDIO_TOKEN": "..."}}}}
+  "env": {"SYMONEURAL_STUDIO_ENABLED": "1", "SYMONEURAL_STUDIO_TOKEN": "..."}}}}
 ```
 
-An MCP client presents no header, so the gate is on the *process*: `SYM_STUDIO_ENABLED` must be
+An MCP client presents no header, so the gate is on the *process*: `SYMONEURAL_STUDIO_ENABLED` must be
 in the environment the server is launched with. Without it the server still starts and still
 lists its tools — listing is how a client discovers why it is being refused — and every call
 returns the same `studio_disabled` structure.
@@ -282,10 +284,10 @@ folded into it — it needs the surface switched on and it takes the GPU for a r
 # `run_command`, it travels in URLs (`gate.py`), and nothing rate-limits guesses at it
 # (`api.py:2346`). This example used to say `devtest`, which is a credential worth pasting
 # nowhere -- least of all into an env file that outlives the test.
-export SYM_STUDIO_TOKEN=$(openssl rand -hex 32); echo "$SYM_STUDIO_TOKEN"
-cd backend && SYM_STUDIO_ENABLED=1 python3 -m uvicorn api:app --port 8875    # blocks
+export SYMONEURAL_STUDIO_TOKEN=$(openssl rand -hex 32); echo "$SYMONEURAL_STUDIO_TOKEN"
+cd backend && SYMONEURAL_STUDIO_ENABLED=1 python3 -m uvicorn api:app --port 8875    # blocks
 
-# Second shell, with SYM_STUDIO_TOKEN exported to the value the line above printed:
+# Second shell, with SYMONEURAL_STUDIO_TOKEN exported to the value the line above printed:
 bash scripts/comfyui.sh start
 node tests/studio.mjs http://127.0.0.1:8875
 ```

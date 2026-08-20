@@ -17,7 +17,7 @@ more. What changed, against §7's own numbering:
 | 2 | `test_gateway.py` | **done** — 57 tests, all offline, incl. the "no environment produces a non-`offline` state" tripwire |
 | 3 | base58check, not base58 shape | **done** — `address.py`, checksum verified |
 | 4 | read-only chain reader, cached off the status path | **done** — `chain.py` + `ChainCache` (TTL 60 s) + `refresher()` |
-| 5 | network → endpoint map | **done** — `chain.NODES`, no `SYM_GATEWAY_NODE_URL` |
+| 5 | network → endpoint map | **done** — `chain.NODES`, no `SYMONEURAL_GATEWAY_NODE_URL` |
 | 6 | frontend assertion | **done** — two, in `tests/frontend.mjs`; both verified to go red when broken |
 | 8 (a) | draft the Solidity | **done** — `ops/gateway/contracts/`, compiled AND executed, 17/17 |
 | 7, 8 (b), 8b, 9 | keypair, deployment, page redeploy, service env | **not done — yours.** `ops/gateway/DEPLOY.md` is the procedure |
@@ -154,9 +154,9 @@ shape. Nothing reaches the chain, and no daemon exists.
 
 | Function | Line | Does real work? | What it actually does |
 |---|---|---|---|
-| `enabled()` | 70 | Yes | `os.environ["SYM_GATEWAY_ENABLED"] == "1"`. Exact-match, so `true`/`yes`/`on` do **not** enable it. Fails closed on a typo. |
-| `network()` | 74 | Yes | Reads `SYM_GATEWAY_NETWORK`, strips, lowercases. Returns `""` when unset. |
-| `contract()` | 78 | Yes | Reads `SYM_GATEWAY_CONTRACT`, strips. No validation here. |
+| `enabled()` | 70 | Yes | `os.environ["SYMONEURAL_GATEWAY_ENABLED"] == "1"`. Exact-match, so `true`/`yes`/`on` do **not** enable it. Fails closed on a typo. |
+| `network()` | 74 | Yes | Reads `SYMONEURAL_GATEWAY_NETWORK`, strips, lowercases. Returns `""` when unset. |
+| `contract()` | 78 | Yes | Reads `SYMONEURAL_GATEWAY_CONTRACT`, strips. No validation here. |
 | `unit_state()` | 82 | Yes | The whole state machine. Four guards, five returns, all `"offline"`. |
 | `ADDRESS` (regex, line 61) | 61 | Yes, partially | `^T[1-9A-HJ-NP-Za-km-z]{33}$` — base58 *alphabet and length* only. See the finding below. |
 | `NETWORKS` (dict, line 63) | 63 | Yes | `shasta` / `nile` / `mainnet` → display names. |
@@ -194,13 +194,13 @@ it must not crowd out the headline.
 | Dependency | Needed for | On this box today? |
 |---|---|---|
 | **TRON wallet (address + private key)** | Receiving licence payments; signing anything | **No.** No key material found. The module reads none by design (docstring 49–51). `backend/apps/licensing/` holds only `contract-signing.pub` — a *different* key, Ed25519 for contract keys, and its private half is already lost (HANDOVER §5 item 0). Unrelated system, do not conflate. |
-| **Deployed TRC-20 licensing contract** | The whole payment rail | **No.** No `.sol` source in the repo, no deployed address, `SYM_GATEWAY_CONTRACT` unset everywhere. |
+| **Deployed TRC-20 licensing contract** | The whole payment rail | **No.** No `.sol` source in the repo, no deployed address, `SYMONEURAL_GATEWAY_CONTRACT` unset everywhere. |
 | **A TRC-20 token to denominate in** | "settles in USDT" | **No.** On mainnet USDT exists (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`, verified live — see §5). On a testnet there is no real USDT; you deploy your own mock TRC-20, which is free and has no third-party dependency. |
 | **Node / API endpoint (trongrid)** | Reading chain state | **Reachable, but no client code.** Measured today: Nile 200 in 1.06 s, Shasta 200 in 0.69 s, mainnet 200 in 2.64 s. |
 | **Network egress** | All of the above | **Yes, verified today** — all three TRON endpoints answered from this box. |
 | **A TRON Python library (`tronpy`)** | Signing; ABI encoding | **No, and probably not needed.** The system interpreter has `requests` and `httpx` only. `.claude/CLAUDE.md` forbids `pip install` into the serving interpreter. **Read-only chain queries need no library and no crypto at all** (§5) — plain HTTP JSON. Signing does need secp256k1, which is why signing belongs in the off-chain daemon with its own venv, never in the web process. |
 | **Energy rental API account** | The PoC's "effectively zero fee" step | **No.** A third-party paid service requiring an account and TRX. Mainnet-only concern; on a testnet, faucet TRX covers execution directly. |
-| **`SYM_GATEWAY_*` set in the service environment** | Turning the surface on in production | **No — confirmed on the running service, not just the repo template.** `systemctl show symoneural-api -p Environment` → `PYTHONUNBUFFERED=1 SYMONEURAL_PORT=8800`; no `symoneural-api.service.d/` drop-in exists. The surface is hard-off in production. |
+| **`SYMONEURAL_GATEWAY_*` set in the service environment** | Turning the surface on in production | **No — confirmed on the running service, not just the repo template.** `systemctl show symoneural-api -p Environment` → `PYTHONUNBUFFERED=1 SYMONEURAL_PORT=8800`; no `symoneural-api.service.d/` drop-in exists. The surface is hard-off in production. |
 | **The off-chain daemon** | Approval, broadcast, unlock | **No.** Deliberately not built — `docs/specs/symon-ml-review.md` §6 records why. |
 
 ---
@@ -488,7 +488,7 @@ dependency). An agent can draft the Solidity **(a)**; deploying it under a compa
 `sudo scripts/deploy.sh --prune` **(b)**. This is not optional cleanup — a live page
 contradicting the API is this repo's most-repeated failure.
 
-**9. (b) Set `SYM_GATEWAY_ENABLED=1`, `SYM_GATEWAY_NETWORK=nile`, `SYM_GATEWAY_CONTRACT=T…`.**
+**9. (b) Set `SYMONEURAL_GATEWAY_ENABLED=1`, `SYMONEURAL_GATEWAY_NETWORK=nile`, `SYMONEURAL_GATEWAY_CONTRACT=T…`.**
 Needs an edit to the `@@ROOT@@` template in `ops/symoneural-api.service` and a reinstall plus
 `sudo systemctl restart symoneural-api`. Contract address and network name are fine there.
 **A private key never is.**
@@ -524,7 +524,7 @@ end-to-end round trip actually completed. Until then the answer is a better `off
 ### Mainnet — where money actually enters
 
 **14. (b) Everything above, repeated on mainnet, with real USDT and an Energy-rental account.**
-Nothing before this step costs anything. `SYM_GATEWAY_NETWORK=mainnet` should be the last thing
+Nothing before this step costs anything. `SYMONEURAL_GATEWAY_NETWORK=mainnet` should be the last thing
 that ever changes, and the module's insistence on naming the network in every detail line is the
 safeguard that stops a test being mistaken for production. Keep it.
 

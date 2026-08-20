@@ -625,9 +625,9 @@ class TestRecordingIsWhatLightsTheLed:
         import gateway
         from settlement.record import record_settlement
 
-        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
-        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_CONTRACT", CONTRACT)
         monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
 
         reading = probe_reading()
@@ -651,9 +651,9 @@ class TestRecordingIsWhatLightsTheLed:
         that what it prints is real.
         """
         import gateway
-        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
-        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_CONTRACT", CONTRACT)
 
         p = tmp_path / "clearances.jsonl"
         p.write_text("{}\n")
@@ -673,9 +673,9 @@ class TestRecordingIsWhatLightsTheLed:
             self, tmp_path, monkeypatch):
         import gateway
         from settlement.record import record_settlement
-        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
-        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_CONTRACT", CONTRACT)
         p = tmp_path / "clearances.jsonl"
         monkeypatch.setattr(store, "DEFAULT_PATH", p)
 
@@ -692,9 +692,9 @@ class TestRecordingIsWhatLightsTheLed:
         import gateway
         from settlement.record import record_settlement
 
-        monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
-        monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_ENABLED", "1")
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_NETWORK", NET_ENV)
+        monkeypatch.setenv("SYMONEURAL_GATEWAY_CONTRACT", CONTRACT)
         monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
 
         record_settlement("shasta", OTHER, 7, fetch=node(encode_licence()), **ok_args())

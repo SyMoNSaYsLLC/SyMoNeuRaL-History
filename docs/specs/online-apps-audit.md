@@ -53,13 +53,13 @@ has a page of its own is a separate column because those two have been conflated
 | `remix` | ready | yes | client of the chat surface, not its own tenant |
 | `ravencalc` | ready | **one defect, fixed — §4** | exact SymPy; `x**3/3` verified on the page |
 | `train` | ready | yes | never evicted for a page view |
-| `asicminer` | offline | by design | fail-closed: needs `SYM_ASIC_ENABLED=1` **and** `SYM_ASIC_TOKEN` |
-| `gpuminer` | ready | yes | control gated: `401` without `SYM_MINER_TOKEN`, correct |
+| `asicminer` | offline | by design | fail-closed: needs `SYMONEURAL_ASIC_ENABLED=1` **and** `SYMONEURAL_ASIC_TOKEN` |
+| `gpuminer` | ready | yes | control gated: `401` without `SYMONEURAL_MINER_TOKEN`, correct |
 | `tuner` | ready | yes | suite caught mid-edit by another agent — §3 |
 | `coder` | offline | by design | deliberately has **no HTTP route** at all; see `api.py:1493` |
 | `gateway` | offline | by design | needs network + contract configured |
 | `guide` | ready | yes | **already in the live stack**; see below |
-| `project` | offline | by design | needs `SYM_PROJECT_ENABLED=1` and a token |
+| `project` | offline | by design | needs `SYMONEURAL_PROJECT_ENABLED=1` and a token |
 
 ### The four `503`s are correct, and this is worth stating rather than assuming
 
@@ -67,10 +67,10 @@ Each one is fail-closed *and* actionable — it names the environment variables 
 it on and, in `project`'s case, the README to read first:
 
 ```
-/api/gateway/state      503  "gateway surface is off — set SYM_GATEWAY_ENABLED=1, SYM_GATEWAY_NETWORK
-                              and SYM_GATEWAY_CONTRACT, then restart the service"
+/api/gateway/state      503  "gateway surface is off — set SYMONEURAL_GATEWAY_ENABLED=1, SYMONEURAL_GATEWAY_NETWORK
+                              and SYMONEURAL_GATEWAY_CONTRACT, then restart the service"
 /api/project/state      503  {"ok":false,"code":"disabled","error":"surface disabled — set
-                              SYM_PROJECT_ENABLED=1 and SYM_PROJECT_TOKEN, and read
+                              SYMONEURAL_PROJECT_ENABLED=1 and SYMONEURAL_PROJECT_TOKEN, and read
                               backend/apps/project/README.md first"}
 /api/accounts/me        503  "accounts are not switched on for this box"
 /api/asicminer/firmware 503  "the miner surface is disabled on this installation"

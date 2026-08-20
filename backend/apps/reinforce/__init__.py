@@ -71,14 +71,14 @@ def enabled() -> bool:
     whole card, and is never evicted, so an open one is a rack-wide denial of service that
     costs a single HTTP request.
 
-        SYM_REINFORCE_ENABLED=1
-        SYM_REINFORCE_TOKEN=<shared secret>
+        SYMONEURAL_REINFORCE_ENABLED=1
+        SYMONEURAL_REINFORCE_TOKEN=<shared secret>
 
     Defined here rather than in `routes.py` so that `jobs.status()` -- which runs on every
     rack poll -- can ask the question without pulling fastapi into its import graph.
     """
-    return (os.environ.get("SYM_REINFORCE_ENABLED") == "1"
-            and bool(os.environ.get("SYM_REINFORCE_TOKEN")))
+    return (os.environ.get("SYMONEURAL_REINFORCE_ENABLED") == "1"
+            and bool(os.environ.get("SYMONEURAL_REINFORCE_TOKEN")))
 
 
 from .jobs import status          # noqa: E402  -- the rack unit

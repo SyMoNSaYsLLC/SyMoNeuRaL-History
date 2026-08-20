@@ -349,7 +349,7 @@ exposes, because "local-only" has been revised before and the cost of designing 
 now is zero:
 
 - **No cookies, no server-side session.** Authentication, where it exists, is the
-  `X-Sym-Token` header — a header any client can set, including one that is not a browser.
+  `X-Symoneural-Token` header — a header any client can set, including one that is not a browser.
 - **State is addressed by an explicit id in the path**, the way
   `backend/apps/tuner/routes.py` does with `/session/{sid}`.
 - **Credentials never appear in a path.** `backend/apps/tuner/test_tuner.py` has
@@ -436,10 +436,10 @@ directly rather than discovered. If it becomes the binding constraint, the corre
 is **not** to open a route; it is to reach the desktop session itself over the channel that
 already exists — xrdp, or an SSH tunnel — which keeps the "no public route" property intact.
 
-### 4.2 (b) An operator-gated route, `SYM_CODER_ENABLED` + `SYM_CODER_TOKEN`
+### 4.2 (b) An operator-gated route, `SYMONEURAL_CODER_ENABLED` + `SYMONEURAL_CODER_TOKEN`
 
 The pattern is already in the repo, in `backend/apps/asicminer/__init__.py`: off unless
-`SYM_ASIC_ENABLED=1` **and** `SYM_ASIC_TOKEN` are both set, `enabled()` requiring both,
+`SYMONEURAL_ASIC_ENABLED=1` **and** `SYMONEURAL_ASIC_TOKEN` are both set, `enabled()` requiring both,
 `token_ok()` using `hmac.compare_digest` so a wrong token cannot be found a character at a
 time, and `_asic_auth()` in `backend/api.py` answering 503 when the surface is off and 401
 on a bad token. It fails closed on a misconfiguration, which is the right default for a box
@@ -462,11 +462,11 @@ the route to loopback and reach it through an SSH tunnel rather than through Cad
 out of `ops/Caddyfile` so it is unreachable from the internet by construction even when
 enabled; and treat the token as a second layer rather than the layer.
 
-**A third gate, and it is better than the two above — `SYM_CODER_ALLOW_REMOTE`.** This is not
+**A third gate, and it is better than the two above — `SYMONEURAL_CODER_ALLOW_REMOTE`.** This is not
 this spec's invention; it already exists in `backend/apps/coder/__init__.py` (§10) and it
 should be treated as **mandatory** if option (b) is ever chosen. The idea: with
-`SYM_CODER_ENABLED=1` and a correct `SYM_CODER_TOKEN`, a peer whose address is not loopback
-is **still refused** unless `SYM_CODER_ALLOW_REMOTE=1` is also set.
+`SYMONEURAL_CODER_ENABLED=1` and a correct `SYMONEURAL_CODER_TOKEN`, a peer whose address is not loopback
+is **still refused** unless `SYMONEURAL_CODER_ALLOW_REMOTE=1` is also set.
 
 That is a genuine improvement on the argument in §4.1 rather than a belt-and-braces extra.
 §4.1 says local-only is safe because it depends on *a socket not existing* — structural, but
@@ -508,7 +508,7 @@ local-only recommendation does not depend on the RCE argument alone.
 ### 4.5 Rate limiting is off, so a token would be the only gate
 
 Per-endpoint rate limits were **switched off across the API on 2026-08-17 at Garrett's
-instruction**. `backend/api.py` builds `LIMITS` from `SYM_RATE_*` environment variables and
+instruction**. `backend/api.py` builds `LIMITS` from `SYMONEURAL_RATE_*` environment variables and
 unset means `(0, 0)`, which means no limiter object at all. Nothing is metered right now.
 
 The code is explicit about the consequence, in the GPU miner gate: *"The token IS the gate
@@ -832,7 +832,7 @@ present in the working tree and **untracked**. It is `__init__.py` (36 KB) plus
 independently and the two were reconciled afterwards rather than merged.
 
 **Where they agree**, which is most of it and is reassuring rather than redundant: local-first
-and off by default; the `SYM_CODER_ENABLED` + `SYM_CODER_TOKEN` pattern copied from
+and off by default; the `SYMONEURAL_CODER_ENABLED` + `SYMONEURAL_CODER_TOKEN` pattern copied from
 `backend/apps/asicminer/`; `hmac` constant-time token comparison; fail-closed everywhere,
 written explicitly against the SyMoN_ML `return True` fallback in `.claude/HANDOVER.md` §5
 item 1; a denylist covering `training/corpus.jsonl`, `training/build_dataset.py` and
@@ -873,6 +873,6 @@ Do not resolve this by picking whichever label is closer to hand. Decide the mod
 
 **The honest status: the harness is largely built; the model, the governor integration and
 the rack unit are not.** Anyone continuing should read `backend/apps/coder/__init__.py`
-first — it is ahead of this document on sandboxing and its `SYM_CODER_ALLOW_REMOTE` gate
+first — it is ahead of this document on sandboxing and its `SYMONEURAL_CODER_ALLOW_REMOTE` gate
 (§4.2) is better than anything specified here — and treat §2, §5, §6 and §7 of this file as
 the parts still open.

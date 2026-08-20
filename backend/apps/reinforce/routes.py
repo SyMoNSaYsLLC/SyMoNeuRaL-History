@@ -25,8 +25,8 @@ governor refuses to evict `train` on purpose. A world-callable one is therefore 
 denial of service that costs a single HTTP request: one POST takes chat, image and remix
 offline for the duration of a fine-tune. So:
 
-    SYM_REINFORCE_ENABLED=1              # the surface exists at all
-    SYM_REINFORCE_TOKEN=<shared secret>  # required on anything that starts or stops a run
+    SYMONEURAL_REINFORCE_ENABLED=1              # the surface exists at all
+    SYMONEURAL_REINFORCE_TOKEN=<shared secret>  # required on anything that starts or stops a run
 
 Off unless both are set, mirroring `backend/apps/asicminer/`, which fails closed for the same
 class of reason. With them unset every route answers 503 and the rack unit reads `offline`
@@ -73,15 +73,15 @@ def _require_surface() -> None:
     if not enabled():
         raise HTTPException(
             status_code=503,
-            detail=("SyMoNeuRaL Reinforce is off. Set SYM_REINFORCE_ENABLED=1 and "
-                    "SYM_REINFORCE_TOKEN to enable it. It is off by default because a "
+            detail=("SyMoNeuRaL Reinforce is off. Set SYMONEURAL_REINFORCE_ENABLED=1 and "
+                    "SYMONEURAL_REINFORCE_TOKEN to enable it. It is off by default because a "
                     "never-evicted GPU route open to the internet takes the whole rack "
                     "offline for one request."))
 
 
 def _require_token(token: str | None) -> None:
     _require_surface()
-    expected = os.environ.get("SYM_REINFORCE_TOKEN") or ""
+    expected = os.environ.get("SYMONEURAL_REINFORCE_TOKEN") or ""
     # Constant-time compare: a token check that returns early leaks its own length and a byte
     # at a time under timing analysis, and this token authorises taking the whole card.
     import hmac

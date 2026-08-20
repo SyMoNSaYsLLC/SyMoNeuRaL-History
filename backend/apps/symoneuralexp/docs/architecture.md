@@ -25,7 +25,7 @@ whole discipline is generator → `site/*.html` → `build_cachebust.py`.
 
 **This is not that.** `symoneuralexp` is one app package in `backend/apps/`, stdlib-only under
 `routes.py`, off unless two environment variables are set, mounting nothing at all if
-`SYM_EXP_PRESET=""`. It does not replace `registry.TOOLS`, it does not touch `api.py`'s
+`SYMONEURAL_EXP_PRESET=""`. It does not replace `registry.TOOLS`, it does not touch `api.py`'s
 `include_router` calls, and no request to any other surface reaches it. It is a workbench for the
 layer, built where a workbench belongs, and the thing it lets you do is the thing the verdict
 could not do: **look at the mechanism running and decide from evidence rather than from a

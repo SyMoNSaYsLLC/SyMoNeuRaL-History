@@ -37,7 +37,7 @@ flight -- is easy once this exists and is a rewrite of the process every time it
 ## The gate
 
 Reads are open; mounting, patching, reloading and reading a plugin's *config* need
-`SYM_EXP_ENABLED=1` and `SYM_EXP_TOKEN=<secret>`. See `gate.py` for why that line, and
+`SYMONEURAL_EXP_ENABLED=1` and `SYMONEURAL_EXP_TOKEN=<secret>`. See `gate.py` for why that line, and
 `docs/isolation.md` for why none of it is a sandbox.
 """
 from __future__ import annotations
@@ -51,9 +51,9 @@ __all__ = ["router", "enabled", "token_ok", "status", "runtime", "LABEL",
 
 LABEL = "SyMoNeuRaL Exp"
 
-ENV_PRESET = "SYM_EXP_PRESET"
+ENV_PRESET = "SYMONEURAL_EXP_PRESET"
 
-#: The value of `SYM_EXP_PRESET` **at import**, kept because `__all__` exports it and the page
+#: The value of `SYMONEURAL_EXP_PRESET` **at import**, kept because `__all__` exports it and the page
 #: shows it. Read `default_preset()` instead of this if you care about the current environment:
 #: `api.py` imports this package during startup, so a variable set after that -- by a test, by
 #: `systemctl set-environment`, by anything in-process -- would never be seen here.
@@ -192,7 +192,7 @@ def status() -> dict:
         parts.append(f"{len(snapshot['services'])} services")
         detail = f"preset {loader.source} · " + " · ".join(parts)
     if not enabled():
-        detail += " · read-only (set SYM_EXP_ENABLED=1 and SYM_EXP_TOKEN to mutate)"
+        detail += " · read-only (set SYMONEURAL_EXP_ENABLED=1 and SYMONEURAL_EXP_TOKEN to mutate)"
     return {
         "id": "exp",
         "label": LABEL,

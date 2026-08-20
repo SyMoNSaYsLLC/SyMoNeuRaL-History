@@ -30,12 +30,12 @@ const secret = execSync('openssl rand -base64 48').toString().trim();
 const procs = [
   spawn('python3', ['-m', 'uvicorn', 'acct_app:app', '--port', String(P_ON), '--log-level', 'warning'],
         { cwd: TMP, stdio: 'ignore',
-          env: { ...process.env, SYM_ACCOUNTS_ENABLED: '1', SYM_SESSION_SECRET: secret,
-                 SYM_ACCOUNTS_DB: path.join(TMP, 'a.db') } }),
+          env: { ...process.env, SYMONEURAL_ACCOUNTS_ENABLED: '1', SYMONEURAL_SESSION_SECRET: secret,
+                 SYMONEURAL_ACCOUNTS_DB: path.join(TMP, 'a.db') } }),
   spawn('python3', ['-m', 'uvicorn', 'acct_app:app', '--port', String(P_OFF), '--log-level', 'warning'],
         { cwd: TMP, stdio: 'ignore',
-          env: { ...process.env, SYM_ACCOUNTS_ENABLED: '', SYM_SESSION_SECRET: '',
-                 SYM_ACCOUNTS_DB: path.join(TMP, 'b.db') } }),
+          env: { ...process.env, SYMONEURAL_ACCOUNTS_ENABLED: '', SYMONEURAL_SESSION_SECRET: '',
+                 SYMONEURAL_ACCOUNTS_DB: path.join(TMP, 'b.db') } }),
 ];
 const stop = () => { procs.forEach(p => { try { p.kill(); } catch {} });
                      fs.rmSync(TMP, { recursive: true, force: true }); };

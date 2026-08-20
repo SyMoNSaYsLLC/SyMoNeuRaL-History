@@ -276,7 +276,7 @@ workspace is the thing you most want on a phone — glance at the queue, add an 
 what last night's session did. So it is designed for a non-browser client from the first
 line, not adapted later:
 
-- **No cookies. No server-side session. No login flow.** Authentication is the `X-Sym-Token`
+- **No cookies. No server-side session. No login flow.** Authentication is the `X-Symoneural-Token`
   header (§4), which any HTTP client can set. There is nothing a browser provides that a
   Swift `URLRequest` does not.
 - **Every request is self-contained.** No hidden "currently open project" on the server. The
@@ -353,26 +353,27 @@ Worth stating because the asymmetry is the point: **the two surfaces get differe
 because they have different risk profiles, not because the rules were bent.** Project stores
 text. Coder runs commands.
 
-### 4.3 (b) Operator-gated route, `SYM_PROJECT_ENABLED` + `SYM_PROJECT_TOKEN` — RECOMMENDED
+### 4.3 (b) Operator-gated route, `SYMONEURAL_PROJECT_ENABLED` + `SYMONEURAL_PROJECT_TOKEN` — RECOMMENDED
 
 The pattern is already in this repo at `backend/apps/asicminer/__init__.py` and should be
 copied rather than reinvented:
 
 ```python
 def enabled() -> bool:
-    return os.environ.get("SYM_PROJECT_ENABLED") == "1" and bool(os.environ.get("SYM_PROJECT_TOKEN"))
+    return os.environ.get("SYMONEURAL_PROJECT_ENABLED") == "1" and bool(os.environ.get("SYMONEURAL_PROJECT_TOKEN"))
 
 def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time."""
     import hmac
-    want = os.environ.get("SYM_PROJECT_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_PROJECT_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)
 ```
 
 with the route dependency mirroring `_asic_auth` in `backend/api.py`: **503** when the
-surface is off, **401** on a bad or missing `X-Sym-Token`.
+surface is off, **401** on a bad or missing `X-Symoneural-Token`. `X-Sym-Token`, the name it replaced,
+is still accepted.
 
 **Requiring both variables is the design, not belt-and-braces.** It fails closed on a
 misconfiguration — which matters on a box with a public IP, where the difference between
@@ -409,7 +410,7 @@ argument the site makes.
 ### 4.5 Rate limiting is off, so the token is the only gate
 
 Per-endpoint rate limits were **switched off across the API on 2026-08-17 at Garrett's
-instruction**. `backend/api.py` builds `LIMITS` from `SYM_RATE_*` environment variables; unset
+instruction**. `backend/api.py` builds `LIMITS` from `SYMONEURAL_RATE_*` environment variables; unset
 yields `(0, 0)`, which means **no limiter object at all** — a surface with no configured
 budget is unmetered rather than getting a zero-capacity bucket, which the code notes would be
 the exact inversion of "no limit."
@@ -476,7 +477,7 @@ Unit(id="project", label="SyMoNeuRaL Project", slot="1U",
 hardcoded** — the way `gateway_state`, `asic_state` and `gpuminer_state` already are.
 
 ```
-surface disabled (SYM_PROJECT_ENABLED unset)  -> "offline",  "surface disabled on this installation"
+surface disabled (SYMONEURAL_PROJECT_ENABLED unset)  -> "offline",  "surface disabled on this installation"
 enabled, store missing or unwritable          -> "offline",  "no project store initialised"
 enabled, store answers                        -> "ready",    "cpu only, never queues"
 ```
@@ -713,7 +714,7 @@ Store in **SQLite via the stdlib `sqlite3` module** (verified present: 3.46.1 un
 3.13.5, no new packages, so the system-interpreter rule holds) at **`backend/project/store.db`**,
 gitignored, WAL mode, with a dated `.backup`. Expose it at **`/api/project/*`, declared before
 the `StaticFiles` mount, with no `ops/Caddyfile` change** and **no extensionless route**. Gate
-it with **`SYM_PROJECT_ENABLED` + `SYM_PROJECT_TOKEN`**, copying `backend/apps/asicminer/`
+it with **`SYMONEURAL_PROJECT_ENABLED` + `SYMONEURAL_PROJECT_TOKEN`**, copying `backend/apps/asicminer/`
 exactly — both required, `hmac.compare_digest`, 503 off / 401 bad token — with a
 `secrets.token_urlsafe(32)` token, since rate limiting is off and the token is the only gate.
 Design every route for a **non-browser client**: header auth, explicit ids in the path, no

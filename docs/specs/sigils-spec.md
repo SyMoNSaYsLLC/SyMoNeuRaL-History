@@ -481,7 +481,7 @@ so while the code reads as if it were throttled. That is the same failure mode a
 item 1's fail-open DRM, which that file calls "the most serious item here."
 
 Two things are needed, not one: the name must be added to `_RATE_SUGGESTED` (`LIMITS` is built
-by iterating it), **and** `SYM_RATE_SIGIL=<per-min>/<per-hour>` must actually be set, because
+by iterating it), **and** `SYMONEURAL_RATE_SIGIL=<per-min>/<per-hour>` must actually be set, because
 `_rate_for` returns `(0, 0)` — no bucket — when the environment variable is unset. Every
 surface is currently unmetered by that route, deliberately; a public app endpoint is the case
 where that default should be reconsidered rather than inherited.
@@ -526,10 +526,10 @@ Rules that make it usable by something that is not this site:
 `/api/chat` and `/api/image` are open to whatever reaches the origin, protected only by rate
 limits. For a public phone app that is the same exposure with a much bigger audience.
 
-The pattern already in this repo is `backend/apps/asicminer/__init__.py`: `SYM_ASIC_ENABLED=1`
-plus `SYM_ASIC_TOKEN`, presented in `X-Sym-Token`, compared with `hmac.compare_digest`, and the
+The pattern already in this repo is `backend/apps/asicminer/__init__.py`: `SYMONEURAL_ASIC_ENABLED=1`
+plus `SYMONEURAL_ASIC_TOKEN`, presented in `X-Symoneural-Token`, compared with `hmac.compare_digest`, and the
 surface 503s with both unset — a misconfiguration fails **closed**. Copy that shape:
-`SYM_SIGIL_ENABLED` + `SYM_SIGIL_TOKEN`.
+`SYMONEURAL_SIGIL_ENABLED` + `SYMONEURAL_SIGIL_TOKEN`.
 
 **And state its limit honestly, because the difference matters.** asicminer is an *operator*
 surface — one operator, one token, off by default. This is a *consumer* surface. **A shared

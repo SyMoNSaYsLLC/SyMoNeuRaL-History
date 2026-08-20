@@ -25,10 +25,10 @@ cd backend/apps && python3 -m cryptominer selftest    # checks it WITHOUT mining
 
 | Variable | Form | Required |
 |---|---|---|
-| `SYM_MINING_ENABLED` | exactly `1`. The check is `== "1"` — `true`, `yes` and `on` all leave the surface **off**, silently | yes |
-| `SYM_MINER_CMD` | the full command, e.g. `/path/to/kawpowminer -U -P stratum+tcp://WALLET.rig@pool:4444` | yes |
-| `SYM_MINER_TOKEN` | any non-empty string; presented as `X-Sym-Token` on every control request | yes |
-| `SYM_MINER_GPU` | device index, defaults to `0` | no |
+| `SYMONEURAL_MINING_ENABLED` | exactly `1`. The check is `== "1"` — `true`, `yes` and `on` all leave the surface **off**, silently | yes |
+| `SYMONEURAL_MINER_CMD` | the full command, e.g. `/path/to/kawpowminer -U -P stratum+tcp://WALLET.rig@pool:4444` | yes |
+| `SYMONEURAL_MINER_TOKEN` | any non-empty string; presented as `X-Symoneural-Token` on every control request | yes |
+| `SYMONEURAL_MINER_GPU` | device index, defaults to `0` | no |
 
 Generate the token rather than choosing one:
 
@@ -36,7 +36,7 @@ Generate the token rather than choosing one:
 python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
-Do not reuse `SYM_ASIC_TOKEN` for it. This token gates a process that **takes the card from
+Do not reuse `SYMONEURAL_ASIC_TOKEN` for it. This token gates a process that **takes the card from
 every other surface**; the two blast radii should not fall together.
 
 ### Where the variables go — this surface differs from `asicminer`
@@ -46,7 +46,7 @@ you do **not** need `Environment=` lines in `ops/symoneural-api.service`: edit t
 watch the rack unit move `offline → ready` without restarting the API.
 
 An **exported variable always wins.** `miner.env` never overwrites a variable already in the
-environment, so a systemd unit or a one-off `SYM_MINING_ENABLED=1 …` overrides the file rather
+environment, so a systemd unit or a one-off `SYMONEURAL_MINING_ENABLED=1 …` overrides the file rather
 than fighting it. Only the four keys above are honoured — a stray `LD_PRELOAD=` in that file
 is a code-execution path dressed as configuration, and is dropped and reported in
 `ignored_keys`.
@@ -75,7 +75,7 @@ busy    benchmarking · 53.01 MH/s, no pool — earns nothing
 busy    holding the card · 53.01 MH/s reported by the miner        # a real pool run
 ```
 
-This exists because it went wrong. `SYM_MINER_CMD` on this box was `-U -M 500000` —
+This exists because it went wrong. `SYMONEURAL_MINER_CMD` on this box was `-U -M 500000` —
 kawpowminer's `--benchmark` — and the rack read `holding the card · 53.01 MH/s reported by
 the miner`. Every digit of that was real and measured on this card. A reader would still have
 concluded the machine was mining Ravencoin, which it was not. The caveat had been written into
@@ -192,11 +192,13 @@ python3 -m cryptominer start       # takes the card
 python3 -m cryptominer stop        # signals the process GROUP, gives the card back
 ```
 
-Over HTTP — both require `X-Sym-Token`, and both 503 when the surface is disabled:
+Over HTTP — both require `X-Symoneural-Token`, and both 503 when the surface is
+disabled. `X-Sym-Token`, the name it replaced, is still accepted by `_operator_token`
+in `backend/api.py`; new wins when both are sent:
 
 ```bash
-curl -s -H "X-Sym-Token: $SYM_MINER_TOKEN" localhost:8800/api/gpuminer/status
-curl -s -X POST -H "X-Sym-Token: $SYM_MINER_TOKEN" -H 'Content-Type: application/json' \
+curl -s -H "X-Symoneural-Token: $SYMONEURAL_MINER_TOKEN" localhost:8800/api/gpuminer/status
+curl -s -X POST -H "X-Symoneural-Token: $SYMONEURAL_MINER_TOKEN" -H 'Content-Type: application/json' \
      -d '{"action":"stop"}' localhost:8800/api/gpuminer/control
 ```
 

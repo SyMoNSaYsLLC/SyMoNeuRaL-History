@@ -29,9 +29,9 @@ import fwcheck  # noqa: E402
 
 
 class _Env:
-    """Set and restore SYM_ASIC_* around a test."""
+    """Set and restore SYMONEURAL_ASIC_* around a test."""
 
-    KEYS = ("SYM_ASIC_ENABLED", "SYM_ASIC_TOKEN", "SYM_ASIC_RIGS")
+    KEYS = ("SYMONEURAL_ASIC_ENABLED", "SYMONEURAL_ASIC_TOKEN", "SYMONEURAL_ASIC_RIGS")
 
     def __init__(self, **kw):
         self.want = kw
@@ -59,29 +59,29 @@ class TestTheGate(unittest.TestCase):
             self.assertFalse(asicminer.enabled())
 
     def test_both_are_required(self):
-        with _Env(SYM_ASIC_ENABLED="1"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1"):
             self.assertFalse(asicminer.enabled())
-        with _Env(SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_TOKEN="s3cret"):
             self.assertFalse(asicminer.enabled())
 
     def test_enabled_must_be_literally_one(self):
-        # `== "1"`, not truthiness. `SYM_ASIC_ENABLED=true` leaves the surface OFF, and it
+        # `== "1"`, not truthiness. `SYMONEURAL_ASIC_ENABLED=true` leaves the surface OFF, and it
         # does so silently — which is the right failure direction but the wrong one to be
         # surprised by, so it is pinned here and stated in README.md.
         for v in ("true", "TRUE", "yes", "on", "y", "01", " 1", "1 ", "2"):
-            with _Env(SYM_ASIC_ENABLED=v, SYM_ASIC_TOKEN="s3cret"):
+            with _Env(SYMONEURAL_ASIC_ENABLED=v, SYMONEURAL_ASIC_TOKEN="s3cret"):
                 self.assertFalse(asicminer.enabled(), f"{v!r} switched the surface on")
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             self.assertTrue(asicminer.enabled())
 
     def test_token_compare(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             self.assertTrue(asicminer.token_ok("s3cret"))
             for bad in ("s3cre", "s3cretx", "", None, "S3CRET"):
                 self.assertFalse(asicminer.token_ok(bad), repr(bad))
 
     def test_an_empty_token_never_authenticates(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN=""):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN=""):
             self.assertFalse(asicminer.token_ok(""))
             self.assertFalse(asicminer.token_ok("anything"))
 
@@ -89,7 +89,7 @@ class TestTheGate(unittest.TestCase):
         # Two surfaces, two secrets. If these ever read the same variable, one leaked
         # token would hand over both the rigs and the card.
         src = (HERE / "__init__.py").read_text()
-        self.assertNotIn("SYM_MINER_TOKEN", src)
+        self.assertNotIn("SYMONEURAL_MINER_TOKEN", src)
 
 
 class TestRigsParsing(unittest.TestCase):
@@ -97,13 +97,13 @@ class TestRigsParsing(unittest.TestCase):
     def test_empty_is_the_normal_state(self):
         with _Env():
             self.assertEqual(asicminer.rigs(), [])
-        with _Env(SYM_ASIC_RIGS=""):
+        with _Env(SYMONEURAL_ASIC_RIGS=""):
             self.assertEqual(asicminer.rigs(), [])
-        with _Env(SYM_ASIC_RIGS="  ,, "):
+        with _Env(SYMONEURAL_ASIC_RIGS="  ,, "):
             self.assertEqual(asicminer.rigs(), [])
 
     def test_whitespace_and_empty_elements(self):
-        with _Env(SYM_ASIC_RIGS=" 10.0.0.11 , ,10.0.0.12 "):
+        with _Env(SYMONEURAL_ASIC_RIGS=" 10.0.0.11 , ,10.0.0.12 "):
             self.assertEqual(asicminer.rigs(), ["10.0.0.11", "10.0.0.12"])
 
 
@@ -116,10 +116,10 @@ class TestUnitState(unittest.TestCase):
         with _Env():
             state, detail = asicminer.unit_state(None)
             self.assertEqual(state, "offline")
-            self.assertIn("SYM_ASIC_ENABLED=1", detail)
+            self.assertIn("SYMONEURAL_ASIC_ENABLED=1", detail)
 
     def test_enabled_branches(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             if not asicminer.installed():
                 self.skipTest("venv absent; the installed() branch shadows the rest")
             cases = {
@@ -141,7 +141,7 @@ class TestUnitState(unittest.TestCase):
             self.assertIn("1 rig answering", detail)
 
     def test_an_error_is_shown_not_swallowed(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             if not asicminer.installed():
                 self.skipTest("venv absent")
             state, detail = asicminer.unit_state({"rigs": [], "error": "probe exceeded 30s"})
@@ -149,14 +149,14 @@ class TestUnitState(unittest.TestCase):
             self.assertEqual(detail, "probe exceeded 30s")
 
     def test_every_branch_is_a_legal_state(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             for result in (None, {"rigs": [], "error": "x"}, {"rigs": [], "error": None},
                            {"rigs": [{"reachable": False}], "error": None},
                            {"rigs": [{"reachable": True}], "error": None}):
                 self.assertIn(asicminer.unit_state(result)[0], self.ALLOWED, result)
 
     def test_a_reachable_rig_with_no_hashrate_shows_no_number(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"):
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             if not asicminer.installed():
                 self.skipTest("venv absent")
             detail = asicminer.unit_state({"rigs": [{"reachable": True}], "error": None})[1]
@@ -249,7 +249,7 @@ class TestEmulatorStatus(unittest.TestCase):
             self.assertIn("disabled", out["error"])
 
     def test_start_refuses_an_unknown_package_id(self):
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"), _TmpEmu():
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"), _TmpEmu():
             if not asicminer.QEMU_SCRIPT.is_file():
                 self.skipTest("qemu-antminer.sh absent")
             out = asicminer.emulator_start("0" * 16)
@@ -259,7 +259,7 @@ class TestEmulatorStatus(unittest.TestCase):
     def test_start_never_takes_a_path(self):
         # The endpoint resolves an id against the enumerated directories. Handing it a real
         # path must not boot that path.
-        with _Env(SYM_ASIC_ENABLED="1", SYM_ASIC_TOKEN="s3cret"), _TmpEmu():
+        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"), _TmpEmu():
             if not asicminer.QEMU_SCRIPT.is_file():
                 self.skipTest("qemu-antminer.sh absent")
             out = asicminer.emulator_start("/etc/passwd")
@@ -366,9 +366,9 @@ class TestDocumentation(unittest.TestCase):
 
     def test_the_readme_states_the_literal_one_requirement(self):
         text = (HERE / "README.md").read_text()
-        self.assertIn("SYM_ASIC_ENABLED", text)
-        self.assertIn("SYM_ASIC_TOKEN", text)
-        self.assertIn("SYM_ASIC_RIGS", text)
+        self.assertIn("SYMONEURAL_ASIC_ENABLED", text)
+        self.assertIn("SYMONEURAL_ASIC_TOKEN", text)
+        self.assertIn("SYMONEURAL_ASIC_RIGS", text)
 
 
 if __name__ == "__main__":

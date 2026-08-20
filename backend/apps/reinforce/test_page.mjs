@@ -9,7 +9,7 @@
 // reasoning about the cascade.
 //
 // The API is stubbed by route interception rather than started, for two reasons. The real
-// `/api/train` needs `SYM_REINFORCE_ENABLED` and a token, and more importantly the interesting
+// `/api/train` needs `SYMONEURAL_REINFORCE_ENABLED` and a token, and more importantly the interesting
 // states -- a reinforcement run mid-flight, a refused reward, an unreachable rollout backend --
 // cannot be produced on demand from a box with one GPU and no finished RL run. Every stub below
 // is shaped like the real response; `test_reinforce.py` is what holds the real ones to that shape.

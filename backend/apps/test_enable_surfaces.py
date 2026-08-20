@@ -1,6 +1,6 @@
 """`scripts/enable-surfaces.sh` -- does the operator tool know about every gated surface?
 
-Written because it did not. Eleven `SYM_<NAME>_ENABLED` switches gate the serving path, and
+Written because it did not. Eleven `SYMONEURAL_<NAME>_ENABLED` switches gate the serving path, and
 the script that exists to set exactly those could set four. Studio was one of the seven it
 could not, which is why the live rack showed Studio `offline` with no sanctioned command an
 operator could run to change it: not a bug in Studio, a gap in the tool. With the `studio)`
@@ -8,8 +8,8 @@ arm added the split is five switchable to six unswitchable, which is the count
 `test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_six` holds it at.
 
 Eleven switches, not eleven apps: the eleven are read across twelve packages and the mapping
-is neither one-to-one nor onto. `SYM_ASIC_ENABLED` is checked in `asicminer` and `voice`,
-`SYM_MINING_ENABLED` in `asicminer` and `cryptominer`, `SYM_GATEWAY_ENABLED` in `gateway` and
+is neither one-to-one nor onto. `SYMONEURAL_ASIC_ENABLED` is checked in `asicminer` and `voice`,
+`SYMONEURAL_MINING_ENABLED` in `asicminer` and `cryptominer`, `SYMONEURAL_GATEWAY_ENABLED` in `gateway` and
 `settlement`. `gated_surfaces()` below counts switches because switches are what the script
 writes; no assertion here depends on a package count.
 
@@ -30,7 +30,7 @@ what it would catch and the vacuity guard asserts its own regexes still match.
 
 One exception, and it is the important one: `WriteLoopBehaviourTests` extracts the write loop
 and runs it against stubs. Reading the loop cannot tell `${pair#* }` from `${pair%* }`, and
-that one character decides whether the file gets `SYM_STUDIO_ENABLED=1` or `SYM_0_ENABLED=1`.
+that one character decides whether the file gets `SYMONEURAL_STUDIO_ENABLED=1` or `SYMONEURAL_0_ENABLED=1`.
 Nothing textual, and no `bash -n`, sees the difference.
 """
 from __future__ import annotations
@@ -45,7 +45,7 @@ SCRIPT = ROOT / "scripts" / "enable-surfaces.sh"
 APPS = Path(__file__).resolve().parent
 
 # Every surface the backend gates on, read from the code that does the gating.
-GATE = re.compile(r"\bSYM_([A-Z0-9]+)_ENABLED\b")
+GATE = re.compile(r"\bSYMONEURAL_([A-Z0-9]+)_ENABLED\b")
 
 # `coder)   WANT_CODER=1 ;;` -- the argument the operator types, and the flag it sets.
 CASE_ARM = re.compile(r"^\s{4}([a-z]+)\)\s*WANT_([A-Z0-9]+)=1\s*;;", re.M)
@@ -58,7 +58,7 @@ LOOP_SRC = re.compile(r"^for pair in\b.*?^done$", re.M | re.S)
 
 # Gateway cannot share the loop body -- it writes two more values -- so it is matched on its
 # own literal branch rather than being special-cased in the test's expectations.
-GATEWAY_SET = re.compile(r"^\s*set_kv\s+SYM_GATEWAY_ENABLED\s+1\s*$", re.M)
+GATEWAY_SET = re.compile(r"^\s*set_kv\s+SYMONEURAL_GATEWAY_ENABLED\s+1\s*$", re.M)
 
 # The drop-in heredoc line. Compiled with re.M because it is one line inside the script,
 # not the whole file -- assertRegex takes no flags, so this cannot be inlined there.
@@ -95,7 +95,7 @@ class EnableSurfacesTests(unittest.TestCase):
         self.assertGreaterEqual(len(self.loop), 5,
                                 f"LOOP_PAIR matched {len(self.loop)}; the loop carries 5")
         self.assertTrue(GATEWAY_SET.search(self.text), "the gateway write branch is gone")
-        self.assertGreaterEqual(len(self.gated), 11,
+        self.assertGreaterEqual(len(self.gated), 12,
                                 f"only {len(self.gated)} gated surfaces found in apps/")
 
     def test_studio_is_switchable_by_the_sanctioned_tool(self):
@@ -107,7 +107,7 @@ class EnableSurfacesTests(unittest.TestCase):
         self.assertEqual(self.arms.get("studio"), "STUDIO",
                          "no `studio)` case arm -- the argument is rejected by the parser")
         self.assertIn("STUDIO", self.loop,
-                      "`studio` parses but writes no SYM_STUDIO_ENABLED")
+                      "`studio` parses but writes no SYMONEURAL_STUDIO_ENABLED")
 
     def test_every_argument_the_parser_accepts_writes_something(self):
         """Generalises the above to all five, so the next surface added cannot repeat the
@@ -117,24 +117,34 @@ class EnableSurfacesTests(unittest.TestCase):
                 self.assertIn(flag, self.writable,
                               f"`{arg}` sets WANT_{flag} and nothing ever reads it")
 
-    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_five(self):
+    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_six(self):
         """The gap this file exists to make visible, pinned in both directions.
 
-        This was six. ASIC came off the list because its rack row was in exactly the state
-        Studio\'s had been -- SubUnit `asicminer` (api.py:1655) telling an operator to set
-        SYM_ASIC_ENABLED and SYM_ASIC_TOKEN with nothing sanctioned that would do it -- and
-        the earlier version of this docstring got its reason wrong: it said ASIC "points at
-        hardware that may not be present", which is true and is not an argument against a
-        switch. Absent hardware reads `offline · no rigs configured`, which is honest; an
-        unset switch the operator was told to set and given no command for is not.
+        This was six, then five, and is six again -- and the way NEWS joined it is the point
+        of the test. ASIC came off because its rack row was in exactly the state Studio\'s had
+        been -- SubUnit `asicminer` (api.py:1655) telling an operator to set
+        SYMONEURAL_ASIC_ENABLED and SYMONEURAL_ASIC_TOKEN with nothing sanctioned that would
+        do it -- and the earlier version of this docstring got its reason wrong: it said ASIC
+        "points at hardware that may not be present", which is true and is not an argument
+        against a switch. Absent hardware reads `offline · no rigs configured`, which is
+        honest; an unset switch the operator was told to set and given no command for is not.
 
-        The five that remain each have a different reason, recorded in the script itself
-        rather than here, and `test_the_script_records_why_each_unswitchable_one_has_no_arm`
-        below asserts the record still names them. This test fails when a twelfth gated
-        surface appears with no switch AND when one of these five quietly gains one, and
-        either way the fix is to make the decision there rather than discover it from a rack
-        row reading `offline`."""
-        known_unswitchable = {"ACCOUNTS", "EXP", "MINING", "REINFORCE", "VOICE"}
+        NEWS was never on the list and should have been from the day it landed. `GATE` above
+        searched for `SYM_([A-Z0-9]+)_ENABLED`, and the news ticker was the first surface
+        named in the house style ahead of the rename -- its gate has always been
+        `SYMONEURAL_NEWS_ENABLED` (apps/symoneuralnews/__init__.py:53). So this test, whose
+        whole job is to notice a gated surface with no switch, could not see it: the surface
+        was invisible to the regex rather than exempted by a decision. The rename made it
+        visible, which is the second time in this repo that a naming change has surfaced a
+        tripwire that was quietly matching nothing. Its reason for having no arm is in the
+        script with the other five.
+
+        Each reason is recorded in the script rather than here, and
+        `test_the_script_records_why_each_unswitchable_one_has_no_arm` below asserts the
+        record still names them. This test fails when a thirteenth gated surface appears with
+        no switch AND when one of these six quietly gains one, and either way the fix is to
+        make the decision there rather than discover it from a rack row reading `offline`."""
+        known_unswitchable = {"ACCOUNTS", "EXP", "MINING", "NEWS", "REINFORCE", "VOICE"}
         self.assertEqual(self.gated - self.writable, known_unswitchable)
         self.assertEqual(self.writable - self.gated, set(),
                          "the script writes an ENABLED key no app reads")
@@ -151,13 +161,13 @@ class EnableSurfacesTests(unittest.TestCase):
         head = "# ## The gated surfaces this script deliberately does not switch"
         self.assertIn(head, self.text, "the record of why is gone, or its heading changed")
         block = self.text.split(head, 1)[1].split("\ninstall -d", 1)[0]
-        for surface in sorted({"ACCOUNTS", "EXP", "MINING", "REINFORCE", "VOICE"}):
+        for surface in sorted({"ACCOUNTS", "EXP", "MINING", "NEWS", "REINFORCE", "VOICE"}):
             with self.subTest(surface=surface):
                 self.assertIn(surface.lower(), block,
                               f"{surface} has no arm and the script no longer says why")
         # Vacuity guard for this test specifically: an empty block would pass every `assertIn`
         # above if the split ever stopped matching.
-        self.assertGreater(len(block), 800, "the block matched but is too short to be it")
+        self.assertGreater(len(block), 900, "the block matched but is too short to be it")
 
     def test_the_network_names_the_script_offers_are_the_ones_the_code_accepts(self):
         """Two files had to agree and nothing made them.
@@ -199,8 +209,8 @@ class EnableSurfacesTests(unittest.TestCase):
                         "the drop-in no longer references the env file, or dropped the "
                         "leading '-' that keeps a missing file from bricking the service")
         offenders = [ln for ln in self.text.splitlines()
-                     if ln.strip().startswith("Environment=") and "SYM_" in ln]
-        self.assertEqual(offenders, [], "a SYM_ value is written to an Environment= line")
+                     if ln.strip().startswith("Environment=") and "SYMONEURAL_" in ln]
+        self.assertEqual(offenders, [], "a SYMONEURAL_ value is written to an Environment= line")
 
 
 class WriteLoopBehaviourTests(unittest.TestCase):
@@ -244,12 +254,12 @@ class WriteLoopBehaviourTests(unittest.TestCase):
         return out.stdout.splitlines()
 
     def test_the_loop_writes_the_key_names_the_backend_actually_reads(self):
-        """The `${pair#* }`/`${pair%* }` test. Under `%` this reads SYM_0_ENABLED and the
+        """The `${pair#* }`/`${pair%* }` test. Under `%` this reads SYMONEURAL_0_ENABLED and the
         surface stays offline after Garrett runs the command and is told it worked."""
         self.assertEqual(
             self.run_loop(CODER=1, PROJECT=0, RACK=0, STUDIO=1),
-            ["SYM_CODER_ENABLED=1", "SYM_CODER_TOKEN=TOK",
-             "SYM_STUDIO_ENABLED=1", "SYM_STUDIO_TOKEN=TOK"])
+            ["SYMONEURAL_CODER_ENABLED=1", "SYMONEURAL_CODER_TOKEN=TOK",
+             "SYMONEURAL_STUDIO_ENABLED=1", "SYMONEURAL_STUDIO_TOKEN=TOK"])
 
     def test_each_enabled_surface_gets_its_own_token(self):
         """Four surfaces on at once, which is what `--all` amounts to. Asserts the full
@@ -258,7 +268,7 @@ class WriteLoopBehaviourTests(unittest.TestCase):
         self.assertEqual(
             self.run_loop(CODER=1, PROJECT=1, RACK=1, STUDIO=1),
             [line for name in ("CODER", "PROJECT", "RACK", "STUDIO")
-             for line in (f"SYM_{name}_ENABLED=1", f"SYM_{name}_TOKEN=TOK")])
+             for line in (f"SYMONEURAL_{name}_ENABLED=1", f"SYMONEURAL_{name}_TOKEN=TOK")])
 
     def test_a_surface_not_asked_for_is_never_written(self):
         """The `[ "$want" -eq 1 ] || continue` arm. Rewriting it as `[ ... ] && set_kv ...`

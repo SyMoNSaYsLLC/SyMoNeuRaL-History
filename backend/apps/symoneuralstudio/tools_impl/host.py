@@ -30,7 +30,7 @@ globs, `&&` -- and a `shlex.split` into `execve` would break every one of those 
 are hard for it to diagnose. There is no injection boundary being crossed here: the string
 *is* the intended command, from a caller that already has `write_file`.
 
-**This surface is off unless `SYM_STUDIO_ENABLED=1` and `SYM_STUDIO_TOKEN` are both set.**
+**This surface is off unless `SYMONEURAL_STUDIO_ENABLED=1` and `SYMONEURAL_STUDIO_TOKEN` are both set.**
 `/api/*` is delegated wholly to FastAPI on a box with a public IP, so an ungated route here
 would be an unauthenticated shell for anyone who found the port. That gate is the repo's own
 convention (`apps/voice`, `apps/asicminer`), applied to the endpoint rather than to the tool:
@@ -138,8 +138,8 @@ def env_get(name: str = "") -> dict:
     That is transcript hygiene and not a confidentiality boundary, which matters because this
     docstring used to imply the second. `run_command` is in this same module at `:70`, in the
     same registry group, and it returns whatever a shell prints. Measured with
-    `SYM_STUDIO_TOKEN=s3cret-token-abcdefgh` set: this tool answered
-    `<set, 21 chars, ends 'efgh'>` and `run_command("printenv SYM_STUDIO_TOKEN")` answered
+    `SYMONEURAL_STUDIO_TOKEN=s3cret-token-abcdefgh` set: this tool answered
+    `<set, 21 chars, ends 'efgh'>` and `run_command("printenv SYMONEURAL_STUDIO_TOKEN")` answered
     `s3cret-token-abcdefgh`. So the mask keeps a secret out of a context window that did not
     ask for one; it does not keep it from an agent that asks. No blocklist is added to
     `run_command` for it -- the standing instruction is that this project carries no filters --

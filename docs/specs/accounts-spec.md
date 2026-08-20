@@ -15,8 +15,8 @@ Written 2026-08-17.
 - `backend/apps/accounts/` is a self-contained signup/login/session module on the
   **standard library only** — no bcrypt, no argon2, no passlib, no python-jose, no
   sqlalchemy, no authlib. `hashlib.scrypt`, `secrets`, `hmac`, `sqlite3`.
-- It is **off by default** and needs two switches, `SYM_ACCOUNTS_ENABLED=1` and
-  `SYM_SESSION_SECRET`, the same shape as `backend/apps/asicminer/`.
+- It is **off by default** and needs two switches, `SYMONEURAL_ACCOUNTS_ENABLED=1` and
+  `SYMONEURAL_SESSION_SECRET`, the same shape as `backend/apps/asicminer/`.
 - It **fails closed at every entry point**. No secret means `AccountsUnavailable`, raised —
   never a `None` that a caller can mistake for "wrong password".
 - It carries **no price, no plan, no tier and no amount**, anywhere. An account may hold an
@@ -89,7 +89,7 @@ added in six months is invisible until somebody adds it there deliberately.
 ### 1.2 Sessions — server-side rows, keyed verifier
 
 Chosen: **server-side session rows in sqlite**, token = `symses1.<sid>.<256 random bits>`,
-database stores `hmac_sha256(SYM_SESSION_SECRET, token)`.
+database stores `hmac_sha256(SYMONEURAL_SESSION_SECRET, token)`.
 
 **Why not a stateless signed token.** `revoke_session()` and expiry both have to be real.
 A stateless token can only be revoked against a revocation list, which is server-side state
@@ -101,7 +101,7 @@ would be absent if the database simply stored the token:
 
 1. Reading the file — a backup, a stray copy, an SQL-injection read in some future route —
    yields verifiers, not usable cookies.
-2. **Rotating `SYM_SESSION_SECRET` invalidates every session at once.** That is the
+2. **Rotating `SYMONEURAL_SESSION_SECRET` invalidates every session at once.** That is the
    emergency lever you want to exist, and it is one `systemctl restart` away.
 
 Both are asserted in the tests.
@@ -112,7 +112,7 @@ blocking a network call *grants* a licence. The equivalent mistake here is subtl
 hardcoded secret — it is a function that returns `None` on a missing secret, which to a
 route handler is indistinguishable from "bad cookie". So:
 
-- `_secret()` raises `AccountsUnavailable` when `SYM_SESSION_SECRET` is absent or under 32
+- `_secret()` raises `AccountsUnavailable` when `SYMONEURAL_SESSION_SECRET` is absent or under 32
   characters. There is **no generated-per-process default** either: that would look like it
   worked until the first `systemctl restart symoneural-api` silently logged everyone out.
 - **Every** public function calls it first. A test enumerates all eight entry points and
@@ -120,7 +120,7 @@ route handler is indistinguishable from "bad cookie". So:
 - `None` from `read_session()` and `verify()` means one thing only: this credential is not
   valid.
 
-Default TTL 12 hours (`SYM_SESSION_TTL_S` overrides). Changing a password or disabling an
+Default TTL 12 hours (`SYMONEURAL_SESSION_TTL_S` overrides). Changing a password or disabling an
 account revokes every live session — a password change that leaves the attacker's session
 alive has done nothing.
 
@@ -128,10 +128,10 @@ alive has done nothing.
 
 **Rate limiting is off across the entire API today, deliberately, at the owner's
 instruction** (`backend/api.py` ~line 131: "nothing here is to cap what he can send until he
-has decided himself what should pass"). `_rate_for()` reads `SYM_RATE_<SURFACE>` and a
+has decided himself what should pass"). `_rate_for()` reads `SYMONEURAL_RATE_<SURFACE>` and a
 surface with no variable set has no bucket at all.
 
-**Nothing in this module re-enables that.** No `SYM_RATE_ACCOUNTS`, no global limiter, no
+**Nothing in this module re-enables that.** No `SYMONEURAL_RATE_ACCOUNTS`, no global limiter, no
 change to `check_rate()`. What is here instead is a per-account failed-attempt lockout, and
 the distinction is real rather than a technicality:
 
@@ -377,7 +377,7 @@ leak here damages them elsewhere, not just us), **live sessions**, **the email l
 | Account enumeration via login | unknown addresses pay a full scrypt against a dummy hash | timing is equalised; error strings must not differentiate, and that is on the route |
 | Account enumeration via signup | none — a duplicate returns 409 | **accepted and deliberate.** A signup form that will not say "that address is taken" is unusable. The email list is the asset at risk and it is low value. |
 | CSRF | `SameSite=Lax` + JSON-only mutating POSTs | see §3.2; a double-submit token is the upgrade if wanted |
-| Memory-exhaustion DoS via login | 64 MiB × concurrent attempts, on a box with 94 GB; per-address counter; `MAX_PASSWORD_CHARS` caps input | An attacker who can open many connections can still burn CPU and RAM. **This is the strongest argument for a `SYM_RATE_ACCOUNTS` bucket** — the mechanism already exists and is switched off, and turning it on for *this* surface only is the owner's call. |
+| Memory-exhaustion DoS via login | 64 MiB × concurrent attempts, on a box with 94 GB; per-address counter; `MAX_PASSWORD_CHARS` caps input | An attacker who can open many connections can still burn CPU and RAM. **This is the strongest argument for a `SYMONEURAL_RATE_ACCOUNTS` bucket** — the mechanism already exists and is switched off, and turning it on for *this* surface only is the owner's call. |
 | Memory-exhaustion DoS via **signup** | `MAX_PASSWORD_CHARS`; nothing else | **Unthrottled, and cheaper than the login lever.** Every `create_account()` call is a 123 ms / 64 MiB scrypt, and the address counter only increments on failed *logins*, so a signup flood pays no attempt cost at all. It also fills the accounts table. This is the concrete reason §6 item 4 matters and the reason §6 item 6 (invite-only) removes the problem outright rather than mitigating it. |
 | A wedged lockout as self-DoS | the lockout lifts; tested with an injected clock | none |
 | Privilege escalation via a leaked hash in a response | `PUBLIC_FIELDS` allowlist, tested against a column added after the fact | none |
@@ -411,7 +411,7 @@ Numbered so they can be answered individually.
 3. **Keep the account throttle?** §1.3. It is not the limiter you removed and the table
    there says why, but it is your call and disabling it is one edit.
 
-4. **Turn on `SYM_RATE_ACCOUNTS`?** Separate question from 3. The mechanism already exists
+4. **Turn on `SYMONEURAL_RATE_ACCOUNTS`?** Separate question from 3. The mechanism already exists
    in `api.py` and is off everywhere. These are the two endpoints where a request limit
    buys something the account throttle cannot, because it caps CPU and RAM burned by
    attempts against *many* accounts from one address:
@@ -437,7 +437,7 @@ Numbered so they can be answered individually.
    the surface is much smaller — no enumeration question, no spam signups, no reset problem
    worth solving.
 
-7. **Session TTL of 12 hours** — arbitrary and adjustable via `SYM_SESSION_TTL_S`.
+7. **Session TTL of 12 hours** — arbitrary and adjustable via `SYMONEURAL_SESSION_TTL_S`.
 
 8. **`SameSite=Lax` vs `Strict`**, and whether you want a CSRF token on top (§3.2).
 
@@ -450,8 +450,8 @@ Numbered so they can be answered individually.
 # key was lost, HANDOVER §2d) and set it in the systemd unit's environment
 openssl rand -base64 48
 
-export SYM_ACCOUNTS_ENABLED=1
-export SYM_SESSION_SECRET='<the value above>'
+export SYMONEURAL_ACCOUNTS_ENABLED=1
+export SYMONEURAL_SESSION_SECRET='<the value above>'
 
 python3 backend/apps/accounts/__init__.py         # selftest as JSON
                                                   # (the file, not the directory --
@@ -462,4 +462,4 @@ python3 backend/apps/accounts/test_accounts.py    # 46 tests, ~16s (real scrypt)
 `selftest()` reports `ok:false` with a clear error when the secret is missing. **That is
 the fail-closed path working, not a fault.**
 
-Rotating `SYM_SESSION_SECRET` signs everybody out. That is the intended emergency lever.
+Rotating `SYMONEURAL_SESSION_SECRET` signs everybody out. That is the intended emergency lever.

@@ -38,7 +38,7 @@ def main() -> str:
         signatures={"generate": {"batchable": False}},
         metadata={
             "role": "offline fallback for text_gen_runner",
-            "real_backend": "llama.cpp llama-server, OpenAI-compatible, via SYM_LLAMA_URL",
+            "real_backend": "llama.cpp llama-server, OpenAI-compatible, via SYMONEURAL_LLAMA_URL",
             "weights_included": False,
         },
     )

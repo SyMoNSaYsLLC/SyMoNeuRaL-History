@@ -453,7 +453,7 @@ class TestMountedAndMetered(unittest.TestCase):
         """Listing a surface in _RATE_SUGGESTED builds its buckets. It does not spend them.
 
         Half of this was already true and was worse than being openly unmetered: with the
-        name listed but no dependency wired, `SYM_RATE_SIGIL=20/300` would be read, parsed,
+        name listed but no dependency wired, `SYMONEURAL_RATE_SIGIL=20/300` would be read, parsed,
         validated and turned into two live RateLimiter objects that nothing ever consulted
         -- so an operator who set it would believe a cap was in force when none was. This
         is the surface that spends the GPU and the one aimed at a phone app, so an

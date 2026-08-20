@@ -32,7 +32,7 @@ VENV="$COMFY/.venv/bin/python"
 RUN="$ROOT/run"; mkdir -p "$RUN"
 PIDFILE="$RUN/comfyui.pid"
 LOG="$RUN/comfyui.log"
-PORT="${SYM_COMFY_PORT:-8188}"
+PORT="${SYMONEURAL_COMFY_PORT:-${SYM_COMFY_PORT:-8188}}"
 HOST="127.0.0.1"
 
 running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }

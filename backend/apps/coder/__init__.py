@@ -19,9 +19,9 @@ both fail closed.
 
 ## Three gates, and every one of them must pass
 
-    SYM_CODER_ENABLED=1                 # the surface exists at all
-    SYM_CODER_TOKEN=<shared secret>     # every call must present it, constant-time compared
-    SYM_CODER_ALLOW_REMOTE=1            # ONLY THEN may a non-loopback peer call
+    SYMONEURAL_CODER_ENABLED=1                 # the surface exists at all
+    SYMONEURAL_CODER_TOKEN=<shared secret>     # every call must present it, constant-time compared
+    SYMONEURAL_CODER_ALLOW_REMOTE=1            # ONLY THEN may a non-loopback peer call
 
 The first two mirror `backend/apps/asicminer/__init__.py` exactly, which is the pattern this
 repo already uses for a route that must not be world-callable. The third is additional and
@@ -124,11 +124,11 @@ VERSION_RE = re.compile(r"\A\d{8}T\d{12}\Z")
 def workspace() -> pathlib.Path:
     """The one directory this agent may touch. Defaults to the repo root.
 
-    Set `SYM_CODER_WORKSPACE` to narrow it -- pointing it at `site/` gives an agent that
+    Set `SYMONEURAL_CODER_WORKSPACE` to narrow it -- pointing it at `site/` gives an agent that
     can edit the site and cannot see `training/` at all, which is a strictly better shape
     than relying on the denylist.
     """
-    raw = os.environ.get("SYM_CODER_WORKSPACE") or str(ROOT)
+    raw = os.environ.get("SYMONEURAL_CODER_WORKSPACE") or str(ROOT)
     return pathlib.Path(raw).expanduser().resolve()
 
 
@@ -139,7 +139,7 @@ def state_dir() -> pathlib.Path:
     GPU mutex. This module writes two things beside it and never touches the lock.
     The override exists so the tests do not write into live runtime state.
     """
-    raw = os.environ.get("SYM_CODER_STATE_DIR") or str(ROOT / "run")
+    raw = os.environ.get("SYMONEURAL_CODER_STATE_DIR") or str(ROOT / "run")
     return pathlib.Path(raw).expanduser().resolve()
 
 
@@ -156,18 +156,18 @@ def backups_root() -> pathlib.Path:
 
 def enabled() -> bool:
     """Both switches, exactly as `asicminer.enabled()` does it. Off is the default."""
-    return (os.environ.get("SYM_CODER_ENABLED") == "1"
-            and bool(os.environ.get("SYM_CODER_TOKEN")))
+    return (os.environ.get("SYMONEURAL_CODER_ENABLED") == "1"
+            and bool(os.environ.get("SYMONEURAL_CODER_TOKEN")))
 
 
 def allow_remote() -> bool:
     """The second, independent gate. Unset means loopback only."""
-    return os.environ.get("SYM_CODER_ALLOW_REMOTE") == "1"
+    return os.environ.get("SYMONEURAL_CODER_ALLOW_REMOTE") == "1"
 
 
 def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    want = os.environ.get("SYM_CODER_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_CODER_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)
@@ -231,10 +231,10 @@ def authorize(token: str | None, peer: str | None) -> tuple[bool, str]:
     disabled before it reports anything about the peer or the token.
     """
     if not enabled():
-        return False, ("surface disabled — set SYM_CODER_ENABLED=1 and SYM_CODER_TOKEN, "
+        return False, ("surface disabled — set SYMONEURAL_CODER_ENABLED=1 and SYMONEURAL_CODER_TOKEN, "
                        "and read backend/apps/coder/README.md first")
     if not peer_ok(peer):
-        return False, (f"peer {peer!r} is not loopback; SYM_CODER_ALLOW_REMOTE is not set. "
+        return False, (f"peer {peer!r} is not loopback; SYMONEURAL_CODER_ALLOW_REMOTE is not set. "
                        "This surface is local-only by design.")
     if not token_ok(token):
         return False, "bad or missing token"
@@ -795,14 +795,18 @@ def restore(path: str, version: str, *, token: str | None, peer: str | None) -> 
 # ------------------------------------------------------------------ command execution
 
 
-# Both spellings, and the second is not belt-and-braces. This scrubber matches by PREFIX
-# rather than against a list of known names, so renaming every `SYM_*` variable on this box
-# to `SYMONEURAL_*` turns the loop below into a no-op: `"SYMONEURAL_STUDIO_TOKEN".
-# startswith("SYM_")` is False. That failure is silent in every direction -- no exception, no
-# log line, and no failing test, because the test that covers this constructs its own
-# `SYM_CODER_TOKEN` and would keep passing while every real token on the box rode into every
-# child process this surface spawns. Both prefixes stay listed for as long as either spelling
-# can be set, which is for as long as the legacy env fallback exists.
+# Both spellings, and the legacy one is not belt-and-braces: it is still reachable. Every
+# variable here was once spelled `SYM_*`, and `apps/symoneuralenv.promote()` migrates an old
+# environment by COPYING each legacy name onto its new spelling and deliberately leaving the
+# old one in place, so that children this repo spawns against the old name keep working. So a
+# live environment can carry `SYM_ASIC_TOKEN` and `SYMONEURAL_ASIC_TOKEN` at once, and a
+# scrubber that dropped the legacy prefix would leave the first of those in every child.
+#
+# It matters that this is a PREFIX match rather than a list of known names, because that is
+# what makes the failure silent: `"SYMONEURAL_STUDIO_TOKEN".startswith("SYM_")` is False, so
+# a check written for one spelling stops removing anything the moment the box uses the other
+# -- no exception, no log line, and no failing test unless a test names both. That is what
+# `test_both_env_prefixes_are_scrubbed_and_nothing_else_is` is for.
 _SECRET_PREFIXES = ("SYMONEURAL_", "SYM_")
 _SECRET_WORDS = ("TOKEN", "SECRET", "KEY")
 

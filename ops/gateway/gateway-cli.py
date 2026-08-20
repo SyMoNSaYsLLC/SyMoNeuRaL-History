@@ -259,7 +259,7 @@ def cmd_deploy(args) -> int:
     print(f"\ncontract      {addr}")
     print("\nVerify it independently — this tool saying SUCCESS is not the same as the chain "
           "agreeing:")
-    print(f"  SYM_GATEWAY_NETWORK={args.network} SYM_GATEWAY_CONTRACT={addr} \\")
+    print(f"  SYMONEURAL_GATEWAY_NETWORK={args.network} SYMONEURAL_GATEWAY_CONTRACT={addr} \\")
     print(f"    python3 -c \"from apps.gateway import chain; "
           f"print(chain.probe('{args.network}', '{addr}'))\"")
     return 0

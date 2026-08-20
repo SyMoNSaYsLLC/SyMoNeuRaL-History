@@ -26,7 +26,16 @@ client can.
 model file -- and there is no key material in this package to leak. `transcribe` is CPU a
 stranger can spend, on a box whose only contended resource is already rationed for the GPU
 but not for the cores. `apps/gateway` is the precedent for the open read; `apps/asicminer` is
-the precedent for the gate, and this uses its header name, `X-Sym-Token`.
+the precedent for the gate, and this uses its header name, `X-Symoneural-Token`.
+
+## Why the two gated routes declare two header parameters
+
+`X-Sym-Token` is the name that header had until the rename and is still accepted. Unlike the
+other surfaces, which read a request object and can just try two keys, these are FastAPI
+routes whose credential arrives as a declared parameter -- and `Header(alias=...)` binds
+exactly one name. So each gated route takes both and passes `new or legacy` to `_require`,
+which is also why both appear in the generated OpenAPI: they are both genuinely accepted, and
+a schema that advertised only one would be describing a stricter server than this is.
 """
 from __future__ import annotations
 
@@ -51,14 +60,14 @@ _SUFFIX_OK = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
 def _off() -> HTTPException:
     """The 503 for a surface that is switched off, naming both variables.
 
-    `SYM_VOICE_ENABLED` must be the literal string `1`. `true`, `yes` and `on` all leave it
+    `SYMONEURAL_VOICE_ENABLED` must be the literal string `1`. `true`, `yes` and `on` all leave it
     off and say nothing -- the check is `== "1"`, not truthiness. That is the single most
-    reported confusion about `SYM_ASIC_ENABLED`, so it is spelled out here the first time.
+    reported confusion about `SYMONEURAL_ASIC_ENABLED`, so it is spelled out here the first time.
     """
     return HTTPException(
         status_code=503,
-        detail="voice surface is off — set SYM_VOICE_ENABLED=1 (the literal string 1, not "
-               "true) and SYM_VOICE_TOKEN in ops/symoneural-api.service, then "
+        detail="voice surface is off — set SYMONEURAL_VOICE_ENABLED=1 (the literal string 1, not "
+               "true) and SYMONEURAL_VOICE_TOKEN in ops/symoneural-api.service, then "
                "sudo systemctl daemon-reload && sudo systemctl restart symoneural-api",
     )
 
@@ -70,7 +79,9 @@ def _require(token: str | None) -> None:
     if not token_ok(token):
         # 401, not 403: the credential is missing or wrong, and there is no identity here to
         # be forbidden. No hint about the expected length or shape.
-        raise HTTPException(status_code=401, detail="X-Sym-Token missing or wrong")
+        # Names the new header only. A caller who sent the legacy one was accepted, so listing
+        # both here would describe a rejection that did not happen for that reason.
+        raise HTTPException(status_code=401, detail="X-Symoneural-Token missing or wrong")
 
 
 def _safe_suffix(filename: str | None) -> str:
@@ -116,7 +127,10 @@ def state() -> dict:
 async def transcribe(
     audio: UploadFile = File(..., description="Any container ffmpeg reads. WebM/Opus from a "
                                              "browser's MediaRecorder is the expected case."),
-    x_sym_token: str | None = Header(default=None, alias="X-Sym-Token"),
+    x_symoneural_token: str | None = Header(default=None, alias="X-Symoneural-Token"),
+    x_sym_token: str | None = Header(default=None, alias="X-Sym-Token",
+                                     description="The name this header had until the rename. "
+                                                 "Still accepted; prefer the one above."),
 ) -> dict:
     """The reading, including how long each stage took.
 
@@ -125,7 +139,7 @@ async def transcribe(
     no audio from it (see `asr.py` -- `whisper-cli` exits 0 on that path, which is the trap
     this route exists to close).
     """
-    _require(x_sym_token)
+    _require(x_symoneural_token or x_sym_token)
 
     with tempfile.TemporaryDirectory(prefix="symvoice-") as tmp:
         work = Path(tmp)
@@ -149,13 +163,18 @@ async def transcribe(
 
 
 @router.post("/speak", summary="Text to speech — not built; says so rather than faking it")
-def speak(x_sym_token: str | None = Header(default=None, alias="X-Sym-Token")) -> dict:
+def speak(
+    x_symoneural_token: str | None = Header(default=None, alias="X-Symoneural-Token"),
+    x_sym_token: str | None = Header(default=None, alias="X-Sym-Token",
+                                     description="The name this header had until the rename. "
+                                                 "Still accepted; prefer the one above."),
+) -> dict:
     """503, always, until an engine is installed and a synthesis path is written.
 
     The gate is checked first so this cannot be used to probe whether the surface exists, and
     the body names the command. See `tts.py` for why there is no placeholder wav here.
     """
-    _require(x_sym_token)
+    _require(x_symoneural_token or x_sym_token)
     half = tts.state()
     fix = half["install"] or "write the synthesis path in backend/apps/voice/tts.py"
     raise HTTPException(status_code=503, detail=f"{half['problem']}. To close it: {fix}")

@@ -53,7 +53,16 @@
   function headers(extra) {
     var h = extra || {};
     var t = token();
-    if (t) h['X-Sym-Token'] = t;
+    if (t) {
+      h['X-Symoneural-Token'] = t;
+      // And the name this header had until the rename. Both, because the site and the API are
+      // deployed by two separate commands (`deploy.sh`, then `systemctl restart`), so there is
+      // a window where this file is new and the server answering it is not. The server reads
+      // both too, which covers the other direction -- a cached copy of this file against a new
+      // API. Same secret, same origin, twice in one request header block; it comes out once
+      // the API is known to be restarted.
+      h['X-Sym-Token'] = t;
+    }
     return h;
   }
 
@@ -172,9 +181,9 @@
         + 'calling into a service change what runs inside the API process, so they need both '
         + 'switches set and the API restarted:'));
       var line = el('p', null, '');
-      line.appendChild(el('code', null, 'SYM_EXP_ENABLED=1'));
+      line.appendChild(el('code', null, 'SYMONEURAL_EXP_ENABLED=1'));
       line.appendChild(document.createTextNode(' '));
-      line.appendChild(el('code', null, 'SYM_EXP_TOKEN=<secret>'));
+      line.appendChild(el('code', null, 'SYMONEURAL_EXP_TOKEN=<secret>'));
       g.appendChild(line);
       return;
     }
@@ -190,7 +199,7 @@
     var input = document.createElement('input');
     input.type = 'password';
     input.id = 'ex-token';
-    input.placeholder = 'SYM_EXP_TOKEN';
+    input.placeholder = 'SYMONEURAL_EXP_TOKEN';
     input.autocomplete = 'off';
     input.value = '';
     var go = el('button', null, 'Use it');
@@ -243,7 +252,8 @@
     if (!s.writable) {
       if (!s.enabled) {
         withheld = 'Config values are withheld: the surface is switched off, so no token '
-                 + 'unlocks them. Set SYM_EXP_ENABLED=1 and SYM_EXP_TOKEN on the API process.';
+                 + 'unlocks them. Set SYMONEURAL_EXP_ENABLED=1 and '
+                 + 'SYMONEURAL_EXP_TOKEN on the API process.';
       } else if (token()) {
         withheld = 'Config values are withheld: the API refused the token this tab is holding.';
       } else {

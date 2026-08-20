@@ -31,7 +31,7 @@ never touches `scripts/gpu-governor.sh` and never opens a socket.
 
 ## Off by default, and the token is the only gate
 
-`SYM_PROJECT_ENABLED=1` **and** `SYM_PROJECT_TOKEN` -- both, or the surface does not exist.
+`SYMONEURAL_PROJECT_ENABLED=1` **and** `SYMONEURAL_PROJECT_TOKEN` -- both, or the surface does not exist.
 Requiring both is what makes a misconfiguration fail closed on a box with a public IP.
 Rate limiting is off across this API by Garrett's instruction, so the token is carrying the
 whole load: generate it with `secrets.token_urlsafe(32)`, put it in the systemd unit's

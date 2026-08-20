@@ -145,7 +145,7 @@ def main(argv: list[str]) -> int:
     expect("control:network", bool(r.get("error")), "an unknown network was accepted")
 
     # The host allowlist, checked at the transport rather than reasoned about. There is no
-    # SYM_GATEWAY_NODE_URL and there must never be one; this proves the floor under that.
+    # SYMONEURAL_GATEWAY_NODE_URL and there must never be one; this proves the floor under that.
     try:
         chain.http_post("https://example.com/wallet/getblock", b"{}", 2.0)
         print("  off-allowlist host    ACCEPTED — this is a fault")

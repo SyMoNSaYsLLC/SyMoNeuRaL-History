@@ -151,7 +151,7 @@ by removing the capability that made them worth mounting.
 
 ## What the token is, and what it is not
 
-`gate.py` requires `SYM_EXP_ENABLED=1` **and** a non-empty `SYM_EXP_TOKEN`, and the token gates
+`gate.py` requires `SYMONEURAL_EXP_ENABLED=1` **and** a non-empty `SYMONEURAL_EXP_TOKEN`, and the token gates
 every write plus one read (an entry's `config`). That is a switch on an HTTP surface. It decides
 whether a request from the network can ask this process to mount a plugin. It says nothing about
 what a mounted plugin may then do, and describing it as containment would be the one dishonest

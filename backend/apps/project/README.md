@@ -78,7 +78,7 @@ Points that matter:
 | `state` / `detail` | computed, three cases below |
 
 ```
-surface disabled (SYM_PROJECT_ENABLED unset)  -> offline   "surface disabled on this installation"
+surface disabled (SYMONEURAL_PROJECT_ENABLED unset)  -> offline   "surface disabled on this installation"
 enabled, store missing or unreadable          -> offline   "no project store initialised"
 enabled, store answers                        -> ready     "cpu only, never queues"
 ```
@@ -111,11 +111,11 @@ as a 304 and sit stale on the page. Live counts are `GET /api/project/state`.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SYM_PROJECT_ENABLED` | unset | Must be exactly `1`. Off is the default. |
-| `SYM_PROJECT_TOKEN` | unset | The shared secret. `secrets.token_urlsafe(32)`, never chosen by hand. |
-| `SYM_PROJECT_DB` | `run/project/store.db` | Where the store lives. |
-| `SYM_PROJECT_ROOT` | the repo root | The tree a file reference may name. |
-| `SYM_PROJECT_BACKUP_DIR` | `<store>/../backups` | Where `POST /backup` writes. |
+| `SYMONEURAL_PROJECT_ENABLED` | unset | Must be exactly `1`. Off is the default. |
+| `SYMONEURAL_PROJECT_TOKEN` | unset | The shared secret. `secrets.token_urlsafe(32)`, never chosen by hand. |
+| `SYMONEURAL_PROJECT_DB` | `run/project/store.db` | Where the store lives. |
+| `SYMONEURAL_PROJECT_ROOT` | the repo root | The tree a file reference may name. |
+| `SYMONEURAL_PROJECT_BACKUP_DIR` | `<store>/../backups` | Where `POST /backup` writes. |
 
 **Both switches are required and that is the design, not belt-and-braces.** It fails closed on
 a misconfiguration, which matters on a box with a public IP where the difference between
@@ -125,7 +125,7 @@ one. Copied from `backend/apps/asicminer/`, which says the same thing in its own
 Set the token in the systemd unit's environment. Not in a shell profile, not in the repo, and
 never in a URL — `ops/Caddyfile` writes `/var/log/caddy/symoneural.log` and uvicorn logs the
 request line, so a token in a query string is a token written to disk on every request. It
-travels in the `X-Sym-Token` header, and a test walks `router.routes` asserting no path
+travels in the `X-Symoneural-Token` header, and a test walks `router.routes` asserting no path
 segment is ever named for a credential.
 
 **Rate limiting is off across this API by Garrett's instruction, so the token is the only
@@ -149,14 +149,15 @@ workspace committed by accident is in the history permanently. `backend/apps/acc
 the same call and keeps its database at `run/accounts/accounts.db`.
 
 To take the spec's placement instead: add `backend/project/` to `.gitignore` and set
-`SYM_PROJECT_DB=backend/project/store.db`. Both are one line. Neither is this package's to
+`SYMONEURAL_PROJECT_DB=backend/project/store.db`. Both are one line. Neither is this package's to
 write, which is why the default is the safe one.
 
 ---
 
 ## Endpoints
 
-Everything is under the mount prefix, everything requires `X-Sym-Token`, and every response
+Everything is under the mount prefix, everything requires `X-Symoneural-Token` (or
+`X-Sym-Token`, the name it replaced — `routes._deny` reads both, new first), and every response
 carries `api_version`.
 
 | Method | Path | Purpose |
@@ -205,7 +206,7 @@ maps codes to HTTP status, so a code cannot mean 404 on one route and 400 on ano
 | code | status | |
 |---|---|---|
 | `disabled` | 503 | the surface is switched off |
-| `unauthorized` | 401 | bad or missing `X-Sym-Token` |
+| `unauthorized` | 401 | bad or missing `X-Symoneural-Token` |
 | `not_found` | 404 | |
 | `bad_field` / `bad_path` / `bad_query` / `outside_root` | 400 | |
 | `denied` | 403 | the path is on the denylist |
@@ -403,9 +404,9 @@ construction, not by measurement, and the note beside it says so.
 python3 backend/apps/project/test_project.py        # 102 tests, ~1s
 ```
 
-No network, no GPU, no service running. Every test points `SYM_PROJECT_DB` at a temp directory
+No network, no GPU, no service running. Every test points `SYMONEURAL_PROJECT_DB` at a temp directory
 — the real `run/` holds `gpu.lock.d`, and a test that wrote in there could destroy a lock
-while a surface held the card — and `SYM_PROJECT_ROOT` at a temp tree containing a *fake*
+while a surface held the card — and `SYMONEURAL_PROJECT_ROOT` at a temp tree containing a *fake*
 `training/corpus.jsonl`, so the trade-secret assertions never have the real one in reach.
 
 33 of the guards were verified by reverting them one at a time and confirming the relevant

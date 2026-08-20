@@ -37,9 +37,9 @@ imports `subprocess`, `signal` or `os.kill`, and a test in this package asserts 
 
 ## Three gates, all of which must pass
 
-    SYM_RACK_ENABLED=1                  # the surface exists at all
-    SYM_RACK_TOKEN=<shared secret>      # every call must present it, constant-time compared
-    SYM_RACK_ALLOW_REMOTE=1             # ONLY THEN may a non-loopback peer call
+    SYMONEURAL_RACK_ENABLED=1                  # the surface exists at all
+    SYMONEURAL_RACK_TOKEN=<shared secret>      # every call must present it, constant-time compared
+    SYMONEURAL_RACK_ALLOW_REMOTE=1             # ONLY THEN may a non-loopback peer call
 
 The same shape as `apps/coder`, `apps/project` and `apps/asicminer`, and for a sharper
 reason than consistency: **the rack is on the public site.** An ungated control here is
@@ -102,7 +102,7 @@ def state_dir() -> pathlib.Path:
     writes one file beside it and never touches the lock. The override exists so tests do
     not write into live runtime state.
     """
-    raw = os.environ.get("SYM_RACK_STATE_DIR") or str(ROOT / "run")
+    raw = os.environ.get("SYMONEURAL_RACK_STATE_DIR") or str(ROOT / "run")
     return pathlib.Path(raw).expanduser().resolve()
 
 
@@ -147,18 +147,18 @@ FRAMES = {
 
 def enabled() -> bool:
     """Both switches, exactly as `coder.enabled()` does it. Off is the default."""
-    return (os.environ.get("SYM_RACK_ENABLED") == "1"
-            and bool(os.environ.get("SYM_RACK_TOKEN")))
+    return (os.environ.get("SYMONEURAL_RACK_ENABLED") == "1"
+            and bool(os.environ.get("SYMONEURAL_RACK_TOKEN")))
 
 
 def allow_remote() -> bool:
     """The second, independent gate. Unset means loopback only."""
-    return os.environ.get("SYM_RACK_ALLOW_REMOTE") == "1"
+    return os.environ.get("SYMONEURAL_RACK_ALLOW_REMOTE") == "1"
 
 
 def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    want = os.environ.get("SYM_RACK_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_RACK_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)
@@ -206,10 +206,10 @@ def authorize(token: str | None, peer: str | None) -> tuple[bool, str]:
     disabled before it reports anything about the peer or the token.
     """
     if not enabled():
-        return False, ("rack power surface is off — set SYM_RACK_ENABLED=1 and "
-                       "SYM_RACK_TOKEN, and read backend/apps/rackpower/README.md first")
+        return False, ("rack power surface is off — set SYMONEURAL_RACK_ENABLED=1 and "
+                       "SYMONEURAL_RACK_TOKEN, and read backend/apps/rackpower/README.md first")
     if not peer_ok(peer):
-        return False, (f"peer {peer!r} is not loopback; SYM_RACK_ALLOW_REMOTE is not set. "
+        return False, (f"peer {peer!r} is not loopback; SYMONEURAL_RACK_ALLOW_REMOTE is not set. "
                        "This surface is local-only by design.")
     if not token_ok(token):
         return False, "bad or missing token"

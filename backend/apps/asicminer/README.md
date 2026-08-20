@@ -10,13 +10,13 @@ such file to see.
 
 ## Turning it on
 
-Two variables, both required, and **`SYM_ASIC_ENABLED` must be the literal string `1`**:
+Two variables, both required, and **`SYMONEURAL_ASIC_ENABLED` must be the literal string `1`**:
 
 | Variable | Form | Required |
 |---|---|---|
-| `SYM_ASIC_ENABLED` | exactly `1`. The check is `== "1"`, not truthiness — `true`, `yes` and `on` all leave the surface **off**, silently | yes |
-| `SYM_ASIC_TOKEN` | any non-empty string; presented as the `X-Sym-Token` header on every request | yes |
-| `SYM_ASIC_RIGS` | comma-separated addresses, `10.0.0.11,10.0.0.12`. Whitespace is stripped, empty elements dropped | no — empty is the normal state |
+| `SYMONEURAL_ASIC_ENABLED` | exactly `1`. The check is `== "1"`, not truthiness — `true`, `yes` and `on` all leave the surface **off**, silently | yes |
+| `SYMONEURAL_ASIC_TOKEN` | any non-empty string; presented as the `X-Symoneural-Token` header on every request | yes |
+| `SYMONEURAL_ASIC_RIGS` | comma-separated addresses, `10.0.0.11,10.0.0.12`. Whitespace is stripped, empty elements dropped | no — empty is the normal state |
 
 Generate a token rather than choosing one:
 
@@ -25,7 +25,7 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
 It is a shared secret that gates starting a QEMU process and scanning a network. Do not
-reuse `SYM_MINER_TOKEN` (the GPU miner's) for it: two surfaces with different blast radii
+reuse `SYMONEURAL_MINER_TOKEN` (the GPU miner's) for it: two surfaces with different blast radii
 should not fall together.
 
 ### What these two variables do NOT do
@@ -42,7 +42,7 @@ faces the public internet, and one of them takes a filename.
   Zynq-7007 CPU, not the FPGA fabric or the hashboards, so `bmminer` never starts and
   nothing answers pyasic on port 4028. The panel reads `offline`, which is correct rather
   than broken. Telemetry needs a rig; the emulator is for `upgrade.cgi`.
-- **`ENABLED` is not a boolean.** It reads like one. `SYM_ASIC_ENABLED=true` leaves the
+- **`ENABLED` is not a boolean.** It reads like one. `SYMONEURAL_ASIC_ENABLED=true` leaves the
   surface off and says nothing, because the check is `== "1"`.
 
 ### Where the variables actually have to go
@@ -54,15 +54,15 @@ env file, and `ops/symoneural-api.service` carries only `PYTHONUNBUFFERED` and
 ```bash
 # one-off, for a hand-started API — the variables must be in the environment that
 # `symoneural.sh on` inherits, not in the shell you type the curl into
-SYM_ASIC_ENABLED=1 SYM_ASIC_TOKEN=… SYM_ASIC_RIGS=10.0.0.11 ./scripts/symoneural.sh on
+SYMONEURAL_ASIC_ENABLED=1 SYMONEURAL_ASIC_TOKEN=… SYMONEURAL_ASIC_RIGS=10.0.0.11 ./scripts/symoneural.sh on
 ```
 
 ```ini
 # permanent, under systemd — add to ops/symoneural-api.service, then
 #   sudo systemctl daemon-reload && sudo systemctl restart symoneural-api
-Environment=SYM_ASIC_ENABLED=1
-Environment=SYM_ASIC_TOKEN=…
-Environment=SYM_ASIC_RIGS=10.0.0.11,10.0.0.12
+Environment=SYMONEURAL_ASIC_ENABLED=1
+Environment=SYMONEURAL_ASIC_TOKEN=…
+Environment=SYMONEURAL_ASIC_RIGS=10.0.0.11,10.0.0.12
 ```
 
 Setting them in your own shell and then querying an API that was started without them is
@@ -73,15 +73,18 @@ Check it took:
 ```bash
 curl -s localhost:8800/api/status | python3 -c \
   'import json,sys;print([u for u in json.load(sys.stdin)["units"] if u["id"]=="asicminer"])'
-# state "offline", detail "disabled — set SYM_ASIC_ENABLED=1 and SYM_ASIC_TOKEN"
+# state "offline", detail "disabled — set SYMONEURAL_ASIC_ENABLED=1 and SYMONEURAL_ASIC_TOKEN"
 #   -> the API does not have the variables
-# state "offline", detail "no rigs configured"  -> it does; SYM_ASIC_RIGS is empty
+# state "offline", detail "no rigs configured"  -> it does; SYMONEURAL_ASIC_RIGS is empty
 ```
 
 ### In the browser
 
 `site/miner.html` prompts for the token on the first operator action, keeps it in
-`sessionStorage` under `sym.asic.token`, sends it as `X-Sym-Token`, and clears it on a 401.
+`sessionStorage` under `sym.asic.token`, sends it as `X-Symoneural-Token` (and as
+`X-Sym-Token`, the name it replaced, until the deployed API is known to read the new
+one), and clears it on a 401. The reader is `_operator_token` in `backend/api.py`; it
+accepts either name, new first.
 It is never written to disk by the page and does not survive closing the tab.
 
 ## What the rack unit says, and why
@@ -90,11 +93,11 @@ It is never written to disk by the page and does not survive closing the tab.
 
 | Condition | state | detail |
 |---|---|---|
-| Not enabled, or `SYM_ASIC_ENABLED` is not exactly `1` | `offline` | `disabled — set SYM_ASIC_ENABLED=1 and SYM_ASIC_TOKEN` |
+| Not enabled, or `SYMONEURAL_ASIC_ENABLED` is not exactly `1` | `offline` | `disabled — set SYMONEURAL_ASIC_ENABLED=1 and SYMONEURAL_ASIC_TOKEN` |
 | `.venv` missing | `offline` | `control venv not installed` |
 | Enabled, never probed yet | `offline` | `not yet probed` |
 | Probe returned an error | `offline` | the error, first 90 chars |
-| Enabled, `SYM_ASIC_RIGS` empty | `offline` | `no rigs configured` |
+| Enabled, `SYMONEURAL_ASIC_RIGS` empty | `offline` | `no rigs configured` |
 | Rigs configured, none answering | `offline` | `2 configured, none answering` |
 | Rigs answering | `ready` | `1 rig answering · 53.2 TH/s measured · AntMiner` |
 

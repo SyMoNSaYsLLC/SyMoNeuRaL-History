@@ -27,7 +27,7 @@ calling, and an MCP transport. `agent` streams one turn's frames as they arrive 
 takes the GPU only for as long as a tool it calls does. Its options are exactly the
 five parameters `POST /api/studio/agent` reads -- `query`, `history` (`-c`, from a
 transcript under `run/`), `max_steps`, `model` and `context` -- and no others, and it
-needs the API's own `SYM_STUDIO_TOKEN` in the environment.
+needs the API's own `SYMONEURAL_STUDIO_TOKEN` in the environment.
 
 Deliberately stdlib-only apart from sympy, which the system interpreter already
 carries -- `urllib` reads the SSE stream. `tools` and `mcp` additionally import the
@@ -51,6 +51,18 @@ HERE = Path(__file__).resolve().parent
 # usually a directory that exists. Assert it.
 ROOT = HERE.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
+
+# Legacy env promotion, and it has to run HERE -- above `STATE` and `DEFAULT_API` below,
+# which read the environment at module scope. Every variable this repo owns was once spelled
+# `SYM_*`; an operator's shell and `/etc/symoneural/api.env` may still say so, and this CLI
+# reads the API's own `SYMONEURAL_STUDIO_TOKEN` out of that shell. Without this, `symoneural-cli
+# agent` on an un-migrated box reports "no token in this environment" while the token is
+# plainly set, which is the worst kind of wrong answer -- confidently specific and false.
+# Same module the API uses, so there is one implementation of the rename to reason about.
+sys.path.insert(0, str(ROOT / "backend" / "apps"))
+import symoneuralenv  # noqa: E402
+symoneuralenv.promote()
+
 MODELS = ROOT / "backend" / "models"
 RUN = ROOT / "run"
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
@@ -59,8 +71,8 @@ UNIT = "symoneural-api"
 # Where the packaged postinst records the outcome of its deploy. Read, never invented: the
 # .deb's postinst writes one line here (`ok: <iso>`, `skipped: <why>`, or `FAILED: ...`) and
 # this is the only place either command learns whether the last publish worked.
-# SYM_STATE_DIR exists so the tests can point this at a tmpdir; nothing else sets it.
-STATE = Path(os.environ.get("SYM_STATE_DIR", "/var/lib/symoneural"))
+# SYMONEURAL_STATE_DIR exists so the tests can point this at a tmpdir; nothing else sets it.
+STATE = Path(os.environ.get("SYMONEURAL_STATE_DIR", "/var/lib/symoneural"))
 
 LLAMA_BIN = ROOT / "contrib" / "llama.cpp" / "build" / "bin"
 SD_BUILD = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin"
@@ -465,21 +477,21 @@ def cmd_ravencalc(args) -> int:
 # no session state of its own -- the file is the session, and it is the client's to hold.
 # ---------------------------------------------------------------------------
 
-DEFAULT_API = os.environ.get("SYM_API_URL", "http://127.0.0.1:8800")
+DEFAULT_API = os.environ.get("SYMONEURAL_API_URL", "http://127.0.0.1:8800")
 # Word for word what `/api/studio/state` returns as its own `detail` when the switch is off,
 # so the CLI and the endpoint cannot drift into saying different things about the same gate.
-GATE_HINT = "set SYM_STUDIO_ENABLED=1 and SYM_STUDIO_TOKEN=<secret>, then restart the API"
+GATE_HINT = "set SYMONEURAL_STUDIO_ENABLED=1 and SYMONEURAL_STUDIO_TOKEN=<secret>, then restart the API"
 
 
 def studio_token() -> str:
     """The operator token, read from the environment and never printed -- only sent."""
-    return os.environ.get("SYM_STUDIO_TOKEN") or ""
+    return os.environ.get("SYMONEURAL_STUDIO_TOKEN") or ""
 
 
 def require_token() -> bool:
     if studio_token():
         return True
-    print(f"no SYM_STUDIO_TOKEN in this environment: {GATE_HINT}", file=sys.stderr)
+    print(f"no SYMONEURAL_STUDIO_TOKEN in this environment: {GATE_HINT}", file=sys.stderr)
     print(c("the token is the API's own, kept in /etc/symoneural/api.env (root, 0600); "
             "export the same value here", DIM), file=sys.stderr)
     return False
@@ -501,6 +513,13 @@ def api_open(path: str, *, base: str, method: str = "GET", body: object = None,
     if data is not None:
         req.add_header("Content-Type", "application/json")
     if (token := studio_token()):
+        req.add_header("X-Symoneural-Token", token)
+        # And the name it replaced. This CLI is installed from a .deb and the API is a systemd
+        # unit; nothing makes them the same version at the same moment, so a freshly upgraded
+        # CLI can be the first thing to talk to an API that has not been restarted yet -- and
+        # `symoneural-cli agent` reporting 401 against a token that is plainly correct is the
+        # worst failure to diagnose from this end. Drop this line once the deployed API is
+        # known to read the new name.
         req.add_header("X-Sym-Token", token)
     return urllib.request.urlopen(req, timeout=timeout)
 
@@ -605,7 +624,7 @@ def cmd_state(args) -> int:
     if not on:
         row("", c(str(obj.get("detail") or GATE_HINT), DIM))
     ws = obj.get("workspace") or {}
-    row("workspace", str(ws.get("root") or c("not found -- set SYM_STUDIO_ROOT", AMBER)))
+    row("workspace", str(ws.get("root") or c("not found -- set SYMONEURAL_STUDIO_ROOT", AMBER)))
     row("tools", str(obj.get("tools", "?")))
     row("max steps", str(obj.get("max_steps", "?")))
     for name, b in (obj.get("inference") or {}).get("backends", {}).items():
@@ -621,7 +640,7 @@ def cmd_state(args) -> int:
     row("gpu lease", c("held", AMBER) if lease.get("holding") else c("not held", GREEN))
     row("workflows", ", ".join(obj.get("workflows") or []) or "none")
     if (pinned := (obj.get("inference") or {}).get("pinned")):
-        row("SYM_STUDIO_LLM", str(pinned))
+        row("SYMONEURAL_STUDIO_LLM", str(pinned))
     return 0
 
 
@@ -969,14 +988,14 @@ def cmd_mcp(args) -> int:
     row("fastmcp", f"{fastmcp}  {c(str(venv_py.parent.parent), DIM)}" if fastmcp
         else c("not installed -- symoneural-cli mcp --serve prints the two commands", AMBER))
     row("tools", f"{count} in {', '.join(groups)}" if groups else str(count))
-    row("switch", c("on", GREEN) if os.environ.get("SYM_STUDIO_ENABLED") == "1"
-        else c("SYM_STUDIO_ENABLED is not 1 in this shell", AMBER))
+    row("switch", c("on", GREEN) if os.environ.get("SYMONEURAL_STUDIO_ENABLED") == "1"
+        else c("SYMONEURAL_STUDIO_ENABLED is not 1 in this shell", AMBER))
     print()
     print(f"{c('a client wires it as:', BOLD)}")
     print(json.dumps({"mcpServers": {"symoneural-studio": {
         "command": str(venv_py), "args": [str(server)],
-        "env": {"SYM_STUDIO_ENABLED": "1", "SYM_STUDIO_TOKEN": "<secret>",
-                "SYM_STUDIO_ROOT": str(ROOT)}}}}, indent=2))
+        "env": {"SYMONEURAL_STUDIO_ENABLED": "1", "SYMONEURAL_STUDIO_TOKEN": "<secret>",
+                "SYMONEURAL_STUDIO_ROOT": str(ROOT)}}}}, indent=2))
     return 0
 
 
@@ -1029,7 +1048,7 @@ def main() -> int:
     def studio(name: str, help_text: str):
         q = sub.add_parser(name, help=help_text)
         q.add_argument("--url", default=DEFAULT_API,
-                       help=f"the API to talk to (default {DEFAULT_API}, or $SYM_API_URL)")
+                       help=f"the API to talk to (default {DEFAULT_API}, or $SYMONEURAL_API_URL)")
         return q
 
     p = studio("agent", "one agent turn, streamed -- thinking, tool calls, results, answer")

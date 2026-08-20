@@ -39,7 +39,7 @@ allow-list and no command blocklist -- `run_command` and `write_file` reach the 
 asked, and `generate_image` renders whatever it is given.
 
 What *is* here is the structural switch this repo already puts on every write-capable surface
-(`apps/voice`, `apps/asicminer`): `SYM_STUDIO_ENABLED=1` **and** `SYM_STUDIO_TOKEN=<secret>`,
+(`apps/voice`, `apps/asicminer`): `SYMONEURAL_STUDIO_ENABLED=1` **and** `SYMONEURAL_STUDIO_TOKEN=<secret>`,
 off unless both are set. That is not a filter on what the agent may do; it is the difference
 between a shell on a box with a public IP being reachable by anyone and being reachable by
 Garrett. With both set, it will happily `rm -rf` for him.
@@ -99,7 +99,7 @@ def status() -> dict:
 
     if not enabled():
         state = "offline"
-        detail = ("set SYM_STUDIO_ENABLED=1 and SYM_STUDIO_TOKEN=<secret> to switch it on; "
+        detail = ("set SYMONEURAL_STUDIO_ENABLED=1 and SYMONEURAL_STUDIO_TOKEN=<secret> to switch it on; "
                   "off by default because it can write to the host")
     else:
         state = "ready"
@@ -111,7 +111,7 @@ def status() -> dict:
             # that cannot find the stack cannot do the job the row advertises -- the detail says
             # which switch fixes it.
             state = "offline"
-            detail = ("no stack found: set SYM_STUDIO_ROOT to the checkout "
+            detail = ("no stack found: set SYMONEURAL_STUDIO_ROOT to the checkout "
                       f"({len(registry.names())} tools registered, none can reach disk)")
         else:
             detail = (f"{len(registry.names())} tools · workspace {workspace.ROOT} "

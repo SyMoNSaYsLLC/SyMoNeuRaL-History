@@ -21,11 +21,19 @@ from __future__ import annotations
 import hmac
 import os
 
-__all__ = ["enabled", "token_ok", "present_token", "ENV_ENABLED", "ENV_TOKEN", "HEADER"]
+__all__ = ["enabled", "token_ok", "present_token", "ENV_ENABLED", "ENV_TOKEN", "HEADER",
+           "HEADER_LEGACY"]
 
-ENV_ENABLED = "SYM_EXP_ENABLED"
-ENV_TOKEN = "SYM_EXP_TOKEN"
-HEADER = "X-Sym-Token"
+ENV_ENABLED = "SYMONEURAL_EXP_ENABLED"
+ENV_TOKEN = "SYMONEURAL_EXP_TOKEN"
+HEADER = "X-Symoneural-Token"
+
+# The name this header had until the rename, still accepted and deliberately second. The
+# reason is not politeness to old scripts: `site/exp.js` is cached by the browser, and a
+# visitor holding yesterday's copy sends the old name until that cache turns over. Renaming
+# only the server would 401 them with a token that is correct. New name wins when both are
+# present, matching `symoneuralenv.promote()` -- one precedence rule for the whole rename.
+HEADER_LEGACY = "X-Sym-Token"
 
 
 def enabled() -> bool:
@@ -64,15 +72,17 @@ def present_token(headers, query=None) -> str | None:
 
     The query form has the shape of the same argument and does not survive it. Studio needs one
     because `<img src>` and `new WebSocket()` cannot set a header; nothing here is either, and
-    `page.js` sends `X-Sym-Token` and only that (`page.js:56`). So this branch is a credential
-    channel that is live -- `routes.py:67` and `:81` both hand it `request.query_params` -- and
+    `page.js` sends `X-Symoneural-Token` and only that (`page.js:56`). So this branch is a
+    credential channel that is live -- `routes.py:67` and `:81` both hand it `request.query_params` -- and
     that no caller in this repo uses, which means the only way a token arrives here is in a URL,
     where it lands in the access log and in any referrer. Deleting the three lines would be the
     honest end of that reasoning; it is left in place because this pass is correcting claims
     rather than changing what the code accepts, and it is written down here so the next person
     reads it as an open item and not as a channel something depends on.
     """
-    for key in (HEADER, HEADER.lower()):
+    # Both spellings, new first. Both cases of each, because this is handed a plain dict by
+    # the tests as often as a case-insensitive Starlette `Headers`.
+    for key in (HEADER, HEADER.lower(), HEADER_LEGACY, HEADER_LEGACY.lower()):
         value = headers.get(key)
         if value:
             return value

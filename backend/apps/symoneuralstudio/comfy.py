@@ -92,7 +92,7 @@ def base_url() -> str:
     call and caches nothing, so the destination is chosen per request -- and `env_set` in
     `tools_impl/host.py:150` writes `os.environ` in this same process, which puts the address
     inside what an agent turn can change. Measured: `base_url()` gave `http://127.0.0.1:8188`,
-    then `env_set("SYM_COMFY_URL", "http://169.254.169.254:80")`, then `base_url()` gave
+    then `env_set("SYMONEURAL_COMFY_URL", "http://169.254.169.254:80")`, then `base_url()` gave
     `http://169.254.169.254:80` -- the link-local metadata address, fetched by the API process
     on behalf of whoever is driving the agent.
 
@@ -100,10 +100,10 @@ def base_url() -> str:
     What keeps this shut is the gate in front of the agent, not this function, so do not read
     the first line as a bound on where requests go.
     """
-    if (env := os.environ.get("SYM_COMFY_URL")):
+    if (env := os.environ.get("SYMONEURAL_COMFY_URL")):
         return env.rstrip("/")
-    host = os.environ.get("SYM_COMFY_HOST", DEFAULT_HOST)
-    port = os.environ.get("SYM_COMFY_PORT", str(DEFAULT_PORT))
+    host = os.environ.get("SYMONEURAL_COMFY_HOST", DEFAULT_HOST)
+    port = os.environ.get("SYMONEURAL_COMFY_PORT", str(DEFAULT_PORT))
     return f"http://{host}:{port}"
 
 

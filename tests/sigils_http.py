@@ -11,8 +11,8 @@ service, so the recipe is to bring the app up on a spare port and point this at 
     python3 -m uvicorn backend.api:app --port 8877 &
     python3 tests/sigils_http.py
 
-    SYM_TEST_BASE=http://127.0.0.1:8877   where the API is (default: the above)
-    SYM_RATE_SIGIL=2/100                  set on the *API's* environment to also exercise
+    SYMONEURAL_TEST_BASE=http://127.0.0.1:8877   where the API is (default: the above)
+    SYMONEURAL_RATE_SIGIL=2/100                  set on the *API's* environment to also exercise
                                           the rate lane; see the rate section at the end
 
 The decode assertion is the one that matters. `tests/frontend.mjs` has an image assertion
@@ -39,7 +39,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 from apps.sigils import png  # noqa: E402
 
-BASE = os.getenv("SYM_TEST_BASE", "http://127.0.0.1:8877").rstrip("/")
+BASE = os.getenv("SYMONEURAL_TEST_BASE", "http://127.0.0.1:8877").rstrip("/")
 API = BASE + "/api/sigils"
 
 #: Speech needs a sample with known words in it. whisper.cpp ships one, but `contrib/` is a
@@ -303,13 +303,13 @@ check("rubbish base64 is refused", code == 400, f"got {code}")
 
 # --------------------------------------------------------------------- the rate lane
 # LIMITS is built at the API's import time, so this can only be exercised when the API was
-# started with SYM_RATE_SIGIL set. Unset means every surface is unmetered by the operator's
+# started with SYMONEURAL_RATE_SIGIL set. Unset means every surface is unmetered by the operator's
 # standing instruction, and there is nothing here to prove. The structural guard that the
 # dependency is wired at all lives in backend/apps/sigils/test_sigils.py and needs no server.
 print("\nthe rate lane")
-lane = os.getenv("SYM_RATE_SIGIL", "").strip()
+lane = os.getenv("SYMONEURAL_RATE_SIGIL", "").strip()
 if not lane:
-    skip("rate limiting", "SYM_RATE_SIGIL unset on the API; the lane is off by design")
+    skip("rate limiting", "SYMONEURAL_RATE_SIGIL unset on the API; the lane is off by design")
 else:
     per_min = int(lane.split("/")[0])
     codes = [get_json("/state")[0] for _ in range(per_min + 2)]

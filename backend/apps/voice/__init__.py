@@ -50,8 +50,9 @@ can be transcribed *while* a chat generation is running, instead of after it.
 
 ## Off unless both switches are set
 
-    SYM_VOICE_ENABLED=1              # the literal string 1; `true` leaves it off, silently
-    SYM_VOICE_TOKEN=<shared secret>  # transcribe and speak require it in X-Sym-Token
+    SYMONEURAL_VOICE_ENABLED=1              # the literal string 1; `true` leaves it off, silently
+    SYMONEURAL_VOICE_TOKEN=<shared secret>  # transcribe and speak require it in
+                                            # X-Symoneural-Token
 
 `/api/*` is wholly delegated to FastAPI, so a route here is a public route, and a transcribe
 endpoint is CPU a stranger can spend. Requiring both variables is what makes a
@@ -84,13 +85,13 @@ def enabled() -> bool:
     """Both, or the surface does not exist. `== "1"` and not truthiness, matching asicminer:
     it reads like a boolean and is not one, and that is the confusion to keep consistent
     rather than to solve differently in each package."""
-    return (os.environ.get("SYM_VOICE_ENABLED") == "1"
-            and bool(os.environ.get("SYM_VOICE_TOKEN")))
+    return (os.environ.get("SYMONEURAL_VOICE_ENABLED") == "1"
+            and bool(os.environ.get("SYMONEURAL_VOICE_TOKEN")))
 
 
 def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    want = os.environ.get("SYM_VOICE_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_VOICE_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)

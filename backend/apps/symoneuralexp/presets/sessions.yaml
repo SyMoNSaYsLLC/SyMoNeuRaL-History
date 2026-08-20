@@ -32,7 +32,7 @@
 #     {"service": "session-b.asker#6:asker", "method": "ask"}
 #     #  -> {"prompt": "hello", "temperature": 0.0, "model": "echo", "text": "b> olleh"}
 #
-# (that route needs `SYM_EXP_ENABLED=1` and the token; the `#N` suffixes are mount order and
+# (that route needs `SYMONEURAL_EXP_ENABLED=1` and the token; the `#N` suffixes are mount order and
 # will differ if you edit this file). And offline, with no gate and no server, it is asserted by
 # `test_exp.py::InterceptTests::test_the_sessions_preset_shows_both_sides_of_one_declaration`,
 # which mounts this exact file. The proxy doing the merging is `_Intercepted` in `context.py`.

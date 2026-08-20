@@ -42,12 +42,14 @@ different realms, different objects, one `bus` shared between them.
 
 | Variable | Effect |
 |---|---|
-| `SYM_EXP_ENABLED=1` | turns the write half on. Absent → every write is `503` |
-| `SYM_EXP_TOKEN=<secret>` | required with it. A request without it is `401` |
-| `SYM_EXP_PRESET` | mounted at first use. Defaults to `dev`; `""` mounts nothing |
+| `SYMONEURAL_EXP_ENABLED=1` | turns the write half on. Absent → every write is `503` |
+| `SYMONEURAL_EXP_TOKEN=<secret>` | required with it. A request without it is `401` |
+| `SYMONEURAL_EXP_PRESET` | mounted at first use. Defaults to `dev`; `""` mounts nothing |
 
-Both switches are needed; `SYM_EXP_ENABLED` accepts `1` only. The token is read from
-`X-Sym-Token`, `Authorization: Bearer …` or `?token=`, compared with `hmac.compare_digest`.
+Both switches are needed; `SYMONEURAL_EXP_ENABLED` accepts `1` only. The token is read from
+`X-Symoneural-Token` (or `X-Sym-Token`, the name it replaced — `gate.present_token`
+reads both, new first), `Authorization: Bearer …` or `?token=`, compared with
+`hmac.compare_digest`.
 
 Reads are deliberately open — the whole argument for this runtime is that its state is
 inspectable, and a plugin table nobody can see without a secret is a plugin table nobody looks at.

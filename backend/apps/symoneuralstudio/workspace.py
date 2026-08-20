@@ -10,7 +10,7 @@ shows the operator the real path instead of a guess.
 
 Three strategies, in order, first hit wins:
 
-1. `SYM_STUDIO_ROOT` if it is set and passes the signature test. An explicit override always
+1. `SYMONEURAL_STUDIO_ROOT` if it is set and passes the signature test. An explicit override always
    beats a search.
 2. Walk up from this file. The package lives at `<root>/backend/apps/symoneuralstudio/`, so
    the root is three parents up -- but the walk is written as a loop rather than
@@ -60,7 +60,7 @@ def _is_stack(p: pathlib.Path) -> bool:
 
 
 def _from_env() -> pathlib.Path | None:
-    raw = os.environ.get("SYM_STUDIO_ROOT")
+    raw = os.environ.get("SYMONEURAL_STUDIO_ROOT")
     if not raw:
         return None
     p = pathlib.Path(raw).expanduser()
@@ -117,8 +117,8 @@ def root() -> pathlib.Path:
     if ROOT is None:
         raise RuntimeError(
             "no SyMoNeuRaL stack found: looked for "
-            f"{' + '.join(SIGNATURE)} via $SYM_STUDIO_ROOT, the parents of {__file__}, and "
-            f"one level under {pathlib.Path.home()}. Set SYM_STUDIO_ROOT to the checkout.")
+            f"{' + '.join(SIGNATURE)} via $SYMONEURAL_STUDIO_ROOT, the parents of {__file__}, and "
+            f"one level under {pathlib.Path.home()}. Set SYMONEURAL_STUDIO_ROOT to the checkout.")
     return ROOT
 
 
@@ -167,5 +167,5 @@ def describe() -> dict:
         "found_by": FOUND_BY,
         "signature": list(SIGNATURE),
         "comfyui": str(COMFYUI) if COMFYUI and COMFYUI.is_dir() else None,
-        "override_env": "SYM_STUDIO_ROOT",
+        "override_env": "SYMONEURAL_STUDIO_ROOT",
     }

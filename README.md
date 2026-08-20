@@ -90,7 +90,7 @@ backend/                the server
   api.py                chat, image, ravencalc, remix, status, /api/gen
   apps/                 components with their own code, docs and lifecycle
     accounts/           signup, login, sessions -- standard library only, not yet routed
-    asicminer/          ASIC control panel; off unless SYM_ASIC_ENABLED and a token are set
+    asicminer/          ASIC control panel; off unless SYMONEURAL_ASIC_ENABLED and a token are set
     coder/              workspace agent; local-first, three gates, all failing closed
     cryptominer/        GPU miner (Ravencoin/KawPow) -- the `gpuminer` rack unit
     gateway/            TRON/USDT licensing; offline on the rack, designed not deployed

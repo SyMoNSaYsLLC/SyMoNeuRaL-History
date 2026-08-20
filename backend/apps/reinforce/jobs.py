@@ -837,7 +837,7 @@ def status() -> dict:
 
     if not enabled():
         state = "offline"
-        detail = ("operator surface off · set SYM_REINFORCE_ENABLED=1 and SYM_REINFORCE_TOKEN "
+        detail = ("operator surface off · set SYMONEURAL_REINFORCE_ENABLED=1 and SYMONEURAL_REINFORCE_TOKEN "
                   "to accept work · a never-evicted GPU route open to the internet is a "
                   "rack-wide outage that costs one request")
     elif snap_state == "queued":

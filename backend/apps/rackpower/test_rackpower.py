@@ -21,28 +21,28 @@ import pytest
 from apps import rackpower as rp
 
 API = pathlib.Path(__file__).resolve().parent.parent.parent / "api.py"
-ENV_KEYS = ("SYM_RACK_ENABLED", "SYM_RACK_TOKEN", "SYM_RACK_ALLOW_REMOTE",
-            "SYM_RACK_STATE_DIR")
+ENV_KEYS = ("SYMONEURAL_RACK_ENABLED", "SYMONEURAL_RACK_TOKEN", "SYMONEURAL_RACK_ALLOW_REMOTE",
+            "SYMONEURAL_RACK_STATE_DIR")
 
 
 @pytest.fixture
 def clean_env(tmp_path, monkeypatch):
     """Every key cleared, and the state file pointed at a tmpdir.
 
-    Without the SYM_RACK_STATE_DIR override these tests would write into `run/`, which holds
+    Without the SYMONEURAL_RACK_STATE_DIR override these tests would write into `run/`, which holds
     the live GPU mutex -- and a test that disables `chat` in the real override file would
     take the running site's chat surface down.
     """
     for k in ENV_KEYS:
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setenv("SYM_RACK_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("SYMONEURAL_RACK_STATE_DIR", str(tmp_path))
     return tmp_path
 
 
 @pytest.fixture
 def switched_on(clean_env, monkeypatch):
-    monkeypatch.setenv("SYM_RACK_ENABLED", "1")
-    monkeypatch.setenv("SYM_RACK_TOKEN", "correct-horse-battery-staple")
+    monkeypatch.setenv("SYMONEURAL_RACK_ENABLED", "1")
+    monkeypatch.setenv("SYMONEURAL_RACK_TOKEN", "correct-horse-battery-staple")
     return clean_env
 
 
@@ -57,17 +57,17 @@ def test_the_module_refuses_everything_when_the_switch_is_unset(clean_env):
     for token in (None, "", "anything", "correct-horse-battery-staple"):
         ok, why = rp.authorize(token, "127.0.0.1")
         assert ok is False
-        assert "SYM_RACK_ENABLED" in why
+        assert "SYMONEURAL_RACK_ENABLED" in why
 
 
 def test_the_switch_alone_is_not_enough_without_a_token(clean_env, monkeypatch):
-    monkeypatch.setenv("SYM_RACK_ENABLED", "1")          # but no SYM_RACK_TOKEN
+    monkeypatch.setenv("SYMONEURAL_RACK_ENABLED", "1")          # but no SYMONEURAL_RACK_TOKEN
     assert rp.enabled() is False
     assert rp.authorize(None, "127.0.0.1")[0] is False
 
 
 def test_the_token_alone_is_not_enough_without_the_switch(clean_env, monkeypatch):
-    monkeypatch.setenv("SYM_RACK_TOKEN", "t")            # but no SYM_RACK_ENABLED
+    monkeypatch.setenv("SYMONEURAL_RACK_TOKEN", "t")            # but no SYMONEURAL_RACK_ENABLED
     assert rp.enabled() is False
 
 
@@ -87,7 +87,7 @@ def test_loopback_is_allowed(switched_on, peer):
 
 
 def test_allow_remote_opens_it_but_still_needs_a_parseable_address(switched_on, monkeypatch):
-    monkeypatch.setenv("SYM_RACK_ALLOW_REMOTE", "1")
+    monkeypatch.setenv("SYMONEURAL_RACK_ALLOW_REMOTE", "1")
     assert rp.authorize("correct-horse-battery-staple", "8.8.8.8")[0] is True
     # An operator who set ALLOW_REMOTE opened this to other hosts, not to callers this
     # process cannot identify -- there would be nothing to attribute the override to.
@@ -267,7 +267,7 @@ def test_the_module_cannot_kill_anything(switched_on):
 
 def test_the_override_file_lives_in_run_not_logs(clean_env, monkeypatch):
     """`run/` is runtime state and the name is load-bearing -- see `.claude/CLAUDE.md`."""
-    monkeypatch.delenv("SYM_RACK_STATE_DIR")
+    monkeypatch.delenv("SYMONEURAL_RACK_STATE_DIR")
     assert rp.state_dir().name == "run"
     assert rp.state_path().name == "units.disabled.json"
 
@@ -349,12 +349,12 @@ def test_routes_work_end_to_end_when_the_surface_is_on(switched_on):
     # the literal string "testclient" rather than an address -- which `_parse_peer` denies,
     # correctly. Supplying the chain is not test scaffolding around the gate; it is the same
     # thing Caddy does in front of the real API.
-    head = {"X-Sym-Token": "correct-horse-battery-staple", "X-Forwarded-For": "127.0.0.1"}
+    head = {"X-Symoneural-Token": "correct-horse-battery-staple", "X-Forwarded-For": "127.0.0.1"}
 
     assert client.get("/api/rack/power",
                       headers={"X-Forwarded-For": "127.0.0.1"}).status_code == 403  # no token
     assert client.get("/api/rack/power",
-                      headers={"X-Sym-Token": "no",
+                      headers={"X-Symoneural-Token": "no",
                                "X-Forwarded-For": "127.0.0.1"}).status_code == 403
 
     doc = client.get("/api/rack/power", headers=head).json()
@@ -386,7 +386,7 @@ def test_a_forwarded_header_decides_the_peer_not_the_socket(switched_on):
     app = FastAPI()
     app.include_router(rp.router, prefix="/api/rack")
     client = TestClient(app)
-    tok = {"X-Sym-Token": "correct-horse-battery-staple"}
+    tok = {"X-Symoneural-Token": "correct-horse-battery-staple"}
 
     # A request that reached Caddy from the box itself: the chain's first entry is loopback.
     local = dict(tok, **{"X-Forwarded-For": "127.0.0.1"})
@@ -399,15 +399,57 @@ def test_a_forwarded_header_decides_the_peer_not_the_socket(switched_on):
     assert client.get("/api/rack/power", headers=remote).status_code == 403
 
 
-def test_the_attribution_records_the_forwarded_client(switched_on, monkeypatch):
-    monkeypatch.setenv("SYM_RACK_ALLOW_REMOTE", "1")
+def test_the_legacy_header_alone_still_authorises(switched_on):
+    """`X-Sym-Token` is the name this credential had until the rename, still read by `_guard`.
+
+    Presented ALONE, which is the only way this pins anything: a request carrying both names
+    passes with the fallback deleted. The fallback is here because the sender is
+    `site/console.js` -- hand-authored, served to a browser, and cached -- while `site/` is
+    deployed by a different command from the API restart, so an operator's console can be
+    sending the old name with a token that is perfectly correct.
+
+    A wrong token in the legacy header is checked too, so this cannot pass by the gate having
+    stopped looking at tokens altogether.
+    """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     app = FastAPI()
     app.include_router(rp.router, prefix="/api/rack")
     client = TestClient(app)
-    head = {"X-Sym-Token": "correct-horse-battery-staple",
+    local = {"X-Forwarded-For": "127.0.0.1"}
+
+    good = dict(local, **{"X-Sym-Token": "correct-horse-battery-staple"})
+    assert client.get("/api/rack/power", headers=good).status_code == 200
+
+    bad = dict(local, **{"X-Sym-Token": "no"})
+    assert client.get("/api/rack/power", headers=bad).status_code == 403
+
+
+def test_the_new_header_wins_when_both_are_present(switched_on):
+    """Same precedence as `apps/symoneuralenv.promote()`. Pinned by putting the WRONG token in
+    the new header: a reader that consulted the legacy one first would answer 200 here."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(rp.router, prefix="/api/rack")
+    client = TestClient(app)
+    head = {"X-Forwarded-For": "127.0.0.1",
+            "X-Symoneural-Token": "wrong",
+            "X-Sym-Token": "correct-horse-battery-staple"}
+    assert client.get("/api/rack/power", headers=head).status_code == 403
+
+
+def test_the_attribution_records_the_forwarded_client(switched_on, monkeypatch):
+    monkeypatch.setenv("SYMONEURAL_RACK_ALLOW_REMOTE", "1")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(rp.router, prefix="/api/rack")
+    client = TestClient(app)
+    head = {"X-Symoneural-Token": "correct-horse-battery-staple",
             "X-Forwarded-For": "203.0.113.7, 127.0.0.1"}
     r = client.post("/api/rack/power/image", json={"offline": True}, headers=head)
     assert r.json()["by"] == "203.0.113.7"

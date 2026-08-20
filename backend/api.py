@@ -75,7 +75,7 @@ sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 sys.path.insert(0, str(HERE / "apps"))
 
 # Before ANY app import, and that ordering is the whole point rather than tidiness. Every
-# environment variable in this repo was once spelled `SYM_*` and is now `SYMONEURAL_*`; the
+# environment variable in this repo was once spelled `SYMONEURAL_*` and is now `SYMONEURAL_*`; the
 # env file on a running box (`/etc/symoneural/api.env`, root-owned and hand-edited) still
 # carries the old spelling, so this copies each legacy name onto its new one and logs a
 # deprecation notice. It has to run above the imports because
@@ -118,7 +118,7 @@ from apps import reinforce  # noqa: E402  -- the training bay. Bound to the pack
 # bare `status`/`enabled` cannot shadow this module's own. Importing it is cheap and safe
 # whether or not the surface is switched on: `apps/reinforce/__init__.py` defines
 # `enabled()` BEFORE it imports `.routes`, and every route calls it and answers 503 when
-# both SYM_REINFORCE_ENABLED and SYM_REINFORCE_TOKEN are not set. Mounting an off surface
+# both SYMONEURAL_REINFORCE_ENABLED and SYMONEURAL_REINFORCE_TOKEN are not set. Mounting an off surface
 # is not the same as enabling it. What it now mounts does preference and reinforcement
 # tuning as well as supervised -- see `apps/reinforce/TRAINING_BAY.md`.
 from apps import symoneuralstudio as studio  # noqa: E402  -- the local agent and the
@@ -126,7 +126,7 @@ from apps import symoneuralstudio as studio  # noqa: E402  -- the local agent an
 # in this file (`/api/studio/models`, the `studio` rate bucket) and a bare `enabled`/`status`
 # from the package would shadow this module's own. Importing it is free with the switch off:
 # `apps/symoneuralstudio/gate.py` is stdlib-only, and every route calls `enabled()` first and
-# answers 503 when SYM_STUDIO_ENABLED and SYM_STUDIO_TOKEN are not both set. It imports no
+# answers 503 when SYMONEURAL_STUDIO_ENABLED and SYMONEURAL_STUDIO_TOKEN are not both set. It imports no
 # torch, spawns no process, and does not touch the GPU until a job is queued.
 from apps import symoneuralexp as exp  # noqa: E402  -- the plugin runtime. Bound to an
 # alias for the same reason as `studio`: a bare `enabled`/`status` from the package would
@@ -201,7 +201,7 @@ JOB_TIMEOUT_S = 1800
 # The mechanism is kept rather than deleted, precisely because he said he would set these
 # later. Dial any surface in without editing code -- per-minute/per-hour:
 #
-#     SYM_RATE_CHAT=120/2000   SYM_RATE_IMAGE=20/300   SYM_RATE_RAVENCALC=240/6000
+#     SYMONEURAL_RATE_CHAT=120/2000   SYMONEURAL_RATE_IMAGE=20/300   SYMONEURAL_RATE_RAVENCALC=240/6000
 #
 # Unset means unlimited. The pre-2026-08-17 values are kept below as _RATE_SUGGESTED so
 # that restoring them is copy-and-paste rather than re-derivation; nothing reads it.
@@ -221,7 +221,7 @@ _RATE_SUGGESTED = {
     # the name is listed here for a reason that is not cosmetic: LIMITS is built by
     # iterating this dict, and `check_rate` returns True for any surface it does not
     # find. A name absent from here is not "unlimited by choice", it is *unmeterable*,
-    # and SYM_RATE_SIGIL would be read by nothing. This surface is the one aimed at a
+    # and SYMONEURAL_RATE_SIGIL would be read by nothing. This surface is the one aimed at a
     # phone app, so leaving it unmeterable was the wrong default to inherit.
     "sigil": (20,  300),
     # Voice is the first surface where the comment above does NOT apply. It is CPU work with
@@ -233,14 +233,14 @@ _RATE_SUGGESTED = {
     # `/api/studio/models`. No GPU, no CPU to speak of -- one `read_text` and a validation
     # pass -- so this bucket is not protecting the card, and today it is unset like every
     # other one here. It is listed for the reason spelled out under "sigil": a surface absent
-    # from this dict is not unlimited by choice, it is *unmeterable*, and SYM_RATE_STUDIO
+    # from this dict is not unlimited by choice, it is *unmeterable*, and SYMONEURAL_RATE_STUDIO
     # would be read by nothing. This is a public, unauthenticated list that a client polls,
     # which is exactly the shape where the operator may later want a ceiling, so the knob
     # exists ahead of the need. Same numbers as voice: cheap, but not free.
     "studio": (60,  900),
     # The plugin runtime's reads (`/api/exp/state`, `/plugins`, `/events`). Listed for the
     # reason spelled out under "sigil" and repeated under "studio": absent from this dict is
-    # not unlimited-by-choice, it is unmeterable, and SYM_RATE_EXP would be read by nothing.
+    # not unlimited-by-choice, it is unmeterable, and SYMONEURAL_RATE_EXP would be read by nothing.
     # The page polls `/events` with a cursor while it is open, so the ceiling has to sit above
     # a poll loop rather than below it -- the same shape as voice, and the same numbers.
     "exp": (60,  900),
@@ -249,13 +249,13 @@ _RATE_SUGGESTED = {
 
 def _rate_for(surface: str) -> tuple[int, int]:
     """Read a surface's budget from the environment. Unset means no limit."""
-    raw = os.getenv(f"SYM_RATE_{surface.upper()}", "").strip()
+    raw = os.getenv(f"SYMONEURAL_RATE_{surface.upper()}", "").strip()
     if raw:
         try:
             per_min, per_hour = (int(x) for x in raw.split("/", 1))
             return per_min, per_hour
         except ValueError:
-            log.warning("ignoring malformed SYM_RATE_%s=%r, want N/N",
+            log.warning("ignoring malformed SYMONEURAL_RATE_%s=%r, want N/N",
                         surface.upper(), raw)
     return (0, 0)          # 0 means "no bucket at all" -- see check_rate
 
@@ -2218,16 +2218,39 @@ async def remix(body: RemixRequest,
 # about the JavaScript that has to render them.
 # ------------------------------------------------------------------ asicminer control
 #
-# Operator routes. Every one requires SYM_ASIC_TOKEN in X-Sym-Token, compared in constant
-# time, and the surface has to be switched on at all -- so a box with the env unset serves
-# nothing here rather than serving an unauthenticated scanner. The scan itself refuses any
-# range that is not private; see backend/apps/asicminer/scan.py.
+# Operator routes. Every one requires SYMONEURAL_ASIC_TOKEN in X-Symoneural-Token, compared in
+# constant time, and the surface has to be switched on at all -- so a box with the env unset
+# serves nothing here rather than serving an unauthenticated scanner. The scan itself refuses
+# any range that is not private; see backend/apps/asicminer/scan.py.
+
+OPERATOR_HEADER = "X-Symoneural-Token"
+OPERATOR_HEADER_LEGACY = "X-Sym-Token"
+
+
+def _operator_token(request: Request) -> str | None:
+    """The operator token off the request, new header name first, then the one it replaced.
+
+    The legacy name is read because the senders are cached JavaScript. `site/miner.html` and
+    `site/console.js` are served with a cache-busting query string, but the HTML that
+    references them is not immutable, and a browser holding yesterday's copy sends the old
+    header until it turns over. Renaming only this side would answer 401 to an operator whose
+    token is correct, which is the failure mode hardest to diagnose from the browser end.
+
+    `request.headers` is case-insensitive (Starlette normalises), so one spelling of each name
+    is enough here -- unlike the gate modules, which are handed plain dicts by their tests.
+
+    The 401 below names only the new header. A caller sending the legacy one was accepted, so
+    naming both in the error would describe a rejection that did not happen for that reason.
+    """
+    return (request.headers.get(OPERATOR_HEADER)
+            or request.headers.get(OPERATOR_HEADER_LEGACY))
+
 
 def _asic_auth(request: Request) -> None:
     if not asicminer.enabled():
         raise HTTPException(503, "the miner surface is disabled on this installation")
-    if not asicminer.token_ok(request.headers.get("X-Sym-Token")):
-        raise HTTPException(401, "bad or missing X-Sym-Token")
+    if not asicminer.token_ok(_operator_token(request)):
+        raise HTTPException(401, f"bad or missing {OPERATOR_HEADER}")
 
 
 class ScanBody(BaseModel):
@@ -2282,8 +2305,8 @@ async def asic_emulator(request: Request, body: EmuBody) -> dict:
 def _miner_auth(request: Request) -> None:
     if not cryptominer.enabled():
         raise HTTPException(503, "the GPU miner surface is disabled on this installation")
-    if not cryptominer.token_ok(request.headers.get("X-Sym-Token")):
-        raise HTTPException(401, "bad or missing X-Sym-Token")
+    if not cryptominer.token_ok(_operator_token(request)):
+        raise HTTPException(401, f"bad or missing {OPERATOR_HEADER}")
 
 
 class MinerBody(BaseModel):
@@ -2323,7 +2346,7 @@ app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accoun
 app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
 app.include_router(guide_routes.router, prefix="/api/guide", tags=["guide"])
 app.include_router(project.router, prefix="/api/project", tags=["project"])
-# The per-unit power switch. Mounting it is not enabling it: with SYM_RACK_ENABLED unset
+# The per-unit power switch. Mounting it is not enabling it: with SYMONEURAL_RACK_ENABLED unset
 # every route answers 404 -- absent rather than forbidden, because the rack is public and a
 # 403 would advertise to a visitor that this installation has an operator control.
 app.include_router(rackpower.router, prefix="/api/rack", tags=["rack"])
@@ -2343,7 +2366,7 @@ app.include_router(reinforce.router, prefix="/api/train", tags=["reinforce"])
 # Speech in, on the CPU. This surface takes no governor lease -- measured, not asserted: the
 # whisper.cpp build here is GGML_CUDA=OFF, 284 MiB RSS and 0 VRAM, so a spoken question is
 # transcribed *while* a chat generation runs rather than after it. RavenCalc is the precedent.
-# Off unless SYM_VOICE_ENABLED=1 and SYM_VOICE_TOKEN are both set; see apps/voice/__init__.py.
+# Off unless SYMONEURAL_VOICE_ENABLED=1 and SYMONEURAL_VOICE_TOKEN are both set; see apps/voice/__init__.py.
 # There is deliberately NO `voice` rack unit yet: status() is written and correct, but its href
 # is /voice.html and that page does not exist, so the row would be a dead link on the front
 # page. Add the row in the same commit as the page.
@@ -2351,7 +2374,7 @@ app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 
 # Stickers is the one app router that spends the GPU, so it is the one that needs the
 # meter actually connected. Listing "sigil" in _RATE_SUGGESTED builds the buckets; it does
-# not spend from them. Without this dependency SYM_RATE_SIGIL=20/300 would be read,
+# not spend from them. Without this dependency SYMONEURAL_RATE_SIGIL=20/300 would be read,
 # validated, turned into two RateLimiter objects -- and consulted by nothing, which is a
 # worse state than being openly unmetered because the operator would believe a cap was in
 # force. Applied here rather than in apps/sigils/routes.py because throttled_for lives in
@@ -2399,7 +2422,7 @@ app.include_router(studio.router, prefix="/api/studio", tags=["studio"])
 app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=False)
 
 # ---- the plugin runtime ----------------------------------------------------
-# Reads are open, mutations need SYM_EXP_ENABLED=1 and SYM_EXP_TOKEN. The split is narrower
+# Reads are open, mutations need SYMONEURAL_EXP_ENABLED=1 and SYMONEURAL_EXP_TOKEN. The split is narrower
 # than studio's and deliberate: the whole argument for this surface is that what is mounted,
 # in what state, and waiting on what is inspectable, and a plugin table behind a secret is a
 # plugin table nobody reads. One thing is withheld from a tokenless caller -- each entry's

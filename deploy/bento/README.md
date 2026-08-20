@@ -64,7 +64,7 @@ bind-mounts the repo and takes the GPU through CDI). Do not conflate them.
 ## Running it against the real model
 
 The container generates nothing on its own. Point it at an OpenAI-compatible endpoint and it
-forwards; leave `SYM_LLAMA_URL` unset and it answers from a stub that says `[stub]` in its own
+forwards; leave `SYMONEURAL_LLAMA_URL` unset and it answers from a stub that says `[stub]` in its own
 output and `"backend": "stub"` in the response.
 
 Do not hand-start a `llama-server` for this. `backend/api.py` already owns that process: it
@@ -79,7 +79,7 @@ So: bring chat up the normal way (`scripts/symoneural.sh on`, then send one requ
 
 ```bash
 podman run --rm --network host \
-  -e SYM_LLAMA_URL=http://127.0.0.1:8081 \
+  -e SYMONEURAL_LLAMA_URL=http://127.0.0.1:8081 \
   localhost/symoneural-text-gen:bentoml-latest
 ```
 

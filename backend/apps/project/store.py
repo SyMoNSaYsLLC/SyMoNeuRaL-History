@@ -96,7 +96,7 @@ def valid_id(s: object) -> bool:
 
 
 def db_path() -> pathlib.Path:
-    """`run/project/store.db`, overridable with `SYM_PROJECT_DB`.
+    """`run/project/store.db`, overridable with `SYMONEURAL_PROJECT_DB`.
 
     `docs/specs/project-spec.md` §2.5 proposes `backend/project/store.db` and argues `run/`
     is wrong because `.claude/CLAUDE.md` describes it as runtime state somebody will
@@ -109,17 +109,17 @@ def db_path() -> pathlib.Path:
     keeps its database at `run/accounts/accounts.db`.
 
     To take the spec's placement instead, add `backend/project/` to `.gitignore` and set
-    `SYM_PROJECT_DB=backend/project/store.db`. Both are one line and neither is this
+    `SYMONEURAL_PROJECT_DB=backend/project/store.db`. Both are one line and neither is this
     package's to write.
     """
-    override = os.environ.get("SYM_PROJECT_DB", "").strip()
+    override = os.environ.get("SYMONEURAL_PROJECT_DB", "").strip()
     if override:
         return pathlib.Path(override).expanduser()
     return ROOT / "run" / "project" / "store.db"
 
 
 def backup_dir() -> pathlib.Path:
-    override = os.environ.get("SYM_PROJECT_BACKUP_DIR", "").strip()
+    override = os.environ.get("SYMONEURAL_PROJECT_BACKUP_DIR", "").strip()
     if override:
         return pathlib.Path(override).expanduser()
     return db_path().parent / "backups"
@@ -136,8 +136,8 @@ def enabled() -> bool:
     on a box with a public IP the difference between "enabled with no token" and "off" is
     the difference between a private workspace and a public one.
     """
-    return (os.environ.get("SYM_PROJECT_ENABLED") == "1"
-            and bool(os.environ.get("SYM_PROJECT_TOKEN")))
+    return (os.environ.get("SYMONEURAL_PROJECT_ENABLED") == "1"
+            and bool(os.environ.get("SYMONEURAL_PROJECT_TOKEN")))
 
 
 def token_ok(presented: str | None) -> bool:
@@ -147,7 +147,7 @@ def token_ok(presented: str | None) -> bool:
     "The token IS the gate now"), so entropy is the only thing between this token and a
     guess. Generate it with `secrets.token_urlsafe(32)` and never by hand.
     """
-    want = os.environ.get("SYM_PROJECT_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_PROJECT_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)
@@ -160,11 +160,11 @@ def authorize(token: str | None) -> tuple[bool, str, str]:
     disabled before it reports anything about the token.
     """
     if not enabled():
-        return False, "disabled", ("surface disabled — set SYM_PROJECT_ENABLED=1 and "
-                                   "SYM_PROJECT_TOKEN, and read "
+        return False, "disabled", ("surface disabled — set SYMONEURAL_PROJECT_ENABLED=1 and "
+                                   "SYMONEURAL_PROJECT_TOKEN, and read "
                                    "backend/apps/project/README.md first")
     if not token_ok(token):
-        return False, "unauthorized", "bad or missing X-Sym-Token"
+        return False, "unauthorized", "bad or missing X-Symoneural-Token"
     return True, "", ""
 
 
@@ -220,8 +220,8 @@ def _denied_reason(resolved: pathlib.Path) -> str | None:
 
 
 def repo_root() -> pathlib.Path:
-    """The tree a file reference may name. `SYM_PROJECT_ROOT` narrows it for tests."""
-    raw = os.environ.get("SYM_PROJECT_ROOT", "").strip() or str(ROOT)
+    """The tree a file reference may name. `SYMONEURAL_PROJECT_ROOT` narrows it for tests."""
+    raw = os.environ.get("SYMONEURAL_PROJECT_ROOT", "").strip() or str(ROOT)
     return pathlib.Path(raw).expanduser().resolve()
 
 

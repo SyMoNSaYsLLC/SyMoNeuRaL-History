@@ -37,7 +37,16 @@
   function headers(extra) {
     var h = extra || {};
     var t = token();
-    if (t) h['X-Sym-Token'] = t;
+    if (t) {
+      h['X-Symoneural-Token'] = t;
+      // And the name this header had until the rename. Both, because the site and the API are
+      // deployed by two separate commands (`deploy.sh`, then `systemctl restart`), so there is
+      // a window where this file is new and the server answering it is not. The server reads
+      // both too, which covers the other direction -- a cached copy of this file against a new
+      // API. Same secret, same origin, twice in one request header block; it comes out once
+      // the API is known to be restarted.
+      h['X-Sym-Token'] = t;
+    }
     return h;
   }
 
@@ -110,7 +119,7 @@
 
     var ws = s.workspace || {};
     strip.appendChild(cell('Workspace', ws.root || 'not found', ws.root ? null : 'st-warn',
-      ws.root ? ('located by ' + ws.found_by) : 'set SYM_STUDIO_ROOT'));
+      ws.root ? ('located by ' + ws.found_by) : 'set SYMONEURAL_STUDIO_ROOT'));
   }
 
   /* ---- the gate ---------------------------------------------------------- */
@@ -125,8 +134,8 @@
         + 'unless the operator sets both switches and restarts the API:');
       g.appendChild(p);
       var pre = el('p', null, '');
-      var c1 = el('code', null, 'SYM_STUDIO_ENABLED=1');
-      var c2 = el('code', null, 'SYM_STUDIO_TOKEN=<secret>');
+      var c1 = el('code', null, 'SYMONEURAL_STUDIO_ENABLED=1');
+      var c2 = el('code', null, 'SYMONEURAL_STUDIO_TOKEN=<secret>');
       pre.appendChild(c1); pre.appendChild(document.createTextNode(' '));
       pre.appendChild(c2);
       g.appendChild(pre);
@@ -141,7 +150,7 @@
     var form = el('form');
     var input = document.createElement('input');
     input.type = 'password';
-    input.placeholder = 'SYM_STUDIO_TOKEN';
+    input.placeholder = 'SYMONEURAL_STUDIO_TOKEN';
     input.autocomplete = 'off';
     var btn = el('button', null, 'Unlock');
     btn.type = 'submit';

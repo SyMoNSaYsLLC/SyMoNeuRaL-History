@@ -16,7 +16,7 @@ So this is written as an adapter with two backends rather than as an Ollama clie
 Both speak `POST /v1/chat/completions` with the OpenAI request shape, including the `tools`
 array, so `agent.py` contains no per-backend branching at all -- picking a backend changes a
 base URL and nothing else. If Ollama is installed later it is found automatically, and
-`SYM_STUDIO_LLM=ollama` pins it.
+`SYMONEURAL_STUDIO_LLM=ollama` pins it.
 
     curl -fsSL https://ollama.com/install.sh | sh
     ollama pull qwen2.5:7b-instruct
@@ -45,13 +45,13 @@ import httpx
 
 __all__ = ["Backend", "backends", "pick", "state", "OLLAMA_URL", "LLAMACPP_URL"]
 
-LLAMACPP_URL = os.environ.get("SYM_LLAMACPP_URL", "http://127.0.0.1:8081")
-OLLAMA_URL = os.environ.get("SYM_OLLAMA_URL", "http://127.0.0.1:11434")
+LLAMACPP_URL = os.environ.get("SYMONEURAL_LLAMACPP_URL", "http://127.0.0.1:8081")
+OLLAMA_URL = os.environ.get("SYMONEURAL_OLLAMA_URL", "http://127.0.0.1:11434")
 
 
 @dataclass(frozen=True)
 class Backend:
-    """One OpenAI-compatible endpoint. `name` is what the operator sets SYM_STUDIO_LLM to."""
+    """One OpenAI-compatible endpoint. `name` is what the operator sets SYMONEURAL_STUDIO_LLM to."""
     name: str
     base: str
     model_hint: str
@@ -165,14 +165,14 @@ def backends() -> dict[str, Backend]:
 
 
 async def pick() -> Backend | None:
-    """Choose a backend: the pinned one if `SYM_STUDIO_LLM` names it, otherwise whichever is
+    """Choose a backend: the pinned one if `SYMONEURAL_STUDIO_LLM` names it, otherwise whichever is
     actually answering, llama.cpp first because it is this stack's own engine.
 
     Returns None when neither responds. That is a real state on this box -- llama-server is
     started on demand by the chat surface and is down most of the time -- and it is reported
     rather than papered over.
     """
-    pinned = (os.environ.get("SYM_STUDIO_LLM") or "").strip().lower()
+    pinned = (os.environ.get("SYMONEURAL_STUDIO_LLM") or "").strip().lower()
     order = list(backends().values())
     if pinned in backends():
         chosen = backends()[pinned]
@@ -187,7 +187,7 @@ async def pick() -> Backend | None:
 
 async def state() -> dict:
     """What `/api/studio/state` publishes about inference. Probes both, names the fix."""
-    out: dict = {"pinned": os.environ.get("SYM_STUDIO_LLM") or None, "backends": {}}
+    out: dict = {"pinned": os.environ.get("SYMONEURAL_STUDIO_LLM") or None, "backends": {}}
     active = None
     for name, b in backends().items():
         up = await b.up()
@@ -208,11 +208,11 @@ async def state() -> dict:
                              "`ollama pull qwen2.5:7b-instruct`")
         out["backends"][name] = row
 
-    pinned = (os.environ.get("SYM_STUDIO_LLM") or "").strip().lower()
+    pinned = (os.environ.get("SYMONEURAL_STUDIO_LLM") or "").strip().lower()
     if pinned and pinned in out["backends"]:
         out["active"] = pinned if out["backends"][pinned]["up"] else None
         if out["active"] is None:
-            out["detail"] = f"SYM_STUDIO_LLM pins '{pinned}' and it is not answering"
+            out["detail"] = f"SYMONEURAL_STUDIO_LLM pins '{pinned}' and it is not answering"
     else:
         out["active"] = active
         if active is None:

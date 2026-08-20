@@ -54,7 +54,8 @@ from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDis
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import agent, comfy, graph as graphmod, inference, registry, workflows, workspace
-from .gate import COOKIE, COOKIE_PATH, HEADER, enabled, present_token, token_ok
+from .gate import (COOKIE, COOKIE_LEGACY, COOKIE_PATH, HEADER, enabled, present_token,
+                   token_ok)
 from .tools_impl import host  # noqa: F401  (also completes tool registration)
 
 __all__ = ["router", "ui_router"]
@@ -66,12 +67,12 @@ ui_router = APIRouter()
 #: from the editor arrives with gaps of a second or two while the user clicks; releasing
 #: instantly would unload and reload the weights between them. Overridable, and measured in
 #: the `/state` reply so it is never a mystery number.
-LINGER_S = float(os.environ.get("SYM_STUDIO_LEASE_LINGER", "8"))
+LINGER_S = float(os.environ.get("SYMONEURAL_STUDIO_LEASE_LINGER", "8"))
 
 #: Ceiling on how long a job started through the editor can hold the shared lease. ComfyUI
 #: reports completion through `/history`, and if a job vanishes without ever landing there
 #: (server killed mid-render) this is what stops the lock being held forever.
-JOB_TIMEOUT_S = float(os.environ.get("SYM_STUDIO_JOB_TIMEOUT", "1800"))
+JOB_TIMEOUT_S = float(os.environ.get("SYMONEURAL_STUDIO_JOB_TIMEOUT", "1800"))
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +94,7 @@ def _guard(request: Request) -> None:
     if not enabled():
         raise Denied(503, {
             "error": "studio_disabled",
-            "detail": "set SYM_STUDIO_ENABLED=1 and SYM_STUDIO_TOKEN=<secret> and restart the API",
+            "detail": "set SYMONEURAL_STUDIO_ENABLED=1 and SYMONEURAL_STUDIO_TOKEN=<secret> and restart the API",
         })
     if not token_ok(present_token(request.headers, request.query_params, request.cookies)):
         raise Denied(401, {"error": "bad_token",
@@ -334,8 +335,8 @@ async def state(request: Request) -> JSONResponse:
     comfy_state, llm_state = await asyncio.gather(client.alive(), inference.state())
     return JSONResponse({
         "enabled": on,
-        "detail": None if on else ("set SYM_STUDIO_ENABLED=1 and "
-                                   "SYM_STUDIO_TOKEN=<secret>, then restart the API"),
+        "detail": None if on else ("set SYMONEURAL_STUDIO_ENABLED=1 and "
+                                   "SYMONEURAL_STUDIO_TOKEN=<secret>, then restart the API"),
         # `workspace.describe()`, not `workspace.root()`. `root()` *raises* when discovery
         # found nothing, so the one endpoint that exists to report absence without a token was
         # the endpoint that 500'd on it -- and `page.js`'s `ws.root || 'not found'` branch could
@@ -894,7 +895,11 @@ def _mint_cookie(request: Request, response: Response) -> None:
     """
     if request.query_params.get("token") is None:
         return
-    if request.cookies.get(COOKIE) == request.query_params.get("token"):
+    # Either spelling counts as "already minted", or every open session mid-rename would get a
+    # fresh Set-Cookie on every entry-document load. `COOKIE_LEGACY` is still read by
+    # `present_token`, so a tab holding it is authorised and needs no re-mint this request.
+    if request.query_params.get("token") in (request.cookies.get(COOKIE),
+                                             request.cookies.get(COOKIE_LEGACY)):
         return          # already set; do not re-send the header on every asset
     response.set_cookie(COOKIE, request.query_params["token"], path=COOKIE_PATH,
                         httponly=True, samesite="strict")

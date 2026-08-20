@@ -13,8 +13,8 @@ Two things this file is careful about:
 
 * It never touches the real `run/`. That directory holds `gpu.lock.d`, the GPU mutex, and a
   test that wrote into it could destroy a lock while a surface held the card. Every test
-  points `SYM_CODER_STATE_DIR` at a temp directory.
-* It never touches the real workspace. `SYM_CODER_WORKSPACE` is a temp tree built per test.
+  points `SYMONEURAL_CODER_STATE_DIR` at a temp directory.
+* It never touches the real workspace. `SYMONEURAL_CODER_WORKSPACE` is a temp tree built per test.
 """
 from __future__ import annotations
 
@@ -55,17 +55,17 @@ class Base(unittest.TestCase):
         (self.outside / "secret.txt").write_text("MUST NOT BE READABLE\n")
 
         self._saved = {k: os.environ.get(k) for k in (
-            "SYM_CODER_ENABLED", "SYM_CODER_TOKEN", "SYM_CODER_ALLOW_REMOTE",
-            "SYM_CODER_WORKSPACE", "SYM_CODER_STATE_DIR")}
-        os.environ["SYM_CODER_WORKSPACE"] = str(self.ws)
-        os.environ["SYM_CODER_STATE_DIR"] = str(self.state)
-        os.environ.pop("SYM_CODER_ALLOW_REMOTE", None)
+            "SYMONEURAL_CODER_ENABLED", "SYMONEURAL_CODER_TOKEN", "SYMONEURAL_CODER_ALLOW_REMOTE",
+            "SYMONEURAL_CODER_WORKSPACE", "SYMONEURAL_CODER_STATE_DIR")}
+        os.environ["SYMONEURAL_CODER_WORKSPACE"] = str(self.ws)
+        os.environ["SYMONEURAL_CODER_STATE_DIR"] = str(self.state)
+        os.environ.pop("SYMONEURAL_CODER_ALLOW_REMOTE", None)
         if self.ENABLED:
-            os.environ["SYM_CODER_ENABLED"] = "1"
-            os.environ["SYM_CODER_TOKEN"] = TOKEN
+            os.environ["SYMONEURAL_CODER_ENABLED"] = "1"
+            os.environ["SYMONEURAL_CODER_TOKEN"] = TOKEN
         else:
-            os.environ.pop("SYM_CODER_ENABLED", None)
-            os.environ.pop("SYM_CODER_TOKEN", None)
+            os.environ.pop("SYMONEURAL_CODER_ENABLED", None)
+            os.environ.pop("SYMONEURAL_CODER_TOKEN", None)
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -347,22 +347,24 @@ class TestRun(Base):
 
     def test_the_token_is_scrubbed_from_the_child_environment(self):
         r = coder.run([sys.executable, "-c",
-                       "import os; print(os.environ.get('SYM_CODER_TOKEN','ABSENT'))"],
+                       "import os; print(os.environ.get('SYMONEURAL_CODER_TOKEN','ABSENT'))"],
                       **self.auth())
         self.assertEqual(r["stdout"].strip(), "ABSENT")
 
     def test_both_env_prefixes_are_scrubbed_and_nothing_else_is(self):
-        """Renaming `SYM_*` to `SYMONEURAL_*` must not silently disarm the scrubber.
+        """Both env spellings are scrubbed, and nothing else is.
 
-        `_scrubbed_env` matches by prefix, and `"SYMONEURAL_STUDIO_TOKEN".
-        startswith("SYM_")` is False -- so a prefix check written for only the old spelling
-        stops removing anything the moment the names on this box become `SYMONEURAL_*`.
-        Nothing announces that state: no exception, no log line, and the test above keeps
-        passing because it constructs its own `SYM_CODER_TOKEN`, while every real token on
-        the box rides into every child process this surface spawns. So both spellings are
-        asserted here, and a variable carrying neither TOKEN, SECRET nor KEY is asserted to
-        SURVIVE -- a scrubber that empties the whole environment is a different bug, and one
-        that would make the absence assertions above pass for the wrong reason.
+        `_scrubbed_env` matches by prefix, which is what makes a wrong prefix silent:
+        `"SYMONEURAL_STUDIO_TOKEN".startswith("SYM_")` is False, so a check written for one
+        spelling stops removing anything the moment the box uses the other -- no exception,
+        no log line. The legacy `SYM_` spelling is not history: `symoneuralenv.promote()`
+        migrates an old env file by copying each name onto its new spelling and leaving the
+        old one in place (children inherit this environment and some still read it), so a
+        live process can hold both at once and both have to go.
+
+        The surviving half is not padding. A scrubber that emptied the environment wholesale
+        would satisfy every absence assertion here for entirely the wrong reason, so two
+        names carrying the prefix but neither TOKEN, SECRET nor KEY are asserted to remain.
         """
         gone = {
             "SYMONEURAL_STUDIO_TOKEN": "new-spelling-token",
@@ -531,7 +533,7 @@ class TestWriteAndRollback(Base):
         ws2 = self.tmp / "ws2"
         ws2.mkdir()
         (ws2 / "same.txt").write_text("workspace two\n")
-        os.environ["SYM_CODER_WORKSPACE"] = str(ws2)
+        os.environ["SYMONEURAL_CODER_WORKSPACE"] = str(ws2)
         coder.write_file("same.txt", "edited two\n", **self.auth())
         h2 = coder.history("same.txt", **self.auth())["versions"]
         self.assertEqual(len(h2), 1, "the second workspace inherited the first's history")
@@ -594,7 +596,7 @@ class TestJournal(Base):
     def test_a_write_that_cannot_be_journalled_does_not_happen(self):
         """HANDOVER §5 item 1 in miniature: the failure path must deny, not proceed."""
         (self.ws / "k.txt").write_text("original\n")
-        os.environ["SYM_CODER_STATE_DIR"] = "/proc/cannot-create-this/state"
+        os.environ["SYMONEURAL_CODER_STATE_DIR"] = "/proc/cannot-create-this/state"
         r = coder.write_file("k.txt", "should not land\n", **self.auth())
         self.assertFalse(r["ok"], "an unjournalled write was ALLOWED")
         self.assertEqual((self.ws / "k.txt").read_text(), "original\n")
@@ -612,7 +614,7 @@ class TestJournal(Base):
 
 
 class TestDisabled(Base):
-    """SYM_CODER_ENABLED unset. Every entry point must refuse."""
+    """SYMONEURAL_CODER_ENABLED unset. Every entry point must refuse."""
 
     ENABLED = False
 
@@ -640,12 +642,12 @@ class TestDisabled(Base):
         self.assertEqual(coder.unit_state()[0], "offline")
 
     def test_a_token_alone_is_not_enough(self):
-        os.environ["SYM_CODER_TOKEN"] = TOKEN        # but not SYM_CODER_ENABLED
+        os.environ["SYMONEURAL_CODER_TOKEN"] = TOKEN        # but not SYMONEURAL_CODER_ENABLED
         self.assertFalse(coder.enabled())
         self.assertFalse(coder.read_file("x.txt", **self.auth())["ok"])
 
     def test_the_switch_alone_is_not_enough(self):
-        os.environ["SYM_CODER_ENABLED"] = "1"        # but no token
+        os.environ["SYMONEURAL_CODER_ENABLED"] = "1"        # but no token
         self.assertFalse(coder.enabled())
         self.assertFalse(coder.read_file("x.txt", **self.auth())["ok"])
         self.assertFalse(coder.token_ok(None))
@@ -678,7 +680,7 @@ class TestGates(Base):
             ok, why = coder.authorize(TOKEN, peer)
             self.assertFalse(ok, f"peer {peer!r} was ACCEPTED")
         # and still refused when remote is allowed -- there is nothing to attribute to
-        os.environ["SYM_CODER_ALLOW_REMOTE"] = "1"
+        os.environ["SYMONEURAL_CODER_ALLOW_REMOTE"] = "1"
         for peer in (None, "", "unknown", "localhost"):
             ok, _ = coder.authorize(TOKEN, peer)
             self.assertFalse(ok, f"peer {peer!r} was ACCEPTED with ALLOW_REMOTE")
@@ -692,18 +694,18 @@ class TestGates(Base):
     def test_allow_remote_is_the_only_thing_that_opens_a_remote_peer(self):
         ok, _ = coder.authorize(TOKEN, "203.0.113.9")
         self.assertFalse(ok)
-        os.environ["SYM_CODER_ALLOW_REMOTE"] = "1"
+        os.environ["SYMONEURAL_CODER_ALLOW_REMOTE"] = "1"
         ok, why = coder.authorize(TOKEN, "203.0.113.9")
         self.assertTrue(ok, why)
         # and it is still gated on the token
         self.assertFalse(coder.authorize("wrong", "203.0.113.9")[0])
         # ... and on the master switch
-        os.environ.pop("SYM_CODER_ENABLED")
+        os.environ.pop("SYMONEURAL_CODER_ENABLED")
         self.assertFalse(coder.authorize(TOKEN, "203.0.113.9")[0])
 
     def test_allow_remote_must_be_exactly_1(self):
         for v in ("0", "true", "yes", "", "TRUE", "1 "):
-            os.environ["SYM_CODER_ALLOW_REMOTE"] = v
+            os.environ["SYMONEURAL_CODER_ALLOW_REMOTE"] = v
             self.assertFalse(coder.allow_remote(), f"{v!r} enabled remote access")
 
 

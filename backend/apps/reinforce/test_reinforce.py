@@ -18,7 +18,7 @@ launch path is exercised separately and deliberately, by hand, with the step-cap
 preset against a synthetic dataset:
 
     mkdir -p run/reinforce/datasets   # then write a few dummy {"messages": [...]} rows
-    SYM_REINFORCE_ENABLED=1 SYM_REINFORCE_TOKEN=x python3 -c "\\
+    SYMONEURAL_REINFORCE_ENABLED=1 SYMONEURAL_REINFORCE_TOKEN=x python3 -c "\\
       import sys; sys.path.insert(0, 'backend/apps'); from reinforce import jobs; \\
       print(jobs.start('Qwen/Qwen2.5-7B-Instruct', 'smoke', \\
                        'run/reinforce/datasets/pipeline-smoke.jsonl'))"
@@ -1224,9 +1224,9 @@ class RackUnitTests(unittest.TestCase):
     def test_status_is_offline_when_the_surface_is_off(self):
         old = dict(os.environ)
         try:
-            os.environ.pop("SYM_REINFORCE_ENABLED", None)
+            os.environ.pop("SYMONEURAL_REINFORCE_ENABLED", None)
             self.assertEqual(jobs.status()["state"], "offline")
-            self.assertIn("SYM_REINFORCE_ENABLED", jobs.status()["detail"])
+            self.assertIn("SYMONEURAL_REINFORCE_ENABLED", jobs.status()["detail"])
         finally:
             os.environ.clear()
             os.environ.update(old)
@@ -1234,8 +1234,8 @@ class RackUnitTests(unittest.TestCase):
     def test_status_reports_a_real_model_count_when_enabled(self):
         old = dict(os.environ)
         try:
-            os.environ["SYM_REINFORCE_ENABLED"] = "1"
-            os.environ["SYM_REINFORCE_TOKEN"] = "test-token"
+            os.environ["SYMONEURAL_REINFORCE_ENABLED"] = "1"
+            os.environ["SYMONEURAL_REINFORCE_TOKEN"] = "test-token"
             st = jobs.status()
             self.assertIn(st["state"], self.VALID)
             if st["state"] == "ready":

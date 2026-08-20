@@ -3,7 +3,7 @@
 #   sudo install -d /etc/systemd/system/symoneural-api.service.d
 #   sudo cp ops/gateway/gateway.conf.example \
 #           /etc/systemd/system/symoneural-api.service.d/gateway.conf
-#   # edit SYM_GATEWAY_CONTRACT below, then:
+#   # edit SYMONEURAL_GATEWAY_CONTRACT below, then:
 #   sudo systemctl daemon-reload && sudo systemctl restart symoneural-api
 #
 # A drop-in rather than an edit to ops/symoneural-api.service: it is one file, it is undone by
@@ -19,16 +19,16 @@
 # ops/gateway/gateway-cli.py, on the operator's own machine. The contract address and the
 # network name are public data and are fine here.
 #
-# There is also deliberately no SYM_GATEWAY_NODE_URL. Endpoints come from chain.NODES, keyed by
+# There is also deliberately no SYMONEURAL_GATEWAY_NODE_URL. Endpoints come from chain.NODES, keyed by
 # the validated network name, so this process cannot be pointed at an arbitrary host.
 
 [Service]
-Environment=SYM_GATEWAY_ENABLED=1
+Environment=SYMONEURAL_GATEWAY_ENABLED=1
 
 # shasta | nile | mainnet. Mainnet moves real USDT and is never the default; every detail line
 # the rack prints names the network for exactly that reason.
-Environment=SYM_GATEWAY_NETWORK=nile
+Environment=SYMONEURAL_GATEWAY_NETWORK=nile
 
 # The deployed licensing contract, base58check, 34 characters beginning with T. Validated by
 # checksum -- a transposed character is reported as malformed rather than silently accepted.
-Environment=SYM_GATEWAY_CONTRACT=REPLACE_ME_WITH_THE_DEPLOYED_ADDRESS
+Environment=SYMONEURAL_GATEWAY_CONTRACT=REPLACE_ME_WITH_THE_DEPLOYED_ADDRESS

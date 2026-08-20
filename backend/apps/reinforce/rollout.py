@@ -119,7 +119,7 @@ BACKENDS = {
 # field: an operator-supplied URL arriving in a POST body is a request that makes this process
 # open a socket to an address of the caller's choosing, which is the shape of a server-side
 # request forgery. The box's owner sets this, or there is no vLLM rollout.
-URL_ENV = "SYM_REINFORCE_VLLM_URL"
+URL_ENV = "SYMONEURAL_REINFORCE_VLLM_URL"
 
 _TIMEOUT_S = 2.0
 

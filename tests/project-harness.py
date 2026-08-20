@@ -5,7 +5,7 @@
 
 Why this exists rather than pointing the browser test at the live API on 8800:
 
-* The surface is off unless `SYM_PROJECT_ENABLED` and `SYM_PROJECT_TOKEN` are set, and
+* The surface is off unless `SYMONEURAL_PROJECT_ENABLED` and `SYMONEURAL_PROJECT_TOKEN` are set, and
   those belong in the systemd unit environment on a configured box. A test that needed
   the production token could not run on a clean clone.
 * Importing `backend/api.py` pulls in the governor, the resident marker and the model
@@ -29,10 +29,10 @@ assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 
 # Set before importing the package: `enabled()` reads the environment when it is called,
 # but the store resolves its default database path at import time.
-os.environ["SYM_PROJECT_ENABLED"] = "1"
-os.environ["SYM_PROJECT_TOKEN"] = "harness-token-not-a-secret"
-os.environ["SYM_PROJECT_DB"] = str(pathlib.Path(tempfile.mkdtemp()) / "store.db")
-os.environ["SYM_PROJECT_ROOT"] = str(ROOT)
+os.environ["SYMONEURAL_PROJECT_ENABLED"] = "1"
+os.environ["SYMONEURAL_PROJECT_TOKEN"] = "harness-token-not-a-secret"
+os.environ["SYMONEURAL_PROJECT_DB"] = str(pathlib.Path(tempfile.mkdtemp()) / "store.db")
+os.environ["SYMONEURAL_PROJECT_ROOT"] = str(ROOT)
 
 sys.path.insert(0, str(ROOT / "backend"))
 

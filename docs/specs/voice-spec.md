@@ -216,8 +216,8 @@ measured on the last request, not a constant from this file.
 ### 4.3 The gate, because a transcribe endpoint is CPU a stranger can spend
 
 `/api/*` is wholly delegated to FastAPI, so a route is a public route. Follow the pattern that
-already exists in this repo (`backend/apps/asicminer/__init__.py`): `SYM_VOICE_ENABLED=1` **and**
-`SYM_VOICE_TOKEN`, both required, `hmac.compare_digest`, 503 with a body naming both variables
+already exists in this repo (`backend/apps/asicminer/__init__.py`): `SYMONEURAL_VOICE_ENABLED=1` **and**
+`SYMONEURAL_VOICE_TOKEN`, both required, `hmac.compare_digest`, 503 with a body naming both variables
 when off. Fails closed on a public box.
 
 Add a `voice` entry to `_RATE_SUGGESTED` (`backend/api.py:169`) and use
@@ -233,11 +233,11 @@ The comment says of `_RATE_SUGGESTED` that "nothing reads it", and that is true 
 but not of the *keys*: `LIMITS = {name: _rate_for(name) for name in _RATE_SUGGESTED}` (`:189`)
 iterates them, so a surface absent from the table never has its environment variable read and
 can never be metered at all — that is why the row is required. What the row does not do is set a
-budget. `_rate_for` returns `(0, 0)` when `SYM_RATE_VOICE` is unset, the `_limiters`
+budget. `_rate_for` returns `(0, 0)` when `SYMONEURAL_RATE_VOICE` is unset, the `_limiters`
 comprehension at `:477` drops any pair that is not `> 0` on both, and `check_rate` treats a
 missing limiter as **unmetered** (deliberately — the comment there explains that building a
 zero-capacity bucket instead would deny every request forever). So the pair above is
-documentation of an intended budget; the operative change is `SYM_RATE_VOICE=60/900` in
+documentation of an intended budget; the operative change is `SYMONEURAL_RATE_VOICE=60/900` in
 `ops/symoneural-api.service`, and that needs a service restart, which is Garrett's to run.
 Adding the row and stopping there gives you a route that throttles nothing and reports no error.
 

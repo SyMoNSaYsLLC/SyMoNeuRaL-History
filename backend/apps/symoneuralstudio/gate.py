@@ -16,14 +16,31 @@ import hmac
 import os
 
 __all__ = ["enabled", "token_ok", "present_token", "ENV_ENABLED", "ENV_TOKEN", "HEADER",
-           "COOKIE", "COOKIE_PATH"]
+           "HEADER_LEGACY", "COOKIE", "COOKIE_LEGACY", "COOKIE_PATH"]
 
-ENV_ENABLED = "SYM_STUDIO_ENABLED"
-ENV_TOKEN = "SYM_STUDIO_TOKEN"
-HEADER = "X-Sym-Token"
+ENV_ENABLED = "SYMONEURAL_STUDIO_ENABLED"
+ENV_TOKEN = "SYMONEURAL_STUDIO_TOKEN"
+HEADER = "X-Symoneural-Token"
+
+# The name this header had until the rename, still accepted and deliberately second. Not
+# politeness to old scripts: `site/studio.js` is cached by the browser, so a visitor holding
+# yesterday's copy sends the old name until that cache turns over, and renaming only the
+# server would 401 them while their token is correct. New name wins when both are present,
+# matching `symoneuralenv.promote()` -- one precedence rule for the whole rename.
+HEADER_LEGACY = "X-Sym-Token"
 
 # Only the proxied editor uses this, and only under its own path. See `present_token`.
-COOKIE = "sym_studio"
+COOKIE = "symoneural_studio"
+
+# And the legacy cookie has a sharper reason to be read than the legacy header does. This one
+# is minted by `routes.editor` on a request the operator already made, so a tab that is open
+# right now is holding `sym_studio` and will keep sending it: the editor's sub-resource
+# requests are the ONLY thing that credential exists for, and they carry no header and no
+# query string to fall back on (see `present_token`). Reading one name and minting the other
+# would break the framed editor for every open session at the moment of deploy -- which is
+# exactly the seven-aborted-requests failure `tests/studio.mjs` was written to catch. Read
+# both, mint only `COOKIE`, so an open session heals on its next entry-document load.
+COOKIE_LEGACY = "sym_studio"
 COOKIE_PATH = "/studio/comfy"
 
 
@@ -87,7 +104,9 @@ def present_token(headers, query, cookies=None) -> str | None:
     that can run script in either document already has the operator token. `HttpOnly` is
     hygiene on one copy of several, not a boundary, and this docstring read as though it were.
     """
-    for key in (HEADER, HEADER.lower()):
+    # Both spellings, new first. Both cases of each, because this is handed a plain dict by
+    # the tests as often as a case-insensitive Starlette `Headers`.
+    for key in (HEADER, HEADER.lower(), HEADER_LEGACY, HEADER_LEGACY.lower()):
         value = headers.get(key)
         if value:
             return value
@@ -99,7 +118,8 @@ def present_token(headers, query, cookies=None) -> str | None:
         if found:
             return found
     if cookies:
-        found = cookies.get(COOKIE)
-        if found:
-            return found
+        for name in (COOKIE, COOKIE_LEGACY):
+            found = cookies.get(name)
+            if found:
+                return found
     return None

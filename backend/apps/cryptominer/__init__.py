@@ -32,16 +32,16 @@ Copy the example and fill it in; nothing else reads it and nothing else has to c
 
 The four settings, whether they come from that file or from the environment:
 
-    SYM_MINING_ENABLED=1                      # the surface exists at all
-    SYM_MINER_CMD=/path/to/miner --algo kawpow --pool ... --user <wallet>.<rig>
-    SYM_MINER_TOKEN=<shared secret>           # every control request must present it
-    SYM_MINER_GPU=0                           # optional, defaults to 0
+    SYMONEURAL_MINING_ENABLED=1                      # the surface exists at all
+    SYMONEURAL_MINER_CMD=/path/to/miner --algo kawpow --pool ... --user <wallet>.<rig>
+    SYMONEURAL_MINER_TOKEN=<shared secret>           # every control request must present it
+    SYMONEURAL_MINER_GPU=0                           # optional, defaults to 0
 
 Off with any of the first three unset, exactly like `asicminer`. The example file ships
-with `SYM_MINING_ENABLED=0` and no command, so `cp`-ing it and forgetting arms nothing.
+with `SYMONEURAL_MINING_ENABLED=0` and no command, so `cp`-ing it and forgetting arms nothing.
 
 **Real environment always wins.** `miner.env` never overwrites a variable that is already
-exported, so a systemd unit or a one-off `SYM_MINING_ENABLED=1 ...` on the command line
+exported, so a systemd unit or a one-off `SYMONEURAL_MINING_ENABLED=1 ...` on the command line
 overrides the file rather than fighting it. The file is re-read when its mtime changes, so
 an operator can edit it and see the rack unit move `offline -> ready` without restarting
 the API. It holds a shared secret and is gitignored by `backend/apps/cryptominer/.gitignore`.
@@ -97,20 +97,20 @@ LOGFILE = RUN / "miner.log"
 SURFACE = "miner"          # the governor surface name; must match gpu-governor.sh's case
 
 # The operator's config. Absent by default -- see `miner.env.example` next to it.
-ENVFILE = pathlib.Path(os.environ.get("SYM_MINER_ENV") or (HERE / "miner.env"))
+ENVFILE = pathlib.Path(os.environ.get("SYMONEURAL_MINER_ENV") or (HERE / "miner.env"))
 
 # Where `contrib/build-kawpowminer.sh` puts the miner it builds. This is a SIGNPOST, not a
 # default: it is quoted back to the operator by `selftest()` and by the example file, and
 # no code path anywhere turns it into a running process. Making it a fallback for an unset
-# SYM_MINER_CMD would mean an unconfigured box starts hashing the first time somebody hits
+# SYMONEURAL_MINER_CMD would mean an unconfigured box starts hashing the first time somebody hits
 # the control endpoint, which is precisely the thing this surface must never do.
 KAWPOW_BINARY = ROOT / "contrib" / "kawpowminer" / "build" / "kawpowminer" / "kawpowminer"
 
 # The keys the file is allowed to set. An env file is an instruction to change this
 # process's environment, so it sets only what this surface owns -- a stray `PATH=` or
 # `LD_PRELOAD=` in it must not reach the serving interpreter.
-_ENV_KEYS = frozenset({"SYM_MINING_ENABLED", "SYM_MINER_CMD",
-                       "SYM_MINER_TOKEN", "SYM_MINER_GPU"})
+_ENV_KEYS = frozenset({"SYMONEURAL_MINING_ENABLED", "SYMONEURAL_MINER_CMD",
+                       "SYMONEURAL_MINER_TOKEN", "SYMONEURAL_MINER_GPU"})
 
 # The cache key is (mtime_ns, size, inode), not mtime alone. Two reasons, one of them
 # found by a test that failed: filesystem timestamps are coarse -- on tmpfs two writes
@@ -141,7 +141,7 @@ def load_env(force: bool = False) -> dict:
     Two rules that are the whole reason this is not a three-line parser:
 
     * **An exported variable wins.** A systemd `Environment=` or a one-off
-      `SYM_MINING_ENABLED=1 python3 ...` must beat the file, otherwise the file becomes an
+      `SYMONEURAL_MINING_ENABLED=1 python3 ...` must beat the file, otherwise the file becomes an
       undocumented override of the thing the operator just typed. Only keys this function
       itself put there (`_env_applied`) are replaced on a re-read; anything else is left
       alone.
@@ -158,7 +158,7 @@ def load_env(force: bool = False) -> dict:
         s = ENVFILE.stat()
         # `stamp`, not `key`. It was `key`, and the loop below rebinds `key` to each config
         # name it parses -- so `_env_key = key` at the end stored the string
-        # `"SYM_MINER_GPU"` where the stat tuple belonged. The comparison below then tested
+        # `"SYMONEURAL_MINER_GPU"` where the stat tuple belonged. The comparison below then tested
         # a tuple against a string, never matched, and the cache never once hit: every
         # `enabled()`, `miner_cmd()`, `binary()`, `token_ok()` and `gpu_index()` call
         # re-read and re-parsed the file and re-wrote os.environ. That is five file reads
@@ -217,9 +217,9 @@ def load_env(force: bool = False) -> dict:
 def enabled() -> bool:
     """Both the flag and a command, because either alone is a misconfiguration."""
     load_env()
-    return (os.environ.get("SYM_MINING_ENABLED") == "1"
-            and bool(os.environ.get("SYM_MINER_CMD", "").strip())
-            and bool(os.environ.get("SYM_MINER_TOKEN")))
+    return (os.environ.get("SYMONEURAL_MINING_ENABLED") == "1"
+            and bool(os.environ.get("SYMONEURAL_MINER_CMD", "").strip())
+            and bool(os.environ.get("SYMONEURAL_MINER_TOKEN")))
 
 
 def miner_cmd() -> list[str]:
@@ -232,7 +232,7 @@ def miner_cmd() -> list[str]:
     under a wallet name nobody owns. It fails in a way that looks like a pool problem.
     """
     load_env()
-    return shlex.split(os.environ.get("SYM_MINER_CMD", "").strip())
+    return shlex.split(os.environ.get("SYMONEURAL_MINER_CMD", "").strip())
 
 
 def binary() -> pathlib.Path | None:
@@ -261,7 +261,7 @@ def installed() -> bool:
 # whatever flags it carries, a miner with nowhere to submit a share earns nothing.
 #
 # This exists because the rack was reporting "holding the card · 53.01 MH/s reported by the
-# miner" while `SYM_MINER_CMD` was `-U -M 500000`: kawpowminer's `--benchmark`, connected to
+# miner" while `SYMONEURAL_MINER_CMD` was `-U -M 500000`: kawpowminer's `--benchmark`, connected to
 # no pool and no wallet. Every digit of that was real and measured on this card -- and a
 # reader of the rack would have concluded the box was mining Ravencoin, which it was not.
 # The caveat was written into `miner.env`, which is gitignored and never leaves the box,
@@ -330,7 +330,7 @@ def token_ok(presented: str | None) -> bool:
     """Constant-time compare, so a wrong token cannot be found a character at a time."""
     import hmac
     load_env()
-    want = os.environ.get("SYM_MINER_TOKEN") or ""
+    want = os.environ.get("SYMONEURAL_MINER_TOKEN") or ""
     if not want or not presented:
         return False
     return hmac.compare_digest(presented, want)
@@ -339,7 +339,7 @@ def token_ok(presented: str | None) -> bool:
 def gpu_index() -> int:
     load_env()
     try:
-        return int(os.environ.get("SYM_MINER_GPU", "0"))
+        return int(os.environ.get("SYMONEURAL_MINER_GPU", "0"))
     except ValueError:
         return 0
 
@@ -600,8 +600,8 @@ def unit_state(st: dict | None = None) -> tuple[str, str]:
     st = st if st is not None else status()
     if not st["enabled"]:
         return "offline", ("disabled — copy backend/apps/cryptominer/miner.env.example to "
-                           "miner.env and set SYM_MINING_ENABLED=1, SYM_MINER_CMD and "
-                           "SYM_MINER_TOKEN")
+                           "miner.env and set SYMONEURAL_MINING_ENABLED=1, SYMONEURAL_MINER_CMD and "
+                           "SYMONEURAL_MINER_TOKEN")
     if not st["installed"]:
         return "offline", "no miner binary at the configured path"
     if not st["running"]:
@@ -647,8 +647,8 @@ async def start() -> dict:
     an API that stays up and fatal from the command line, which is the worst of both.
     """
     if not enabled():
-        return {"ok": False, "error": "surface disabled — set SYM_MINING_ENABLED=1, "
-                                      "SYM_MINER_CMD and SYM_MINER_TOKEN"}
+        return {"ok": False, "error": "surface disabled — set SYMONEURAL_MINING_ENABLED=1, "
+                                      "SYMONEURAL_MINER_CMD and SYMONEURAL_MINER_TOKEN"}
     if not installed():
         return {"ok": False, "error": "no miner binary at the configured path"}
     if running():
@@ -765,12 +765,12 @@ async def selftest() -> dict:
         except Exception as e:
             version_error = f"{e.__class__.__name__}: {e}"
     problems = []
-    if os.environ.get("SYM_MINING_ENABLED") != "1":
-        problems.append("SYM_MINING_ENABLED is not 1")
-    if not os.environ.get("SYM_MINER_CMD", "").strip():
-        problems.append("SYM_MINER_CMD is empty")
-    if not os.environ.get("SYM_MINER_TOKEN"):
-        problems.append("SYM_MINER_TOKEN is empty")
+    if os.environ.get("SYMONEURAL_MINING_ENABLED") != "1":
+        problems.append("SYMONEURAL_MINING_ENABLED is not 1")
+    if not os.environ.get("SYMONEURAL_MINER_CMD", "").strip():
+        problems.append("SYMONEURAL_MINER_CMD is empty")
+    if not os.environ.get("SYMONEURAL_MINER_TOKEN"):
+        problems.append("SYMONEURAL_MINER_TOKEN is empty")
     if argv and bin_path is None:
         problems.append(f"{argv[0]!r} is not an executable file and is not on PATH")
     if version_error:
@@ -787,7 +787,7 @@ async def selftest() -> dict:
         # it says this before the card is ever taken rather than after.
         "pool": pool(),
         "benchmark": benchmarking(),
-        "note": ("SYM_MINER_CMD names no pool, so this configuration measures the card and "
+        "note": ("SYMONEURAL_MINER_CMD names no pool, so this configuration measures the card and "
                  "earns nothing. That is a legitimate setup — it is how the KawPow figure "
                  "in README.md was measured — but it is not mining. To mine, give the "
                  "command a -P stratum+tcp://… pool and your own wallet."
@@ -797,7 +797,7 @@ async def selftest() -> dict:
         "env_file": load_env(),
         "hint": (None if bin_path else
                  (f"a miner built by contrib/build-kawpowminer.sh is at {KAWPOW_BINARY}; "
-                  "point SYM_MINER_CMD at it with your own pool and wallet"
+                  "point SYMONEURAL_MINER_CMD at it with your own pool and wallet"
                   if KAWPOW_BINARY.is_file() else
                   "no miner binary on this box — build one with "
                   "contrib/build-kawpowminer.sh or install your own")),

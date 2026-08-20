@@ -194,7 +194,7 @@ sudo systemctl daemon-reload && sudo systemctl restart symoneural-api
 curl -s localhost:8800/api/gateway/state | python3 -m json.tool
 ```
 
-The rack's detail line should change from *"not configured — set SYM_GATEWAY_ENABLED=1…"* to a
+The rack's detail line should change from *"not configured — set SYMONEURAL_GATEWAY_ENABLED=1…"* to a
 measured reading naming Nile, the contract, its function count and the block it was read at.
 
 **The unit still says `offline`, and every one of the module's five returns is `offline` by
@@ -221,7 +221,7 @@ sitting on a page that denies it.
 ## Phase D — mainnet *(this is where money enters, and only here)*
 
 Everything above, repeated with `--network mainnet --yes-mainnet`, denominated in real USDT
-(`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`), with real TRX for Energy. `SYM_GATEWAY_NETWORK=mainnet`
+(`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`), with real TRX for Energy. `SYMONEURAL_GATEWAY_NETWORK=mainnet`
 should be the last thing that ever changes.
 
 The tool refuses mainnet without `--yes-mainnet` and then asks you to type `MAINNET`. That is

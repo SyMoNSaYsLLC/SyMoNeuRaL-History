@@ -7,7 +7,7 @@ version reachable over the network would be a strictly worse version of a thing 
 
 ## 404, not 403, when the surface is off
 
-With `SYM_RACK_ENABLED` unset every route here answers **404**, the same answer an
+With `SYMONEURAL_RACK_ENABLED` unset every route here answers **404**, the same answer an
 unmounted path gives. That is not security theatre standing in for the token: the token is
 the gate, and it is compared in constant time. It is that the public rack is served to
 anyone, and a 403 from `/api/rack/power` tells a visitor that this installation has an
@@ -52,7 +52,7 @@ def peer_of(request: Request) -> str | None:
 
     So a visitor cannot forge `X-Forwarded-For: 127.0.0.1` to pass the loopback gate. If
     either fact changes -- the API binds a public interface, or Caddy is configured to trust
-    an upstream -- this gate weakens and `SYM_RACK_TOKEN` becomes the only thing left.
+    an upstream -- this gate weakens and `SYMONEURAL_RACK_TOKEN` becomes the only thing left.
     """
     fwd = request.headers.get("x-forwarded-for", "")
     first = fwd.split(",")[0].strip()
@@ -67,7 +67,11 @@ def _guard(request: Request) -> str:
         # See the module docstring: absent, not forbidden.
         raise HTTPException(status_code=404, detail="Not Found")
     peer = peer_of(request)
-    ok, why = authorize(request.headers.get("x-sym-token"), peer)
+    # New header name first, then the one it replaced -- `site/console.js:412` is cached
+    # JavaScript, so an operator's browser can still be sending the old name after deploy.
+    # `request.headers` is case-insensitive, hence the lowercase spellings kept from before.
+    ok, why = authorize(request.headers.get("x-symoneural-token")
+                        or request.headers.get("x-sym-token"), peer)
     if not ok:
         raise HTTPException(status_code=403, detail=why)
     return peer or "unknown"

@@ -22,7 +22,7 @@ data with nothing secret in the process.
 ## Structural safety
 
 - **Endpoints come from `NODES`, keyed by an already-validated network name.** There is no
-  `SYM_GATEWAY_NODE_URL` and there must never be one: an env-supplied URL turns a
+  `SYMONEURAL_GATEWAY_NODE_URL` and there must never be one: an env-supplied URL turns a
   public-facing web process into an arbitrary-URL fetcher pointed at whatever an operator --
   or anyone who can write that environment -- puts there.
 - **HTTPS only, host checked against the map at call time**, so a mistake in a literal cannot

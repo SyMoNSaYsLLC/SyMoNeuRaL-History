@@ -7,9 +7,9 @@ Two things this file is careful about, both for the same reason `backend/apps/co
 tests are:
 
 * **It never touches the real `run/`.** That directory holds `gpu.lock.d`, the GPU mutex.
-  Every test points `SYM_PROJECT_DB` at a temp directory, so nothing here can write beside
+  Every test points `SYMONEURAL_PROJECT_DB` at a temp directory, so nothing here can write beside
   a lock a surface is holding.
-* **It never touches the real repository tree.** `SYM_PROJECT_ROOT` is a temp tree built
+* **It never touches the real repository tree.** `SYMONEURAL_PROJECT_ROOT` is a temp tree built
   per test, with a fake `training/corpus.jsonl` inside it, so the trade-secret assertions
   are exercised against a file that is safe to have.
 
@@ -34,8 +34,8 @@ import project                                                          # noqa: 
 from project import routes, store                                       # noqa: E402
 
 TOKEN = "test-token-not-a-real-secret"
-ENV_KEYS = ("SYM_PROJECT_ENABLED", "SYM_PROJECT_TOKEN", "SYM_PROJECT_DB",
-            "SYM_PROJECT_ROOT", "SYM_PROJECT_BACKUP_DIR")
+ENV_KEYS = ("SYMONEURAL_PROJECT_ENABLED", "SYMONEURAL_PROJECT_TOKEN", "SYMONEURAL_PROJECT_DB",
+            "SYMONEURAL_PROJECT_ROOT", "SYMONEURAL_PROJECT_BACKUP_DIR")
 
 PACKAGE = pathlib.Path(__file__).resolve().parent
 SOURCES = ("store.py", "routes.py", "__init__.py")
@@ -97,15 +97,15 @@ class Base(unittest.TestCase):
         (self.outside / "secret.txt").write_text("MUST NOT BE LINKABLE\n")
 
         self._saved = {k: os.environ.get(k) for k in ENV_KEYS}
-        os.environ["SYM_PROJECT_DB"] = str(self.db)
-        os.environ["SYM_PROJECT_ROOT"] = str(self.root)
-        os.environ["SYM_PROJECT_BACKUP_DIR"] = str(self.tmp / "backups")
+        os.environ["SYMONEURAL_PROJECT_DB"] = str(self.db)
+        os.environ["SYMONEURAL_PROJECT_ROOT"] = str(self.root)
+        os.environ["SYMONEURAL_PROJECT_BACKUP_DIR"] = str(self.tmp / "backups")
         if self.ENABLED:
-            os.environ["SYM_PROJECT_ENABLED"] = "1"
-            os.environ["SYM_PROJECT_TOKEN"] = TOKEN
+            os.environ["SYMONEURAL_PROJECT_ENABLED"] = "1"
+            os.environ["SYMONEURAL_PROJECT_TOKEN"] = TOKEN
         else:
-            os.environ.pop("SYM_PROJECT_ENABLED", None)
-            os.environ.pop("SYM_PROJECT_TOKEN", None)
+            os.environ.pop("SYMONEURAL_PROJECT_ENABLED", None)
+            os.environ.pop("SYMONEURAL_PROJECT_TOKEN", None)
         store.set_ask_model(None)
 
     def tearDown(self):
@@ -144,17 +144,17 @@ class TestGate(Base):
         self.assertEqual(code, "disabled")
 
     def test_a_token_alone_is_not_enough(self):
-        os.environ["SYM_PROJECT_TOKEN"] = TOKEN
+        os.environ["SYMONEURAL_PROJECT_TOKEN"] = TOKEN
         self.assertFalse(store.enabled())
 
     def test_the_switch_alone_is_not_enough(self):
-        os.environ["SYM_PROJECT_ENABLED"] = "1"
+        os.environ["SYMONEURAL_PROJECT_ENABLED"] = "1"
         self.assertFalse(store.enabled())
 
     def test_the_switch_must_be_exactly_1(self):
-        os.environ["SYM_PROJECT_TOKEN"] = TOKEN
+        os.environ["SYMONEURAL_PROJECT_TOKEN"] = TOKEN
         for v in ("true", "yes", "on", "0", ""):
-            os.environ["SYM_PROJECT_ENABLED"] = v
+            os.environ["SYMONEURAL_PROJECT_ENABLED"] = v
             self.assertFalse(store.enabled(), f"{v!r} should not enable the surface")
 
 
@@ -174,7 +174,7 @@ class TestToken(Base):
 
     def test_a_disabled_surface_reports_disabled_before_it_reports_the_token(self):
         """What an unauthenticated caller learns, in order. Off is stated first."""
-        os.environ.pop("SYM_PROJECT_ENABLED", None)
+        os.environ.pop("SYMONEURAL_PROJECT_ENABLED", None)
         ok, code, _ = store.authorize("wrong")
         self.assertEqual(code, "disabled")
 
@@ -590,7 +590,7 @@ class TestRackUnit(Base):
         self.assertEqual(routes.status()["label"], "SyMoNeuRaL Project")
 
     def test_the_unit_is_offline_while_the_surface_is_disabled(self):
-        os.environ.pop("SYM_PROJECT_ENABLED", None)
+        os.environ.pop("SYMONEURAL_PROJECT_ENABLED", None)
         st, detail = store.unit_state()
         self.assertEqual(st, "offline")
         self.assertIn("disabled", detail)
@@ -835,7 +835,7 @@ class TestRoutes(Base):
         app = FastAPI()
         app.include_router(routes.router, prefix="/api/project", tags=["project"])
         self.client = TestClient(app)
-        self.auth = {"X-Sym-Token": TOKEN}
+        self.auth = {routes.HEADER: TOKEN}
 
     def test_no_route_path_carries_a_credential(self):
         """Caddy and uvicorn both log the request line. Structural, per apps/tuner."""
@@ -850,7 +850,7 @@ class TestRoutes(Base):
             self.assertFalse(path.startswith("/api"), f"{path} hardcodes its mount point")
 
     def test_a_disabled_surface_answers_503_on_every_route(self):
-        os.environ.pop("SYM_PROJECT_ENABLED", None)
+        os.environ.pop("SYMONEURAL_PROJECT_ENABLED", None)
         for method, path in (("get", "/api/project"), ("get", "/api/project/state"),
                              ("post", "/api/project"), ("get", "/api/project/search?q=x")):
             r = getattr(self.client, method)(path, headers=self.auth,
@@ -860,9 +860,33 @@ class TestRoutes(Base):
 
     def test_a_missing_or_wrong_token_is_401(self):
         self.assertEqual(self.client.get("/api/project").status_code, 401)
-        r = self.client.get("/api/project", headers={"X-Sym-Token": "wrong"})
+        # Wrong under both spellings. A wrong token in the legacy header must be refused for
+        # being wrong, not accidentally accepted by the fallback and not silently ignored.
+        for header in (routes.HEADER, routes.HEADER_LEGACY):
+            r = self.client.get("/api/project", headers={header: "wrong"})
+            self.assertEqual(r.status_code, 401, header)
+            self.assertEqual(r.json()["code"], "unauthorized", header)
+
+    def test_the_legacy_header_alone_still_authorises(self):
+        """`X-Sym-Token` is the name this credential had until the rename, and `_deny` still
+        reads it. Presented ALONE, deliberately: sending both names passes with the fallback
+        deleted, so a test that did that would pin nothing. The reason the fallback exists is
+        that the sender is cached JavaScript -- `site/project.html` holds the fetch -- and
+        `site/` is deployed by a different command from the API restart, so a browser can be
+        presenting the old name while its token is perfectly good.
+        """
+        self.assertEqual(routes.HEADER, "X-Symoneural-Token")
+        self.assertEqual(routes.HEADER_LEGACY, "X-Sym-Token")
+        r = self.client.get("/api/project", headers={routes.HEADER_LEGACY: TOKEN})
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def test_the_new_header_wins_when_both_are_present(self):
+        """Same precedence as `apps/symoneuralenv.promote()`: the new spelling is
+        authoritative. Checked by putting the *wrong* token in the new header, so a reader
+        that consulted the legacy one first would return 200 and fail this."""
+        r = self.client.get("/api/project", headers={routes.HEADER: "wrong",
+                                                     routes.HEADER_LEGACY: TOKEN})
         self.assertEqual(r.status_code, 401)
-        self.assertEqual(r.json()["code"], "unauthorized")
 
     def test_every_response_carries_the_api_version(self):
         r = self.client.get("/api/project", headers=self.auth)
@@ -1021,8 +1045,8 @@ class BootstrapTests(unittest.TestCase):
     def env(self, enabled: str):
         return unittest.mock.patch.dict(
             os.environ,
-            {"SYM_PROJECT_DB": str(self.db), "SYM_PROJECT_ENABLED": enabled,
-             "SYM_PROJECT_TOKEN": "bootstrap-test-token"},
+            {"SYMONEURAL_PROJECT_DB": str(self.db), "SYMONEURAL_PROJECT_ENABLED": enabled,
+             "SYMONEURAL_PROJECT_TOKEN": "bootstrap-test-token"},
             clear=False)
 
     def test_a_disabled_surface_gets_no_database_on_disk(self):

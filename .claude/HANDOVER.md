@@ -5,7 +5,11 @@
 > **If you read nothing else:** nothing is broken and nothing is blocked, but **the whole of
 > `site/` is now waiting on a deploy** — as of `26cb58e` that is `site/ui.js` and
 > `site/symoneural.css` (the Symon Say News bar, §2i) plus the cache-bust re-stamp across all
-> 23 pages, and it still includes the two pages that were the whole of this list before:
+> 23 pages. As of the rename in §0a-ter it also includes `site/exp.js`, `site/studio.js`,
+> `site/miner.html` and `site/project.html`, regenerated from their generators. Those four are
+> not urgent — they send both the new and the old credential header, so they work against the
+> API either side of its restart — and it still includes the two pages that were the whole of
+> this list before:
 > `site/training.html` carries the 27B measurement (§0b-ter) and `site/documentation.html`
 > carries the retraction of the old ceiling claim (`0a4892f`). Until that deploy runs,
 > production publishes the correction nowhere, the retired claim on `documentation.html`, and
@@ -243,6 +247,117 @@ conversation, so every number, path and decision you need is stated here.
   `backend/apps/reinforce/TRAINING_BAY.md`, **not** the `README.md` beside it, which belongs to
   the unrelated CUDA engine sharing that directory. **No RL run has ever executed on this box**,
   so every preference and reinforcement figure is arithmetic and labelled `projected`.
+
+---
+
+## 0a-ter. `SYM_*` -> `SYMONEURAL_*` and `X-Sym-Token` -> `X-Symoneural-Token` — DONE, with a legacy fallback in exactly the places named below (2026-08-20)
+
+Task #19. Three commits: `a833fda` (the one live defect), `74dee33` (the env promotion shim),
+and this one (the header, the docs and the generated pages). **1225 tests pass at this SHA**,
+1225 collected — up from 1200 at `74dee33`. `node tests/frontend.mjs` 49/49 against a spare
+port. Every fallback below was mutation-tested: ten mutations, ten kills.
+
+### Where the legacy fallback exists, and where it deliberately does not
+
+The rename is complete on both sides of the wire, but **nothing on this box breaks if the old
+names are still in use**, and that is a property of specific named code rather than of the
+change in general:
+
+| Legacy read | Where | Why it is there |
+|---|---|---|
+| `SYM_*` env names | `backend/apps/symoneuralenv.py` `promote()` | Copies each legacy name onto its new spelling at startup, logging a deprecation notice. Called from `backend/api.py` (above the app imports — `symoneuralstudio/inference.py` reads two variables at module scope) and from `bin/symoneural-cli` (above `STATE` and `DEFAULT_API`). |
+| `SYM_*` env names | `deploy/bento/bentoml_service_runner.py` `_env()` | Its own three-line helper. It cannot import the shim: it runs inside the packaged Bento container where the repo is not on disk. |
+| `SYM_*` env names | `scripts/fetch-models.sh`, `comfyui.sh`, `qemu-antminer.sh`, `nim-qwen36.sh` | Nested `${NEW:-${OLD:-default}}`, which was already the house idiom at `fetch-models.sh:90`. |
+| `X-Sym-Token` | `backend/api.py` `_operator_token()` | One reader for both asicminer and cryptominer. `request.headers` is case-insensitive, so one spelling of each name suffices here. |
+| `X-Sym-Token` | `symoneuralexp/gate.py`, `symoneuralstudio/gate.py` `present_token()` | Both cases of both names, because these are handed plain dicts by their own tests, not Starlette `Headers`. |
+| `X-Sym-Token` | `project/routes.py` `_deny()`, `rackpower/routes.py` `_guard()` | `HEADER or HEADER_LEGACY`. |
+| `X-Sym-Token` | `voice/routes.py` | The odd one out: FastAPI `Header(alias=...)` binds exactly ONE name, so each gated route declares **two** parameters and passes `new or legacy`. Both therefore appear in the OpenAPI schema, which is correct — both are accepted. |
+| `sym_studio` cookie | `symoneuralstudio/gate.py` `COOKIE_LEGACY` | Read, never minted. See below. |
+
+**Where it deliberately does not:** `tests/sigils_http.py` got a plain rename with no fallback
+(a test harness has no deployed copy to be behind), and the route sketch in
+`apps/coder/README.md:97` names only the new header — a route that does not exist yet has no
+sender to be compatible with, so a fallback there would be a deprecation with nothing
+deprecated.
+
+### The senders send BOTH names, and that is the part worth understanding
+
+`site/` is deployed by `scripts/deploy.sh` and the API is restarted by `systemctl` — two
+separate commands, and **either can be run first**. So:
+
+* the server reading both names covers a browser holding a **cached** copy of the old
+  JavaScript against a restarted API;
+* the client sending both names covers **fresh** JavaScript against an API that has not been
+  restarted yet.
+
+Only both together make the deploy order-independent, which it was not before. The senders are
+`symoneuralstudio/page.js`, `symoneuralexp/page.js`, `site/console.js` (hand-authored),
+`tools/build_pages.py` ×2, `tools/build_project.py`, and `bin/symoneural-cli` — that last one
+because the CLI ships in a `.deb` and the API is a systemd unit, so nothing makes them the same
+version at the same moment.
+
+### The studio cookie is the fallback with teeth
+
+`sym_studio` -> `symoneural_studio`, **read under both names, minted only under the new one**
+(`gate.py:33-41`, `routes.py:896-903`). It is the only credential the framed ComfyUI editor's
+sub-resource requests carry — they have no header and no query string — so a tab open at the
+moment of deploy would have 401'd every asset it loads. That is precisely the
+seven-aborted-requests-and-a-timeout failure `tests/studio.mjs` exists to catch. Verified live
+against a spare port: `symoneural_studio=devtest` and `sym_studio=devtest` both reach the proxy
+(503, ComfyUI not running), `sym_studio=nope` is 401, and the entry document sets
+`symoneural_studio` only.
+
+### The new tripwire, and the third time this trick has paid
+
+`backend/apps/test_credential_header.py` (19 tests). Its centrepiece is
+`test_no_source_file_names_only_the_legacy_header`: **no file in the audited roots may name
+`X-Sym-Token` without also naming `X-Symoneural-Token`.** One-way on purpose — a file naming
+only the new name is the finished state; a file naming only the old one is either a reader
+whose rename was applied to the sender and not to it, or a fallback that outlived the
+migration. It is the assertion that will still be working in six months, when the next gated
+surface is written by copying an existing one.
+
+It also caught the thing I would otherwise have shipped: after the code rename, the four
+generated files `site/exp.js`, `site/studio.js`, `site/miner.html` and `site/project.html`
+were the only offenders left — i.e. it reported "you have not regenerated", by name.
+
+Two notes on how it is scoped, both learned by getting it wrong first:
+
+* **Explicit `AUDITED_ROOTS`, not a walk from the repo root.** `.claude/worktrees/` holds
+  checked-out worktrees of other branches — 160 files carrying the pre-rename header — and a
+  root walk reports every one as a finding about code that is not on this branch. It also took
+  35 s walking past `contrib/`; scoped, it takes 6 s. A slow tripwire is one somebody excludes.
+* **Three exemptions, each with a reason in the code**, not granted to make the test green:
+  the project-history corpus builder (prose, not a reader), this test file itself (it names
+  both literals — that is its job), and `SyMon_MinerGPUWorker_PROD_20260102-1818/`.
+
+And the gate tests could not have caught a misspelled constant. Every existing token test in
+this repo asserts through `gate.HEADER`, which is the right way to write them and means a
+symbolic suite plus a wrong constant is a green run and a dead surface. `TheLiterals` pins the
+two strings as literals for exactly that reason.
+
+### Owed to Garrett, queued in `GARRETT-INBOX.md`
+
+`/etc/symoneural/api.env` wants rewriting to the new spellings (root, 0600, his action) and the
+API wants the restart it was already owed. **When both are done, the promotion shim and every
+legacy header read can be deleted** — each one is marked in the code as removable at that
+point. Also queued: the `SyMon_MinerGPUWorker_PROD_20260102-1818/` attribution
+(NOT MINE — LIKELY GARRETT'S; excluded from every sweep, and the tripwire names it).
+
+### Still carrying a bare `sym`, and left for #25 on purpose
+
+Browser-local storage keys, which have no server side and travel nowhere:
+`sym.studio.token`, `sym.exp.token`, `sym.project.token`, `sym.project.open`, `sym.asic.token`,
+`sym.miner.token`, the `sym_session` accounts cookie, the `sym-acct-`/`sym-guide-` tmpdir
+prefixes in `tests/`, and `symvoice-` in `voice/routes.py`. `sym.studio.token` is also seeded
+by `tests/studio.mjs:44`, so those two move together.
+
+### One re-derived figure that did not reproduce
+
+The carried-forward task list said task #19 covered "90 vars / 892 sites". The tree reads
+**96 distinct names / 771 occurrences**, unchanged whether or not `references/` is counted, so
+the old figures were measured against a scope that cannot be reconstructed. The re-derived
+numbers are the reading.
 
 ---
 

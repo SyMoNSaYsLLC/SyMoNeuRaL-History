@@ -179,7 +179,7 @@ def main() -> int:
     # from sessionStorage and sends it in a header; nothing is supposed to bake it into the
     # markup. This catches the one way that could happen by accident -- a generator run in a
     # shell that has the secret exported, by an author who added a "convenience" default.
-    secret = os.environ.get("SYM_STUDIO_TOKEN")
+    secret = os.environ.get("SYMONEURAL_STUDIO_TOKEN")
     if secret:
         assert secret not in html_out and secret not in (APP / "page.js").read_text(), (
             "the live operator token was baked into a generated page")

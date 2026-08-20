@@ -1,17 +1,17 @@
 // Browser check for /studio: the Studio surface, end to end, in a real browser.
 //
 //   node tests/studio.mjs http://127.0.0.1:8875
-//   SYM_STUDIO_TOKEN=<secret> node tests/studio.mjs http://127.0.0.1:8875
+//   SYMONEURAL_STUDIO_TOKEN=<secret> node tests/studio.mjs http://127.0.0.1:8875
 //
 // **This is not part of `tests/frontend.mjs` and must not be folded into it.** That suite runs
 // against any instance and asserts what every visitor sees; this one needs the surface switched
-// on (`SYM_STUDIO_ENABLED=1` and a token in the API's environment) and it takes the GPU for a
+// on (`SYMONEURAL_STUDIO_ENABLED=1` and a token in the API's environment) and it takes the GPU for a
 // real render. Pointing it at the deployed service would queue a job on the live card.
 //
 // Start your own API on a spare port, as CLAUDE.md says, or you are testing what is deployed
 // rather than what you wrote:
 //
-//   cd backend && SYM_STUDIO_ENABLED=1 SYM_STUDIO_TOKEN=devtest \
+//   cd backend && SYMONEURAL_STUDIO_ENABLED=1 SYMONEURAL_STUDIO_TOKEN=devtest \
 //       python3 -m uvicorn api:app --port 8875
 //   bash scripts/comfyui.sh start
 //
@@ -30,7 +30,7 @@ const { chromium } = createRequire(import.meta.url)(
   join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright'));
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8875';
-const TOKEN = process.env.SYM_STUDIO_TOKEN || 'devtest';
+const TOKEN = process.env.SYMONEURAL_STUDIO_TOKEN || 'devtest';
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`PASS  ${n}${d ? '  -- ' + d : ''}`); };
 const no = (n, d = '') => { fail++; console.log(`FAIL  ${n}${d ? '  -- ' + d : ''}`); };

@@ -853,17 +853,17 @@ class MissingWorkspaceTests(unittest.TestCase):
         # with different `workspace` attributes and the patch below would miss.
         pkg = sys.modules[__package__]
 
-        with mock.patch.dict(os.environ, {"SYM_STUDIO_ENABLED": "1",
-                                          "SYM_STUDIO_TOKEN": "t"}), \
+        with mock.patch.dict(os.environ, {"SYMONEURAL_STUDIO_ENABLED": "1",
+                                          "SYMONEURAL_STUDIO_TOKEN": "t"}), \
              mock.patch.object(workspace, "ROOT", None):
             row = pkg.status()
         self.assertEqual(row["state"], "offline")   # a Unit.state literal, checked in api.py
-        self.assertIn("SYM_STUDIO_ROOT", row["detail"])
+        self.assertIn("SYMONEURAL_STUDIO_ROOT", row["detail"])
 
     def test_describe_reports_a_null_root_rather_than_raising(self):
         with mock.patch.object(workspace, "ROOT", None):
             described = workspace.describe()
         self.assertIsNone(described["root"])
-        # `page.js` renders `ws.root || 'not found'` with a `set SYM_STUDIO_ROOT` hint. That
+        # `page.js` renders `ws.root || 'not found'` with a `set SYMONEURAL_STUDIO_ROOT` hint. That
         # branch was dead code while `/state` 500'd instead of reaching it.
-        self.assertEqual(described["override_env"], "SYM_STUDIO_ROOT")
+        self.assertEqual(described["override_env"], "SYMONEURAL_STUDIO_ROOT")

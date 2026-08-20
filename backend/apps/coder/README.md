@@ -49,9 +49,9 @@ the file on disk is untouched.
 ## 2. The three gates
 
 ```bash
-SYM_CODER_ENABLED=1                 # the surface exists at all
-SYM_CODER_TOKEN=<shared secret>     # every call presents it; constant-time compared
-SYM_CODER_ALLOW_REMOTE=1            # ONLY THEN may a non-loopback peer call
+SYMONEURAL_CODER_ENABLED=1                 # the surface exists at all
+SYMONEURAL_CODER_TOKEN=<shared secret>     # every call presents it; constant-time compared
+SYMONEURAL_CODER_ALLOW_REMOTE=1            # ONLY THEN may a non-loopback peer call
 ```
 
 The first two mirror `backend/apps/asicminer/__init__.py` exactly — the pattern this repo
@@ -65,8 +65,8 @@ is therefore not enough to open the box.
 Optional:
 
 ```bash
-SYM_CODER_WORKSPACE=/home/google/Symoneural/site   # default: the repo root
-SYM_CODER_STATE_DIR=/home/google/Symoneural/run    # default: <repo>/run
+SYMONEURAL_CODER_WORKSPACE=/home/google/Symoneural/site   # default: the repo root
+SYMONEURAL_CODER_STATE_DIR=/home/google/Symoneural/run    # default: <repo>/run
 ```
 
 **Narrowing the workspace is the strongest single thing you can do here.** Pointing it at
@@ -94,7 +94,11 @@ def _coder_gate(request: Request) -> None:
     # here -- Caddy sits in front, so that header is written by the caller, and a remote
     # attacker would simply assert 127.0.0.1 and walk through the loopback gate.
     peer = request.client.host if request.client else None
-    ok, why = coder.authorize(request.headers.get("X-Sym-Token"), peer)
+    # The new header name only, with no legacy fallback. Every other surface reads
+    # `X-Sym-Token` as well, because each has a browser sender that may be cached; a
+    # route that does not exist yet has no sender to be behind, so a fallback here would
+    # be a deprecation with nothing deprecated.
+    ok, why = coder.authorize(request.headers.get("X-Symoneural-Token"), peer)
     if not ok:
         raise HTTPException(503 if not coder.enabled() else 401, why)
 ```
@@ -222,7 +226,7 @@ What `run()` does guarantee:
   child leaves grandchildren holding the pipe and the reap hangs; there is a test that
   spawns a grandchild specifically to prove it.
 - **stdout and stderr captured** and returned with the exit code.
-- **A scrubbed environment.** `SYMONEURAL_*` **and** `SYM_*` variables containing `TOKEN`,
+- **A scrubbed environment.** `SYMONEURAL_*` **and** `SYMONEURAL_*` variables containing `TOKEN`,
   `SECRET` or `KEY` are removed from the child, so a command cannot read this surface's own
   token out of its environment and print it back over the wire. Both prefixes are listed
   because the check is a prefix match rather than a list of names, so it would go quietly
@@ -321,7 +325,7 @@ python3 backend/apps/coder/test_coder.py       # 46 tests, ~2s
 ```
 
 System interpreter, stdlib only, no network, no GPU, and **it never writes into the real
-`run/`** — every test points `SYM_CODER_STATE_DIR` and `SYM_CODER_WORKSPACE` at temp
+`run/`** — every test points `SYMONEURAL_CODER_STATE_DIR` and `SYMONEURAL_CODER_WORKSPACE` at temp
 directories, because a test that wrote into `run/` could destroy the GPU lock while a
 surface held the card.
 

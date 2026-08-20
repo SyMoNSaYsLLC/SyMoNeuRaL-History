@@ -19,8 +19,9 @@ startup, which is one place to reason about and one place to delete when the leg
 is finally dropped.
 
 `scripts/fetch-models.sh:90` already does this in shell for a single variable --
-`"${SYM_FETCH_27B:-${SYM_FETCH_QWEN36:-0}}"` -- and that is the same idea at one call site.
-This is that idiom for the whole environment.
+`"${SYMONEURAL_FETCH_27B:-${SYM_FETCH_27B:-${SYM_FETCH_QWEN36:-0}}}"`, the new name first and
+two legacy spellings behind it -- and that is the same idea at one call site. This is that
+idiom for the whole environment.
 
 ## What it deliberately does not do
 

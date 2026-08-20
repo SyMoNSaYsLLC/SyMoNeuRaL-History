@@ -7,16 +7,16 @@ This is the **input half**. Speech out is not built and `tts.py` says so rather 
 
 ```
 GET  /api/voice/state        presence and absence — no token
-POST /api/voice/transcribe   multipart `audio` -> the reading — X-Sym-Token
-POST /api/voice/speak        503 naming the missing engine — X-Sym-Token
+POST /api/voice/transcribe   multipart `audio` -> the reading — X-Symoneural-Token
+POST /api/voice/speak        503 naming the missing engine — X-Symoneural-Token
 ```
 
 Mounted in `backend/api.py` (`include_router(voice.router, prefix="/api/voice")`). Off unless
-**both** `SYM_VOICE_ENABLED=1` (the literal string `1`) and `SYM_VOICE_TOKEN` are set.
+**both** `SYMONEURAL_VOICE_ENABLED=1` (the literal string `1`) and `SYMONEURAL_VOICE_TOKEN` are set.
 
 ```bash
 cd backend && python3 apps/voice/test_voice.py        # 31 tests
-curl -sS -H "X-Sym-Token: $SYM_VOICE_TOKEN" -F audio=@clip.webm \
+curl -sS -H "X-Symoneural-Token: $SYMONEURAL_VOICE_TOKEN" -F audio=@clip.webm \
      http://127.0.0.1:8800/api/voice/transcribe
 ```
 

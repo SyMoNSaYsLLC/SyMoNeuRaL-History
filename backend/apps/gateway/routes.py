@@ -37,8 +37,8 @@ def state() -> dict:
     if not enabled():
         raise HTTPException(
             status_code=503,
-            detail="gateway surface is off — set SYM_GATEWAY_ENABLED=1, SYM_GATEWAY_NETWORK "
-                   "and SYM_GATEWAY_CONTRACT, then restart the service",
+            detail="gateway surface is off — set SYMONEURAL_GATEWAY_ENABLED=1, SYMONEURAL_GATEWAY_NETWORK "
+                   "and SYMONEURAL_GATEWAY_CONTRACT, then restart the service",
         )
     ok, why = configured()
     net = network()

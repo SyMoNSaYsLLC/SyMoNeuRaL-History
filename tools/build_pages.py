@@ -1062,7 +1062,7 @@ MINER_BODY = """    <div class="pgwrap">
           <form class="mg-ops" id="mg-ops" autocomplete="off">
             <label for="mg-token">Operator token</label>
             <input type="password" id="mg-token" name="mg-token"
-                   placeholder="SYM_MINER_TOKEN" autocomplete="off" spellcheck="false">
+                   placeholder="SYMONEURAL_MINER_TOKEN" autocomplete="off" spellcheck="false">
             <button type="button" class="mg-btn" id="mg-start">Start mining</button>
             <button type="button" class="mg-btn" id="mg-stop">Stop</button>
             <button type="button" class="mg-btn ghost" id="mg-read">Read telemetry</button>
@@ -1196,22 +1196,22 @@ MINER_BODY = """    <div class="pgwrap">
         </div>
         <div class="callout">
           <h3>What the switches actually switch</h3>
-          <p><code>SYM_ASIC_ENABLED</code> does not enable a rig and does not enable mining.
+          <p><code>SYMONEURAL_ASIC_ENABLED</code> does not enable a rig and does not enable mining.
             It enables <b>these operator controls on this server</b> &mdash; scan, firmware
-            listing, emulator &mdash; and with <code>SYM_ASIC_TOKEN</code> unset they stay
+            listing, emulator &mdash; and with <code>SYMONEURAL_ASIC_TOKEN</code> unset they stay
             off, so a misconfigured box serves nothing here rather than serving an
             unauthenticated scanner. The scanner also refuses any range that is not private,
             so it cannot be aimed at the internet from this host.</p>
           <p><b>You do not need either variable to run the QEMU emulator.</b>
-            <code>SYM_ASIC_ENABLED=1</code> and <code>SYM_ASIC_TOKEN</code> gate the HTTP API
+            <code>SYMONEURAL_ASIC_ENABLED=1</code> and <code>SYMONEURAL_ASIC_TOKEN</code> gate the HTTP API
             only; <code>scripts/qemu-antminer.sh</code> runs without them. Setting them will
             not make an emulator report a hashrate either, because QEMU emulates the Zynq CPU
             and <b>not</b> the hashboards &mdash; so nothing answers on port 4028, and that is
             the emulator working correctly rather than a misconfiguration. The value is
             compared as the literal string <code>1</code>: <code>true</code>, <code>yes</code>
             and <code>on</code> all leave the surface off.</p>
-          <p>The GPU miner above has its own pair, <code>SYM_MINING_ENABLED</code> and
-            <code>SYM_MINER_TOKEN</code>, and the two tokens must not be the same string:
+          <p>The GPU miner above has its own pair, <code>SYMONEURAL_MINING_ENABLED</code> and
+            <code>SYMONEURAL_MINER_TOKEN</code>, and the two tokens must not be the same string:
             this one authorises reading rigs, that one authorises taking the card away from
             every other surface.</p>
         </div>
@@ -1233,7 +1233,7 @@ MINER_JS = """<script>
   function token() {
     var t = sessionStorage.getItem('sym.asic.token');
     if (!t) {
-      t = window.prompt('Operator token (SYM_ASIC_TOKEN)');
+      t = window.prompt('Operator token (SYMONEURAL_ASIC_TOKEN)');
       if (t) sessionStorage.setItem('sym.asic.token', t);
     }
     return t || '';
@@ -1241,7 +1241,11 @@ MINER_JS = """<script>
   function api(path, body) {
     return fetch(path, {
       method: body ? 'POST' : 'GET',
-      headers: {'Content-Type': 'application/json', 'X-Sym-Token': token()},
+      headers: {'Content-Type': 'application/json', 'X-Symoneural-Token': token(),
+                /* And the name it replaced. site/ and the API deploy separately, so this
+                   file can be newer than the server reading it; the server reads both too,
+                   for the reverse. Remove once the deployed API reads the new name. */
+                'X-Sym-Token': token()},
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
@@ -1415,7 +1419,11 @@ MINER_JS = """<script>
   function api(path, body) {
     return fetch(path, {
       method: body ? 'POST' : 'GET',
-      headers: {'Content-Type': 'application/json', 'X-Sym-Token': token()},
+      headers: {'Content-Type': 'application/json', 'X-Symoneural-Token': token(),
+                /* And the name it replaced. site/ and the API deploy separately, so this
+                   file can be newer than the server reading it; the server reads both too,
+                   for the reverse. Remove once the deployed API reads the new name. */
+                'X-Sym-Token': token()},
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {

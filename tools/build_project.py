@@ -51,7 +51,7 @@ The surface's own README is careful about this and the page inherits it:
 ## The token never goes in a URL
 
 `ops/Caddyfile` writes an access log and uvicorn logs the request line, so a token in a
-query string is a token written to disk on every request. It travels in `X-Sym-Token`, is
+query string is a token written to disk on every request. It travels in `X-Symoneural-Token`, is
 held in `localStorage`, and this file contains no token and no default.
 """
 from __future__ import annotations
@@ -307,7 +307,10 @@ SCRIPT = r"""<script>
   // Every response is the same envelope: {ok, api_version, code?, error?}. A client that
   // branches on HTTP status instead of `code` would have to know which route maps which.
   function api(method, path, payload) {
-    var opt = { method: method, headers: { 'X-Sym-Token': tok() } };
+    /* Both spellings: site/ and the API are deployed by separate commands, so this file can
+       be the newer of the two. The server reads both as well, for a cached copy of this file
+       against a new API. Drop the legacy key once the deployed API reads the new name. */
+    var opt = { method: method, headers: { 'X-Symoneural-Token': tok(), 'X-Sym-Token': tok() } };
     if (payload !== undefined) {
       opt.headers['Content-Type'] = 'application/json';
       opt.body = JSON.stringify(payload);
@@ -335,7 +338,7 @@ SCRIPT = r"""<script>
         '<p class="pj-note">Both variables are required, so a half-configured surface ' +
         'fails closed rather than opening a private workspace on a public address. ' +
         'Set them in the systemd unit environment and restart the API:</p>' +
-        '<p><code>SYM_PROJECT_ENABLED=1</code><br><code>SYM_PROJECT_TOKEN=' +
+        '<p><code>SYMONEURAL_PROJECT_ENABLED=1</code><br><code>SYMONEURAL_PROJECT_TOKEN=' +
         '&lt;secrets.token_urlsafe(32)&gt;</code></p>' +
         '<p class="pj-note">Read <code>backend/apps/project/README.md</code> first.</p>';
       return;
@@ -345,11 +348,11 @@ SCRIPT = r"""<script>
       : esc(res && res.error ? res.error : 'the surface did not answer');
     g.innerHTML =
       '<b>' + msg + '</b>' +
-      '<p class="pj-note">It is sent as the <code>X-Sym-Token</code> header and kept in ' +
+      '<p class="pj-note">It is sent as the <code>X-Symoneural-Token</code> header and kept in ' +
       'this browser only. It is never put in a URL, because the web server and the API ' +
       'both log request lines to disk.</p>' +
       '<div class="pj-row"><input id="pj-tok" type="password" autocomplete="off" ' +
-      'placeholder="X-Sym-Token"><button class="cta" id="pj-tok-save">Use it</button></div>';
+      'placeholder="X-Symoneural-Token"><button class="cta" id="pj-tok-save">Use it</button></div>';
     var save = $('pj-tok-save');
     if (save) {
       save.addEventListener('click', function () {

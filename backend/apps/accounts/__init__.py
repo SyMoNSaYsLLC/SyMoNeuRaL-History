@@ -57,8 +57,8 @@ N=2^15 and above. Verified on this box. Every scrypt call in this file passes `m
 
 ## It is off by default, and it fails closed
 
-    SYM_ACCOUNTS_ENABLED=1
-    SYM_SESSION_SECRET=<32+ random chars>      # e.g. `openssl rand -base64 48`
+    SYMONEURAL_ACCOUNTS_ENABLED=1
+    SYMONEURAL_SESSION_SECRET=<32+ random chars>      # e.g. `openssl rand -base64 48`
 
 Both, or the surface does not exist -- the same two-switch shape as
 `backend/apps/asicminer/__init__.py`. There is **no generated-per-process fallback and no
@@ -183,7 +183,7 @@ class AccountsUnavailable(AccountsError):
 
     This is its own type because the failure mode to avoid is a caller that treats a
     `None` from `verify()` as "wrong password", logs it and carries on. A missing
-    `SYM_SESSION_SECRET` is a misconfiguration, not a credential decision, and it must be
+    `SYMONEURAL_SESSION_SECRET` is a misconfiguration, not a credential decision, and it must be
     impossible to swallow by accident.
     """
 
@@ -215,10 +215,10 @@ class Throttled(AccountsError):
 def db_path() -> pathlib.Path:
     """`run/accounts/accounts.db`, overridable for tests.
 
-    `SYM_ACCOUNTS_DB` exists so the test file can point at a temp directory. It is not a
+    `SYMONEURAL_ACCOUNTS_DB` exists so the test file can point at a temp directory. It is not a
     production knob and nothing documents it as one.
     """
-    override = os.environ.get("SYM_ACCOUNTS_DB", "").strip()
+    override = os.environ.get("SYMONEURAL_ACCOUNTS_DB", "").strip()
     if override:
         return pathlib.Path(override)
     return ROOT / "run" / "accounts" / "accounts.db"
@@ -230,8 +230,8 @@ def enabled() -> bool:
     Mirrors `backend/apps/asicminer/__init__.py`: two switches, and a misconfiguration on
     a box with a public IP fails closed rather than open.
     """
-    return (os.environ.get("SYM_ACCOUNTS_ENABLED") == "1"
-            and len(os.environ.get("SYM_SESSION_SECRET", "")) >= MIN_SECRET_CHARS)
+    return (os.environ.get("SYMONEURAL_ACCOUNTS_ENABLED") == "1"
+            and len(os.environ.get("SYMONEURAL_SESSION_SECRET", "")) >= MIN_SECRET_CHARS)
 
 
 def _secret() -> bytes:
@@ -242,17 +242,17 @@ def _secret() -> bytes:
     `systemctl restart symoneural-api`, which silently logs every user out; and a
     hardcoded one is a forgeable session for anybody who reads this file.
     """
-    raw = os.environ.get("SYM_SESSION_SECRET", "")
+    raw = os.environ.get("SYMONEURAL_SESSION_SECRET", "")
     if len(raw) < MIN_SECRET_CHARS:
         raise AccountsUnavailable(
-            "SYM_SESSION_SECRET is unset or shorter than "
+            "SYMONEURAL_SESSION_SECRET is unset or shorter than "
             f"{MIN_SECRET_CHARS} characters; accounts refuse to operate. "
             "Generate one with: openssl rand -base64 48")
     return raw.encode("utf-8")
 
 
 def session_ttl_s() -> int:
-    raw = os.environ.get("SYM_SESSION_TTL_S", "").strip()
+    raw = os.environ.get("SYMONEURAL_SESSION_TTL_S", "").strip()
     if raw.isdigit() and int(raw) > 0:
         return int(raw)
     return SESSION_TTL_S
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS sessions (
     sid        TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
-    verifier   TEXT NOT NULL,            -- hmac_sha256(SYM_SESSION_SECRET, whole token)
+    verifier   TEXT NOT NULL,            -- hmac_sha256(SYMONEURAL_SESSION_SECRET, whole token)
     created    REAL NOT NULL,
     expires    REAL NOT NULL,
     revoked    INTEGER NOT NULL DEFAULT 0
@@ -691,7 +691,7 @@ def issue_session(account_id: str, *, ttl_s: int | None = None,
     the failure mode of losing it is that revoked tokens come back to life.
 
     **What the secret is for, given the rows are authoritative.** The database stores
-    `hmac_sha256(SYM_SESSION_SECRET, token)`, not the token. So reading the file -- a
+    `hmac_sha256(SYMONEURAL_SESSION_SECRET, token)`, not the token. So reading the file -- a
     backup, a stray copy, an SQL-injection read in some future route -- yields verifiers
     that cannot be turned back into a usable cookie. And rotating the secret invalidates
     every session at once, which is the emergency lever you want to exist.
@@ -831,7 +831,7 @@ def selftest() -> dict:
     out: dict = {
         "ok": False,
         "enabled": enabled(),
-        "secret_present": len(os.environ.get("SYM_SESSION_SECRET", "")) >= MIN_SECRET_CHARS,
+        "secret_present": len(os.environ.get("SYMONEURAL_SESSION_SECRET", "")) >= MIN_SECRET_CHARS,
         "db": str(db_path()),
         "scrypt": {"n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P,
                    "mem_mib": 128 * SCRYPT_N * SCRYPT_R * SCRYPT_P // (1 << 20)},
@@ -840,7 +840,7 @@ def selftest() -> dict:
         "error": None,
     }
     if not out["secret_present"]:
-        out["error"] = ("SYM_SESSION_SECRET is unset or too short — accounts refuse to "
+        out["error"] = ("SYMONEURAL_SESSION_SECRET is unset or too short — accounts refuse to "
                         "operate. This is the fail-closed path, not a fault.")
         return out
     try:
@@ -869,7 +869,7 @@ def unit_state() -> tuple[str, str]:
     switched on. Nothing here reports `ready` on the strength of the code existing.
     """
     if not enabled():
-        return "offline", "disabled — set SYM_ACCOUNTS_ENABLED=1 and SYM_SESSION_SECRET"
+        return "offline", "disabled — set SYMONEURAL_ACCOUNTS_ENABLED=1 and SYMONEURAL_SESSION_SECRET"
     try:
         with _conn() as c:
             n = c.execute("SELECT COUNT(*) n FROM accounts").fetchone()["n"]

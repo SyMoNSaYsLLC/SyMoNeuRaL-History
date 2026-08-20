@@ -223,9 +223,9 @@ service would queue a job on the live GPU. Start ComfyUI and your own API, then 
 
 ```bash
 bash scripts/comfyui.sh start                       # loopback :8188, no lock held
-cd backend && SYM_STUDIO_ENABLED=1 SYM_STUDIO_TOKEN=devtest \
+cd backend && SYMONEURAL_STUDIO_ENABLED=1 SYMONEURAL_STUDIO_TOKEN=devtest \
     python3 -m uvicorn api:app --port 8876          # a spare port, not the service
-SYM_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
+SYMONEURAL_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
 bash scripts/comfyui.sh stop                        # /free, THEN SIGTERM -- see below
 ```
 
