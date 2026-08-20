@@ -54,6 +54,13 @@ assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 MODELS = ROOT / "backend" / "models"
 RUN = ROOT / "run"
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
+DEPLOY = ROOT / "scripts" / "deploy.sh"
+UNIT = "symoneural-api"
+# Where the packaged postinst records the outcome of its deploy. Read, never invented: the
+# .deb's postinst writes one line here (`ok: <iso>`, `skipped: <why>`, or `FAILED: ...`) and
+# this is the only place either command learns whether the last publish worked.
+# SYM_STATE_DIR exists so the tests can point this at a tmpdir; nothing else sets it.
+STATE = Path(os.environ.get("SYM_STATE_DIR", "/var/lib/symoneural"))
 
 LLAMA_BIN = ROOT / "contrib" / "llama.cpp" / "build" / "bin"
 SD_BUILD = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin"
@@ -138,6 +145,12 @@ def cmd_status(_args) -> int:
     print(f"{c('image', DIM)}  {'built' if sdb else c('not built', AMBER)}"
           f"   {'weights present' if FLUX_UNET.exists() else c('weights missing', AMBER)}")
     print(f"{c('ravencalc', DIM)}   always available {c('(cpu, no gpu, never queues)', DIM)}")
+    # Only when something has written it. On a git checkout nothing has, and an invented
+    # "never deployed" row would be a reading of a file that does not exist.
+    verdict = last_deploy()
+    if verdict:
+        print()
+        print(f"{c('last deploy', DIM)}        {verdict}")
     return 0
 
 
@@ -198,6 +211,105 @@ def chat_running() -> bool:
         return True
     except Exception:
         return False
+
+
+# --------------------------------------------------------------------------
+# upgrade
+# --------------------------------------------------------------------------
+
+def last_deploy() -> str:
+    """The postinst's one-line verdict, or '' when nothing has ever written it."""
+    try:
+        return (STATE / "last-deploy").read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+
+
+def unit_is_active() -> bool:
+    """Whether systemd is running the API here. `is-active`, not `is-enabled`: a unit that
+    is enabled but deliberately stopped must stay stopped, and `restart` would start it."""
+    try:
+        return subprocess.run(["systemctl", "is-active", "--quiet", UNIT],
+                              check=False, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def sudo_argv(args) -> list[str]:
+    """The re-exec line. Built here rather than inline so a test can read it without
+    running it -- there is no dry-run mode for `sudo` itself."""
+    argv = ["sudo", sys.executable, str(Path(__file__).resolve()), "upgrade"]
+    if args.no_restart:
+        argv.append("--no-restart")
+    return argv
+
+
+def cmd_upgrade(args) -> int:
+    """Republish the staged site and restart the service: the no-apt path to a deploy.
+
+    This does NOT reimplement `scripts/deploy.sh`. That script owns the orphan scan, the
+    `--prune` semantics and the reference check that can fail the publish, and a second
+    implementation of any of those would drift from it silently. This calls it.
+    """
+    apt_list = Path("/etc/apt/sources.list.d/symoneural.list")
+    print(f"{c('deploy', DIM)}             {DEPLOY} --prune")
+    print(f"{c('service', DIM)}            {UNIT} "
+          f"{c('active', GREEN) if unit_is_active() else c('not active here', DIM)}")
+    previous = last_deploy()
+    if previous:
+        print(f"{c('last deploy', DIM)}        {previous}")
+    if apt_list.exists():
+        print(f"{c('apt', DIM)}                {apt_list} exists, so "
+              f"`sudo apt update && sudo apt upgrade` does this too")
+
+    if not DEPLOY.is_file():
+        print(f"{c('no ' + str(DEPLOY), AMBER)} -- this checkout cannot publish", file=sys.stderr)
+        return 1
+
+    if args.check:
+        print()
+        print("--check: nothing was run. Drop the flag to publish.")
+        return 0
+
+    # The webroot is root-owned, so this needs root and does not have it. Re-exec rather
+    # than printing an instruction: the alternative is a command that only ever tells you
+    # to run a different command.
+    if os.geteuid() != 0:
+        argv = sudo_argv(args)
+        if shutil.which("sudo") is None:
+            print("not root, and no sudo on PATH:", " ".join(argv), file=sys.stderr)
+            return 1
+        print()
+        print(f"{c('re-exec', DIM)}            {' '.join(argv)}")
+        sys.stdout.flush()
+        os.execvp(argv[0], argv)
+
+    print()
+    rc = subprocess.run([str(DEPLOY), "--prune"], check=False).returncode
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    verdict = f"ok: {stamp}" if rc == 0 else f"FAILED: {stamp} -- symoneural-cli upgrade"
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        (STATE / "last-deploy").write_text(verdict + "\n")
+    except OSError as exc:
+        # Not fatal: the publish either happened or it did not, and that is what matters.
+        # Saying so beats a silent gap in a file two commands read as history.
+        print(f"could not record the verdict in {STATE / 'last-deploy'}: {exc}", file=sys.stderr)
+    if rc != 0:
+        print(c(f"deploy failed (exit {rc}); the service was left alone", AMBER), file=sys.stderr)
+        return rc
+
+    if args.no_restart:
+        print(c(f"--no-restart: {UNIT} left as it was", DIM))
+    elif unit_is_active():
+        print(f"restarting {UNIT}")
+        if subprocess.run(["systemctl", "restart", UNIT], check=False).returncode != 0:
+            print(c(f"restart failed -- journalctl -u {UNIT}", AMBER), file=sys.stderr)
+            return 1
+    else:
+        print(f"{UNIT} is not active here, so nothing was restarted")
+    print(f"{c('recorded', DIM)}           {verdict}")
+    return 0
 
 
 def cmd_stop_chat(_args) -> int:
@@ -877,6 +989,13 @@ def main() -> int:
 
     sub.add_parser("status", help="device, surfaces and lock state").set_defaults(fn=cmd_status)
     sub.add_parser("residency", help="the residency plan, computed live").set_defaults(fn=cmd_residency)
+
+    p = sub.add_parser("upgrade", help="republish the site and restart the service (needs root)")
+    p.add_argument("--check", action="store_true",
+                   help="print what would happen and exit, without root and without deploying")
+    p.add_argument("--no-restart", action="store_true",
+                   help="publish the site but leave the service running the old code")
+    p.set_defaults(fn=cmd_upgrade)
 
     p = sub.add_parser("chat", help="ask the local model (takes the GPU)")
     p.add_argument("prompt", nargs="?")
