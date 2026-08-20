@@ -2720,6 +2720,78 @@ async def local_intake(body: IntakeSet, request: Request) -> JSONResponse:
     return JSONResponse({"id": body.id, "set": body.set})
 
 
+class TaskNote(BaseModel):
+    """One comment on one task. Garrett: *"i need a comments box for the the project tasks"*.
+
+    As narrow as IntakeSet and for the same reason: this endpoint can add a line to a task's
+    detail block and can do nothing else. It cannot edit a task, cannot change a state, cannot
+    remove anything. The worst a bug here does is write a comment in the wrong place.
+
+    `text` is bounded because it lands in a file that a generator re-reads, and `who` is bounded
+    and charset-limited because it is written into the line unquoted.
+    """
+    id: str = Field(pattern=r"^#\d{1,6}$")
+    who: str = Field(default="garrett", pattern=r"^[\w .-]{1,32}$")
+    text: str = Field(min_length=1, max_length=2000)
+
+
+@app.post("/local/tasknote", include_in_schema=False)
+async def local_tasknote(body: TaskNote, request: Request) -> JSONResponse:
+    """Append one `note:` line to a task's indented detail block in PROJECT-TASKS.md.
+
+    Append-only on purpose: it inserts after the last indented line of the task and rewrites
+    nothing, so two comments cannot collide and no existing line can be lost to a bug here.
+
+    THE INDENTATION IS LOAD-BEARING, not cosmetic. `tools/archive_tasks.py` ends a task block
+    at the first non-blank column-zero line, so a comment written flush left would sever its
+    own task from every detail line below it the next time the archiver ran. Newlines inside
+    the comment are re-prefixed for the same reason, and keeping `note:` on every line also
+    stops a comment that happens to read `owner: garrett` or `check: exists x` from being
+    parsed by `build_progress.py` as a directive somebody declared.
+    """
+    _require_local(request)
+    target = ROOT / "PROJECT-TASKS.md"
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="PROJECT-TASKS.md not found")
+
+    row = re.compile(r"^[◼◻▶⊘] ((?:\(unnumbered[^)]*\))|#\d+) — ")
+    lines = target.read_text().splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        m = row.match(line)
+        if m and m.group(1) == body.id:
+            start = i
+            break
+    if start is None:
+        raise HTTPException(status_code=404, detail=f"no task {body.id} in PROJECT-TASKS.md")
+
+    # The end of the block is the last INDENTED line under the row. Trailing blank lines are
+    # not part of it -- inserting into them would drift the comment away from its task by one
+    # line per comment, and eventually out of the block entirely.
+    end = start
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith((" ", "\t")):
+            end = i
+        elif lines[i].strip() == "":
+            continue
+        else:
+            break
+
+    stamp = time.strftime("%Y-%m-%d")
+    body_lines = [ln.strip() for ln in body.text.splitlines() if ln.strip()]
+    new = [f"        note: {stamp} {body.who} — {body_lines[0]}"]
+    new += [f"        note: {ln}" for ln in body_lines[1:]]
+    lines[end + 1:end + 1] = new
+
+    tmp = target.with_suffix(".md.tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    tmp.replace(target)
+    log.info("tasknote %s by %s (%d chars)", body.id, body.who, len(body.text))
+    # The rendered line goes back so the page shows exactly what was written, rather than the
+    # browser guessing at the format and drifting from the file it claims to mirror.
+    return JSONResponse({"id": body.id, "line": new[0].strip()[len("note: "):]})
+
+
 @app.get("/local/progress", include_in_schema=False)
 async def local_progress(request: Request) -> FileResponse:
     """Serve run/progress.html from this origin, so the buttons above are same-origin.

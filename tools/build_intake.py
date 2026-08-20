@@ -48,7 +48,12 @@ from build_progress import (  # noqa: E402  (path set above)
     AUDIT_HEAD, TASK_REF, parse_audit, parse_questions, parse_requests,
 )
 
-ENTRY_HEAD = re.compile(r"^## (A-[A-Z0-9]+) \[(\w+)\] — (.+)$")
+#: The title is optional so that ONE parser reads both files. `review/RETIRED-ASSIGNMENTS.md`
+#: writes `## A-R22 [retired]` with no title, and until the archive was read back it was being
+#: rebuilt every run from a source that no longer contained the entries — so an archived item
+#: survived exactly one further run before the rewrite dropped it. Making this optional is what
+#: lets the archive be an input as well as an output, which is what stops that.
+ENTRY_HEAD = re.compile(r"^## (A-[A-Z0-9]+) \[(\w+)\](?: — (.+))?$")
 #: `[ ]` open, `[x]` ready to become a task, `[-]` unnecessary. See INTAKE_BOX in
 #: build_progress.py for why delete is a box state rather than a separate control.
 BOX = re.compile(r"^\[([ xX\-])\]")
@@ -65,6 +70,17 @@ EDIT_LINE = re.compile(r"^edit:\s*(.*)$")
 # three kinds rather than to `**...**` generally, so a bold sentence someone writes in an
 # entry's prose is still prose.
 SECTION = re.compile(r"^\*\*(?:Question|Request|Finding)s\*\*$")
+
+#: The preamble that used to head a `## Retired` section at the foot of this file, before
+#: retirement moved out to `review/RETIRED-ASSIGNMENTS.md`. Recognised on the way IN, and no
+#: longer written on the way out — so any surviving copies wash out on the next run instead of
+#: being read as prose belonging to whichever entry happened to be last.
+#:
+#: Three of them had stacked up under A-FI9. Same bug as SECTION above, third occurrence: a
+#: generator that re-reads its own output must recognise EVERYTHING it has ever emitted, not
+#: just what it emits today. Retiring the section without retiring its parser left the sentence
+#: with no owner, and an unowned line in this file is by definition something Garrett typed.
+RETIRED_NOTE = re.compile(r"^Source no longer lists these\.")
 
 HEADER = """# INTAKE.md — the one assignment surface
 
@@ -116,7 +132,7 @@ def parse_existing(path: Path) -> dict:
         m = ENTRY_HEAD.match(line)
         if m:
             cur = {"box": False, "dropped": False, "task": "", "answer": "",
-                   "brief": "", "edit": "", "prose": []}
+                   "brief": "", "edit": "", "prose": [], "title": m.group(3) or ""}
             kept[m.group(1)] = cur
             continue
         if cur is None:
@@ -141,7 +157,7 @@ def parse_existing(path: Path) -> dict:
             # has to recognise its own output, and a header is output.
             if line.startswith(("from:", "owner:", "frozen:", "needs:")) \
                     or line.startswith("## ") or line.startswith("---") \
-                    or SECTION.match(line):
+                    or SECTION.match(line) or RETIRED_NOTE.match(line):
                 continue
             cur["prose"].append(line)
     # Trailing blanks are ours too — the entry separator. Left in, they accumulate exactly
@@ -294,7 +310,10 @@ def render_retired(kept: dict, seen: set) -> str | None:
            ""]
     for i in retired:
         k = kept[i]
-        out.append(f"## {i} [retired]")
+        # The title goes in. Without it the archive was a list of bare ids, which is a record
+        # only in the sense that a filing cabinet with no labels is a record.
+        title = k.get("title") or ""
+        out.append(f"## {i} [retired]" + (f" — {title}" if title else ""))
         out.append("[-]" if k.get("dropped") else ("[x]" if k.get("box") else "[ ]"))
         # Every hand-authored field, same as a live entry. Retiring an item must not be a
         # quiet way of losing the sentence explaining why it was never taken to task.
@@ -332,17 +351,41 @@ def main() -> int:
     ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     root = ap.parse_args().root
     target = root / "INTAKE.md"
+    archive = root / "review" / "RETIRED-ASSIGNMENTS.md"
     kept = parse_existing(target)
+
+    # The archive is an INPUT, not just an output. Two things depend on that.
+    #
+    # It stops the archive eating itself: `render_retired` builds the whole file from what it
+    # is given, and what it was given was INTAKE.md alone -- which by then no longer contained
+    # the retired entry, because that is what retiring it meant. So each run rewrote the
+    # archive from a source one entry shorter than the run before.
+    #
+    # And it is what makes Drop permanent. Garrett, 2026-08-20: *"i click drop and it doesnt
+    # remove from intake list"*. A dropped entry leaves the list below; the only record that it
+    # was ever dropped is in the archive, so if the archive were not read back the source would
+    # regenerate the entry on the next run as though it were brand new.
+    archived = parse_existing(archive)
+    handled = {**archived, **kept}          # INTAKE.md wins: it is the more recent edit
+
     assignments = gather(root)
-    text = render(assignments, kept)
+    # Drop means gone. It used to mean struck through and still listed, on the reasoning that
+    # removing a row hides the evidence -- but the evidence belongs in the archive, and leaving
+    # thirty dropped rows on the list defeats the one thing the list is for. Nothing is lost:
+    # every dropped entry is written to `review/RETIRED-ASSIGNMENTS.md` below, with whatever
+    # Garrett typed on it.
+    live = [a for a in assignments if not handled.get(a["id"], {}).get("dropped")]
+    text = render(live, kept)
 
     # The archive first, then the list. If the archive write fails, the entries are still in
     # INTAKE.md and the next run tries again; do it the other way round and a failure between
     # the two writes loses them, and they are the only copy of anything Garrett typed.
-    seen = {a["id"] for a in assignments}
-    retired = render_retired(kept, seen)
+    seen = {a["id"] for a in live}
+    for a in assignments:                   # keep a title on entries the sources still know
+        if a["id"] in handled and not handled[a["id"]].get("title"):
+            handled[a["id"]]["title"] = a["title"]
+    retired = render_retired(handled, seen)
     if retired is not None:
-        archive = root / "review" / "RETIRED-ASSIGNMENTS.md"
         archive.parent.mkdir(exist_ok=True)
         if not archive.exists() or archive.read_text() != retired:
             write_atomic(archive, retired)

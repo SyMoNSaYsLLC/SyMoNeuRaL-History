@@ -306,9 +306,20 @@ class EveryLedgerEntryIsDoneOrTaskOrIntake(unittest.TestCase):
                          "an entry naming #41 is on the task list; listing it here too is "
                          "the duplicate-listing failure the one-list rule exists to end")
 
-    def test_a_dropped_assignment_stays_visible_and_stops_counting(self):
-        """Garrett's delete. `[-]` is a decision, and a decision that leaves no trace on the
-        page is indistinguishable from an item that was never recorded."""
+    def test_a_dropped_assignment_leaves_the_list_and_lands_in_the_archive(self):
+        """Garrett's delete. `[-]` removes the entry from the list and from the page.
+
+        REWRITTEN 2026-08-20. This test used to assert the opposite -- that a dropped entry
+        stayed on the page struck through -- on the reasoning that a decision leaving no trace
+        is indistinguishable from an item that was never recorded. Garrett overrode it by
+        reporting the behaviour as a bug: *"i click drop and it doesnt remove from intake
+        list"*. He is right about the surface, and the original concern is still right about
+        the evidence, so the trace moved rather than disappearing: the entry is asserted into
+        `review/RETIRED-ASSIGNMENTS.md` below, which is the dedicated folder he asked for.
+
+        Both halves are asserted on purpose. Off-the-page alone would be deletion; in-the-file
+        alone would be the bug he reported.
+        """
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             # The audit surface has to go too, or its thirteen findings arrive as barriers and
@@ -324,14 +335,31 @@ class EveryLedgerEntryIsDoneOrTaskOrIntake(unittest.TestCase):
                 "## A-R2 [request] — a captured one\n[-]"))
             run_intake(root)                     # the drop must survive regeneration
             page = run_generator(root, root / "b.html")
+            after = intake.read_text()
+            archive = (root / "review" / "RETIRED-ASSIGNMENTS.md")
+            archived = archive.read_text() if archive.exists() else ""
+            # A second regeneration, because the failure mode this guards is a delayed one:
+            # the archive used to be rebuilt from INTAKE.md alone, so an entry that had left
+            # the list survived exactly one more run before the rewrite dropped it.
+            run_intake(root)
+            still = archive.read_text() if archive.exists() else ""
         # Two, not one: R-2 is captured, and R-4's bare `adopted` names no file, so it is
         # intake as well. Both are barriers; the drop below is applied to R-2 only.
         self.assertEqual(before, 2, "fixture: R-2 and R-4 are the barriers before the drop")
         self.assertEqual(barrier_count(page), 1,
                          "dropping R-2 must take exactly one off the count — R-4 is untouched "
                          "and must stay on it, or delete is removing more than it was aimed at")
-        self.assertIn(">DROPPED<", row_of(page, "A-R2"),
-                      "the dropped entry left no trace — that is deletion, not a decision")
+        self.assertEqual(row_of(page, "A-R2"), "",
+                         "a dropped entry must leave the page — Garrett clicked Drop and the "
+                         "row stayed, which reads as a button that does not work")
+        self.assertNotIn("## A-R2 ", after,
+                         "a dropped entry must leave INTAKE.md, not merely stop counting")
+        self.assertIn("## A-R2 ", archived,
+                      "dropping must ARCHIVE, never delete — this is the only copy of "
+                      "anything Garrett typed on the entry")
+        self.assertIn("## A-R2 ", still,
+                      "the archive must survive the next regeneration; it used to be rebuilt "
+                      "from a source that no longer held the entry, so it ate itself")
 
     def test_an_unknown_status_fails_the_build_instead_of_rendering(self):
         """The silent fallback this replaces is exactly how a frozen item read as available."""

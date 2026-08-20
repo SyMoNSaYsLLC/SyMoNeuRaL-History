@@ -109,6 +109,20 @@ OWNER = re.compile(r"^\s*owner:\s*(coder|garrett)\s*$", re.M | re.I)
 #: non-blank column-zero line, so an unindented checkbox would truncate its own task.
 CHECKBOX = re.compile(r"^\s*\[([ xX])\]\s", re.M)
 
+#: `note: <text>` on an indented detail line — a comment on a task, from whoever is reading it.
+#: Garrett: *"and i need a comments box for the the project tasks"*.
+#:
+#: Deliberately the dumbest possible storage. One comment is one line in the task's own detail
+#: block, so a comment lives beside the thing it is about, survives in `git log` with the rest
+#: of the task, and needs no second file to fall out of sync with. Append-only falls out of
+#: that for free: writing a comment adds a line and touches nothing already written, so two
+#: people commenting cannot overwrite each other and no generator run can eat a comment.
+#:
+#: Same indentation rule as CHECKBOX, and it matters more here because comments are the one
+#: field where a human types free prose: an unindented one would end its own task block for
+#: `tools/archive_tasks.py` and take every detail line under it out of the task.
+NOTE = re.compile(r"^[ \t]+note:[ \t]*(.*)$", re.M)
+
 
 def run_check(kind: str, arg: str, root: Path) -> bool:
     """One `check:` predicate against the disk. Never raises: an unreadable file is a
@@ -158,7 +172,11 @@ def disk_state(old: str, new: str, root) -> str:
 
 CSS = """
 :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e;
-        --ok:#3fb950; --warn:#d29922; --run:#58a6ff; --bad:#f85149; }
+        --ok:#3fb950; --warn:#d29922; --run:#58a6ff; --bad:#f85149;
+        /* Table surfaces. Kept as tokens rather than literals in the rules below, because a
+           header ground and a zebra band that drift apart is how a table starts looking
+           assembled instead of designed. */
+        --head:#1c2129; --zebra:#12171e; --hover:#1b222c; }
 * { box-sizing:border-box; }
 body { background:var(--bg); color:var(--fg); margin:0; padding:1.2rem;
        font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif; max-width:1100px;
@@ -169,11 +187,49 @@ h2 { font-size:1.05rem; margin:1.6rem 0 .5rem; border-bottom:1px solid var(--lin
 p  { margin:.3rem 0; }
 .dim { color:var(--dim); }
 .mono { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.92em; }
-.scroll { overflow-x:auto; }
+.scroll { overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
 table { border-collapse:collapse; width:100%; }
-th,td { text-align:left; padding:.3rem .6rem; border-bottom:1px solid var(--line);
+th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line);
         vertical-align:top; }
+/* A header that reads as a header. Garrett, 2026-08-20: *"make the table look like a real
+   table"*. Small caps, tracked out, on its own ground and stuck to the top of the scroll box,
+   so a long list still tells you what column you are in when you are forty rows down. */
+thead th { position:sticky; top:0; z-index:1; background:var(--head);
+           color:var(--fg); font-weight:600; font-size:.76rem; letter-spacing:.09em;
+           text-transform:uppercase; white-space:nowrap;
+           border-bottom:2px solid var(--line); }
 th { color:var(--dim); font-weight:600; }
+/* Zebra banding on the ENTRY rows only, and the band is emitted from Python rather than
+   selected for. Every entry MAY render as a pair -- the row and its detail row underneath --
+   but only when it has a detail to show, so the pairing is irregular and any positional
+   selector bands the wrong rows. `:nth-of-type` was the first attempt and is worse than it
+   looks: it counts every `tr` sibling and ignores the `:not(.det)` qualifying it, so it was
+   striping by raw row position in a table whose rows come in ones and twos. The renderer
+   knows which entry it is on; it tags the entry and its detail row together. */
+table.grid tbody tr.band td { background:var(--zebra); }
+table.grid tbody tr:not(.det) td { border-bottom:0; }
+table.grid tbody tr.det td { border-bottom:1px solid var(--line); }
+table.grid tbody tr:hover td { background:var(--hover); }
+table.grid tbody tr:not(.det):hover + tr.det td { background:var(--hover); }
+/* Fixed widths for the short columns so the one column carrying a sentence gets the rest of
+   the table, instead of every column negotiating for space against the longest cell in it. */
+.c-act { width:11rem; } .c-ref { width:5.5rem; } .c-typ { width:6rem; }
+.c-own { width:7rem; }  .c-sta { width:7rem; } .c-pct { width:6.5rem; }
+/* The comments box. Full width under its task rather than in a column of its own -- see the
+   renderer note. Quiet until you are in it: the thread reads as text, and the control row is
+   dim until focus, so 39 empty boxes down the page do not shout over the tasks. */
+.notes { padding:.15rem 0 .35rem 0; }
+ul.thread { margin:0 0 .4rem 1.1rem; padding:0; }
+ul.thread li { margin:.12rem 0; color:var(--fg); white-space:pre-wrap; }
+.nonote { margin:0 0 .35rem 0; font-style:italic; }
+.addnote textarea { width:100%; box-sizing:border-box; background:var(--bg); color:var(--fg);
+                    border:1px solid var(--line); border-radius:4px; padding:.35rem .5rem;
+                    font:inherit; resize:vertical; }
+.addnote textarea:focus, .addnote .who:focus { outline:1px solid var(--run); }
+.noterow { display:flex; gap:.4rem; align-items:center; margin-top:.3rem; }
+.addnote .who { background:var(--bg); color:var(--dim); border:1px solid var(--line);
+                border-radius:4px; padding:.2rem .4rem; font:inherit; }
+.notemsg { font-size:.85em; }
 .badge { display:inline-block; padding:0 .5em; border-radius:.7em; font-size:.85em;
          border:1px solid var(--line); white-space:nowrap; }
 .s-done { color:var(--ok); }  .s-pending { color:var(--warn); }
@@ -311,6 +367,13 @@ def parse_tasks(text: str, root: Path | None = None) -> list[dict]:
         t["checks"] = None          # None means "declared none", which is NOT zero passed
         t["owner"] = "coder"        # unlabelled work is mine; see OWNER
         t["box"] = None             # None means no checkbox on this task at all
+        # Comments, oldest first, exactly as typed. Append-only by construction: each is its
+        # own line, so a new one can never land on top of an older one, and nothing here is
+        # ever rewritten by a generator. `note:` stays on EVERY line of a multi-line comment
+        # for two reasons — an unindented continuation would end the task block for
+        # `archive_tasks.py` and silently truncate the task, and a continuation reading
+        # `owner: garrett` would be parsed as a directive instead of as somebody's words.
+        t["notes"] = [m.group(1).rstrip() for m in NOTE.finditer(t["detail"])]
 
         o = OWNER.search(t["detail"])
         if o:
@@ -617,6 +680,40 @@ def badge(state: str) -> str:
     return f'<span class="badge {cls}">{esc(state)}</span>'
 
 
+def note_cell(t: dict) -> str:
+    """The comments box for one task: the thread so far, then somewhere to add to it.
+
+    Garrett, 2026-08-20: *"and i need a comments box for the the project tasks"*. It renders
+    on every task, including tasks with no comments yet — a box you have to find is a box
+    nobody uses, and the empty state is the one that has to invite the first comment.
+
+    The thread is plain text, never markdown. A comment is somebody's words about a task, and
+    a stray backtick or underscore in them must not restyle the page or, worse, silently
+    disappear from it. `esc` is the whole formatting rule.
+    """
+    out = ['<div class="notes">']
+    if t["notes"]:
+        out.append('<ul class="thread">')
+        for n in t["notes"]:
+            out.append(f"<li>{esc(n)}</li>")
+        out.append("</ul>")
+    else:
+        out.append('<p class="dim nonote">No comments on this task yet.</p>')
+    # `name` is what the appended line gets attributed to, and it is a plain text field rather
+    # than anything resembling a login: this page is a bookmark on one box, and pretending to
+    # authenticate a comment on it would be a decorative security control — the same dishonesty
+    # the site rules bar for a status LED.
+    out.append(
+        f'<div class="addnote" data-id="{esc(t["id"])}">'
+        f'<textarea rows="2" placeholder="Add a comment on {esc(t["id"])}…"></textarea>'
+        f'<div class="noterow"><input class="who" value="garrett" '
+        f'aria-label="who is commenting" size="10">'
+        f'<button class="ctl">Comment</button>'
+        f'<span class="notemsg dim"></span></div></div>')
+    out.append("</div>")
+    return "".join(out)
+
+
 #: A leading repo-relative path in a `from:` or `edit:` line — `GARRETT-REQUESTS.md R-98`,
 #: `symoneural.env — set SPOTIFY_CLIENT_SECRET`, `backend/api.py:1545`.
 DOC_PATH = re.compile(r"^([\w./-]+\.\w+)(?::(\d+))?(.*)$", re.S)
@@ -672,21 +769,28 @@ INTAKE_JS = """<script>
   function apply(id, set) {
     var row = document.getElementById("row-" + id);
     if (!row) return;
-    var cell = row.cells[5];
     if (set === "-") {
-      row.classList.add("gone");
-      cell.innerHTML = '<span class="dropped">DROPPED</span>';
-      row.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+      // Drop REMOVES the row. Garrett, 2026-08-20: *"i click drop and it doesnt remove from
+      // intake list"* -- it used to grey the row and strike the title, on the reasoning that
+      // deleting a row hides the evidence. The evidence is in review/RETIRED-ASSIGNMENTS.md,
+      // which is written before INTAKE.md is; a row that stays after you drop it just reads
+      // as a button that did not work.
       var det = row.nextElementSibling;
-      if (det && det.classList.contains("det")) det.classList.add("gone");
-    } else {
+      if (det && det.classList.contains("det")) det.remove();
+      row.remove();
+      return;
+    }
+    {
       row.querySelectorAll("button[data-set=x]").forEach(function (b) {
         b.classList.toggle("on");
       });
     }
   }
 
-  document.querySelectorAll("button.ctl").forEach(function (btn) {
+  // `button.ctl[data-set]`, not `button.ctl`: the comments box reuses the same button styling
+  // and would otherwise be picked up by this handler and POSTed to the intake endpoint as an
+  // assignment tick with an undefined id.
+  document.querySelectorAll("button.ctl[data-set]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var id = btn.dataset.id, set = btn.dataset.set;
       if (set === "-" && !confirm("Drop " + id + " as unnecessary?")) return;
@@ -712,6 +816,60 @@ INTAKE_JS = """<script>
         btn.disabled = false;
         wire.innerHTML = 'Could not save <code>' + id + '</code> (' + e.message
           + '). Edit <code>INTAKE.md</code> and set its box to <code>[' + set + ']</code>.';
+      });
+    });
+  });
+
+  // The comments box. Same live/file:// split as the buttons above and for the same reason:
+  // the page is a bookmark that has to keep working when the API is down, so the failure mode
+  // is being told the line to type, never a control that silently does nothing.
+  document.querySelectorAll(".addnote").forEach(function (box) {
+    var id = box.dataset.id;
+    var ta = box.querySelector("textarea");
+    var who = box.querySelector(".who");
+    var btn = box.querySelector("button");
+    var msg = box.querySelector(".notemsg");
+
+    function append(line) {
+      var ul = box.parentNode.querySelector("ul.thread");
+      if (!ul) {
+        var empty = box.parentNode.querySelector(".nonote");
+        ul = document.createElement("ul");
+        ul.className = "thread";
+        if (empty) empty.replaceWith(ul); else box.parentNode.insertBefore(ul, box);
+      }
+      var li = document.createElement("li");
+      li.textContent = line;           // textContent, not innerHTML: a comment is never markup
+      ul.appendChild(li);
+    }
+
+    btn.addEventListener("click", function () {
+      var text = ta.value.trim();
+      if (!text) { ta.focus(); return; }
+      var author = (who.value || "garrett").trim();
+      if (!live) {
+        msg.textContent = "Opened from disk — add an INDENTED line "
+          + "'note: " + author + " — " + text + "' under " + id + " in PROJECT-TASKS.md.";
+        return;
+      }
+      btn.disabled = true;
+      msg.textContent = "saving…";
+      fetch("/local/tasknote", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({id: id, who: author, text: text})
+      }).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      }).then(function (d) {
+        append(d.line || text);
+        ta.value = "";
+        msg.textContent = "saved to PROJECT-TASKS.md";
+        btn.disabled = false;
+      }).catch(function (e) {
+        btn.disabled = false;
+        msg.textContent = "could not save (" + e.message
+          + ") — add it by hand as an indented 'note:' line under " + id + ".";
       });
     });
   });
@@ -802,17 +960,29 @@ def build(root: Path) -> str:
         # carried-forward figure.
         show_sha = any(t["sha"] for t in tasks)
         show_state = len({t["state"] for t in tasks}) > 1
-        show_owner = any(t.get("owner") for t in tasks)
-        head = ["<th>task</th>"]
+        # `any(owner)` was wrong here and rendered the exact furniture column the note above
+        # says it removed: `parse_tasks` defaults every task to `coder`, so the test could
+        # never be False and all 39 rows read the same word. A column earns its width by
+        # DIFFERING across rows, which is what `show_state` measures and what this now does.
+        show_owner = len({t.get("owner") or "coder" for t in tasks}) > 1
+        head = ['<th class="c-ref">Task</th>']
         if show_state:
-            head.append("<th>status</th>")
-        head.append('<th class="num">progress</th>')
+            head.append('<th class="c-sta">Status</th>')
+        head.append('<th class="num c-pct">Progress</th>')
         if show_owner:
-            head.append("<th>owner</th>")
+            head.append('<th class="c-own">Assigned to</th>')
         if show_sha:
-            head.append("<th>SHA</th>")
-        head.append("<th>wording</th>")
-        out.append('<div class="scroll"><table><tr>' + "".join(head) + "</tr>")
+            head.append('<th class="c-ref">Commit</th>')
+        head.append("<th>What it is</th>")
+        # Comments are NOT a column. Garrett asked for a comments box on the tasks, and the
+        # first draft of this gave it a `Notes` column -- in the same table he had just called
+        # unprofessional, for being too wide to read. A column holding a conversation is that
+        # mistake with a worse cell: it either truncates the thread or it pushes the wording
+        # off-screen. The assignment table already solved this with a paired detail row, so
+        # comments render there, full width, under the task they are about.
+        ncol = len(head)
+        out.append('<div class="scroll"><table class="grid"><thead><tr>'
+                   + "".join(head) + "</tr></thead><tbody>")
         # Numeric order, always. Garrett, 2026-08-20: "you need to make your programming
         # consistent; this is not consistent" -- and he was reading a table where #64 sat
         # between #58 and #59 because rows rendered in FILE order, and a task appended to the
@@ -823,7 +993,7 @@ def build(root: Path) -> str:
             m = re.match(r"#(\d+)", t["id"])
             return (0, int(m.group(1))) if m else (1, 0)
 
-        for t in sorted(tasks, key=task_key):
+        for n, t in enumerate(sorted(tasks, key=task_key)):
             # A row that answers for itself says so. Nobody has to trust that somebody
             # remembered to flip this marker, because nobody set it. It is a mark against the
             # progress cell, not a phrase beside the status: it qualifies the reading, and as
@@ -839,8 +1009,14 @@ def build(root: Path) -> str:
             if show_sha:
                 row.append(f'<td class="mono">{esc(t["sha"]) if t["sha"] else ""}</td>')
             row.append(f'<td class="ttl">{esc(t["title"])}</td>')
-            out.append("<tr>" + "".join(row) + "</tr>")
-        out.append("</table></div>")
+            # The band is tagged here and repeated on the detail row, so a task and its
+            # comments always share a ground. See the CSS note: a positional selector cannot
+            # do this, because whether a row has a partner depends on the data.
+            band = " band" if n % 2 else ""
+            out.append(f'<tr class="ent{band}">' + "".join(row) + "</tr>")
+            out.append(f'<tr class="det{band}"><td colspan="{ncol}">'
+                       + note_cell(t) + "</td></tr>")
+        out.append("</tbody></table></div>")
     else:
         out.append('<p class="dim">PROJECT-TASKS.md not found — nothing to render.</p>')
 
@@ -869,18 +1045,28 @@ def build(root: Path) -> str:
                    "Until a box is ticked I work only from the task list above.</p>")
         out.append('<p id="wire" class="dim">Buttons write to INTAKE.md through the API on '
                    "this box. Checking&nbsp;this&hellip;</p>")
-        out.append('<div class="scroll"><table><tr><th>ready</th><th>id</th><th>kind</th>'
-                   "<th>assignment</th><th>owner</th><th>task</th></tr>")
-        for a in sorted(assignments,
-                        key=lambda x: (bool(x["task"]), x["dropped"],
-                                       not x["box"], x["kind"], x["id"])):
-            gone = a["dropped"]
-            if a["task"]:
-                exit_cell = f'<span class="mono">{esc(a["task"])}</span>'
-            elif a["dropped"]:
-                exit_cell = '<span class="dropped">DROPPED</span>'
-            else:
-                exit_cell = '<span class="barrier">BARRIER</span>'
+        # Column names are for the person reading, not for the dict keys behind them. These
+        # were `ready / id / kind / assignment / owner / task` -- five of the six were the
+        # variable name, and `ready` labelled a column of buttons that are not a readiness
+        # reading but the control that sets one. Garrett, 2026-08-20: *"replacing 'ready' 'id'
+        # 'kind' 'assignment' 'owner' 'task' with more proper labeling"*.
+        out.append('<div class="scroll"><table class="grid"><thead><tr>'
+                   '<th class="c-act">Action</th>'
+                   '<th class="c-ref">Ref</th>'
+                   '<th class="c-typ">Type</th>'
+                   "<th>What it is</th>"
+                   '<th class="c-own">Assigned to</th>'
+                   '<th class="c-sta">Status</th></tr></thead><tbody>')
+        # Dropped entries are not rendered. `tools/build_intake.py` also stops writing them to
+        # INTAKE.md, so in the steady state there are none here to skip -- this is the window
+        # between a Drop click, which writes `[-]` immediately, and the generator run two
+        # minutes later that moves the entry to the archive. Without it the page would put the
+        # row back for those two minutes, which is the behaviour Garrett reported as broken.
+        for a in sorted((x for x in assignments if not x["dropped"]),
+                        key=lambda x: (bool(x["task"]), not x["box"], x["kind"], x["id"])):
+            gone = False
+            exit_cell = (f'<span class="mono">{esc(a["task"])}</span>' if a["task"]
+                         else '<span class="barrier">BARRIER</span>')
 
             # Carried entries get no controls: they are tasks now, and the task list is where
             # they are acted on. Every other row gets both, including a dropped one -- undoing
@@ -922,15 +1108,21 @@ def build(root: Path) -> str:
             # is worth opening, so they render inline rather than behind a hover or a fold.
             det = []
             if a["brief"]:
-                det.append(f'<p class="brief"><b>why not a task:</b> {esc(a["brief"])}</p>')
+                det.append(f'<p class="brief"><b>Why this is not a task yet:</b> '
+                           f'{esc(a["brief"])}</p>')
             if a["edit"]:
-                det.append(f'<p class="gowhere"><b>to move it:</b> {doc_link(a["edit"])}</p>')
-            elif a["src"]:
-                det.append(f'<p class="gowhere"><b>from:</b> {doc_link(a["src"])}</p>')
+                det.append(f'<p class="gowhere"><b>To move it forward:</b> '
+                           f'{doc_link(a["edit"])}</p>')
+            # NO `from:` fallback. Garrett, 2026-08-20: *"the from: 'Audit-surface shit' i
+            # better never see that file again I want context from the chat"*. He is right, and
+            # the fallback was the tell that a brief was missing: naming the scratch file an
+            # item was scraped out of is not context, it is a citation of my own working
+            # notes. An assignment with no brief now renders with nothing under it, which reads
+            # as the gap it is instead of dressing the gap up as information.
             if det:
                 out.append(f'<tr class="det{" gone" if gone else ""}"><td></td>'
                            f'<td colspan="5">{"".join(det)}</td></tr>')
-        out.append("</table></div>")
+        out.append("</tbody></table></div>")
         out.append(INTAKE_JS)
 
     # No "Sources" panel. Garrett, 2026-08-20: "what is this i didnt ask for this?" -- and he
