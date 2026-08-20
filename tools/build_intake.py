@@ -257,7 +257,11 @@ def render(assignments: list[dict], kept: dict) -> str:
                 and not kept.get(a["id"], {}).get("dropped")]
     ready = [a for a in barriers if kept.get(a["id"], {}).get("box")]
 
-    out.append(f"\n**{len(barriers)} barriers** — assignments with no task. "
+    # Singular when there is one. The count is the first thing on the page and "1 barriers"
+    # reads as a generator talking to itself rather than a report anybody wrote -- which is
+    # the wrong impression for the one figure here that is supposed to make somebody act.
+    noun = "barrier" if len(barriers) == 1 else "barriers"
+    out.append(f"\n**{len(barriers)} {noun}** — assignments with no task. "
                f"**{len(ready)}** of them are ticked ready and waiting on me to promote.\n")
 
     last_kind = None

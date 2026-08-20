@@ -206,7 +206,10 @@ def render_ledger(td: str, held_status: str) -> str:
 
 
 def barrier_count(page: str) -> int:
-    m = re.search(r"<strong>(\d+)</strong> barriers", page)
+    # `barriers?` because the page agrees in number and says "1 barrier". This helper pinned the
+    # plural spelling and three tests went red the moment the page read correctly -- a check on
+    # wording standing in for a check on the number.
+    m = re.search(r"<strong>(\d+)</strong> barriers?\b", page)
     if not m:
         raise AssertionError("the page states no barrier count")
     return int(m.group(1))

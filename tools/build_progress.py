@@ -1063,7 +1063,8 @@ def build(root: Path) -> str:
                    "number each one went to.</p>")
     else:
         out.append(f'<p>{len(assignments)} waiting &middot; '
-                   f'<strong>{len(barriers)}</strong> barriers (no task) &middot; '
+                   f'<strong>{len(barriers)}</strong> '
+                   f'{"barrier" if len(barriers) == 1 else "barriers"} (no task) &middot; '
                    f'<strong>{len(ready)}</strong> ticked ready &middot; '
                    f"{len(promoted)} already promoted to tasks and off this list.</p>")
         out.append('<p class="dim">The flow is one line: <span class="mono">assignment '
