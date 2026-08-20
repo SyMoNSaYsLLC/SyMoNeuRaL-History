@@ -469,6 +469,13 @@ INTAKE_OWNER = re.compile(r"^owner:\s*(\w+)\s*$")
 INTAKE_BRIEF = re.compile(r"^brief:\s*(.+)$")
 INTAKE_EDIT = re.compile(r"^edit:\s*(.+)$")
 INTAKE_ANSWER = re.compile(r"^A:\s*(.*)$")
+#: `blocked: <reason>` — the SPECIFIC thing stopping this assignment becoming a task.
+#: Garrett, 2026-08-20: *"need to add column to intake for specific barrier on why its not a
+#: task yet"*. The word BARRIER on its own says an item is stuck without saying on what, which
+#: is the same defect as a percentage with no checks behind it: a label standing in for the
+#: reading it is supposed to summarise. A barrier with no stated reason is now visibly missing
+#: one, rather than looking complete.
+INTAKE_BLOCKED = re.compile(r"^blocked:\s*(.+)$")
 
 
 def parse_intake(text: str) -> list[dict]:
@@ -485,7 +492,8 @@ def parse_intake(text: str) -> list[dict]:
         if m:
             cur = {"id": m.group(1), "kind": m.group(2), "title": m.group(3).strip(),
                    "box": False, "dropped": False, "task": "", "src": "",
-                   "owner": "coder", "brief": "", "edit": "", "answer": ""}
+                   "owner": "coder", "brief": "", "edit": "", "answer": "",
+                   "blocked": ""}
             items.append(cur)
             continue
         if cur is None:
@@ -496,6 +504,7 @@ def parse_intake(text: str) -> list[dict]:
                               (INTAKE_OWNER, "owner", str.lower),
                               (INTAKE_BRIEF, "brief", str.strip),
                               (INTAKE_EDIT, "edit", str.strip),
+                              (INTAKE_BLOCKED, "blocked", str.strip),
                               (INTAKE_ANSWER, "answer", str.strip)):
             g = rx.match(line)
             if g:
@@ -892,6 +901,12 @@ def build(root: Path) -> str:
     audit = parse_audit(audit_file.read_text()) if audit_file.exists() else []
     requests = parse_requests(ledger_file.read_text()) if ledger_file.exists() else None
     assignments = parse_intake(intake_file.read_text()) if intake_file.exists() else []
+    # The archive is read so the page can still report the two exits. Once promotion moves a
+    # carried entry off INTAKE.md, an empty list is the CORRECT state, and a page that could
+    # only count what was still on the list would report the healthy end state and the
+    # never-generated one with the same "0" and no way to tell them apart.
+    retired_file = root / "review" / "RETIRED-ASSIGNMENTS.md"
+    retired = parse_intake(retired_file.read_text()) if retired_file.exists() else []
     questions_file = root / "AUDIT.md"
     questions = (parse_questions(questions_file.read_text())
                  if questions_file.exists() else None)
@@ -1029,15 +1044,28 @@ def build(root: Path) -> str:
     # under two names. Requests, questions and findings are all assignments now; the ledger,
     # AUDIT.md and the audit surface stay as records, and INTAKE.md is the reading.
     out.append("<h2>Assignments — INTAKE.md, the one list</h2>")
-    if not assignments:
+    # Three states, and they must not collapse into one "0". Garrett, 2026-08-20: *"push
+    # intake.md to task"* -- the page was reading "28 assignments, 0 barriers, 28 promoted to
+    # tasks" and then listing all 28 with Ready and Drop buttons, which asks him to triage work
+    # already under way. Promotion now takes a carried entry off the list, so EMPTY IS THE
+    # HEALTHY END STATE and has to read as one.
+    promoted = [a for a in retired if a["task"]]
+    dropped_n = len([a for a in retired if a["dropped"]])
+    if not intake_file.exists():
         out.append('<p class="dim">INTAKE.md not present. Run '
                    "<span class=\"mono\">python3 tools/build_intake.py</span>.</p>")
+    elif not assignments:
+        out.append(f'<p><strong>Nothing waiting.</strong> Every assignment recorded has been '
+                   f"carried to a task or dropped — {len(promoted)} promoted, {dropped_n} "
+                   "dropped — so this list is empty, which is the end state it is supposed to "
+                   "reach. The task list above is the live record; the exits are kept in "
+                   '<span class="mono">review/RETIRED-ASSIGNMENTS.md</span> with the task '
+                   "number each one went to.</p>")
     else:
-        promoted = [a for a in assignments if a["task"]]
-        out.append(f'<p>{len(assignments)} assignments &middot; '
+        out.append(f'<p>{len(assignments)} waiting &middot; '
                    f'<strong>{len(barriers)}</strong> barriers (no task) &middot; '
                    f'<strong>{len(ready)}</strong> ticked ready &middot; '
-                   f"{len(promoted)} promoted to tasks.</p>")
+                   f"{len(promoted)} already promoted to tasks and off this list.</p>")
         out.append('<p class="dim">The flow is one line: <span class="mono">assignment '
                    "&rarr; (answer, if it is a question) &rarr; [x] ready &rarr; task #NN"
                    "</span>. Ticking a box is the whole protocol — it says <em>this should "
@@ -1068,9 +1096,15 @@ def build(root: Path) -> str:
             exit_cell = (f'<span class="mono">{esc(a["task"])}</span>' if a["task"]
                          else '<span class="barrier">BARRIER</span>')
 
-            # Carried entries get no controls: they are tasks now, and the task list is where
-            # they are acted on. Every other row gets both, including a dropped one -- undoing
-            # a delete has to be as reachable as making one.
+            # EVERY row gets controls. Garrett, 2026-08-20: *"action buttons went away on
+            # intake"* -- and they had, because carried entries were rendering a dash instead
+            # of buttons on the reasoning that a carried entry is a task now and the task list
+            # is where it is acted on. That reasoning stopped being true the moment the last
+            # barrier was cleared: with all 28 entries carried, the Action column was 28 dashes
+            # and there was no way to change your mind about a mapping from the page at all.
+            #
+            # Ready on a carried row reads as its state rather than as an offer, since the
+            # thing it asks for has already happened.
             #
             # The buttons read `Ready` and `Drop`, not `[x]` and `[-]`. Garrett, 2026-08-20:
             # *"is the x delete or the - delete? Why would you not make this more
@@ -1080,25 +1114,39 @@ def build(root: Path) -> str:
             # worse than no control when one of the two guesses discards an item. The markdown
             # characters stay in `data-set`, where the endpoint needs them and nobody has to
             # interpret them.
+            on = " on" if (a["box"] or a["task"]) else ""
+            rdy = ("already carried by a task" if a["task"]
+                   else "mark ready — it becomes a numbered task")
+            drp = ("drop the assignment — its task stays on the task list" if a["task"]
+                   else "not needed — drop it from the list")
+            ctl = (f'<button class="ctl{on}" data-id="{esc(a["id"])}" data-set="x" '
+                   f'title="{rdy}">Ready</button>'
+                   f'<button class="ctl del" data-id="{esc(a["id"])}" data-set="-" '
+                   f'title="{drp}">Drop</button>')
+
+            # Why it is not a task yet, in its own column. An entry that IS a task is not
+            # blocked on anything, so the cell says so rather than repeating the task number
+            # already in the Status column. A barrier with no `blocked:` line renders as a
+            # visible gap on purpose: the missing reason is the finding.
             if a["task"]:
-                ctl = ('<span class="ready">ready</span>' if a["box"]
-                       else '<span class="dim">&mdash;</span>')
+                why = '<span class="dim">not blocked</span>'
+            elif a["blocked"]:
+                why = esc(a["blocked"])
             else:
-                on = " on" if a["box"] else ""
-                ctl = (f'<button class="ctl{on}" data-id="{esc(a["id"])}" data-set="x" '
-                       f'title="mark ready — it becomes a numbered task">Ready</button>'
-                       f'<button class="ctl del" data-id="{esc(a["id"])}" data-set="-" '
-                       f'title="not needed — drop it from the list">Drop</button>')
+                why = '<span class="s-warn">reason not recorded</span>'
             ans = ""
             if a["kind"] == "question":
                 ans = ('<span class="s-ok"> answered</span>' if a["answer"]
                        else '<span class="s-warn"> awaiting answer</span>')
-            cls = ' class="gone"' if gone else ""
-            out.append(f'<tr{cls} id="row-{esc(a["id"])}"><td>{ctl}</td>'
+            cls = "gone" if gone else ""
+            band = "band" if n % 2 else ""
+            rowcls = (" ".join(x for x in ("ent", cls, band) if x)).strip()
+            out.append(f'<tr class="{rowcls}" id="row-{esc(a["id"])}"><td>{ctl}</td>'
                        f'<td class="mono">{esc(a["id"])}</td>'
                        f'<td class="dim">{esc(a["kind"])}</td>'
                        f'<td class="ttl">{esc(a["title"])}{ans}</td>'
-                       f'<td class="dim">{esc(a["owner"])}</td><td>{exit_cell}</td></tr>')
+                       f'<td class="dim">{esc(a["owner"])}</td><td>{exit_cell}</td>'
+                       f'<td class="why">{why}</td></tr>')
 
             # The sub-row: why it is not a task yet, and the one place to go to change that.
             # Garrett, 2026-08-20: "i just need each A-# with whatever your last thought was
@@ -1120,8 +1168,9 @@ def build(root: Path) -> str:
             # notes. An assignment with no brief now renders with nothing under it, which reads
             # as the gap it is instead of dressing the gap up as information.
             if det:
-                out.append(f'<tr class="det{" gone" if gone else ""}"><td></td>'
-                           f'<td colspan="5">{"".join(det)}</td></tr>')
+                dcls = (" ".join(x for x in ("det", cls, band) if x)).strip()
+                out.append(f'<tr class="{dcls}"><td></td>'
+                           f'<td colspan="6">{"".join(det)}</td></tr>')
         out.append("</tbody></table></div>")
         out.append(INTAKE_JS)
 

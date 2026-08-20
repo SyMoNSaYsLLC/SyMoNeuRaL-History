@@ -458,3 +458,76 @@ class EveryTaskPointerResolves(unittest.TestCase):
         self.assertNotIn("#7", err,
                          "a pointer at a CLOSED task is resolved — reporting it would push "
                          "every finished assignment back onto the barrier list")
+
+
+class PromotionIsAnExitFromTheIntakeSurface(unittest.TestCase):
+    """An assignment that became a task leaves the list. Garrett: *"push intake.md to task"*.
+
+    The page he was reading said "28 assignments &middot; 0 barriers &middot; 28 promoted to
+    tasks" and then listed all 28 anyway, each with a Ready and a Drop button. Every one was
+    already on the task list. INTAKE.md calls itself "the queue in front of the work", and a
+    queue that everything passes through and nothing ever leaves is not a queue -- it is a
+    second copy of the task list that asks him to triage work already under way.
+
+    Promotion is the same exit Drop already had: off the list, into the archive, nothing lost.
+    """
+
+    def _promote(self, root: Path, aid: str, task: str) -> None:
+        intake = root / "INTAKE.md"
+        intake.write_text(intake.read_text().replace(
+            f"## {aid} [request] — a captured one\n[ ]",
+            f"## {aid} [request] — a captured one\n[ ]\ntask: {task}"))
+
+    def test_a_promoted_entry_leaves_the_list_and_keeps_its_task_number(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            copy_tree(root, skip=LEDGER_FIXTURE_SKIP)
+            (root / "GARRETT-REQUESTS.md").write_text(LEDGER.format(held="done(deadbee)"))
+            run_intake(root)
+            before = barrier_count(run_generator(root, root / "a.html"))
+            self._promote(root, "A-R2", "#41 — the one carrying it")
+            run_intake(root)
+            page = run_generator(root, root / "b.html")
+            intake_after = (root / "INTAKE.md").read_text()
+            archive = root / "review" / "RETIRED-ASSIGNMENTS.md"
+            archived = archive.read_text() if archive.exists() else ""
+            # Twice more, because the failure this guards is delayed: the archive is rebuilt
+            # from a source that no longer holds the entry, and it used to eat itself that way.
+            run_intake(root)
+            run_intake(root)
+            still = archive.read_text() if archive.exists() else ""
+            back = (root / "INTAKE.md").read_text()
+
+        self.assertEqual(before, 2, "fixture: R-2 and R-4 are the barriers before promotion")
+        self.assertNotIn("## A-R2 ", intake_after,
+                         "an entry carried by a task must leave INTAKE.md — leaving it on the "
+                         "list is what put 28 already-tasked rows in front of Garrett")
+        self.assertEqual(row_of(page, "A-R2"), "",
+                         "a promoted entry must leave the page too, or the buttons still ask "
+                         "him to triage work that is already under way")
+        self.assertEqual(barrier_count(page), 1,
+                         "promoting R-2 must take exactly one off the barrier count and leave "
+                         "R-4, which nothing carries, still on it")
+        self.assertIn("#41", archived,
+                      "the archive must record WHERE it went; without the task number this is "
+                      "a deletion with a filing cabinet around it")
+        self.assertIn("#41", still, "the archive must survive later runs, not eat itself")
+        self.assertNotIn("## A-R2 ", back,
+                         "a promoted entry must not reappear on the list — its source still "
+                         "lists it, so only reading the archive back keeps it gone")
+
+    def test_an_empty_list_reads_as_finished_not_as_missing(self):
+        """Empty is the healthy end state and must not render as the never-generated one."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            copy_tree(root, skip=LEDGER_FIXTURE_SKIP)
+            # Every entry done: the ledger contributes no assignments at all.
+            (root / "GARRETT-REQUESTS.md").write_text(
+                "# GARRETT-REQUESTS.md\n\n## R-1 — a done one\nstatus: done(abc1234)\n")
+            run_intake(root)
+            page = run_generator(root, root / "p.html")
+        self.assertIn("Nothing waiting", page,
+                      "an empty list must say it is finished")
+        self.assertNotIn("INTAKE.md not present", page,
+                         "the healthy end state must not be reported as a missing file — they "
+                         "are different conditions and one of them needs somebody to act")
