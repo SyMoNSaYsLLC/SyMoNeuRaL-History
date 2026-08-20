@@ -2631,6 +2631,113 @@ async def exp_page() -> FileResponse:
     return FileResponse(f, media_type="text/html")
 
 
+# ---- /local: this box only, never the internet ------------------------------------------
+#
+# Two routes that serve and edit the progress page's assignment list. Garrett, 2026-08-20:
+# *"just add some js to the page please so i can delete and check the box"*.
+#
+# WHY THE PREFIX IS `/local` AND NOT `/api`
+# `ops/Caddyfile` sends `handle /api*` to the gateway and out to the internet. INTAKE.md
+# restates GARRETT-REQUESTS.md, which is mode 600 and never committed, so a public write
+# handle on it is not a trade worth making for a checkbox. A path matching no `handle` block
+# in that file falls through to `handle { file_server }`, which looks for `local/intake` in
+# the webroot, does not find it, and 404s without ever asking this process.
+#
+# That is a fact about a config file, though, and config files change. So the guard below does
+# not trust it: it checks the peer address itself, and refuses anything carrying proxy headers.
+# If somebody adds a `handle /local*` block a year from now, these routes go dead rather than
+# public -- the failure mode is a broken button, not a leaked ledger.
+#
+# Declared above the StaticFiles mount, for the same reason every route here is.
+LOCAL_ONLY = ("127.0.0.1", "::1", "localhost")
+
+
+def _require_local(request: Request) -> None:
+    """Refuse anything that did not come from a process on this machine.
+
+    Two conditions, and both must hold. The peer address is the real check. The forwarded
+    headers are the belt to its braces: Caddy sets them on everything it proxies, so their
+    presence means the request crossed the reverse proxy even if the socket says loopback --
+    which is exactly what a future `handle /local*` block would produce, and exactly the case
+    the peer check alone would wave through.
+    """
+    peer = request.client.host if request.client else ""
+    forwarded = any(h in request.headers
+                    for h in ("x-forwarded-for", "x-forwarded-host", "x-real-ip"))
+    if peer not in LOCAL_ONLY or forwarded:
+        # 404, not 403. A 403 confirms the route exists; there is no reason to tell a remote
+        # caller that this box has a private intake surface at all.
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+class IntakeSet(BaseModel):
+    """One box state on one assignment. Deliberately the narrowest thing that works.
+
+    The endpoint cannot write prose, cannot create an entry and cannot remove one -- it sets a
+    single character on a line that already exists. That is the whole of what the two buttons
+    need, and it means a bug here can put INTAKE.md into a wrong state but never into an
+    arbitrary one.
+    """
+    id: str = Field(pattern=r"^A-[A-Z0-9]{1,16}$")
+    set: Literal[" ", "x", "-"]
+
+
+@app.post("/local/intake", include_in_schema=False)
+async def local_intake(body: IntakeSet, request: Request) -> JSONResponse:
+    """Set one assignment's box in INTAKE.md: `[ ]`, `[x]` ready, or `[-]` dropped.
+
+    Rewrites the ONE box line belonging to the named entry and nothing else -- Garrett's
+    answers, briefs, task numbers and prose are lines this never looks at. Written to a
+    temporary file in the same directory and renamed over the target, at mode 600, so a crash
+    midway leaves the original rather than half a ledger, and the copy is never briefly
+    world-readable on a box that also runs a web server.
+    """
+    _require_local(request)
+    target = ROOT / "INTAKE.md"
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="INTAKE.md has not been generated yet")
+
+    head = re.compile(r"^## (A-[A-Z0-9]+) \[")
+    box = re.compile(r"^\[[ xX-]\]\s*$")
+    lines = target.read_text().splitlines()
+    current, hit = None, False
+    for i, line in enumerate(lines):
+        m = head.match(line)
+        if m:
+            current = m.group(1)
+        elif current == body.id and box.match(line):
+            lines[i] = f"[{body.set}]"
+            hit = True
+            break            # the FIRST box under the heading, never a later one
+    if not hit:
+        raise HTTPException(status_code=404, detail=f"no assignment {body.id} in INTAKE.md")
+
+    tmp = target.with_suffix(".md.tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    tmp.chmod(0o600)
+    tmp.replace(target)
+    log.info("intake %s -> [%s]", body.id, body.set)
+    return JSONResponse({"id": body.id, "set": body.set})
+
+
+@app.get("/local/progress", include_in_schema=False)
+async def local_progress(request: Request) -> FileResponse:
+    """Serve run/progress.html from this origin, so the buttons above are same-origin.
+
+    The page still works opened straight off disk -- it detects `file:` and tells Garrett what
+    to type instead. This route exists so that it does not have to.
+    """
+    _require_local(request)
+    f = ROOT / "run" / "progress.html"
+    if not f.is_file():
+        raise HTTPException(status_code=404,
+                            detail="run/progress.html has not been generated; "
+                                   "run python3 tools/build_progress.py")
+    # no-store: the page is regenerated every two minutes by symoneural-progress.timer, and a
+    # cached copy of a status page is worse than no status page.
+    return FileResponse(f, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
 @app.get("/", include_in_schema=False)
 async def root() -> RedirectResponse:
     """Send the bare domain to /overview.

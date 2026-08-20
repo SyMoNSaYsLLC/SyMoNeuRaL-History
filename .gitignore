@@ -145,3 +145,7 @@ backend/apps/symoneuraldiscovery/symoneural-discovery.env
 .env
 *.env
 !*.env.example
+
+# Review artefacts: uncommitted by standing rule, same as the root ones they hold.
+/review/
+/AUDIT.md
