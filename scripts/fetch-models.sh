@@ -66,7 +66,11 @@ get "$HF/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q
 get "$HF/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-draft-0.5b-q4_k_m.gguf"
 # The 27B tier is opt-in, not part of a default install: it is 11.85 GB on its own and is
 # still being evaluated as a chat base, so a fresh clone should not pay for it silently.
-#   SYM_FETCH_QWEN36=1 ./scripts/fetch-models.sh
+#   SYM_FETCH_27B=1 ./scripts/fetch-models.sh
+#
+# The gate used to be called SYM_FETCH_QWEN36, which put an upstream company name in an
+# environment variable this repo owns. It is accepted as a legacy fallback below so an old
+# command line or a stale shell export does not silently stop fetching.
 #
 # UD-Q2_K_XL is 11,849,779,424 bytes, which is where the "under 12" figure comes from, and it
 # has been loaded here: fully GPU-resident at -ngl 99, 12,354 MiB of 16,303 at ctx 8192 / f16
@@ -83,12 +87,38 @@ get "$HF/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct
 # general.architecture = qwen35, and contrib/llama.cpp carries LLM_ARCH_QWEN35. No build
 # work was needed. The vision tower is fetched but not required -- text inference works
 # without it.
-if [ "${SYM_FETCH_QWEN36:-0}" = "1" ]; then
+if [ "${SYM_FETCH_27B:-${SYM_FETCH_QWEN36:-0}}" = "1" ]; then
   echo "chat surface (27B tier, opt-in):"
   get "$HF/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-UD-Q2_K_XL.gguf" "$M/llm/symon-1.0-27b-q2_k_xl.gguf"
   get "$HF/unsloth/Qwen3.6-27B-GGUF/resolve/main/mmproj-F16.gguf"             "$M/llm/symon-1.0-27b-vision-f16.gguf"
 else
-  echo "chat surface (27B tier): skipped -- set SYM_FETCH_QWEN36=1 to fetch 12.8 GB"
+  echo "chat surface (27B tier): skipped -- set SYM_FETCH_27B=1 to fetch 12.8 GB"
+fi
+# The 32B tier, also opt-in:
+#   SYM_FETCH_32B=1 ./scripts/fetch-models.sh
+#
+# UD-Q2_K_XL is 12,797,352,608 bytes. That is a content-length reading taken 2026-08-20, not
+# a load attempt, and this repo does not call a file size a fit -- the arithmetic that made it
+# worth fetching is: the 27B is 11,849,779,424 bytes and measures 12,354 MiB resident at
+# -ngl 99, ctx 8192, f16 KV, so 12.80 GB of weights should land near 13.3 GB resident and
+# leave roughly 2.9 GB of the card for KV and CUDA context. Near, should, roughly. Whether it
+# actually holds is a llama-bench run, and until that run exists no tok/s or context figure
+# from this tier goes on a page.
+#
+# The other quants were read at the same time and are recorded here so nobody re-measures
+# them: UD-IQ2_M 11,553,366,688 B (smaller than the 27B already resident here, so near-certain
+# to fit), UD-IQ2_XXS 9,277,096,608 B, UD-Q3_K_XL 16,403,102,368 B (exceeds the 16,303 MiB
+# card outright and is not a candidate).
+#
+# This is NOT the NIM container route. nvcr.io/nim/qwen/qwen3-32b:1.0.0 is refused on three
+# independent grounds -- it does not fit, NGC marks it end-of-support, and NVIDIA AI
+# Enterprise licenses it for use rather than redistribution. See docs/nim-on-one-card.md.
+# The GGUF here is Apache-2.0 and carries none of those problems.
+if [ "${SYM_FETCH_32B:-0}" = "1" ]; then
+  echo "chat surface (32B tier, opt-in):"
+  get "$HF/unsloth/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-UD-Q2_K_XL.gguf" "$M/llm/symon-1.0-32b-q2_k_xl.gguf"
+else
+  echo "chat surface (32B tier): skipped -- set SYM_FETCH_32B=1 to fetch 12.80 GB"
 fi
 echo "image surface:"
 get "$HF/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf"                 "$M/image/symoneural-image-unet-q4_k.gguf"

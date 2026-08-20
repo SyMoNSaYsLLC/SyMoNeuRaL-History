@@ -77,6 +77,16 @@
       "modified_by_us": false
     },
     {
+      "path": "llm/symon-1.0-32b-q2_k_xl.gguf",
+      "role": "32B tier, opt-in; fetched 2026-08-20 and NOT yet measured on this card",
+      "bytes_on_disk": 12797352608,
+      "upstream_repo": "unsloth/Qwen3-32B-GGUF",
+      "upstream_file": "Qwen3-32B-UD-Q2_K_XL.gguf",
+      "license": "Apache-2.0",
+      "license_text": null,
+      "modified_by_us": false
+    },
+    {
       "path": "image/symoneural-image-unet-q4_k.gguf",
       "role": "image surface diffusion transformer; 6.41 GiB on card",
       "bytes_on_disk": 6884606880,
