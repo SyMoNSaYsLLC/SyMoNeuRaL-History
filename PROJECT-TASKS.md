@@ -450,3 +450,78 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists .claude/hooks/capture-prompt.sh
         check: grep UserPromptSubmit -- .claude/settings.json
         check: grep barrier -- tools/build_intake.py
+
+◻ #78 — SyMoNeuRaL Code: an interactive terminal client, and a desktop client for it
+        owner: coder
+        From A-R151 / GARRETT-REQUESTS.md R-151. Garrett, 2026-08-20, three messages that
+        together are the whole specification: *"well just make everything as close as you can
+        to the claude sources bc I want to be users to get a similar experience"*, then *"we
+        should be able to make it just like claude using playwright"*, then — lifting the
+        browser-only scope that the ledger entry had assumed was still in force — *"Restriction
+        lifted. If an Electron or lightweight native build is what it takes to get the right
+        feel for the desktop client, go for it. Just keep the footprint reasonable and ensure
+        it integrates cleanly with the engine you've already built in bin/symoneural-cli. Let's
+        get it done."*
+
+        **The licence line, because it decides the method and is not a judgement call.** Both
+        references are first-party Anthropic PBC and `License: Proprietary` — checked in the
+        `.deb`'s own copyright file rather than assumed, at Garrett's instruction to check.
+        MIT permits renaming with the notice carried, which is the route we took for the
+        engines; a proprietary licence permits neither renaming, deriving, nor
+        decompiling-and-renaming. So "as close as you can" is a specification for the
+        **experience**, written fresh. An interaction model — a REPL, a slash-command
+        vocabulary, a permission prompt before a side effect, a resumable session — is not what
+        a copyright covers. Nothing from `references/` or `bin/claude` is read, extracted,
+        decompiled or shipped, and `apps/test_references_boundary.py` is the standing check.
+
+        This is the position Garrett took himself: *"reason i deleted them was because i was
+        worried i had copyrighted stuff so i started all over"*.
+
+        **Playwright is how "just like claude" becomes measurable** rather than a matter of
+        taste — his own suggestion. It drives our client and asserts the observable behaviours
+        below. Observing behaviour is the clean-room half; the code is ours either way.
+
+        The engine half already exists and is not rebuilt: `bin/symoneural-cli` carries
+        `agent` (SSE-rendered, `-c` to continue from `run/agent-<session>.json`), `tools`,
+        `tool`, `state` and `mcp --serve`, with native tool calling on our own engine. The gap
+        is everything a user touches.
+
+        1. **A bare invocation opens a session.** Today every path needs a subcommand, and this
+           is most of the difference in feel. The existing subcommands keep working unchanged —
+           a REPL that breaks `symoneural-cli status` in a script is a regression, not a
+           feature.
+        2. **In-session slash commands**: help, clear, status, tools, model, resume. Named the
+           same as the subcommands they mirror, so there is one vocabulary and not two.
+        3. **A permission prompt before any tool with a side effect**, and a mode that skips
+           it. The prompt is the honest part: a tool that mutates the box must say so before
+           it does, and the skip mode must be chosen explicitly rather than defaulted into.
+        4. **Resume by session id**, with a picker over the transcripts already written to
+           `run/agent-<session>.json`. The store exists; nothing reads it back.
+        5. **@-file references, multi-line paste, Ctrl-C interrupt.** Ctrl-C must abort the
+           turn in flight and keep the session, not kill the process.
+        6. **Markdown rendered in the terminal, streaming as it arrives.** Note what the engine
+           can actually do: `inference.Backend.chat` sends `"stream": False`, so the loop's
+           granularity is SSE *events*, not tokens. Do not print a first-token latency for it
+           and do not fake a token stream — publish the event timings that are real.
+        7. **A status line.**
+
+        Then the desktop client, on the scope he has just opened. Keep the footprint
+        reasonable, which is the whole reason to look at anything other than Electron: the
+        reference `.deb` is Electron and carries a ~300 MB runtime for a UI that is HTML, CSS
+        and JS. Measure two or three candidates on this box and write the reading down before
+        choosing — a footprint claim with no number beside it is the thing this repo bars. It
+        talks to the same engine as the terminal client and does not grow a second one.
+
+        note: 2026-08-20 — promoted on Garrett's instruction rather than on a tick: *"You
+        note: should be able to resolve A-R151 with that last prompt i sent"*. Recording that
+        note: here because the standing rule is that the box is the gate; a direct instruction
+        note: from him IS the decision the box represents, and the rule exists to stop me
+        note: starting work on my own judgement, not to make me decline an order.
+
+        check: exists bin/symoneural-code
+        check: grep def cmd_repl -- bin/symoneural-cli
+        check: exists tests/code_cli.mjs
+        check: grep slash -- bin/symoneural-cli
+        check: grep permission -- bin/symoneural-cli
+        check: exists docs/specs/code-client-spec.md
+        check: exists desktop/README.md
