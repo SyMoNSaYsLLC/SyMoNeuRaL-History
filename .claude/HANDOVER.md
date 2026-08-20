@@ -1,9 +1,6 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-20. Written for a fresh agent with zero prior context.** No SHA on this
-line on purpose: a header cannot name the commit that writes it, and the previous commit's SHA
-is a figure that is wrong the moment anyone edits this file again. `git log -1 -- .claude/HANDOVER.md`
-is exact and cannot go stale. Every *measurement* below carries a SHA, which is where that rule bites.
+**Last updated 2026-08-20. Written for a fresh agent with zero prior context.**
 
 > **If you read nothing else:** nothing is broken and nothing is blocked, but **the whole of
 > `site/` is now waiting on a deploy** — as of `26cb58e` that is `site/ui.js` and
@@ -3509,7 +3506,7 @@ that; the source was replaced with `pytorch.org/blog/feed.xml`.
 |---|---|
 | `SYMONEURAL_NEWS_ENABLED=1` | The whole surface. Default state of a public box is *no outbound requests at all*. |
 | `SYMONEURAL_NEWS_INTERVAL_S` | Refresh period. Default **900**, clamped to **300–21600** (`__init__.py:60-61`) so a mistyped value cannot make it a hammer or a monument. |
-| `SYMONEURAL_NEWS_OFF` | Comma-separated *source names* to skip. |
+| `SYMONEURAL_NEWS_OFF` | Comma-separated *names* to skip — matched `.lower()` against both `SOURCES` and `SEARCHES` at `collect.py:84,100`, so a name carried by both switches both off. `Hacker News` is both: a publisher feed and one of the three search arms. |
 | `SYMONEURAL_NEWS_QUERIES` | Comma-separated search phrases, replacing the six defaults. |
 
 **No env var can change a host that gets fetched, and that is not a content filter.** The
@@ -3531,6 +3528,23 @@ from the tuples by `test_news.py::test_the_request_budget_in_the_comments_matche
 rather than believed, because the comments said *32 over seven hosts* for two commits after the
 list grew to ten sources — the same one-place-only staleness this document keeps recording.
 
+That correction then had to be made twice, which is the part worth carrying forward. `91230b1`
+fixed the two occurrences the test checked and left two more in the same file: the module
+docstring still said the package "talks to seven hosts" (wrapped across a line break, so a
+substring search for `seven hosts` did not find it) and `refresh_once`'s `to_thread` rationale
+still said "32 sequential fetches". A test that asserts the right figure is *present* does not
+notice a wrong one sitting three paragraphs above it. The test now collapses whitespace, pins
+the `to_thread` figure by name, and asserts that **no** wrong host-count word appears anywhere
+in the file — which is why the retraction line in `__init__.py:61` spells the retracted numbers
+as `32 ... 7 hosts` in digits rather than words. Four mutations, four kills.
+
+The `34` ceiling was also checked at its call site rather than at its definition:
+`collect.py:56` is `tuple(out[:MAX_QUERIES]) or feeds.DEFAULT_QUERIES`, and `queries()` is
+consumed inside the `for eng in feeds.SEARCHES` loop at `collect.py:105`, so the cap truncates
+the query list *before* the engine fan-out and 10 + 3×8 is the right arithmetic. Worth stating
+because the default path takes 6 queries and never reaches the cap, so a wrong reading of
+`MAX_QUERIES` would have been invisible in every run and locked in by a passing test.
+
 **No systemd timer and none is needed** — which matters, because installing one needs root and
 root is Garrett's. `refresher()` is an asyncio task started from `api.py`'s `lifespan` when
 `news.enabled()`, cancelled on shutdown; the blocking `urllib` work goes through
@@ -3544,8 +3558,10 @@ talks to eight hosts rather than the gateway's one. The refresher owns the rate.
 good items survive a failed pass — `NewsCache.put` and `NewsCache.fail` are deliberately two
 methods, so "reached nothing" cannot erase news that is merely old — and the payload always
 carries `age_s`, `newest_age_s` and `stale`, which the bar renders. `stale` is
-`age > interval * 1.5`, not `age > interval`, or it would flicker stale every cycle since the
-refresher sleeps exactly one interval. **If there has never been a good pass, `items` is empty
+`age > interval * 1.5` **or the cache is empty** — `__init__.py:122` returns
+`bool(stale) or not self._items`, so a bar that has never had a good pass is never labelled
+live. The 1.5 rather than a flat `age > interval` is because the refresher sleeps exactly one
+interval between passes, so the flat form would flicker stale every cycle. **If there has never been a good pass, `items` is empty
 and the bar does not render at all — there is no placeholder headline.** With the surface off
 the route still answers **200 with an empty list** and a `detail` naming the switch, which is
 why the frontend suite reads 49/49 both with the surface on and with it off: the bar degrades

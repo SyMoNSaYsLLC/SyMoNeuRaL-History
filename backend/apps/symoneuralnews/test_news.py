@@ -466,3 +466,20 @@ def test_the_request_budget_in_the_comments_matches_the_source_list():
     assert f"The ceiling is {ceiling} a pass" in init, \
         f"__init__.py's ceiling figure is not {ceiling}"
     assert f"= {ceiling} fetches" in coll, f"collect.py's bound is not {ceiling}"
+
+    # The first version of this test checked only that the right figures were PRESENT, and
+    # `__init__.py` went on carrying two more stale ones underneath it: the module docstring
+    # said the package talks to seven hosts, and `refresh_once` said 32 sequential fetches.
+    # Presence is not enough when a file states the same quantity in three places, so the
+    # remaining two are pinned by name and every wrong host word is forbidden outright.
+    # Whitespace is collapsed first because both figures sit in wrapped prose -- the host
+    # count was split across a line break as `talks to seven\n    hosts`, so a raw substring
+    # search for "seven hosts" would not have found the sentence that was wrong.
+    flat = " ".join(init.split())
+    assert f"{per_pass} sequential fetches" in flat, \
+        f"refresh_once's to_thread rationale is not {per_pass} fetches"
+    for n, word in words.items():
+        if n == hosts:
+            continue
+        assert f"{word} hosts" not in flat, \
+            f"__init__.py still says {word} hosts somewhere; the count is {hosts}"

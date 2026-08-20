@@ -23,7 +23,7 @@ happen on the request path.
     other background job in this repo runs. **There is no systemd timer and none is needed**
     -- which matters because installing one requires root and root is Garrett's.
   * the read endpoint serves the cache and never triggers a fetch. `apps/gateway/routes.py`
-    states the reason and it applies here with more force, since this package talks to seven
+    states the reason and it applies here with more force, since this package talks to eight
     hosts rather than one: an endpoint that fetched on demand would be an unauthenticated
     outbound-request trigger on a public-facing box. The refresher owns the rate.
 
@@ -58,7 +58,7 @@ ENV_INTERVAL = "SYMONEURAL_NEWS_INTERVAL_S"
 # search engines -- so ~112 requests an hour spread over eight hosts, which is well inside what
 # a public feed expects from one reader. The ceiling is 34 a pass, since `collect.MAX_QUERIES`
 # caps an env-supplied query list at 8. Both numbers are asserted against the tuples in
-# test_news.py; the version of this comment that said `32 ... seven hosts` was true of an
+# test_news.py; the version of this comment that said `32 ... 7 hosts` was true of an
 # earlier source list and went stale the moment two more publishers landed.
 DEFAULT_INTERVAL_S = 900.0
 MIN_INTERVAL_S = 300.0     # floor, so a mistyped env var cannot turn this into a hammer
@@ -138,7 +138,7 @@ async def refresh_once() -> None:
     """One pass, off the request path. Never raises.
 
     The blocking `urllib` work goes through `asyncio.to_thread` for the same reason
-    `gateway.refresh_once` does: 32 sequential fetches at up to 12 s each would otherwise
+    `gateway.refresh_once` does: 28 sequential fetches at up to 12 s each would otherwise
     stall every other request on this process for minutes.
     """
     now = time.time()
