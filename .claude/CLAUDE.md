@@ -170,10 +170,13 @@ node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI u
 cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
 ```
 
-**1085 pass, measured twice on the same tree 2026-08-19 from `backend/` — 110.38 s then 111.55 s,
-so treat the wall time as a range and the count as the reading; the two `--ignore`s are not
-optional and not a failure you introduced.** The count drifts upward as apps land — it was 682,
-then 941, then 973, then 981, then 1084 — so treat the absolute number as a date-stamped reading,
+**1093 pass at `e81ffa4`, measured 2026-08-19 from `backend/` in 109.36 s, with
+`--collect-only` collecting the same 1093 in 0.81 s; the two `--ignore`s are not optional and
+not a failure you introduced.** The number moved because `e81ffa4` added 8 — the first tests
+against `bin/symoneural-cli`. It was **1085 at `df1d862`**, 110.38 s then 111.55 s on that
+tree: two readings of one tree, so treat the wall time as a range and the count as the reading.
+The count drifts upward as apps land — it was 682, then 941, then 973, then 981, then 1084,
+then 1085 — so treat the absolute number as a date-stamped reading,
 not a contract, and put a commit SHA beside it. A published 1063 turned out never to have been
 true of the commit it sat beside: the tree it named collects 1084, so the figure was carried
 forward from an earlier one. A number with no SHA cannot be checked, only believed.
@@ -185,7 +188,9 @@ neither is installed on the **system** interpreter and neither may be, since tha
 path (see *Python environments*). They are per-project suites that need their own environment, so
 they are excluded here rather than made to look green.
 
-**`frontend.mjs` is 43/43, and the rack red that stood here is fixed.** `#rack` on
+**`frontend.mjs` is 43/43 at `e81ffa4`, and the rack red that stood here is fixed.**
+Measured 2026-08-19 on a spare port (`node tests/frontend.mjs http://127.0.0.1:8875`), which
+is the only honest way to run it — see below. `#rack` on
 `/livestack` overflowed its one-screen budget at 1855x745 — `scrollHeight` 599 against
 `clientHeight` 584 — because `site/index.html` renders the rack client-side from `/api/status`
 and the rack went from eleven units to thirteen when `studio` and `exp` landed (`e27b9c1`).
@@ -200,7 +205,9 @@ binding viewport is **1301x740**, not 1855x745, because its rows are 26.6px. `.c
 §0 has the full table, the retraction of the two-column option it used to recommend, and the one
 lever deliberately left unspent. Do not close the next overflow by dropping a row or adding
 `text-overflow` — both are barred above. The other two suites are green on the same tree:
-`tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19.
+`tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19 at
+`e81ffa4` — the same tree as the two figures above, which is what "same tree" has to
+mean to be worth writing.
 
 System Chrome via Playwright, nothing to download. The two tuner suites need no API and no
 provider account: each starts `tests/tuner_fake_provider.py` and stops it again, so the whole
