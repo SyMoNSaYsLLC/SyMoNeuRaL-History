@@ -17,7 +17,6 @@ Nothing here needs the GPU, the API, or root.
 """
 from __future__ import annotations
 
-import importlib.util
 import os
 import subprocess
 import sys
@@ -31,11 +30,22 @@ CLI = ROOT / "bin" / "symoneural-cli"
 
 
 def load_cli() -> types.ModuleType:
-    """Import the CLI as a module. It has no `.py` suffix, so the loader is explicit."""
-    spec = importlib.util.spec_from_loader(
-        "symoneural_cli", importlib.machinery.SourceFileLoader("symoneural_cli", str(CLI)))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """Import the CLI as a module, compiling the source on every call.
+
+    It has no `.py` suffix, so the loader has to be explicit -- but a `SourceFileLoader`
+    also *caches*, and that cache is the reason this reads and compiles the text instead.
+    Importing an extensionless script writes `bin/__pycache__/symoneural-clicpython-313.pyc`
+    beside the shipped file, and CPython validates that cache against the source mtime
+    **truncated to whole seconds**. Edit the CLI and re-run inside the same second -- which a
+    scripted mutate-run-restore loop does trivially -- and the loader hands back the previous
+    bytecode with no error and no warning. That happened here: a deliberate mutation was
+    reverted, the suite went red anyway, and the code under test was not the code on disk.
+    A test suite whose whole job is to assert what the file says cannot be reading a copy of
+    what it said a moment ago, so this path has no cache to be stale.
+    """
+    module = types.ModuleType("symoneural_cli")
+    module.__file__ = str(CLI)
+    exec(compile(CLI.read_text(), str(CLI), "exec"), module.__dict__)  # noqa: S102
     return module
 
 

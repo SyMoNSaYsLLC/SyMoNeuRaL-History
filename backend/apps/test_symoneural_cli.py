@@ -42,8 +42,9 @@ What each part of this file catches:
 
 ## How the tests are built
 
-The CLI has no `.py` suffix, so `load_cli()` imports it with an explicit
-`SourceFileLoader`, the same way `test_cli_upgrade.py` does. Import has three side
+The CLI has no `.py` suffix, so `load_cli()` compiles its text on every call rather
+than importing it through a caching loader -- see that function for the stale-bytecode
+trap that cost an hour, and note `test_cli_upgrade.py` does the same. Import has three side
 effects -- the repo-root assert, a `sys.path` insert, and `symoneuralenv.promote()` --
 all idempotent and safe to repeat, so every mutating class loads a FRESH module in
 `setUp` and rebinds the module's *names* (`cli.smi = ...`,
@@ -62,7 +63,6 @@ root.
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import inspect
 import io
 import json
@@ -74,7 +74,6 @@ import tempfile
 import types
 import unittest
 import urllib.error
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -105,11 +104,22 @@ _MISSING = object()
 
 
 def load_cli() -> types.ModuleType:
-    """Import the CLI as a module. No `.py` suffix, so the loader is explicit."""
-    loader = SourceFileLoader("symoneural_cli_under_test", str(CLI_PATH))
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
+    """Import the CLI as a module, compiling the source on every call.
+
+    It has no `.py` suffix, so the loader has to be explicit -- but a `SourceFileLoader`
+    also *caches*, and that cache is the reason this reads and compiles the text instead.
+    Importing an extensionless script writes `bin/__pycache__/symoneural-clicpython-313.pyc`
+    beside the shipped file, and CPython validates that cache against the source mtime
+    **truncated to whole seconds**. Edit the CLI and re-run inside the same second -- which a
+    scripted mutate-run-restore loop does trivially -- and the loader hands back the previous
+    bytecode with no error and no warning. That happened here: a deliberate mutation was
+    reverted, the suite went red anyway, and the code under test was not the code on disk.
+    A test suite whose whole job is to assert what the file says cannot be reading a copy of
+    what it said a moment ago, so this path has no cache to be stale.
+    """
+    module = types.ModuleType("symoneural_cli_under_test")
+    module.__file__ = str(CLI_PATH)
+    exec(compile(CLI_PATH.read_text(), str(CLI_PATH), "exec"), module.__dict__)  # noqa: S102
     return module
 
 
@@ -916,7 +926,13 @@ class AgentCommandTests(unittest.TestCase):
             "query": ["hi"], "session": "t", "cont": False, "history_limit": 20,
             "no_save": False, "forget": False, "max_steps": None, "model": None,
             "context": None, "output_format": "text", "verbose": False,
-            "timeout": 900.0, "url": "http://cli.test", **kw})
+            "timeout": 900.0, "url": "http://cli.test",
+            # Pinned rather than left to `auto`, which resolves by opening /dev/tty: under
+            # pytest that succeeds in a terminal and fails in CI, so an `auto` default here
+            # would make the request body differ between the two and this suite would pass
+            # or fail depending on who ran it.
+            "permissions": "deny", "dangerously_allow_all": False, "allow_tool": None,
+            **kw})
 
     def stream(self, frames, junk=()):
         def api_open(path, *, base, method="GET", body=None, accept=None, timeout=None):
@@ -962,8 +978,11 @@ class AgentCommandTests(unittest.TestCase):
             rc, out, err = call(self.cli.cmd_agent, self.args())
         self.assertEqual(rc, 0, err)
         self.assertEqual(self.sent[0]["path"], "/api/studio/agent")
-        self.assertEqual(self.sent[0]["body"], {"query": "hi"},
-                         "unset options must not be sent at all")
+        self.assertEqual(self.sent[0]["body"], {"query": "hi", "permissions": "deny"},
+                         "unset options must not be sent at all -- but the permission mode "
+                         "is never unset: omitting it takes the endpoint's default, which "
+                         "is `allow`, so a client that stays quiet has silently chosen to "
+                         "run run_command without asking")
         self.assertEqual(self.sent[0]["accept"], "text/event-stream")
         self.assertIn("fs_read", line_with("call", out))
         self.assertIn("The answer.", out)
@@ -1492,6 +1511,46 @@ class StructuralRuleTests(unittest.TestCase):
 
     def setUp(self):
         self.cli = load_cli()
+
+    def test_neither_cli_harness_imports_through_a_caching_loader(self):
+        """The trap that made this test exist. `SourceFileLoader` writes bytecode next to
+        the shipped script and validates it against the source mtime **truncated to whole
+        seconds**, so a change and a re-run inside one second silently execute the previous
+        compile. A mutation was reverted here and the suite stayed red against code that was
+        no longer on disk -- the exact failure this whole file is built to make impossible.
+        Both harnesses now read and compile the text every call; this stops either of them
+        drifting back. Comments are stripped first so that the sentence you are reading
+        cannot satisfy the rule it describes."""
+        for name in ("test_symoneural_cli.py", "test_cli_upgrade.py"):
+            src = (Path(__file__).parent / name).read_text()
+            code = "\n".join(line.split("#")[0] for line in src.splitlines())
+            code = re.sub(r'"""(?:.|\n)*?"""', "", code)
+            # Spelled in halves on purpose: the needle is the third rule in this file to
+            # have gone red on its own explanation, and a docstring strip does not reach a
+            # string literal.
+            needle = "SourceFile" + "Loader"
+            self.assertNotIn(needle, code,
+                             f"{name} imports the CLI through a caching loader again; it "
+                             "will run stale bytecode on a same-second edit")
+            self.assertIn("compile(", code,
+                          f"{name} no longer compiles the source it claims to test")
+
+    def test_loading_the_cli_leaves_no_bytecode_beside_the_shipped_script(self):
+        """The observable half of the rule above, and the cheaper one to trust: whatever the
+        loader is, importing the CLI must not deposit a `.pyc` in `bin/`. That directory
+        holds three executables that get installed; a cache file appearing in it is both the
+        stale-code hazard and build detritus in a source tree."""
+        load_cli()
+        cache = CLI_PATH.parent / "__pycache__"
+        # Absence, not before-and-after: `setUp` has already loaded the CLI by the time this
+        # body runs, so a caching loader would have written its file before the first line
+        # here could look. The first draft of this test compared the two and passed happily
+        # with the trap reinstalled -- an assertion that cannot fail is the thing this suite
+        # is least allowed to contain.
+        stale = sorted(q.name for q in cache.glob(CLI_PATH.name + "*")) if cache.is_dir() else []
+        self.assertEqual(stale, [],
+                         f"bytecode for the CLI is sitting in {cache}; it must be compiled "
+                         "in memory, not cached against a one-second mtime")
 
     def test_the_governor_is_never_asked_for_a_bare_release(self):
         """CLAUDE.md: never call a bare `gpu-governor.sh release` -- an unscoped release
