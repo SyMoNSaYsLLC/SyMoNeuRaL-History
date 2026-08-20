@@ -1,0 +1,13 @@
+# Partitioning for a SyMoNeuRaL appliance.
+#
+# Three partitions, and the third is the entire point: model weights are ~104 GiB and must
+# not share a filesystem with the root, because a full root stops the API from writing its
+# own log and stops Caddy from serving. Separating them turns "the disk filled" from an
+# outage into a surface reporting that weights are missing.
+part /boot --source bootimg-efi --sourceparams="loader=grub-efi" --ondisk sda \
+     --label boot --active --align 1024 --size 512
+part /     --source rootfs --ondisk sda --fstype=ext4 --label root --align 1024 --size 16384
+part /var/lib/symoneural/models --ondisk sda --fstype=ext4 --label models \
+     --align 1024 --size 8192 --no-table
+
+bootloader --ptable gpt --timeout=3 --append="rootwait console=ttyS0,115200 console=tty0"
