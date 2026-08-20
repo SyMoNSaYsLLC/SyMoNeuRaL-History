@@ -207,10 +207,26 @@ def gather(root: Path) -> list[dict]:
             # belongs in the entry's brief, where it informs his choice instead of pre-empting
             # it.
             if e["state"] == "intake":
+                # The ledger entry's own `brief:`/`blocked:`/`edit:` lines, carried across.
+                # They were not, and the consequence was reported by Garrett looking at the
+                # page: *"reason not recorded this gave me no information; fix it to provide
+                # information"*. He was reading a row whose source held several paragraphs
+                # about exactly why the item was not a task -- the page was not hiding the
+                # reason, nothing ever handed it the reason. An assignment surface whose one
+                # job is to let him decide, rendering a warning where the decision-relevant
+                # sentence belongs, is the failure and not the flag.
+                #
+                # Explicit fields, and deliberately NOT scraped out of the prose. A scrape
+                # would put a sentence in front of him that nobody wrote for him, and it
+                # would always succeed -- so the day a brief is genuinely missing it would
+                # print something anyway. Absent stays visibly absent.
+                fields = ledger_fields(e["body"])
                 out.append({"id": slug("request", e["id"].replace("-", "")),
                             "kind": "request", "title": e["title"],
                             "src": f"GARRETT-REQUESTS.md {e['id']}",
-                            "owner": "coder", "answer": ""})
+                            "owner": "coder", "answer": "",
+                            "brief": fields["brief"], "edit": fields["edit"],
+                            "blocked": fields["blocked"]})
 
     surface = root / "AUDIT-SURFACE-2026-08-19.md"
     if surface.exists():
@@ -230,6 +246,26 @@ def gather(root: Path) -> list[dict]:
 
     out.sort(key=lambda a: (KIND_ORDER.get(a["kind"], 9), a["id"]))
     return out
+
+
+def ledger_fields(body: str) -> dict:
+    """`brief:`, `blocked:` and `edit:` out of a ledger entry's body.
+
+    First occurrence of each wins, and only at column zero: a `blocked:` inside a quoted line
+    is somebody's words, not a directive, which is the same distinction `note:` continuation
+    lines have to make in `PROJECT-TASKS.md`.
+
+    Returns empty strings rather than raising. A ledger entry written before these fields
+    existed is not malformed, it just has nothing to say here -- and the page rendering that
+    absence honestly is the point.
+    """
+    got = {"brief": "", "blocked": "", "edit": ""}
+    for line in body.splitlines():
+        for key in got:
+            pre = key + ":"
+            if not got[key] and line.startswith(pre):
+                got[key] = line[len(pre):].strip()
+    return got
 
 
 def item_body(text: str, n: str) -> str:
@@ -285,6 +321,14 @@ def render(assignments: list[dict], kept: dict) -> str:
             out.append(f"brief: {brief}")
         if edit:
             out.append(f"edit: {edit}")
+        # `blocked:` was PARSED and never written back, so every hand-typed reason survived
+        # exactly until the next generator run and then vanished -- and the page's why-column
+        # went back to "reason not recorded" with no trace of what had been there. Fourth
+        # occurrence in this repo of a generator eating a field it can read; the rule is that
+        # anything in the parse table above has to appear here too.
+        blocked = k.get("blocked") or a.get("blocked", "")
+        if blocked:
+            out.append(f"blocked: {blocked}")
         if a["kind"] == "question":
             out.append(f"A: {k.get('answer') or a.get('answer') or ''}".rstrip())
         if k.get("task"):
@@ -360,6 +404,47 @@ def write_atomic(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+#: `Folds #36 #41 #42 ...` on a task's detail line. The 2026-08-20 consolidation collapsed 58
+#: numbered tasks into #73-#77 and recorded the mapping exactly here, in the surviving tasks'
+#: own blocks -- which is the right place for it, since a fold is a fact about the task that
+#: did the folding. Nothing read it, so 27 assignments pointed at numbers that had been folded
+#: away and every one of them was counted as CARRIED. The page said 1 barrier and meant 28.
+FOLDS_LINE = re.compile(r"^\s*Folds ((?:#\d+[\s,]*)+)")
+
+
+def fold_map(root: Path) -> dict[str, str]:
+    """old task number -> the number that folded it, from the `Folds` lines on disk.
+
+    Read from `PROJECT-TASKS.md` and `review/CLOSED-TASKS.md` and nowhere else.
+    `review/CONSOLIDATED-TASKS-2026-08-20.md` holds the pre-consolidation blocks and is
+    deliberately NOT read: adding it to the resolver would make it a third document that
+    describes current state, which is the one thing this repo has a standing rule against.
+    The `Folds` line is the mapping; the archive is the detail those numbers used to carry.
+
+    A fold is followed one hop only. `#36 -> #76` resolves; a chain would mean a task folded
+    a task that had already folded others, and the honest response to that is the warning,
+    not a graph walk that quietly papers over a renumbering nobody recorded.
+    """
+    out: dict[str, str] = {}
+    for name in ("PROJECT-TASKS.md", "review/CLOSED-TASKS.md"):
+        p = root / name
+        if not p.exists():
+            continue
+        current = ""
+        for line in p.read_text().splitlines():
+            m = TASK_ROW.match(line)
+            if m and m.group(2).startswith("#"):
+                current = m.group(2)
+                continue
+            fm = FOLDS_LINE.match(line)
+            if fm and current:
+                for old in re.findall(r"#\d+", fm.group(1)):
+                    # First writer wins, and a collision is left to the duplicate-number
+                    # check above rather than resolved silently here.
+                    out.setdefault(old, current)
+    return out
+
+
 def check_task_pointers(root: Path, kept: dict) -> list[str]:
     """Resolve every `task: #NN` against the task files. Returns human-readable problems.
 
@@ -390,6 +475,7 @@ def check_task_pointers(root: Path, kept: dict) -> list[str]:
     that made the documented build sequence exit non-zero over a historical record would be
     turned off, and then it would catch nothing at all.
     """
+    folds = fold_map(root)
     seen: dict[str, list[str]] = {}
     for name in ("PROJECT-TASKS.md", "review/CLOSED-TASKS.md"):
         f = root / name
@@ -414,8 +500,17 @@ def check_task_pointers(root: Path, kept: dict) -> list[str]:
         if not m:
             continue
         num = m.group(0)
+        if num not in seen and num in folds:
+            # Folded, not dangling. The work was carried into the folding task, so the
+            # assignment IS carried and reporting it as a barrier would be the opposite
+            # error -- 27 false barriers instead of 27 hidden ones.
+            continue
         if num not in seen:
-            problems.append(f"{aid} points at {num}, which is in neither task file")
+            problems.append(
+                f"{aid} points at {num}, which is in neither task file and is named by no "
+                f"`Folds` line. It reads as carried on the page and is not: nothing on disk "
+                f"says where that work went. Either give it a task number that exists, or "
+                f"drop it with a reason.")
         elif len(seen[num]) > 1:
             problems.append(f"{aid} points at {num}, which resolves {len(seen[num])} ways")
     return problems

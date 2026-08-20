@@ -487,6 +487,150 @@ class EveryTaskPointerResolves(unittest.TestCase):
                          "every finished assignment back onto the barrier list")
 
 
+    def test_a_pointer_at_a_folded_task_resolves_through_the_folds_line(self):
+        """The 2026-08-20 consolidation, and the 27 warnings it produced for a day.
+
+        58 tasks were folded into #73-#77 and the mapping was written on the surviving tasks'
+        own `Folds #NN #NN` lines -- the right place for it, since a fold is a fact about the
+        task that did the folding. Nothing read it, so 27 assignments pointed at numbers that
+        no longer existed and every run printed a warning naming each one.
+
+        Those 27 were carried all along; the warnings were an unread mapping, not 27 hidden
+        barriers. Which is exactly why this needs a test either way: 27 lines of noise on
+        every run is how the two genuine warnings underneath them stop being read.
+        """
+        tasks = ("# tasks\n\n"
+                 "◻ #10 — the surviving task\n"
+                 "        owner: coder\n"
+                 "        Folds #3 #4 #5. Read those blocks before working any part.\n\n")
+        with tempfile.TemporaryDirectory() as td:
+            err = run_intake_stderr(self._root(td, tasks, "#4 — folded away"))
+        self.assertNotIn("WARNING", err,
+                         "a pointer at a folded task is carried by the task that folded it; "
+                         "warning on it would report 27 false barriers instead of reading the "
+                         "mapping that is already on disk")
+
+    def test_a_pointer_at_nothing_is_still_reported_when_folds_lines_exist(self):
+        """The control for the above. A resolver that swallows everything catches nothing."""
+        tasks = ("# tasks\n\n"
+                 "◻ #10 — the surviving task\n"
+                 "        owner: coder\n"
+                 "        Folds #3 #4 #5.\n\n")
+        with tempfile.TemporaryDirectory() as td:
+            err = run_intake_stderr(self._root(td, tasks, "#88 — folded by nobody"))
+        self.assertIn("#88", err)
+        self.assertIn("`Folds` line", err,
+                      "the warning must say the fold map was consulted, or the next reader "
+                      "re-derives that themselves")
+
+
+class AHandWrappedCommentRendersAsOneComment(unittest.TestCase):
+    """`note:` on every line is a storage rule. It had leaked into the render.
+
+    A multi-line comment must keep the `note:` prefix on every line, because an unindented
+    continuation ends the task block for `archive_tasks.py` and silently truncates the task.
+    The page read each of those lines as a separate comment, so #73's one hand-wrapped
+    paragraph rendered as fifteen bullet points of sentence fragments -- on the artefact whose
+    whole job is that the next agent can pick the project up without missing a beat.
+    """
+
+    TASKS = ("# tasks\n\n"
+             "◻ #1 — a task with a wrapped comment\n"
+             "        owner: coder\n"
+             "        note: 2026-08-20 garrett — this sentence was hand-wrapped across\n"
+             "        note: three physical lines and is one comment.\n"
+             "        note: 2026-08-21 garrett — and this is a second, separate one.\n\n")
+
+    def _page(self, td: str, tasks: str) -> str:
+        root = Path(td)
+        (root / "PROJECT-TASKS.md").write_text(tasks)
+        return run_generator(root, root / "out.html")
+
+    def test_continuation_lines_join_the_comment_above_them(self):
+        with tempfile.TemporaryDirectory() as td:
+            page = self._page(td, self.TASKS)
+        items = re.findall(r"<li>(.*?)</li>", page, re.S)
+        thread = [i for i in items if "garrett" in i]
+        self.assertEqual(len(thread), 2,
+                         f"two dated comments must render as two, not five: {thread}")
+        self.assertIn("across three physical lines", " ".join(thread[0].split()),
+                      "the continuation must be joined to the comment it continues, with a "
+                      "space — concatenating without one welds the last word to the first")
+
+    def test_an_undated_comment_is_not_dropped(self):
+        """Notes predate the comment box and not all of them carry a date.
+
+        Losing one to make the grouping tidy is the only outcome worse than bad line breaks:
+        the file is append-only precisely so that nothing anybody typed can disappear.
+        """
+        tasks = ("# tasks\n\n"
+                 "◻ #1 — a task whose first note has no date\n"
+                 "        owner: coder\n"
+                 "        note: an older comment with no date on it\n"
+                 "        note: 2026-08-21 garrett — a dated one after it\n\n")
+        with tempfile.TemporaryDirectory() as td:
+            page = self._page(td, tasks)
+        self.assertIn("an older comment with no date on it", page)
+        self.assertIn("a dated one after it", page)
+
+
+class HandTypedFieldsSurviveRegeneration(unittest.TestCase):
+    """`blocked:` was parsed and never written back, so every reason typed on it vanished.
+
+    Fourth occurrence in this repo of a generator eating a field it can read. The visible
+    symptom was Garrett reading the page: *"reason not recorded this gave me no information;
+    fix it to provide information"* -- the why-column had nothing to show because anything
+    put there survived until the next two-minute rebuild and no further.
+
+    `brief:` and `edit:` were already round-tripping and are asserted here beside it, because
+    the bug is about the parse table and the emitter drifting apart, and a test that pins only
+    the field that broke does not notice the next one.
+    """
+
+    LEDGER = ("# GARRETT-REQUESTS.md\n\n"
+              "## R-1 — a request nobody has ticked\n"
+              "status: captured\n"
+              "blocked: waiting on a tick, nothing technical in the way\n"
+              "brief: the engine half exists; the interactive half does not\n"
+              "edit: INTAKE.md — tick the box on A-R1\n"
+              "Some prose about the request.\n\n")
+
+    def _root(self, td: str) -> Path:
+        root = Path(td)
+        (root / "GARRETT-REQUESTS.md").write_text(self.LEDGER)
+        (root / "PROJECT-TASKS.md").write_text("# tasks\n\n")
+        return root
+
+    def test_the_ledgers_reason_reaches_intake_and_survives_a_second_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            run_intake(root)
+            first = (root / "INTAKE.md").read_text()
+            for field, why in (("blocked:", "the why-column's reason"),
+                               ("brief:", "why it is not a task yet"),
+                               ("edit:", "where to go to change that")):
+                self.assertIn(field, first, f"{why} never reached INTAKE.md at all")
+            self.assertIn("waiting on a tick", first)
+            # The bug was in the SECOND run: parsed on the way in, dropped on the way out.
+            run_intake(root)
+            second = (root / "INTAKE.md").read_text()
+            self.assertEqual(first, second,
+                             "regeneration changed the file, which is the bug: a field the "
+                             "parser reads and the emitter omits is deleted one run later")
+
+    def test_the_page_shows_the_reason_instead_of_reason_not_recorded(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            run_intake(root)
+            page = run_generator(root, root / "out.html")
+        self.assertIn("waiting on a tick", page,
+                      "the barrier row must carry the reason from the ledger")
+        self.assertNotIn("reason not recorded", page,
+                         "a row whose source states a reason must not render the warning — "
+                         "that flag is for a genuinely unrecorded reason, and printing it "
+                         "over a recorded one is what made the page worthless to read")
+
+
 class PromotionIsAnExitFromTheIntakeSurface(unittest.TestCase):
     """An assignment that became a task leaves the list. Garrett: *"push intake.md to task"*.
 

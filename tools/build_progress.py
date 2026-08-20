@@ -215,6 +215,11 @@ table.grid tbody tr:not(.det):hover + tr.det td { background:var(--hover); }
    the table, instead of every column negotiating for space against the longest cell in it. */
 .c-act { width:11rem; } .c-ref { width:5.5rem; } .c-typ { width:6rem; }
 .c-own { width:7rem; }  .c-sta { width:7rem; } .c-pct { width:6.5rem; }
+/* The why-column carries a paragraph, and it was the only column with no width at all --
+   which left it and "What it is" both fighting for the remainder. Given one, so the
+   title column stops being squeezed by however long a reason happens to be. Width, never
+   text-overflow: an ellipsis on a reason is the data loss the rules bar outright. */
+.c-why { width:26rem; } .why { white-space:normal; }
 /* The comments box. Full width under its task rather than in a column of its own -- see the
    renderer note. Quiet until you are in it: the thread reads as text, and the control row is
    dim until focus, so 39 empty boxes down the page do not shout over the tasks. */
@@ -373,7 +378,13 @@ def parse_tasks(text: str, root: Path | None = None) -> list[dict]:
         # for two reasons — an unindented continuation would end the task block for
         # `archive_tasks.py` and silently truncate the task, and a continuation reading
         # `owner: garrett` would be parsed as a directive instead of as somebody's words.
-        t["notes"] = [m.group(1).rstrip() for m in NOTE.finditer(t["detail"])]
+        # ...and then GROUPED back into comments for the page. `note:` on every line is a
+        # storage rule, not a reading rule: one comment hand-wrapped over eight lines was
+        # rendering as eight bullet points, so the longest and most useful notes on the
+        # handover artefact came out as a column of sentence fragments. A new comment starts
+        # at a leading date, which is the format the box writes and the format CLAUDE.md
+        # documents; anything else continues the one above it.
+        t["notes"] = group_notes(m.group(1).rstrip() for m in NOTE.finditer(t["detail"]))
 
         o = OWNER.search(t["detail"])
         if o:
@@ -687,6 +698,37 @@ def pct_cell(t: dict) -> str:
 def badge(state: str) -> str:
     cls = "s-" + state.replace(" ", "-")
     return f'<span class="badge {cls}">{esc(state)}</span>'
+
+
+#: `2026-08-20 garrett — ...` at the start of a note line. The date is what makes a new
+#: comment distinguishable from a continuation of the one above, and it is what the comment
+#: box writes, so the two halves agree by construction rather than by convention.
+NOTE_HEAD = re.compile(r"^\d{4}-\d{2}-\d{2}\b")
+
+
+def group_notes(lines) -> list[str]:
+    """Consecutive `note:` lines -> one comment per entry, joined with spaces.
+
+    A comment is stored one line per physical line because an unindented continuation would
+    end the task block for `archive_tasks.py` and silently truncate the task. That is a
+    storage constraint and it had leaked into the render: eight `note:` lines that were one
+    hand-wrapped paragraph became eight bullets, and #73's comment read as fifteen unrelated
+    fragments on the one page that is supposed to be the handover.
+
+    A leading date starts a new comment. Anything before the first dated line is its own
+    comment rather than being dropped -- notes predate the box and not all of them are dated,
+    and losing an undated comment to make the grouping tidy is the one outcome worse than
+    bad line breaks.
+    """
+    out: list[str] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        if NOTE_HEAD.match(line) or not out:
+            out.append(line)
+        else:
+            out[-1] = out[-1] + " " + line.strip()
+    return out
 
 
 def note_cell(t: dict) -> str:
@@ -1085,14 +1127,27 @@ def build(root: Path) -> str:
                    '<th class="c-typ">Type</th>'
                    "<th>What it is</th>"
                    '<th class="c-own">Assigned to</th>'
-                   '<th class="c-sta">Status</th></tr></thead><tbody>')
+                   '<th class="c-sta">Status</th>'
+                   # The seventh column had no header. Six `<th>` sat over seven `<td>`, so
+                   # the why-cell was an unlabelled column and its contents read as a stray
+                   # note rather than as an answer to a question. Garrett: *"reason not
+                   # recorded this gave me no information; fix it to provide information"* --
+                   # part of what gave him no information was that nothing said what the
+                   # column was for. A value with no header is not a reading.
+                   '<th class="c-why">Why it is not a task yet</th>'
+                   "</tr></thead><tbody>")
         # Dropped entries are not rendered. `tools/build_intake.py` also stops writing them to
         # INTAKE.md, so in the steady state there are none here to skip -- this is the window
         # between a Drop click, which writes `[-]` immediately, and the generator run two
         # minutes later that moves the entry to the archive. Without it the page would put the
         # row back for those two minutes, which is the behaviour Garrett reported as broken.
-        for a in sorted((x for x in assignments if not x["dropped"]),
-                        key=lambda x: (bool(x["task"]), not x["box"], x["kind"], x["id"])):
+        # `enumerate`, because `n` was not bound here at all. The zebra banding below read
+        # the `n` left over from the task loop several hundred lines up -- so it was constant
+        # across every row and the banding had never once alternated, and on a tree with no
+        # tasks the generator died with `UnboundLocalError`. Found by a test that built a
+        # ledger and no task list, which is exactly the shape nothing had ever generated.
+        for n, a in enumerate(sorted((x for x in assignments if not x["dropped"]),
+                        key=lambda x: (bool(x["task"]), not x["box"], x["kind"], x["id"]))):
             gone = False
             exit_cell = (f'<span class="mono">{esc(a["task"])}</span>' if a["task"]
                          else '<span class="barrier">BARRIER</span>')

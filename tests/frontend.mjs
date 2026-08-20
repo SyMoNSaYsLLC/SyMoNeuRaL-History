@@ -88,7 +88,9 @@ try {
   }
 
   // ---- one unit per surface ------------------------------------------------
-  // Garrett: "you need to migrate streamer and guide to be 1". Streamer and Guide were two units
+  // Garrett: "you need to migrate tuner and guide to be 1" -- the rename swept through this
+  // quote and made it read "streamer and guide", which nobody can have said. Tuner and Guide
+  // were two units
   // with the SAME href, /streamer.html, so the rack showed one page twice and disagreed with
   // itself about how many things this box runs. They are now one unit.
   //
@@ -115,9 +117,29 @@ try {
   const dupes = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   record('no two rack units are the same page on the same bus', dupes.length === 0,
          dupes.length ? `duplicated: ${dupes.join(', ')}` : `${keys.length} distinct`);
-  record('the streamer unit carries the guide too',
-         units.some(u => /Streamer/.test(u.name || '') && /Guide/.test(u.name || '')),
-         units.map(u => u.name).filter(n => /Streamer|Guide/.test(n)).join(' | ') || 'no streamer unit');
+  // **This assertion had never passed.** It landed in the same commit as the merge (`2246ab7`)
+  // and asked for both words in the unit's *name*; that commit set the name to "SyMoNeuRaL
+  // Streamer" and left the guide half in the spec and detail lines, where `streamer.status()`
+  // says in as many words that it belongs. So the test asked for one shape and the code shipped
+  // another, and nobody could tell -- by then the whole suite could not resolve Playwright, so
+  // it went red into a file that would not run for a day. Two lessons, and the second is the
+  // load-bearing one: a suite that cannot be invoked is not a suite, and the published 49/49 at
+  // `d3a4040` predates this line, so that figure was never wrong -- it just could not be
+  // re-earned.
+  //
+  // A compound name is also the wrong fix. One surface gets one name, which is the entire point
+  // of the merge; "Streamer + Guide" hands back the two-things reading it removed. What must be
+  // true is that the guide half is still *visible on the tile* -- it makes its own claim about
+  // the hardware (stdlib matching on the CPU, never takes the GPU lock, so it answers while chat
+  // holds the card) and that claim is worth as much as the streaming half's. So this reads the
+  // tile's whole text, which is what a visitor reads.
+  const streamerTile = await page.$$eval('.unit', els => {
+    const hit = els.find(e => /Streamer/.test(e.querySelector('.uname b')?.textContent || ''));
+    return hit ? hit.textContent.replace(/\s+/g, ' ').trim() : null;
+  });
+  record('the streamer unit still carries the guide half on its tile',
+         !!streamerTile && /guide/i.test(streamerTile),
+         streamerTile ? streamerTile.slice(0, 150) : 'no streamer unit');
 
   // the rack must lead the page now
   const order = await page.evaluate(() => {
