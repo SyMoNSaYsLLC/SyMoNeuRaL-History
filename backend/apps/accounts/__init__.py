@@ -89,6 +89,7 @@ in `docs/specs/accounts-spec.md`; this is a decision for the owner, not an agent
 from __future__ import annotations
 
 import base64
+import contextvars
 import hashlib
 import hmac
 import json
@@ -212,12 +213,42 @@ class Throttled(AccountsError):
 
 # --------------------------------------------------------------------------- config
 
+# Set by `using_db()`. A ContextVar rather than a module global or a temporary environment
+# mutation, because both of those are process-wide: uvicorn runs handlers concurrently, and a
+# second surface rebinding the database underneath a request in flight would send that
+# request's write to the wrong file. A ContextVar is scoped to the task/thread that set it, so
+# two AccountsModule instances on different databases cannot collide.
+_DB_OVERRIDE: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "symoneural_accounts_db", default="")
+
+
+@contextmanager
+def using_db(path: str | os.PathLike):
+    """Bind `db_path()` to `path` for the duration of this block, in this context only.
+
+    `AccountsModule` uses this to give a second surface (`symoneural_dj`, on its own port and
+    its own database) the module-level functions without duplicating them.
+    """
+    token = _DB_OVERRIDE.set(str(path))
+    try:
+        yield pathlib.Path(path)
+    finally:
+        _DB_OVERRIDE.reset(token)
+
+
 def db_path() -> pathlib.Path:
-    """`run/accounts/accounts.db`, overridable for tests.
+    """`run/accounts/accounts.db`, overridable per-context and for tests.
+
+    Order: an active `using_db()` binding, then `SYMONEURAL_ACCOUNTS_DB`, then the default.
+    The binding wins over the environment so that a surface holding an explicit path is never
+    silently redirected by a variable somebody exported for a different reason.
 
     `SYMONEURAL_ACCOUNTS_DB` exists so the test file can point at a temp directory. It is not a
     production knob and nothing documents it as one.
     """
+    bound = _DB_OVERRIDE.get()
+    if bound:
+        return pathlib.Path(bound)
     override = os.environ.get("SYMONEURAL_ACCOUNTS_DB", "").strip()
     if override:
         return pathlib.Path(override)
@@ -877,6 +908,33 @@ def unit_state() -> tuple[str, str]:
         return "offline", f"{e.__class__.__name__}: {e}"[:90]
     return "ready", f"{n} account{'s' if n != 1 else ''} · sessions expire in " \
                     f"{session_ttl_s() // 3600}h"
+
+
+# --------------------------------------------------------------- the application facade
+#
+# Imported at the BOTTOM on purpose. `module.py` does `from . import verify, read_session,
+# ...`, and at this line every one of those names is already bound, so the cycle resolves.
+# Moving this to the top of the file turns it into a partially-initialised-module ImportError.
+#
+# `symoneural_dj` binds to these:
+#     from apps.accounts import AccountsModule, InsufficientFunds, build_router
+from .meter import InsufficientFunds, Meter  # noqa: E402
+from .module import SESSION_COOKIE, AccountsModule, Identity, User  # noqa: E402
+
+
+def __getattr__(name):
+    """`build_router` on demand, so importing this package never requires fastapi.
+
+    `test_accounts.py` runs as `python3 backend/apps/accounts/test_accounts.py` against the
+    standard library alone, and the module docstring's "zero new packages" claim is about
+    exactly that. Binding fastapi at import time here would make the claim false for anyone
+    who imported the package rather than the router -- so the one fastapi-dependent export
+    is resolved lazily, on first attribute access, via PEP 562.
+    """
+    if name == "build_router":
+        from .routes import build_router  # noqa: PLC0415
+        return build_router
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 if __name__ == "__main__":

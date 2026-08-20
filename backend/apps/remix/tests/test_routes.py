@@ -16,7 +16,12 @@ AUTH = {"Authorization": f"Bearer {DJ_TOKEN}"}
 
 @pytest.fixture
 def client(settings):
-    TokenStore(settings.token_path).set_user("alice", fresh_entry(display_name="Alice"))
+    # `put_user`, not `set_user`: the store has never had a `set_user`. Both spellings entered
+    # the tree in the same commit (9b5da84) and neither has changed since, so this line has been
+    # calling a method that does not exist since the day it was written -- invisible because
+    # `apps/remix/tests` sat behind a pytest `--ignore` and never ran. `put_user(listener, record)`
+    # is the real API and is what both connectors call (connectors/spotify.py:159, ytmusic.py:105).
+    TokenStore(settings.token_path).put_user("alice", fresh_entry(display_name="Alice"))
     app = create_app(settings, spotify=FakeSpotify(), symon=FakeSymon())
     with TestClient(app) as c:
         yield c

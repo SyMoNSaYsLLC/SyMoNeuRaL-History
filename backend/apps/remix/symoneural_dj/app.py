@@ -21,8 +21,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
-from symon_capture import CaptureStore
-from symoneural_accounts import AccountsModule, InsufficientFunds, build_router
+# These two were `symon_capture` and `symoneural_accounts`: editable installs whose finders
+# mapped to /home/google/AI_Local_NVIDIA, a directory that no longer exists. Neither package
+# was anywhere in this repository, so `import symoneural_dj.app` failed outright -- which is
+# the actual reason `apps/remix/tests` sits behind a pytest `--ignore`. They now live where
+# every application lives, under `backend/apps/<name>`, and are imported by that name.
+from apps.accounts import AccountsModule, InsufficientFunds, build_router
+from apps.capture import CaptureStore
 
 from .config import Settings, load_settings
 from .jobs import TERMINAL_STATES, JobJournal, JobStore

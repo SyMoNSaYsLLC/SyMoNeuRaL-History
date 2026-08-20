@@ -35,5 +35,10 @@ include = ["symoneural_dj*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Lets `import symoneural_dj` resolve from any cwd without an install.
-pythonpath = ["."]
+# `.` lets `import symoneural_dj` resolve from any cwd without an install.
+# `../..` is `backend/`, which is what makes `apps.accounts` and `apps.capture` importable.
+# They are sibling applications, not third-party packages, so they are on the path rather
+# than installed -- an editable install of a sibling is exactly what broke here: the two
+# `.pth` finders survived the directory they pointed at being deleted, and reported a
+# clean `pip list` while every import failed.
+pythonpath = [".", "../.."]

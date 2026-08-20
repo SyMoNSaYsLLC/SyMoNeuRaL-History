@@ -26,6 +26,7 @@ Pricing questions go to symonsayadmin@symoneural.com.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -38,9 +39,13 @@ from . import (AccountExists, AccountsError, AccountsUnavailable, InvalidEmail,
 
 log = logging.getLogger("symoneural.accounts")
 
+from .module import SESSION_COOKIE
+
 router = APIRouter(tags=["accounts"])
 
-COOKIE = "sym_session"
+# One spelling, defined in `module.py` and imported here. It was a literal in this file and
+# a second literal would have appeared the moment a second surface needed it.
+COOKIE = SESSION_COOKIE
 
 
 # Every field has a default for the same reason the tuner's models do: a *missing*
@@ -233,6 +238,159 @@ async def signout_everywhere(request: Request, response: Response) -> Response:
     response.delete_cookie(COOKIE, path="/")
     response.status_code = 204
     return response
+
+
+class CreditBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    account_id: str = ""
+    amount: int = 0
+    note: str = ""
+
+
+def build_router(accounts, *, secure_cookies: bool = False,
+                 app_name: str = "") -> APIRouter:
+    """An accounts router bound to one `AccountsModule`, for a surface with its own process.
+
+        router = build_router(accounts, secure_cookies=..., app_name="DJ")
+        app.include_router(router)          # /auth/*, /account/*, owner /admin/*
+
+    The module-level `router` above is the API's own, against the process-wide database.
+    This is the factory form, and it exists because `symoneural_dj` runs on its own port
+    against its own database file and cannot use a router that resolved `db_path()` at
+    import time.
+
+    ## Why this router authenticates itself
+
+    The DJ's one auth middleware lets `/auth/`, `/account/` and `/admin/` through
+    untouched -- deliberately, because login cannot require being logged in. That makes
+    every check below load-bearing rather than defence in depth: nothing upstream is
+    checking these paths. The `/admin/` routes in particular are reachable by any
+    stranger who can reach the port, and are guarded here or nowhere.
+
+    ## `secure_cookies` is a parameter, not a scheme sniff
+
+    The module-level `_set_cookie` reads `request.url.scheme`, which is right for the API:
+    it is always behind Caddy, so the scheme is the real one. A standalone service may sit
+    behind anything, so its operator states the answer (`DJ_SECURE_COOKIES`) rather than
+    having it inferred from a header an attacker can set.
+    """
+    api = APIRouter(tags=[f"accounts:{app_name}" if app_name else "accounts"])
+    cookie_name = accounts.cookie_name()
+
+    def _issue(response: Response, token: str) -> None:
+        response.set_cookie(cookie_name, token, max_age=session_ttl_s(), httponly=True,
+                            samesite="lax", secure=bool(secure_cookies), path="/")
+
+    def _identify(request: Request):
+        auth = request.headers.get("authorization", "")
+        bearer = auth[7:] if auth.startswith("Bearer ") else ""
+        return accounts.identify(cookie=request.cookies.get(cookie_name, ""), bearer=bearer)
+
+    def _require(request: Request):
+        ident = _identify(request)
+        if ident is None:
+            raise HTTPException(401, "login required")
+        return ident
+
+    def _require_owner(request: Request):
+        ident = _require(request)
+        if not ident.is_owner:
+            # 404, not 403. A 403 confirms the route exists and is worth attacking; the
+            # same reasoning the DJ already applies to job ids it will not show you.
+            raise HTTPException(404, "not found")
+        return ident
+
+    @api.post("/auth/signup", status_code=201, summary="Create an account")
+    async def _signup(body: SignupBody, request: Request, response: Response) -> dict:
+        try:
+            with accounts.bind():
+                init_db()
+                acct = create_account(body.email, body.password,
+                                      display_name=(body.display_name or None))
+                token = issue_session(acct["id"])
+        except (InvalidEmail, WeakPassword) as exc:
+            raise HTTPException(400, str(exc)) from None
+        except AccountExists:
+            raise HTTPException(409, "an account already exists for that address") from None
+        except AccountsUnavailable:
+            raise HTTPException(503, "accounts are not configured on this box") from None
+        except AccountsError:
+            raise HTTPException(400, "could not create that account") from None
+        _issue(response, token)
+        return acct
+
+    @api.post("/auth/login", summary="Sign in")
+    async def _login(body: LoginBody, request: Request, response: Response) -> dict:
+        try:
+            with accounts.bind():
+                init_db()
+                acct = verify(body.email, body.password, ip=_client_ip(request))
+                if not acct:
+                    # Same answer for a wrong password and an unknown address.
+                    raise HTTPException(401,
+                                        "that address and password do not match an account")
+                token = issue_session(acct["id"])
+        except Throttled as exc:
+            raise HTTPException(429, str(exc),
+                                headers={"Retry-After": str(exc.retry_after)}) from None
+        except AccountsUnavailable:
+            raise HTTPException(503, "accounts are not configured on this box") from None
+        _issue(response, token)
+        return acct
+
+    @api.post("/auth/logout", status_code=204, summary="Sign out")
+    async def _logout(request: Request, response: Response) -> Response:
+        token = request.cookies.get(cookie_name, "")
+        if token:
+            with accounts.bind(), contextlib.suppress(AccountsUnavailable):
+                revoke_session(token)
+        response.delete_cookie(cookie_name, path="/")
+        response.status_code = 204
+        return response
+
+    @api.get("/account/me", summary="The signed-in account and what it can spend")
+    async def _me(request: Request) -> dict:
+        ident = _require(request)
+        return {
+            "id": ident.user_id,
+            "email": ident.user.email,
+            "display_name": ident.user.display_name,
+            "role": ident.user.role,
+            "is_owner": ident.is_owner,
+            "via": ident.via,
+            # None, not 0. An owner has no balance rather than an empty one, and a client
+            # that renders `0` would tell the owner they cannot afford their own product.
+            "balance": accounts.balance(ident),
+        }
+
+    @api.get("/account/history", summary="This account's recent charges and credits")
+    async def _history(request: Request) -> dict:
+        ident = _require(request)
+        if ident.is_owner:
+            return {"entries": [], "note": "owner actions are free and are not metered"}
+        return {"entries": accounts.meter.history(ident.user_id)}
+
+    @api.get("/admin/users", summary="Every account (owner only)")
+    async def _users(request: Request) -> dict:
+        _require_owner(request)
+        rows = accounts.accounts.listing()
+        for row in rows:
+            row["balance"] = accounts.meter.balance(str(row.get("id", "")))
+        return {"count": len(rows), "accounts": rows}
+
+    @api.post("/admin/credit", summary="Add SyMoN tokens to an account (owner only)")
+    async def _credit(body: CreditBody, request: Request) -> dict:
+        _require_owner(request)
+        if not body.account_id:
+            raise HTTPException(400, "account_id is required")
+        if body.amount <= 0:
+            raise HTTPException(400, "amount must be positive")
+        if accounts.accounts.public(body.account_id) is None:
+            raise HTTPException(404, "no such account")
+        balance = accounts.meter.credit(body.account_id, body.amount, body.note or "admin")
+        return {"account_id": body.account_id, "balance": balance}
+
+    return api
 
 
 def status() -> dict:

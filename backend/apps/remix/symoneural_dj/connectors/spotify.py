@@ -85,6 +85,24 @@ class TokenStore:
     def listeners(self) -> list[str]:
         return sorted(self._load())
 
+    def users(self) -> list[dict[str, Any]]:
+        """Every stored listener as a PUBLIC record: the id and the display name, never the
+        tokens.
+
+        `app.py` has called this since it was written (`/users` at :207, and `_visible_users`
+        at :204, which is the cross-tenant boundary) and it has never existed -- the app could
+        not import at all, so nothing ever reached the missing method. `listeners()` is not a
+        substitute: it returns bare id strings and both call sites subscript `u["user"]`.
+
+        The projection is the point, not a convenience. The stored record holds `access_token`
+        and `refresh_token`; `/users` is reachable by any authenticated member, so returning
+        raw records would hand every member every other member's Spotify credentials. The
+        route's test asserts the absence of both strings in the response body rather than the
+        presence of the ids, which is the correct thing to assert about a leak.
+        """
+        return [{"user": listener, "display_name": (record or {}).get("display_name", "")}
+                for listener, record in sorted(self._load().items())]
+
 
 class OwnershipStore(TokenStore):
     """Which listener owns which playlist.
