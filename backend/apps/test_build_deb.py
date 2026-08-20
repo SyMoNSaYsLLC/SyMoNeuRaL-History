@@ -40,12 +40,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "build-deb.sh"
 
-# The two strings the surgical tests operate on. If either drifts in the real script, the
-# surgery helpers refuse loudly (assertIn below) instead of testing a script that no longer
-# exists. Kept as module constants so the structural test and the surgery share one spelling.
+# The strings the surgical tests operate on. If any drifts in the real script, the surgery
+# helpers refuse loudly (assertIn below) instead of testing a script that no longer exists.
+# Kept as module constants so the structural test and the surgery share one spelling.
+#
+# The guard moved. It was an inline `leaked=0` loop in this script; it is now the shared
+# function in `scripts/lib/archive-guard.sh`, because build-deb.sh was one of three
+# packaging paths and the only one that had a check at all. These tests still assert the
+# same behaviour through the same script -- what changed is which two lines the surgery cuts
+# to remove the guard, and where the protected-path list is pinned (see the structural test).
 REMIX_CLAUSE = r"|backend/apps/remix/\.env$"
-GUARD_FIRST_LINE = "leaked=0"
-GUARD_LAST_LINE = '[ "$leaked" -eq 0 ] || { echo "refusing to build" >&2; exit 1; }'
+GUARD_FIRST_LINE = '. "$ROOT/scripts/lib/archive-guard.sh"'
+GUARD_LAST_LINE = '|| { echo "refusing to build" >&2; exit 1; }'
+GUARD_LIB = ROOT / "scripts" / "lib" / "archive-guard.sh"
 
 
 def make_sandbox(tmp: Path) -> Path:
@@ -69,6 +76,12 @@ def make_sandbox(tmp: Path) -> Path:
         path = sandbox / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
+    # The REAL guard library, copied in rather than stubbed: build-deb.sh sources it by
+    # path, and a stub here would mean these tests assert against a guard that is not the
+    # one that ships. Tracked in the sandbox, exactly as it is tracked in this repo.
+    lib = sandbox / "scripts" / "lib" / "archive-guard.sh"
+    lib.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(GUARD_LIB, lib)
     git = ["git", "-C", str(sandbox), "-c", "user.name=sandbox",
            "-c", "user.email=sandbox@invalid", "-c", "commit.gpgsign=false"]
     subprocess.run(["git", "init", "-q", "-b", "main", str(sandbox)], check=True)
@@ -151,7 +164,8 @@ class BuildDebLeakGuardTests(unittest.TestCase):
         """
         proc, out = run_build(self.tmp, self.without_remix_exclusion(self.real))
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
-        self.assertIn("LEAK: backend/apps/remix/.env is in the payload", proc.stderr)
+        self.assertIn("LEAK: backend/apps/remix/.env", proc.stderr)
+        self.assertIn("REFUSING", proc.stderr)
         self.assertIn("refusing to build", proc.stderr)
         self.assertEqual(list(out.glob("*.deb")), [], "a .deb was built despite the leak")
 
@@ -174,15 +188,33 @@ class BuildDebLeakGuardTests(unittest.TestCase):
     # -- structure -----------------------------------------------------------------------
 
     def test_the_real_script_still_carries_what_the_surgery_targets(self):
-        """Pins the real script to the strings the tests above cut, and to the guard's
-        full path list -- so the surgery stays representative and the guard stays whole."""
-        for needle in (REMIX_CLAUSE, GUARD_FIRST_LINE, GUARD_LAST_LINE,
-                       "training/corpus.jsonl", "training/build_dataset.py",
-                       "backend/apps/remix/.env",
-                       "training/project-history/build_history_corpus.py",
-                       ".claude/HANDOVER.md", "adapter-qwen36"):
+        """Pins the real script to the three strings the tests above cut, so the surgery
+        stays representative rather than silently editing text that no longer exists."""
+        for needle in (REMIX_CLAUSE, GUARD_FIRST_LINE, GUARD_LAST_LINE):
             self.assertIn(needle, self.real,
                           f"build-deb.sh no longer contains {needle!r}")
+
+    def test_the_protected_path_list_still_lives_in_the_shared_guard(self):
+        """The other half of the old structural test.
+
+        This list used to be spelled out inside build-deb.sh and was pinned there. It now
+        lives in the shared library, so it is pinned there -- the assertion is unchanged in
+        substance, it just follows the code. `training/project-history/` is the reason this
+        test exists: it was added to the .deb's list when that directory landed, and a
+        second copy of the list in another packaging path would not have been updated.
+        """
+        body = GUARD_LIB.read_text()
+        for needle in ("training/corpus", "training/build_dataset",
+                       "training/project-history/", "training/adapter",
+                       r"\.claude/", "env"):
+            self.assertIn(needle, body,
+                          f"the shared guard no longer covers {needle!r}")
+
+    def test_the_deb_asks_for_the_shareable_mode(self):
+        """A .deb leaves the box, so `local-authorized` would be the wrong mode and would
+        let the payload ship protected material as long as a manifest named it."""
+        self.assertIn("archive_guard shareable", self.real)
+        self.assertNotIn("archive_guard local-authorized", self.real)
 
 
 if __name__ == "__main__":

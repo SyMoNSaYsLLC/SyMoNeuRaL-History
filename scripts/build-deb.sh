@@ -81,15 +81,15 @@ tr '\n' '\0' < "$STAGE/manifest.txt" | xargs -0 cp --parents -t "$DEST/opt/symon
 
 # A guard, not a comment: every excluded path must be absent from the staged payload. The
 # v1 .deb shipped a secrets file precisely because nothing checked. This is that check.
-leaked=0
-for p in training/corpus.jsonl training/build_dataset.py backend/apps/remix/.env \
-         training/project-history/build_history_corpus.py .claude/HANDOVER.md; do
-  if [ -e "$DEST/opt/symoneural/$p" ]; then echo "LEAK: $p is in the payload" >&2; leaked=1; fi
-done
-for d in "$DEST/opt/symoneural/training/adapter" "$DEST/opt/symoneural/training/adapter-qwen36"; do
-  if [ -e "$d" ]; then echo "LEAK: $(basename "$d")/ is in the payload" >&2; leaked=1; fi
-done
-[ "$leaked" -eq 0 ] || { echo "refusing to build" >&2; exit 1; }
+#
+# It used to be an inline loop here, naming five paths and two directories. It is now the
+# shared function, for one reason: this was one of three packaging paths and the only one
+# that had a check. A check inside one script protects one script, and a copied check
+# drifts -- this list gained `training/project-history/` when that landed, and a copy
+# elsewhere would not have. `shareable` is the correct mode: a .deb leaves the box.
+. "$ROOT/scripts/lib/archive-guard.sh"
+archive_guard shareable "$DEST/opt/symoneural" "the .deb payload" \
+  || { echo "refusing to build" >&2; exit 1; }
 
 cp README.md "$DEST/usr/share/doc/symoneural/README.md"
 ln -s /opt/symoneural/bin/symoneural-cli "$DEST/usr/bin/symoneural-cli"
