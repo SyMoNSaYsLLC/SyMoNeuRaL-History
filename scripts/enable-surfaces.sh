@@ -197,13 +197,15 @@ fi
 
 # ## The gated surfaces this script deliberately does not switch
 #
-# Six env-gated surfaces had no arm here. Asic gained one above, because its rack row was in
+# Seven env-gated surfaces have no arm here. Asic gained one above, because its rack row was in
 # exactly the state Studio's was -- SubUnit `asicminer` (backend/api.py:1655) told an operator
 # to "set SYMONEURAL_ASIC_ENABLED=1 ... and SYMONEURAL_ASIC_TOKEN" and nothing sanctioned would
 # do it. News then joined the list -- it was always in this state and the test could not see
 # it, because the test's regex looked for the `SYM_` prefix and news was the first surface
-# named `SYMONEURAL_*` from the start. The six are not oversights and each is a different
-# reason, so they are named rather than left as a silence someone has to re-derive:
+# named `SYMONEURAL_*` from the start. Discovery joined it on the day it landed, caught by the
+# test below before its first commit rather than found later on a rack. The seven are not
+# oversights and each is a different reason, so they are named rather than left as a silence
+# someone has to re-derive:
 #
 #   accounts   -- the key is not a token. `enabled()` (apps/accounts/__init__.py:233) wants
 #                 SYMONEURAL_SESSION_SECRET of at least MIN_SECRET_CHARS=32 (:139), and minting a
@@ -233,10 +235,18 @@ fi
 #                 fresh secret, does not fit it. It is switched by hand, deliberately, in the
 #                 order recorded in the package README: deploy the site, set the variable,
 #                 then restart.
+#   discovery  -- there is nothing yet for the switch to switch. apps/symoneuraldiscovery has
+#                 no router, no page and no rack row, and its __init__.py docstring says why
+#                 in the terms api.py:2317-2319 set for voice: a row pointing at a 404 is
+#                 worse than no row. So enabled() gates no endpoint and an arm here would
+#                 write a key nothing reads. The two subcommands that work today, `search`
+#                 and `stats`, need neither the switch nor a token; the half that is dark
+#                 needs playwright installed and a provider key, and this script can supply
+#                 neither. Same rule as voice -- the page comes first.
 #
-# apps/test_enable_surfaces.py pins this list in both directions: it fails if a twelfth gated
-# switch appears, if one of these five quietly gains an arm, and if a name is dropped from
-# this block. Adding an arm means deciding here first, not discovering it from a rack row.
+# apps/test_enable_surfaces.py pins this list in both directions: it fails if a fourteenth
+# gated switch appears, if one of these seven quietly gains an arm, and if a name is dropped
+# from this block. Adding an arm means deciding here first, not discovering it from a rack row.
 
 install -d -m 0755 "$DROPIN_DIR"
 cat > "$DROPIN" <<EOF

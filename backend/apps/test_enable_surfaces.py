@@ -117,17 +117,17 @@ class EnableSurfacesTests(unittest.TestCase):
                 self.assertIn(flag, self.writable,
                               f"`{arg}` sets WANT_{flag} and nothing ever reads it")
 
-    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_six(self):
+    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_seven(self):
         """The gap this file exists to make visible, pinned in both directions.
 
-        This was six, then five, and is six again -- and the way NEWS joined it is the point
-        of the test. ASIC came off because its rack row was in exactly the state Studio\'s had
-        been -- SubUnit `asicminer` (api.py:1655) telling an operator to set
-        SYMONEURAL_ASIC_ENABLED and SYMONEURAL_ASIC_TOKEN with nothing sanctioned that would
-        do it -- and the earlier version of this docstring got its reason wrong: it said ASIC
-        "points at hardware that may not be present", which is true and is not an argument
-        against a switch. Absent hardware reads `offline · no rigs configured`, which is
-        honest; an unset switch the operator was told to set and given no command for is not.
+        This was six, then five, six again, and is now seven -- and the way NEWS and DISCOVERY
+        joined it is the point of the test. ASIC came off because its rack row was in exactly the
+        state Studio\'s had been -- SubUnit `asicminer` (api.py:1655) telling an operator to set
+        SYMONEURAL_ASIC_ENABLED and SYMONEURAL_ASIC_TOKEN with nothing sanctioned that would do it
+        -- and the earlier version of this docstring got its reason wrong: it said ASIC "points at
+        hardware that may not be present", which is true and is not an argument against a switch.
+        Absent hardware reads `offline · no rigs configured`, which is honest; an unset switch the
+        operator was told to set and given no command for is not.
 
         NEWS was never on the list and should have been from the day it landed. `GATE` above
         searched for `SYM_([A-Z0-9]+)_ENABLED`, and the news ticker was the first surface
@@ -137,14 +137,23 @@ class EnableSurfacesTests(unittest.TestCase):
         was invisible to the regex rather than exempted by a decision. The rename made it
         visible, which is the second time in this repo that a naming change has surfaced a
         tripwire that was quietly matching nothing. Its reason for having no arm is in the
-        script with the other five.
+        script with the others.
+
+        DISCOVERY is the first name this test caught on the way in rather than after the fact.
+        apps/symoneuraldiscovery reads SYMONEURAL_DISCOVERY_ENABLED, so it joined `gated` the
+        moment the package existed, and this assertion failed in the same run that first
+        collected that package's own 37 tests -- before its first commit, not after an
+        operator found a rack row stuck on `offline`. That is the whole intended behaviour of
+        this test, and the resolution was to write the reason into the script, not to widen
+        the literal below and move on.
 
         Each reason is recorded in the script rather than here, and
         `test_the_script_records_why_each_unswitchable_one_has_no_arm` below asserts the
-        record still names them. This test fails when a thirteenth gated surface appears with
-        no switch AND when one of these six quietly gains one, and either way the fix is to
+        record still names them. This test fails when a fourteenth gated surface appears with
+        no switch AND when one of these seven quietly gains one, and either way the fix is to
         make the decision there rather than discover it from a rack row reading `offline`."""
-        known_unswitchable = {"ACCOUNTS", "EXP", "MINING", "NEWS", "REINFORCE", "VOICE"}
+        known_unswitchable = {"ACCOUNTS", "DISCOVERY", "EXP", "MINING", "NEWS", "REINFORCE",
+                              "VOICE"}
         self.assertEqual(self.gated - self.writable, known_unswitchable)
         self.assertEqual(self.writable - self.gated, set(),
                          "the script writes an ENABLED key no app reads")
@@ -161,7 +170,8 @@ class EnableSurfacesTests(unittest.TestCase):
         head = "# ## The gated surfaces this script deliberately does not switch"
         self.assertIn(head, self.text, "the record of why is gone, or its heading changed")
         block = self.text.split(head, 1)[1].split("\ninstall -d", 1)[0]
-        for surface in sorted({"ACCOUNTS", "EXP", "MINING", "NEWS", "REINFORCE", "VOICE"}):
+        for surface in sorted({"ACCOUNTS", "DISCOVERY", "EXP", "MINING", "NEWS",
+                               "REINFORCE", "VOICE"}):
             with self.subTest(surface=surface):
                 self.assertIn(surface.lower(), block,
                               f"{surface} has no arm and the script no longer says why")

@@ -14,6 +14,12 @@ cuda-samples/
 # ---- Virtualenvs ----
 training/.venv/
 **/.venv/
+# One venv per app, named symoneural-<extension>.venv after the app it belongs to (Garrett's
+# rule, 2026-08-20, the same rule as the per-app env files). This line is not decoration:
+# `**/.venv/` above matches on the literal name `.venv`, so a directory called
+# `symoneural-discovery.venv` is NOT covered by it and a venv full of compiled wheels would
+# be committable. The pattern had to widen in the same change that introduced the new name.
+**/symoneural-*.venv/
 
 # ---- Runtime output: logs, screenshots, generated images ----
 run/
@@ -126,3 +132,11 @@ ops/middleware/*.wasm
 # backend/apps/symoneuralstudio/custom_nodes/symoneural_gguf/, and scripts/comfyui.sh links it
 # into place on start. Delete ComfyUI/ and reclone it and nothing of ours is lost.
 /ComfyUI/
+
+# ---- symoneural-discovery credentials ----
+# One env file per app, named symoneural-<extension>.env after the app. The tracked
+# template is symoneural-discovery.env.example with every value empty; the real file is
+# the line below. It is listed BEFORE the file exists on purpose: backend/apps/remix/.env is
+# tracked with live secret-shaped values and rides inside any archive carrying .git, and the
+# only reason that happened is that nothing excluded it until after the first `git add -A`.
+backend/apps/symoneuraldiscovery/symoneural-discovery.env
