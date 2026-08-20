@@ -64,10 +64,10 @@ BLOCK = f"""{BEGIN}
       <p class="mh-creed">Finding the solutions and the success when you are no longer
         <i>intelligence-bound</i>.</p>
       <p class="mh-body">
-        SyMoNeuRaL builds custom AI stacks for any business, on any hardware, specialising
-        in NVIDIA servers. You are looking at one right now: this entire site &mdash; chat,
-        image, algebra, the fine-tune &mdash; runs on a single consumer graphics card in
-        our workshop.
+        SyMoNeuRaL builds custom server software, firmware and middleware, built with
+        Machine Learning capabilities. You are looking at one right now: this entire site
+        &mdash; chat, image, algebra, the fine-tune &mdash; runs on a single consumer
+        graphics card in our workshop.
       </p>
       <p class="tiny">
         If a $1,000 card can do this, imagine what a real server does for your business.
