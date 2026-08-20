@@ -52,6 +52,9 @@ SHELL = """<!doctype html>
       <img src="/mark-64.png" srcset="/mark-32.png 1x, /mark-64.png 2x" alt="SyMoNeuRaL" width="30" height="30">
       <b>SyMoNeu<i>RaL</i></b>
     </a>
+    <!-- Outside the `.logo` anchor on purpose: it is a statement of who owns the company, not
+         a second thing to click, and inside the link it would join the accessible name. -->
+    <span class="llc">a <b>SymonSays LLC</b> company</span>
 @@NAV@@
   </div>
 </header>

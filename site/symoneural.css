@@ -91,6 +91,13 @@
   .logo{display:flex; align-items:center; gap:11px; text-decoration:none; font-weight:650; letter-spacing:.01em}
   .logo img{width:30px; height:30px}
   .logo b{font-weight:650}
+  /* The parent-company line, beside the wordmark. Sized at `--t7` so its line box stays
+     under the 30px logo and cannot grow `header .bar`'s 66px: every section page fits one
+     screen with single-digit pixels of headroom, and a taller header would spend that
+     budget on all 23 pages at once. Hidden at the narrow breakpoint below, where the bar
+     already wraps and the nav needs the width more than the ownership note does. */
+  .llc{font-size:var(--t7); color:var(--faint); letter-spacing:.02em; white-space:nowrap}
+  .llc b{color:var(--dim); font-weight:600}
   /* Same `.bar` collision as above, second half: the gauge rule `.bar i` paints a
      green gradient fill, and the logo's <i> lives inside `header .bar`. Scoped
      higher so the wordmark stops rendering as a filled meter. */
@@ -157,6 +164,7 @@
   @media (min-width:781px) and (max-width:900px){
     header nav{gap:10px 12px; flex-wrap:wrap; justify-content:flex-end}
     header .logo{flex:0 0 auto}
+    .llc{display:none}
     header .bar{height:auto; min-height:66px; padding:9px 0}
   }
 
@@ -933,16 +941,21 @@
 .mh-hero .tiny{margin:11px 0 0; color:var(--faint); font-size:var(--t6); font-style:italic}
 .mh-hero .actions{margin-top:20px}
 
-/* The pitch is deliberately quieter than the hero -- serif, one shade down, a ghost
-   button. Two solid call-to-action pills side by side read as two competing offers. */
+/* Matched to `.mh-hero h1` above -- same size ramp, weight, tracking and line-height, same
+   family. It was previously serif at one step down, on the argument that a quieter pitch
+   column stops two call-to-action pills reading as two competing offers. That argument was
+   about the buttons, not the headings, and the ghost button still carries it alone. At two
+   different sizes the two lines read as headline-and-subhead rather than as the pair they
+   are, which is the thing being fixed. Keep the two blocks in step: if the hero ramp
+   changes, this changes with it. */
 .mh-pitch h2{
-  margin:0; font:600 clamp(var(--t3),2.05vw,var(--t2))/1.2 ui-serif,Georgia,"Times New Roman",serif;
-  letter-spacing:-.015em; color:var(--fg);
+  margin:0; font-weight:760; color:var(--fg);
+  font-size:clamp(var(--t2),3.1vw,var(--t1)); letter-spacing:-.032em; line-height:1.06;
 }
-.mh-lede{margin:13.2px 0 0; color:var(--dim); font-size:var(--t5); line-height:1.62; max-width:48ch}
+.mh-lede{margin:11px 0 0; color:var(--dim); font-size:var(--t5); line-height:1.62; max-width:48ch}
 .mh-lede b{color:var(--accent); font-weight:600}
-.mh-pitch .cta{margin-top:18px}
-.mh-foot{margin:15.8px 0 0; color:var(--faint); font-size:var(--t6); line-height:1.55; max-width:46ch}
+.mh-pitch .cta{margin-top:15px}
+.mh-foot{margin:12px 0 0; color:var(--faint); font-size:var(--t6); line-height:1.55; max-width:46ch}
 .mh-foot b{color:var(--dim); font-weight:600}
 
 /* ---- the creed: the company's own lines, set as claims rather than as data ----
@@ -2563,12 +2576,12 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
    your building." -- two headlines side by side, neither on the other's line. That reads as
    sloppy at every width and it is the thing the eye catches.
 
-   The remaining offset after top-aligning the columns is the hero's eyebrow, which the pitch
-   does not have: `.eyebrow` is `var(--t6)` at the inherited 1.65 line-height, and its 11px
-   bottom margin collapses with `h1`'s 11px top margin to 11px. So the hero's headline sits
-   exactly `--t6 * 1.65 + 11px` below its column top, and the pitch pays that back as padding.
-   Expressed in the token rather than as a pixel constant, so it stays correct as the fluid
-   scale above grows `--t6` -- a hardcoded 33px would be right only at 1990px wide.
+   There used to be a second half to this fix. The hero carried an eyebrow that the pitch did
+   not, so after top-aligning the columns its headline still sat `--t6 * 1.65 + 11px` lower,
+   and `.mh-pitch` paid that back as padding. 2026-08-20: the eyebrow moved to the site
+   header, so both columns now start with their headline and the padding is gone with it.
+   Do not reintroduce one without the other -- an eyebrow with no padding, or padding with no
+   eyebrow, is the same misalignment in either direction.
 
    The renders keep `align-self:center`: they are the tallest items in the row and centring
    them is what balances the spread. Gated at min-width:821px because below that the grid is
@@ -2577,7 +2590,6 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
 @media (min-width:821px){
   .mh{align-items:start}
   .mh > .gart{align-self:center}
-  .mh-pitch{padding-top:calc(var(--t6) * 1.65 + 11px)}
 }
 
 /* ==================================================================================
