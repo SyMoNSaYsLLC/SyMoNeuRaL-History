@@ -80,8 +80,10 @@ which is a rack disagreeing with itself about how many things this box runs. `st
 returns one unit, labelled *SyMoNeuRaL Streamer & Guide*, and `api.py` no longer builds a `guide`
 unit.
 
-**Nothing was deleted to achieve it.** `backend/apps/streamer/guide/` is untouched and `/api/guide/*`
-still serves the page's filter — the fold is in what the rack claims, not in what runs. The
+**Nothing was deleted to achieve it.** `backend/apps/streamer/guide/` is untouched and its filter
+still serves the page — the fold is in what the rack claims, not in what runs. It answered at
+`/api/guide/*` when that was written; the later namespace half of the same merge moved it to
+`/api/streamer/guide/*`, nested rather than flat because both routers declare `/state`. The
 guide half's own claim is carried in the streamer unit's detail line in every state, because it is
 the thing a visitor cannot check by looking: *guide filtering on the CPU, never takes the GPU
 lock*. That is the same claim RavenCalc makes and it is worth as much here.

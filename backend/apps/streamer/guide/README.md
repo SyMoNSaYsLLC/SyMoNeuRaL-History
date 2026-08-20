@@ -339,7 +339,7 @@ Guide is a library. It is deliberately not wired in: `backend/api.py`, `backend/
 The two-export contract mirrors `apps/streamer/__init__.py`:
 
 ```python
-from apps import guide
+from apps.streamer import guide
 
 # 1. the rack unit
 state, detail = guide.unit_state()          # -> ("ready", "...")
@@ -347,7 +347,7 @@ state, detail = guide.unit_state()          # -> ("ready", "...")
 # 2. a route. `ask_model` is the caller's own route to the chat surface -- this is the
 #    ONLY place the GPU is involved, and it is the caller that holds the lock, exactly as
 #    remix() does.
-@app.post("/api/guide/filter", tags=["surfaces"])
+@app.post("/api/streamer/guide/filter", tags=["streamer-guide"])
 async def guide_filter(body: GuideRequest) -> dict:
     async def ask(prompt: str) -> str: ...   # async: see the note below
     return guide.filter_from_question(

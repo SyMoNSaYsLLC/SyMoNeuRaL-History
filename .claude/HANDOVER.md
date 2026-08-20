@@ -1839,6 +1839,19 @@ JS consumes it, and churning a working route serves no reading. The guide half's
 (*CPU/stdlib, never takes the GPU lock*) is carried in the tuner unit's detail line in every
 state, because that is the thing a visitor cannot check by looking.
 
+**Reversed on the prefix, 2026-08-20, under #73 item 2 — read the two paragraphs above as the
+record of a decision, not as the current routes.** The words *tuner* and *guide* are left
+standing in them on purpose: they are what was decided and by whom. What has since changed is
+everything the paragraphs state as fact. `apps/tuner` is `apps/streamer` and `apps/guide` is
+`apps/streamer/guide`; the prefix WAS renamed after all, to `/api/streamer/guide/*` nested under
+`/api/streamer/*`, because the file merge left one page consuming two unrelated namespaces and
+"churning a working route" stopped being the larger cost. Nested and not flat: both routers
+declare `/state`, so one shared prefix would register the guide's probe where the streamer's
+already answers. The page JS that "consumes it" was moved with it, and the visitors'
+`localStorage` got a one-time read-old-write-new migration for the same reason — a rename that
+loses somebody's playlists is not a rename. **The 11-units figure is a reading of that commit
+and nothing else**; the roster is `backend/apps/ROSTER.md` and is 13 rows over 20U.
+
 The reversal is the interesting part and is recorded at the deletion site: Guide's own author
 argued for exactly this fold on architecture and was overruled only because Garrett had named
 it separately. He has now decided the other way.
@@ -1869,7 +1882,7 @@ units. Against a throwaway `uvicorn api:app` with the change loaded it is 28/28.
 ### Still open on this surface
 
 - **The Guide AI's "ask a couple questions" element is not built.** The floating prompt exists
-  and is wired to `/api/guide/filter`; what is missing is the short location/preference
+  and is wired to `/api/streamer/guide/filter`; what is missing is the short location/preference
   questionnaire Garrett described. Note his constraint carefully: *location-aware means
   **asking**, not geolocating* — do not add IP geolocation to a box whose whole argument is
   that it measures rather than infers.

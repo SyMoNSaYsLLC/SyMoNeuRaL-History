@@ -1,4 +1,9 @@
-"""The HTTP surface for SyMoNeuRaL Guide. Mounted at `/api/guide` by `backend/api.py`.
+"""The HTTP surface for SyMoNeuRaL Guide. Mounted at `/api/streamer/guide` by `backend/api.py`.
+
+The prefix is NESTED under the streamer's rather than sitting beside it, and that is the
+one thing to know before moving it: this router and the streamer's both declare `/state`,
+so a shared flat prefix registers the second one where the first already answers and the
+guide's probe silently becomes unreachable. It was `/api/guide` until the merge.
 
 Guide turns a sentence into a filter over a channel list. The module beside this one does
 all of that; this file is only the boundary.

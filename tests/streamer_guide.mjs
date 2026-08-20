@@ -30,15 +30,21 @@ const CHANNELS = [
 
 fs.writeFileSync(path.join(TMP, 'app.py'), `
 import sys
-sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'backend', 'apps'))})
+sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'backend'))})
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from guide import routes as guide_routes
+# apps/guide/ is now apps/streamer/guide/, and routes.py does \`from . import ...\`, so it has
+# to be imported AS a package -- sys.path at backend/, not at backend/apps/. Importing it the
+# old way is what broke this suite: app.py raised ImportError, uvicorn never bound the port,
+# and the failure surfaced 24 s later as ERR_CONNECTION_REFUSED in Chrome.
+from apps.streamer.guide import routes as guide_routes
 
 CHANNELS = ${JSON.stringify(CHANNELS)}
 
 app = FastAPI()
-app.include_router(guide_routes.router, prefix="/api/guide")
+# The prefix the page fetches -- site/streamer.html asks /api/streamer/guide/filter -- and
+# nested for the same reason api.py nests it: both routers declare /state.
+app.include_router(guide_routes.router, prefix="/api/streamer/guide")
 
 @app.post("/api/streamer/playlist")
 async def playlist(body: dict | None = None):
@@ -59,7 +65,7 @@ const stop = () => { try { srv.kill(); } catch {} fs.rmSync(TMP, { recursive: tr
 process.on('exit', stop);
 for (let i = 0; i < 60; i++) {
   await new Promise(r => setTimeout(r, 400));
-  try { if ((await fetch(`http://127.0.0.1:${PORT}/api/guide/state`)).ok) break; } catch {}
+  try { if ((await fetch(`http://127.0.0.1:${PORT}/api/streamer/guide/state`)).ok) break; } catch {}
 }
 
 let pass = 0, fail = 0;

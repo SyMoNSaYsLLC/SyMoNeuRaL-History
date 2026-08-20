@@ -87,5 +87,57 @@ class NamespaceTests(unittest.TestCase):
                 self.assertTrue((SITE / name).is_file())
 
 
+class NestedGuidePrefixTests(unittest.TestCase):
+    """The guide is mounted UNDER the streamer, and this is the collision that forces it.
+
+    Both routers declare `/state`. Mounted flat -- `/api/streamer` and `/api/guide` folded
+    to one shared prefix, which is the obvious reading of "one surface, one name" -- the
+    second registration lands on a path the first already answers, and Starlette resolves
+    to the first match. The guide's probe would not error. It would return the *streamer's*
+    state, so the rack would report the guide ready whenever ffmpeg was present, and a
+    visitor would have no way to see it. That is the decorative-indicator failure this repo
+    bars, arrived at by routing rather than by CSS.
+
+    Asserted against the routers themselves rather than by importing `api.py`: that module
+    builds every rate limiter, resolves the GPU governor and mounts `site/` at import.
+    """
+
+    def setUp(self):
+        from fastapi import FastAPI
+
+        from apps import streamer
+
+        self.app = FastAPI()
+        self.app.include_router(streamer.router, prefix="/api/streamer")
+        self.app.include_router(streamer.guide_router, prefix="/api/streamer/guide")
+        self.streamer_router, self.guide_router = streamer.router, streamer.guide_router
+
+    def _endpoint(self, path):
+        return next((r.endpoint for r in self.app.routes
+                     if getattr(r, "path", None) == path), None)
+
+    def test_both_halves_declare_state_which_is_why_nesting_is_load_bearing(self):
+        for name, router in (("streamer", self.streamer_router),
+                             ("guide", self.guide_router)):
+            with self.subTest(half=name):
+                self.assertIn("/state", [r.path for r in router.routes])
+
+    def test_each_state_probe_resolves_to_its_own_half(self):
+        outer = self._endpoint("/api/streamer/state")
+        inner = self._endpoint("/api/streamer/guide/state")
+        self.assertIsNotNone(outer, "the streamer's own probe is unreachable")
+        self.assertIsNotNone(inner, "the guide's probe is unreachable -- shadowed?")
+        self.assertIsNot(outer, inner,
+                         "both probes resolve to the SAME endpoint: the guide is shadowed "
+                         "and is reporting the streamer's state as its own")
+
+    def test_api_py_mounts_the_guide_nested_under_the_streamer(self):
+        api = (pathlib.Path(__file__).resolve().parents[1] / "api.py").read_text()
+        self.assertIn('prefix="/api/streamer/guide"', api)
+        self.assertNotIn('prefix="/api/guide"', api,
+                         "the guide is mounted flat again; see this class's docstring for "
+                         "what that does to its /state probe")
+
+
 if __name__ == "__main__":
     unittest.main()

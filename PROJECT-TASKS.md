@@ -160,7 +160,9 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists backend/apps/studio/plugins/discovery/__init__.py
         check: absent backend/apps/streamer/routesmergemewithotherroutes.py
         check: absent backend/apps/streamer/READMEmergemewithotherreadme.md
-        check: grep "include_router" -- backend/apps/streamer/__init__.py
+        check: grep prefix="/api/streamer/guide" -- backend/api.py
+        check: grep symoneural\.tuner -- site/streamer.html
+        check: grep apps\.streamer\.guide -- tests/streamer_guide.mjs
         check: exists site/streamer.html
         check: absent site/tuner.html
         check: grep "/api/streamer" -- backend/api.py
@@ -176,6 +178,64 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: got more done, and a re-run would read as a regression. `grep "include_router"` in
         note: `__init__.py` replaces it and is true only when the package composes the two halves
         note: itself instead of handing api.py two routers to wire.
+        note: 2026-08-20 coder — that replacement was itself unpassable and is now replaced in
+        note: turn by the three checks above. Two faults, either one fatal. First, `run_check` hands
+        note: the pattern to `re.search` VERBATIM, so `grep "include_router"` demands the quote
+        note: characters too and only matches if `include_router` appears inside a string literal —
+        note: correct code leaves it red forever. Second, and worse, unquoting it does not save it:
+        note: every app in this repo documents its own mount in its docstring, so
+        note: `streamer/__init__.py` lines 17-18 already read `app.include_router(...)` in prose and
+        note: the check would have gone green on a comment. That is precisely the failure that
+        note: retired `grep tuner`, which passed on guide's docstring while the exports were missing.
+        note: The composition refactor it was pointing at was NOT done, and deliberately. `api.py`
+        note: mounts all thirteen surfaces in one table at 2365-2462 with their `tags=` beside them;
+        note: streamer would become the only package mounting itself, and the two mounts carry
+        note: DIFFERENT tags — `streamer` and `streamer-guide` — which are the OpenAPI groups the
+        note: rebranded Swagger UI renders, so collapsing them changes a visitor-facing page to make
+        note: an internal check green. Item 2 asks for the namespace, not for who calls
+        note: `include_router`. The three checks measure the namespace: the guide stays NESTED (flat
+        note: would register its `/state` where the streamer's already answers), the retired
+        note: `localStorage` prefix stays readable (deleting it loses every visitor's playlists and
+        note: Xtream credentials), and the browser fixture imports the merged package. Each was
+        note: flipped before being written: flatten the prefix, tidy away the old prefix, revert the
+        note: fixture import — FAIL, FAIL, FAIL. The first draft of the prefix check was
+        note: `grep /api/streamer/guide`, which survived flattening because the comment at api.py:1745
+        note: explaining the nesting matched it. Same anti-check shape as `ROW_OF_MODULE`; narrowed
+        note: to `prefix="..."` rather than deleted, so the explanation is not what holds it green.
+        note: 2026-08-20 coder — item 2 done. The namespace half was already largely landed:
+        note: `/api/streamer/*` with the guide nested at `/api/streamer/guide/*`, one rack row
+        note: reading `streamer`, `site/streamer.html` and `site/streamer-watch.html` with
+        note: `tuner.html` gone and 301'd, the four suites renamed, and the `localStorage`
+        note: read-old-write-new shim live in both pages with `_OLD` annotated to stay spelled the
+        note: retired way. What was NOT landed was everything that describes it. Four files still
+        note: stated a route that no longer answers: `streamer/guide/routes.py` opened "Mounted at
+        note: `/api/guide`", `streamer/README.md` and `HANDOVER.md` both said `/api/guide/*` "still
+        note: serves the page's filter", and `guide/README.md`'s wiring example was a `from apps
+        note: import guide` that raises. Those are false facts, not the protected prose: the rule is
+        note: that sentences recording WHY the merge happened keep saying tuner and guide, and every
+        note: such sentence is intact — HANDOVER's two decision paragraphs are untouched and carry a
+        note: dated reversal beneath them instead, because that decision ("the prefix was
+        note: deliberately NOT renamed") was later overturned by this very item and rewriting it
+        note: would erase the reversal rather than record it.
+        note: 2026-08-20 coder — and the fifth browser suite was down for this exact reason.
+        note: `tests/streamer_guide.mjs` writes a throwaway `app.py` that did `sys.path.insert(0,
+        note: backend/apps)` then `from guide import routes` — a directory that no longer exists —
+        note: so uvicorn died at import, never bound, and 24 s later Chrome reported
+        note: ERR_CONNECTION_REFUSED on :8981. It reads as a browser or port fault and is neither.
+        note: It also mounted the router at `/api/guide` while the page it drives fetches
+        note: `/api/streamer/guide/filter`, so it was wrong twice and the second fault was hidden
+        note: behind the first. Fixed: `sys.path` at `backend/` and `from apps.streamer.guide import
+        note: routes` (routes.py does `from . import ...`, so it must be imported AS a package),
+        note: nested prefix, readiness probe repointed. **17/17 pass, measured 2026-08-20.**
+        note: 2026-08-20 coder — the collision the nesting exists to prevent had no test, only
+        note: comments. `NestedGuidePrefixTests` in `apps/test_streamer_migration.py` now asserts
+        note: both halves declare `/state`, that the two probes resolve to DIFFERENT endpoints, and
+        note: that api.py mounts nested. Mounted flat, Starlette does not error — it resolves to the
+        note: first match, so the guide's probe returns the STREAMER's state and the rack reports the
+        note: guide ready whenever ffmpeg is present. A decorative status indicator reached by
+        note: routing instead of by CSS, which is the one thing this repo bars outright. Both
+        note: assertions were broken on purpose first (flatten api.py's prefix; mount the two flat in
+        note: setUp) and each failed alone, for its own reason.
         note: 2026-08-20 coder — `ngrep ROW_OF_MODULE` was an anti-check for the same reason
         note: `grep tuner_router` was, and is narrowed rather than deleted. The map IS gone; what
         note: kept the check red is the comment in `test_status_rack.py` explaining why it is gone,
