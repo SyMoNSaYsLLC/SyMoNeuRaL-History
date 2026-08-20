@@ -165,7 +165,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: absent site/tuner.html
         check: grep "/api/streamer" -- backend/api.py
         check: ngrep "/api/tuner" -- backend/api.py
-        check: ngrep ROW_OF_MODULE -- backend/apps/test_status_rack.py
+        check: ngrep \nROW_OF_MODULE\s*= -- backend/apps/test_status_rack.py
         check: grep 8188 -- backend/apps/studio/registry.py
         check: exists ops/symoneural-deploy.service
         note: `grep tuner_router` used to stand here, and it has been REMOVED rather than kept.
@@ -176,6 +176,15 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: got more done, and a re-run would read as a regression. `grep "include_router"` in
         note: `__init__.py` replaces it and is true only when the package composes the two halves
         note: itself instead of handing api.py two routers to wire.
+        note: 2026-08-20 coder — `ngrep ROW_OF_MODULE` was an anti-check for the same reason
+        note: `grep tuner_router` was, and is narrowed rather than deleted. The map IS gone; what
+        note: kept the check red is the comment in `test_status_rack.py` explaining why it is gone,
+        note: so the only way to turn it green was to delete the explanation. Writing down why a
+        note: thing was removed is the behaviour this repo wants, and a check that punishes it is
+        note: wrong. It now looks for the ASSIGNMENT — `\nROW_OF_MODULE\s*=` — which is false only
+        note: if somebody re-adds the map, which is the thing actually worth catching. Note the
+        note: pattern is unquoted on purpose: `run_check` passes it to `re.search` verbatim, so the
+        note: quotes in the neighbouring checks are literal characters being matched in the source.
         note: 2026-08-20 coder — item 1 done. `backend/apps/ROSTER.md` is the written roster:
         note: thirteen rows, twenty rack units, identity only — live state stays in /api/status,
         note: which measures it. `apps/roster.py` is the one parser and RAISES on a malformed
