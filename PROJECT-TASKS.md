@@ -567,7 +567,8 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: the moment item 3 landed. A test asserting the absence of a feature has to be
         note: deleted by the commit that adds it.
         check: exists desktop/shell.py
-        check: grep WebKit2 -- desktop/shell.py
+        check: grep Vte.Terminal -- desktop/shell.py
+        check: grep spawn_async -- desktop/shell.py
         check: exists desktop/symoneural-code.desktop
         note: 2026-08-20 coder — UNARCHIVED, and the reason is the whole point of this note.
         note: The two documents above went in, every one of the twelve declared checks passed,
@@ -595,4 +596,47 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: the protocol cannot pass for the protocol. No grep can tell a measurement from an
         note: invention; these only make the cheap fabrications fail, and the label is what puts
         note: the claim on the record for whoever writes it.
+        note: 2026-08-20 coder — items 6 and 7 landed, and item 7 found a third live bug of
+        note: the same family as the two above. `render_markdown` renders the loop's answer for
+        note: a terminal and returns it BYTE-IDENTICAL to a pipe, which is the half of the
+        note: contract that protects the record: the same string is what --output-format json
+        note: carries and what run/agent-<session>.json stores, so a renderer that edits it for
+        note: a terminal has edited the transcript. Nothing truncates, nothing elides, no line
+        note: is re-wrapped, and a link keeps its target as well as its label — the terminal
+        note: side of the no-text-overflow rule. `status_line` was extracted from the inline
+        note: print in cmd_repl and now carries the permission mode, which the old line omitted:
+        note: it is the one setting that decides whether a tool runs without anybody being
+        note: asked, and an operator who typed /permissions allow forty turns ago had nothing on
+        note: screen to say so. Extracting it meant asking where the mode comes from, and the
+        note: answer was THREE longhand copies of one resolution — cmd_agent (the copy the
+        note: server is actually told), the /permissions report, and the new line. A structural
+        note: test now pins it at one resolver and three callers, because the drift in a
+        note: duplicated rule like this is silent and runs in exactly the wrong direction: a
+        note: client reporting a safer mode than the one it is asking for.
+        note: Four mutations confirmed to bite, each restored and diffed: render on a pipe,
+        note: a link dropping its url, the status line dropping the mode, and code spans
+        note: rendered after emphasis instead of lifted out first (which would render the markup
+        note: inside `**not bold**`, the one place it has to survive verbatim).
+        note: 2026-08-20 coder — `grep WebKit2 -- desktop/shell.py` is REPLACED by `grep
+        note: Vte.Terminal` and `grep spawn_async`, and the check moved because the design did.
+        note: desktop/README.md chose GTK3 + WebKit2GTK on a footprint measurement, and that
+        note: measurement stands. What changed it is a stronger argument found while writing the
+        note: gate tests: a web client is a SECOND implementation of the permission gate. The
+        note: two bugs recorded above lived at exactly that seam, and approve() reads /dev/tty
+        note: on purpose, because in `agent "..."` stdin is a pipe carrying the query and in the
+        note: repl it is the transcript — neither is a human. A JS client has no pty and would
+        note: need its own fresh answer to "who is the human here", which is one more place to
+        note: fail open. VTE hands the real client a real pty, so approve(), APPROVE_KEYS, the
+        note: re-ask and the closed-terminal refusal are the code already covered by seven tests
+        note: rather than a parallel copy. One gate, one engine. Leaving the WebKit2 check in
+        note: place and adding a token import to satisfy it would have been the check driving
+        note: the design, which is the failure this whole check block exists to prevent.
+        note: Measured before deciding, not after: WebKit2GTK 4.1 does render this site's real
+        note: surface — site/livestack came back with 13 units built client-side from
+        note: /api/status, the dark theme applied, zero JS errors and `OPEN
+        note: ws://127.0.0.1:8877/api/ws`, an actual upgrade confirmed on both ends of the wire.
+        note: So the runtime was not ruled out on capability. site/studio.html scores 0 on every
+        note: agent-protocol marker (api/studio/agent, permission_required, EventSource,
+        note: tool_call) across its 311 lines, so pointing a window at an existing surface was
+        note: never going to produce an agent client either way.
 

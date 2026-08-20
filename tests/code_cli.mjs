@@ -263,12 +263,12 @@ if (spawnSync('script', ['--version'], { encoding: 'utf8' }).status === 0) {
 if (!BASE) {
   skip('two turns in one session, with the thread continuing and no -c typed',
        'no API url given: node tests/code_cli.mjs http://127.0.0.1:8877');
-  skip('the status line after a turn reports the session and the thread depth',
+  skip('the status line reports the session, the thread depth and the permission mode',
        'no API url given');
 } else if (!TOKEN) {
   skip('two turns in one session, with the thread continuing and no -c typed',
        'SYMONEURAL_STUDIO_TOKEN is not set, and the agent endpoint requires it');
-  skip('the status line after a turn reports the session and the thread depth',
+  skip('the status line reports the session, the thread depth and the permission mode',
        'SYMONEURAL_STUDIO_TOKEN is not set');
 } else {
   const session = 'codecli-suite';
@@ -293,9 +293,15 @@ if (!BASE) {
          answers === 2
            && /history: 2 messages from agent-codecli-suite\.json/.test(seen),
          `exit ${r.code}, ${answers} answer frames`);
-  record('the status line after a turn reports the session and the thread depth',
-         new RegExp(`\\[${session}\\s+turn 1\\s+2 messages\\]`).test(r.out)
-           && new RegExp(`\\[${session}\\s+turn 2\\s+4 messages\\]`).test(r.out),
+  // The permission mode joined this line when it was extracted into `status_line`, and this
+  // assertion moved with it. It is the one session setting that decides whether a tool runs
+  // without anybody being asked, so a line that can be rendered without it is a line that can
+  // hide `allow` -- and the assertion asserting the OLD shape would have gone red reading like
+  // a regression, which is the trap the gate section one file over documents.
+  const shape = (n, msgs) =>
+    new RegExp(`\\[${session}\\s+turn ${n}\\s+${msgs} messages\\s+perm (ask|deny|allow)\\]`);
+  record('the status line reports the session, the thread depth and the permission mode',
+         shape(1, 2).test(r.out) && shape(2, 4).test(r.out),
          (r.out.match(/\[codecli-suite[^\]]*\]/g) || []).join(' '));
 }
 

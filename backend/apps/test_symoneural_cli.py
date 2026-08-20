@@ -239,6 +239,191 @@ class PureRenderingTests(unittest.TestCase):
         self.assertEqual(one({"a": 1}, 50), '{"a": 1}')
 
 
+class MarkdownRenderTests(unittest.TestCase):
+    """`render_markdown` -- the loop answers in markdown and this printed the source.
+
+    Two rules are load-bearing here and both are asserted rather than assumed. The first is
+    the repo's: a layout change may not drop data, which for a renderer means no truncation,
+    no elision and no re-wrapping, and a link that keeps its target as well as its label.
+    The second is narrower and is the one a refactor is likeliest to break: a pipe gets the
+    text back UNCHANGED. The same string is what `--output-format json` carries and what the
+    transcript under `run/` records, so a renderer that edits it for a terminal has edited
+    the record too.
+    """
+
+    def setUp(self):
+        self.cli = load_cli()
+        self.cli._tty = lambda: True
+        self.r = self.cli.render_markdown
+
+    @staticmethod
+    def plain(text: str) -> str:
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+    def test_a_pipe_gets_the_answer_back_byte_for_byte(self):
+        """The half of the contract that protects the record. Rendering adds colour and
+        nothing else, so where colour cannot go, neither does rendering: stripping `**` for
+        a pipe would edit the answer without putting anything on screen in its place."""
+        self.cli._tty = lambda: False
+        src = "# Title\n\n**bold** and `code`\n\n- a bullet\n"
+        self.assertEqual(self.cli.render_markdown(src), src)
+
+    def test_emphasis_becomes_a_terminal_attribute_and_the_markers_go(self):
+        out = self.r("Some **bold** and *italic* here")
+        self.assertIn(f"{self.cli.BOLD}bold{self.cli.OFF}", out)
+        self.assertIn(f"{self.cli.ITALIC}italic{self.cli.OFF}", out)
+        self.assertNotIn("**", out)
+        self.assertEqual(self.plain(out), "Some bold and italic here")
+
+    def test_a_code_span_keeps_its_contents_exactly_including_markup(self):
+        """The reason code spans are lifted out before anything else runs. A span is where
+        somebody writes `**not bold**` while explaining markdown, and it is the one place
+        those four asterisks have to survive."""
+        out = self.r("literally `**not bold**` please")
+        self.assertIn("**not bold**", self.plain(out))
+        self.assertIn(self.cli.AMBER, out)
+
+    def test_a_link_keeps_both_its_label_and_its_target(self):
+        """A url folded away behind a word is a citation the reader cannot check, which is
+        the same data-loss rule the CSS side of this repo states as `no text-overflow`."""
+        out = self.plain(self.r("see [the manual](https://symoneural.com/docs)"))
+        self.assertIn("the manual", out)
+        self.assertIn("https://symoneural.com/docs", out)
+
+    def test_a_link_with_no_label_still_shows_its_target(self):
+        """`[](url)` is a typo in the markdown, not a reason to print nothing."""
+        self.assertIn("https://x.test/a", self.plain(self.r("here: [](https://x.test/a)")))
+
+    def test_a_fenced_block_keeps_its_own_indentation_and_names_its_language(self):
+        """Leading whitespace inside a fence is often the program's own, and in a language
+        where it is syntax, eating it hands the reader something that does not run."""
+        out = self.plain(self.r("```python\nif x:\n    return 1\n```"))
+        self.assertIn("python", out)
+        self.assertIn("    if x:", out)
+        self.assertIn("        return 1", out)
+        self.assertNotIn("```", out)
+
+    def test_markup_inside_a_fence_is_left_alone(self):
+        """A shell block full of `*` globs is not emphasis, and rendering it as emphasis
+        would delete the glob."""
+        out = self.plain(self.r("```sh\nrm *.tmp **/*.log\n```"))
+        self.assertIn("rm *.tmp **/*.log", out)
+
+    def test_headings_bullets_quotes_and_rules_each_render_as_themselves(self):
+        out = self.plain(self.r("## Heading\n\n- one\n  - nested\n\n> quoted\n\n---"))
+        self.assertIn("Heading", out)
+        self.assertNotIn("##", out)
+        self.assertIn("• one", out)
+        self.assertIn("  • nested", out)          # the indent is the nesting; it stays
+        self.assertIn("│ quoted", out)
+        self.assertRegex(out, "─{4,}")
+
+    def test_an_ordered_list_is_not_renumbered_or_rewritten(self):
+        """The failure mode of a renderer that "handles" ordered lists: it renumbers, and
+        then what the model said about step three is about a different step."""
+        out = self.plain(self.r("1. first\n2. second\n7. seventh"))
+        self.assertEqual(out.splitlines(), ["1. first", "2. second", "7. seventh"])
+
+    def test_no_word_of_the_source_is_lost(self):
+        """The blunt data-loss check, and the one that catches a clever future rule that
+        drops something nobody thought to assert on. Every word in, every word out."""
+        src = ("# Report\n\nA **measured** figure of `151 tok/s`, see [the manual](/docs).\n\n"
+               "- vendor specification, not projected\n"
+               "> published negative results too\n\n```sh\nnvidia-smi --query-gpu=name\n```\n")
+        got = self.plain(self.r(src))
+        for word in re.findall(r"[A-Za-z0-9/=.-]{2,}", re.sub(r"[*`#>\[\]()]", " ", src)):
+            self.assertIn(word, got, f"{word!r} was dropped by the renderer")
+
+    def test_an_unclosed_fence_still_shows_every_line(self):
+        """A truncated stream can end mid-block. The block styling running to the end of the
+        answer is what a markdown renderer does; losing the lines is not."""
+        out = self.plain(self.r("text\n```\nline one\nline two"))
+        self.assertIn("line one", out)
+        self.assertIn("line two", out)
+
+    def test_empty_input_comes_back_empty_rather_than_as_a_blank_line(self):
+        self.assertEqual(self.r(""), "")
+
+
+class StatusLineTests(unittest.TestCase):
+    """`status_line` and `resolved_permissions`.
+
+    The status line existed inline in `cmd_repl` and named the session, the turn, the depth
+    and the model. It omitted the permission mode, which is the one setting on a session that
+    decides whether a tool runs without anybody being asked -- an operator who typed
+    `/permissions allow` forty turns earlier had nothing on screen to remind them. Extracted
+    to a function so the line can be asserted without driving an interactive session, and so
+    the mode shown and the mode enforced come from one resolution instead of two.
+    """
+
+    def setUp(self):
+        self.cli = load_cli()
+
+    def ns(self, **kw):
+        base = {"permissions": "auto", "dangerously_allow_all": False, "allow_tool": []}
+        return types.SimpleNamespace(**{**base, **kw})
+
+    def test_the_permission_mode_is_on_the_line(self):
+        line = self.cli.status_line("s", 2, 4, permissions="ask")
+        self.assertEqual(line, "[s  turn 2  4 messages  perm ask]")
+
+    def test_allow_is_never_quiet(self):
+        """The state that most needs saying. If this line can be rendered without it, the
+        most permissive session this client offers is also its least visible."""
+        self.assertIn("perm allow", self.cli.status_line("s", 1, 2, permissions="allow"))
+
+    def test_exemptions_are_named_when_there_are_any_and_absent_when_there_are_not(self):
+        """A widened permission is worth a word; an empty list is noise on every line
+        forever."""
+        with_them = self.cli.status_line("s", 1, 2, permissions="ask",
+                                        exempt=("run_command", "delete_path"))
+        self.assertIn("exempt run_command, delete_path", with_them)
+        self.assertNotIn("exempt", self.cli.status_line("s", 1, 2, permissions="ask"))
+
+    def test_the_model_appears_only_when_one_was_chosen(self):
+        self.assertIn("qwen-x", self.cli.status_line("s", 1, 2, model="qwen-x"))
+        self.assertEqual(self.cli.status_line("s", 1, 2), "[s  turn 1  2 messages]")
+
+    def test_one_message_is_not_one_messages(self):
+        self.assertIn("1 message]", self.cli.status_line("s", 1, 1))
+        self.assertIn("2 messages", self.cli.status_line("s", 1, 2))
+
+    def test_dangerously_allow_all_outranks_the_permissions_flag(self):
+        """Both flags can be passed. The report has to name the one in force, or the line
+        says `deny` about a session running everything."""
+        self.assertEqual(self.cli.resolved_permissions(
+            self.ns(permissions="deny", dangerously_allow_all=True)), "allow")
+
+    def test_auto_resolves_by_whether_there_is_a_terminal_to_ask_at(self):
+        """`auto` is not a state, it is a question -- and the answer with nobody there must
+        be deny. This is the client half of the loop's own no-failing-open rule."""
+        self.cli.have_tty = lambda: True
+        self.assertEqual(self.cli.resolved_permissions(self.ns()), "ask")
+        self.cli.have_tty = lambda: False
+        self.assertEqual(self.cli.resolved_permissions(self.ns()), "deny")
+
+    def test_an_explicit_mode_is_passed_through_untouched(self):
+        for mode in ("ask", "deny", "allow"):
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    self.cli.resolved_permissions(self.ns(permissions=mode)), mode)
+
+    def test_the_repl_reports_and_the_status_line_cannot_disagree(self):
+        """Structural, because the alternative is driving a whole session. `/permissions`
+        printed its own longhand resolution and the status line would have needed a second
+        copy; the duplicated rule is what drifts, and it drifts silently in the direction of
+        showing a safer mode than the one in force."""
+        src = CLI_PATH.read_text()
+        # `(?<!def )` because the definition line matches the call spelling exactly, and a
+        # test that counts its own subject is how a structural assertion goes vacuous.
+        calls = re.findall(r"(?<!def )resolved_permissions\(args\)", src)
+        self.assertEqual(len(calls), 3,
+                         "three callers must ask the shared resolver: the mode SENT to the "
+                         "server in cmd_agent, the /permissions report, and the status line")
+        self.assertEqual(src.count("if have_tty() else"), 1,
+                         "the auto resolution exists in more than one place again")
+
+
 class DeviceProbeTests(unittest.TestCase):
     def setUp(self):
         self.cli = load_cli()

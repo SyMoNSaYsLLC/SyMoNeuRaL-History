@@ -17,6 +17,13 @@ argued.
 
 ## The decision
 
+> **Revised 2026-08-20, before anything was built. See *The decision, revised* below.** The
+> window is GTK3 in Python as stated here, and every measurement in this file stands and was
+> not re-taken. What changed is what goes *inside* the window: a VTE terminal running the real
+> client, not a WebKit view rendering a page. The reason is in that section, and it is a
+> consequence of this file's own argument in *How it integrates with the engine* — it just was
+> not followed through to the runtime when this was written.
+
 **A GTK3 + WebKit2GTK 4.1 shell, in Python, driving the same `bin/symoneural-cli` engine.**
 Not Electron. The reasons are all in the table below: it is the lightest windowed option by
 some distance, it adds **zero** new bytes to this machine because both libraries are already
@@ -95,6 +102,54 @@ Two results worth keeping because they are counter-intuitive:
   and plausible enough to publish. The fixed instrument walks `PPid` from `ps -eo pid=,ppid=`
   and counts processes only.
 
+## The decision, revised
+
+**GTK3 + VTE 2.91, in Python, hosting `bin/symoneural-cli repl` in a real terminal.** WebKit
+is not used. The footprint table above is unaffected — VTE is smaller than WebKit on every
+axis in it and is likewise already installed (`gir1.2-vte-2.91`, alongside the WebKit
+typelib) — so this revision does not overturn a measurement. It overturns an assumption.
+
+**The argument that moved it: a web client is a second implementation of the permission
+gate.** *How it integrates with the engine*, below, already says a second implementation of
+that handshake is a second place for it to be wrong. That was written about the session and
+the event loop and it applies with far more force to the gate, because the gate is the part
+where being wrong means a command runs that nobody agreed to. Three things make it concrete:
+
+- **The seam has already produced bugs — two of them, in one afternoon.** `api_json` answers
+  `(status, body)`, and the client treated that pair as a dict in two places: `/permissions`
+  traced back and took the whole session down, and the post-approval path handed the model
+  `[200, {...}]` where a tool's output belongs — so a `403 denied` from the router reached it
+  looking exactly like success. Both are fixed. Both lived at precisely the join a second
+  client would have to re-cross.
+- **`approve()` opens `/dev/tty` on purpose, and a browser has no equivalent.** It does not
+  read stdin, because in `agent "..."` stdin may be a pipe carrying the query and in the repl
+  it is the transcript — neither is a human. A JS client would need its own fresh answer to
+  *who is the human here*, and every fresh answer to that question is a new way to fail open.
+  VTE gives the real client a real pty, so `approve()`, `APPROVE_KEYS`, the re-ask on an
+  unrecognised key and the refusal when the terminal goes away are the code already under
+  test rather than a parallel copy.
+- **There was no page to point at anyway.** `site/studio.html` is 311 lines and contains zero
+  occurrences of `api/studio/agent`, `permission_required`, `EventSource` or `tool_call`. It
+  describes the Studio; it does not speak the protocol. So "render the site's own chat
+  surface" — named as an open question in *Not done here* — was never actually on the table,
+  and the alternative was always a purpose-built page, which is to say a whole second client.
+
+**WebKit was not ruled out on capability, and the reading that shows it is worth keeping.**
+Before this was decided, the runtime was pointed at the real surface rather than at a test
+page: `site/livestack` in WebKit2GTK 4.1, **measured 2026-08-20**, returned 13 rack units
+built client-side from `/api/status`, the dark theme applied (`rgb(14, 16, 15)`), zero JS
+errors, and `OPEN ws://127.0.0.1:8877/api/ws` — a real WebSocket upgrade, confirmed on the
+server side too. That answers the *"WebKit is not Chromium"* caveat above for the site's own
+pages: the shell would have worked. It is set aside for the gate argument, not for a defect.
+
+The cost of this revision, stated rather than buried: **the desktop client renders a
+terminal**, so it cannot show an image the way a browser can. `bin/symoneural-cli` renders
+markdown for a terminal (headings, emphasis, code blocks, both halves of every link), which
+covers text, but a render from `/api/gen/<name>` stays a path on screen. If that becomes the
+thing worth fixing, the honest fix is a WebKit pane that displays *renders* — a pane that
+exists to justify a word in a check would be the decorative-status-light rule with extra
+steps, and this file is not going to add one on spec.
+
 ## How it integrates with the engine
 
 The shell owns the window and nothing else. It does not reimplement a session, a permission
@@ -110,6 +165,14 @@ makes for itself.
 
 ## Not done here
 
-Building it. The window, the `.desktop` entry, the smoke assertion named above, and the
-decision about whether the desktop client renders the site's own chat surface or a purpose-
-built one are all outstanding, and they are #78's remaining items rather than this file's.
+Building it. The window, the `.desktop` entry and the smoke assertion named above are
+outstanding, and they are #78's remaining items rather than this file's.
+
+The third thing on this list — *whether the desktop client renders the site's own chat surface
+or a purpose-built one* — is **answered and struck**, by *The decision, revised*: neither. It
+hosts the terminal client. `site/studio.html` was measured and does not speak the protocol, so
+the first option did not exist, and the second is a second gate. The WebKit smoke assertion
+that this file called "a task, not a footnote" is therefore not needed for the shell; the
+assertion the shell does need is that the pty it allocates is a real one, which is what the
+prompt in `approve()` depends on and what the existing `ApprovePromptTests` already proves
+against `script(1)`.
