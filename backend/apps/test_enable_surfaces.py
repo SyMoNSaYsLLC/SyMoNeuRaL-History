@@ -1,14 +1,17 @@
 """`scripts/enable-surfaces.sh` -- does the operator tool know about every gated surface?
 
-Written because it did not. Eleven `SYMONEURAL_<NAME>_ENABLED` switches gate the serving path, and
-the script that exists to set exactly those could set four. Studio was one of the seven it
+Written because it did not. Thirteen `SYMONEURAL_<NAME>_ENABLED` switches gate the serving path,
+and the script that exists to set exactly those could set four. Studio was one of the seven it
 could not, which is why the live rack showed Studio `offline` with no sanctioned command an
-operator could run to change it: not a bug in Studio, a gap in the tool. With the `studio)`
-arm added the split is five switchable to six unswitchable, which is the count
-`test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_six` holds it at.
+operator could run to change it: not a bug in Studio, a gap in the tool. With the `studio)` and
+`asic)` arms added the split is six switchable to seven unswitchable, which is the count
+`test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_seven` holds it at. This
+docstring said "eleven ... six" until 2026-08-20 and named a test that had already been
+renamed twice; the figures below are re-measured at `ba523b0`, and the rule that catches this
+class of rot is that a docstring naming a test must name one that exists.
 
-Eleven switches, not eleven apps: the eleven are read across twelve packages and the mapping
-is neither one-to-one nor onto. `SYMONEURAL_ASIC_ENABLED` is checked in `asicminer` and `voice`,
+Thirteen switches, not thirteen apps: the thirteen are read across fourteen packages and the
+mapping is neither one-to-one nor onto. `SYMONEURAL_ASIC_ENABLED` is checked in `asicminer` and `voice`,
 `SYMONEURAL_MINING_ENABLED` in `asicminer` and `cryptominer`, `SYMONEURAL_GATEWAY_ENABLED` in `gateway` and
 `settlement`. `gated_surfaces()` below counts switches because switches are what the script
 writes; no assertion here depends on a package count.
