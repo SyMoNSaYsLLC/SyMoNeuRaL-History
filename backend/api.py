@@ -1282,6 +1282,15 @@ async def lifespan(_: FastAPI):
     # 0.4-2.3 s from this box, and /api/status drives the rack websocket for every visitor.
     # A reading that slow cannot sit on the status path, so it is cached off it.
     gw = asyncio.create_task(gateway.refresher()) if gateway.enabled() else None
+    # The project store is created by `store.connect()`, which every write route goes
+    # through -- but the rack poll uses `probe()`, read-only by design, so before this line
+    # existed a fresh install reported "no project store initialised" until someone happened
+    # to POST. Honest, and also permanently offline for a surface whose only prerequisite is
+    # a file. `bootstrap()` is a no-op when the switch is off; it does not create a database
+    # for a surface nobody enabled.
+    store_path = project.bootstrap()
+    if store_path:
+        log.info("project surface enabled; store at %s", store_path)
     yield
     ticker.cancel()
     if asic:

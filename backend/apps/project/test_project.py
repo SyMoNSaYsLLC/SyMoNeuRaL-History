@@ -27,6 +27,7 @@ import sys
 import tempfile
 import tokenize
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import project                                                          # noqa: E402
@@ -995,6 +996,113 @@ class TestRoutes(Base):
         for want in ("", "/search", "/state", "/{pid}", "/{pid}/items",
                      "/{pid}/items/{iid}", "/{pid}/events", "/{pid}/files"):
             self.assertIn(want, paths)
+
+
+class BootstrapTests(unittest.TestCase):
+    """`store.bootstrap()` -- the reason a fresh install can reach `ready` at all.
+
+    Before it existed, the only code that created `run/project/store.db` was `connect()`,
+    reached only from a write route, so a box where nobody had POSTed yet reported
+    `offline / no project store initialised` indefinitely. The rack could not fix that
+    itself: `unit_state` calls `probe()`, which opens `mode=ro` on purpose so the poll
+    cannot manufacture the file whose absence it is reporting.
+
+    Both directions are asserted, because the two ways to get this wrong point opposite
+    ways -- never creating the store, and creating one for a surface that is switched off.
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        # A path one level down, so this also covers `connect()` making the parent: the
+        # real `run/project/` does not exist on a fresh checkout either.
+        self.db = pathlib.Path(tmp.name) / "run" / "project" / "store.db"
+
+    def env(self, enabled: str):
+        return unittest.mock.patch.dict(
+            os.environ,
+            {"SYM_PROJECT_DB": str(self.db), "SYM_PROJECT_ENABLED": enabled,
+             "SYM_PROJECT_TOKEN": "bootstrap-test-token"},
+            clear=False)
+
+    def test_a_disabled_surface_gets_no_database_on_disk(self):
+        """The failure that would make this "fix" worse than the bug: a store, and its
+        parent directory, appearing for an operator who never switched the surface on."""
+        with self.env("0"):
+            self.assertIsNone(store.bootstrap())
+            self.assertFalse(self.db.exists(), "a disabled surface created its store")
+            self.assertFalse(self.db.parent.exists(),
+                             "a disabled surface created run/project/")
+            self.assertEqual(store.unit_state(),
+                             ("offline", "surface disabled on this installation"))
+
+    def test_an_enabled_surface_gets_a_store_and_the_rack_then_reads_ready(self):
+        """The whole point, asserted end to end rather than at the file's existence: the
+        rack row is what Garrett looks at, so the test ends on `unit_state`."""
+        with self.env("1"):
+            self.assertEqual(store.unit_state(),
+                             ("offline", "no project store initialised"))
+            self.assertEqual(store.bootstrap(), self.db)
+            self.assertTrue(self.db.is_file())
+            self.assertEqual(store.unit_state(), ("ready", "cpu only, never queues"))
+
+    def test_the_store_is_private_to_its_owner(self):
+        """0600 comes from `connect()`, and this is the path that now creates the file on
+        every fresh install, so the mode is worth asserting where it is first set."""
+        with self.env("1"):
+            store.bootstrap()
+            self.assertEqual(oct(self.db.stat().st_mode & 0o777), "0o600")
+
+    def test_a_second_call_keeps_the_rows_the_first_one_could_not_have_had(self):
+        """Idempotence, asserted through data rather than through "it did not raise". A
+        `bootstrap()` that reapplied the schema would drop the operator's projects on every
+        restart, and the failure would look like a restart bug rather than a schema bug."""
+        with self.env("1"):
+            store.bootstrap()
+            made = store.create_project("kept across a restart", "")
+            self.assertIn("project", made, made)
+            pid = made["project"]["id"]
+            self.assertEqual(store.bootstrap(), self.db)
+            again = store.get_project(pid)
+            self.assertEqual(again["project"]["name"], "kept across a restart")
+
+
+class LifespanWiringTests(unittest.TestCase):
+    """That `api.py` actually calls `bootstrap()`, which `BootstrapTests` cannot see.
+
+    This one is textual, and textual assertions rot, so it says what it is for: a perfect
+    `bootstrap()` that no startup path calls is exactly the state this repo was already in
+    with `init_db()`, which has been present and uncalled the whole time. Importing `api.py`
+    to test the wiring for real would pull in the entire serving path -- llama, the
+    governor, every router -- into a stdlib-only suite; that trade is why this is a read.
+    """
+
+    SOURCE = pathlib.Path(__file__).resolve().parents[2] / "api.py"
+
+    def setUp(self):
+        self.tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        self.lifespan = next(
+            (n for n in ast.walk(self.tree)
+             if isinstance(n, ast.AsyncFunctionDef) and n.name == "lifespan"), None)
+        self.assertIsNotNone(
+            self.lifespan, "api.py has no `async def lifespan`; this class now tests "
+                           "nothing and the assertion below would pass vacuously")
+
+    def test_the_lifespan_calls_project_bootstrap(self):
+        calls = {ast.unparse(n.func) for n in ast.walk(self.lifespan)
+                 if isinstance(n, ast.Call)}
+        self.assertIn("project.bootstrap", calls,
+                      "nothing in the lifespan creates the project store, so a fresh "
+                      "install stays offline until someone happens to POST")
+
+    def test_init_db_is_not_called_directly_from_the_lifespan(self):
+        """`init_db()` unguarded would create a database for a surface the operator left
+        off. The guard lives inside `bootstrap()`; calling past it defeats it."""
+        calls = {ast.unparse(n.func) for n in ast.walk(self.lifespan)
+                 if isinstance(n, ast.Call)}
+        for bypass in ("project.init_db", "project.store.init_db", "store.init_db"):
+            self.assertNotIn(bypass, calls,
+                             f"{bypass} bypasses the enabled() guard in bootstrap()")
 
 
 if __name__ == "__main__":

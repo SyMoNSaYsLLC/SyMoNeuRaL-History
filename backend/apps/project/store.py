@@ -454,6 +454,27 @@ def init_db() -> pathlib.Path:
     return db_path()
 
 
+def bootstrap() -> pathlib.Path | None:
+    """Create the store at process start if the surface is switched on. Path, or None.
+
+    Why this exists as a function rather than as two lines in `api.py`'s lifespan: the
+    pairing of the switch with the create *is* the behaviour, and it has two failure modes
+    that point opposite ways. Calling `init_db()` unconditionally would put a database on
+    disk for a surface the operator never enabled, which is the one thing a disabled surface
+    must not do. Calling nothing -- the state this repo was in -- leaves a fresh install
+    reporting `offline / no project store initialised` forever, because the only code that
+    creates the file is `connect()`, the rack poll deliberately uses `probe()` instead
+    (see `probe`'s docstring), and nothing else runs until a write request arrives. Both
+    halves need a test, and a test of two lines inside a lifespan would have to import a
+    125 KB module and start an event loop to reach them.
+
+    This is not a rack poll, so it does not violate the rule `connect()` sets.
+    """
+    if not enabled():
+        return None
+    return init_db()
+
+
 def probe() -> tuple[bool, str]:
     """(answers, why). Read-only, cheap, and it CANNOT create the file.
 
