@@ -140,3 +140,8 @@ ops/middleware/*.wasm
 # tracked with live secret-shaped values and rides inside any archive carrying .git, and the
 # only reason that happened is that nothing excluded it until after the first `git add -A`.
 backend/apps/symoneuraldiscovery/symoneural-discovery.env
+
+# Real env files never travel; the .example files do.
+.env
+*.env
+!*.env.example
