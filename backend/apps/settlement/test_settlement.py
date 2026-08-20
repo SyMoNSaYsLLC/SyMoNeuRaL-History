@@ -21,11 +21,15 @@ _APPS = Path(__file__).resolve().parent.parent
 if str(_APPS) not in sys.path:
     sys.path.insert(0, str(_APPS))
 
-from gateway import abi                                             # noqa: E402
+from gateway import abi, chain                                      # noqa: E402
 from settlement import entitlement, store, verify                   # noqa: E402
 from settlement.verify import Granted, Refused, verify_payment      # noqa: E402
 
+# The canonical chain key -- what readings, `verify` and the clearance store are keyed by.
 NET = "nile"
+# The name an operator types, which is a different vocabulary on purpose (gateway/chain.py
+# argues why). Resolved from the map rather than typed, so the two cannot drift.
+NET_ENV = next(k for k, v in chain.OPERATOR_NETWORKS.items() if v == NET)
 CONTRACT = "TNPeeaaFB7K9cmo4uQpcU32zGK8G1NYqeL"
 PAYER = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 OTHER = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
@@ -555,7 +559,7 @@ class TestRecorder:
         monkeypatch.setattr(rec_mod, "verify_payment",
                             lambda *a, **k: verify.verify_payment(*a, **{**k, "fetch": node(
                                 encode_licence())}))
-        argv = ["--network", NET, "--contract", CONTRACT, "--nonce", "7",
+        argv = ["--network", NET_ENV, "--contract", CONTRACT, "--nonce", "7",
                 "--payer", PAYER, "--token", TOKEN, "--workspace", WS,
                 "--min-amount", "1000000"]
 
@@ -622,7 +626,7 @@ class TestRecordingIsWhatLightsTheLed:
         from settlement.record import record_settlement
 
         monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
         monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
         monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
 
@@ -648,7 +652,7 @@ class TestRecordingIsWhatLightsTheLed:
         """
         import gateway
         monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
         monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
 
         p = tmp_path / "clearances.jsonl"
@@ -670,7 +674,7 @@ class TestRecordingIsWhatLightsTheLed:
         import gateway
         from settlement.record import record_settlement
         monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
         monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
         p = tmp_path / "clearances.jsonl"
         monkeypatch.setattr(store, "DEFAULT_PATH", p)
@@ -689,7 +693,7 @@ class TestRecordingIsWhatLightsTheLed:
         from settlement.record import record_settlement
 
         monkeypatch.setenv("SYM_GATEWAY_ENABLED", "1")
-        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET)
+        monkeypatch.setenv("SYM_GATEWAY_NETWORK", NET_ENV)
         monkeypatch.setenv("SYM_GATEWAY_CONTRACT", CONTRACT)
         monkeypatch.setattr(store, "DEFAULT_PATH", tmp_path / "clearances.jsonl")
 

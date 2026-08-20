@@ -57,7 +57,8 @@ to break it. Fee questions go to symonsayadmin@symoneural.com.
 ## Switches, off by default -- and there are exactly three
 
     SYM_GATEWAY_ENABLED=1        # the surface exists at all
-    SYM_GATEWAY_NETWORK=nile     # shasta (testnet) | nile (testnet) | mainnet
+    SYM_GATEWAY_NETWORK=symoneural-test      # or symoneural-live (REAL money),
+                                             # or symoneural-test-old
     SYM_GATEWAY_CONTRACT=T...    # deployed licensing contract address, base58check
 
 Mainnet moves real money, so it is never the default and the state line always names the
@@ -83,7 +84,7 @@ move them into the `@@ROOT@@` template so a reinstall carries them.
     sudo tee /etc/systemd/system/symoneural-api.service.d/gateway.conf >/dev/null <<'EOF'
     [Service]
     Environment=SYM_GATEWAY_ENABLED=1
-    Environment=SYM_GATEWAY_NETWORK=nile
+    Environment=SYM_GATEWAY_NETWORK=symoneural-test
     Environment=SYM_GATEWAY_CONTRACT=T...
     EOF
     sudo systemctl daemon-reload && sudo systemctl restart symoneural-api
@@ -129,11 +130,12 @@ import os
 import time
 
 from . import abi, address, chain
-from .chain import NODES
+from .chain import NODES, OPERATOR_NETWORKS
 from .routes import router
 
 __all__ = ["enabled", "network", "contract", "unit_state", "status", "router",
-           "CACHE", "refresher", "address", "chain", "abi", "NODES"]
+           "CACHE", "refresher", "address", "chain", "abi", "NODES",
+           "OPERATOR_NETWORKS"]
 
 log = logging.getLogger("symoneural.gateway")
 
@@ -142,8 +144,20 @@ def enabled() -> bool:
     return os.environ.get("SYM_GATEWAY_ENABLED") == "1"
 
 
-def network() -> str:
+def network_raw() -> str:
+    """Exactly what the operator set, for error messages. Never used to reach a chain."""
     return (os.environ.get("SYM_GATEWAY_NETWORK") or "").strip().lower()
+
+
+def network() -> str:
+    """The chain key, resolved from the name the operator sets.
+
+    Returns "" for anything outside `chain.OPERATOR_NETWORKS` -- including TRON\'s own names,
+    which are not accepted here; chain.py argues why. Every caller feeds the result to `NODES`,
+    so an unresolved name must not pass through as itself: "nile" would be a valid key and
+    would quietly configure a chain nobody named. `configured()` reports the raw value.
+    """
+    return OPERATOR_NETWORKS.get(network_raw(), "")
 
 
 def contract() -> str:
@@ -159,12 +173,12 @@ def configured() -> tuple[bool, str]:
     """
     if not enabled():
         return False, ("not configured — set SYM_GATEWAY_ENABLED=1, SYM_GATEWAY_NETWORK "
-                       "(nile|shasta|mainnet) and SYM_GATEWAY_CONTRACT (a T… address) · "
-                       "see /gateway.html")
+                       "(symoneural-live|symoneural-test|symoneural-test-old) and "
+                       "SYM_GATEWAY_CONTRACT (a T… address) · see /gateway.html")
     net = network()
     if net not in NODES:
-        return False, (f"SYM_GATEWAY_NETWORK={net or 'unset'} — expected one of "
-                       + ", ".join(NODES))
+        return False, (f"SYM_GATEWAY_NETWORK={network_raw() or 'unset'} — expected one of "
+                       + ", ".join(OPERATOR_NETWORKS))
     addr = contract()
     if not addr:
         return False, (f"{NODES[net][0]} — SYM_GATEWAY_CONTRACT unset; it takes the deployed "

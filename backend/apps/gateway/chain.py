@@ -55,6 +55,23 @@ NODES = {
 
 ALLOWED_HOSTS = frozenset(u.split("://", 1)[1] for _, u in NODES.values())
 
+# The names an operator types, and the chain each one means. Deliberately NOT keys in `NODES`:
+# that dict is iterated as the set of DISTINCT chains -- gateway/__main__.py:86 probes every
+# entry and settlement/record.py:141 offers them as CLI choices -- so aliases in there would
+# probe the same chain twice and offer six options for three networks. This maps one way only,
+# and test_gateway.py pins its values to exactly `NODES`\' keys so the two cannot drift.
+#
+# TRON\'s own names (nile, shasta, mainnet) are not accepted from an operator. One vocabulary,
+# so a value that reads as configured cannot mean a chain nobody chose. What this does NOT do
+# is hide which chain is live: every rack detail line prints `NODES[net][0]` -- "TRON mainnet",
+# "Nile testnet" -- for the reason argued above, and a house name in front of it changes
+# nothing about that.
+OPERATOR_NETWORKS = {
+    "symoneural-live": "mainnet",        # real USDT, irreversible, real money
+    "symoneural-test": "nile",           # Nile testnet -- fake money, the current one
+    "symoneural-test-old": "shasta",     # Shasta testnet -- fake money, older
+}
+
 TIMEOUT = 8.0            # per request; the refresher runs off the status path either way
 MAX_BYTES = 512 * 1024   # a real TRC-20 ABI is a few KB; this is a backstop, not a budget
 USER_AGENT = "SyMoNeuRaL-Gateway/1 (+https://symoneural.com/gateway.html)"

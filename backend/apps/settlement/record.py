@@ -138,7 +138,9 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="python3 -m apps.settlement.record",
         description="Verify one settled licence against the chain and record it.")
-    p.add_argument("--network", required=True, choices=sorted(chain.NODES))
+    # The operator vocabulary, not `chain.NODES`' keys -- one set of names for a human to
+    # type, resolved to the canonical key before anything reaches a chain.
+    p.add_argument("--network", required=True, choices=sorted(chain.OPERATOR_NETWORKS))
     p.add_argument("--contract", required=True, help="the deployed SymoneuralLicence address")
     p.add_argument("--nonce", required=True, type=int)
     p.add_argument("--payer", required=True, help="the address that was quoted")
@@ -148,7 +150,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--min-amount", required=True, type=int)
     a = p.parse_args(argv)
 
-    result = record_settlement(a.network, a.contract, a.nonce,
+    # Resolve once, here, at the edge. Everything downstream -- `chain`, `verify`, the
+    # clearance store -- is keyed by the canonical name, and passing the operator name
+    # through reached `chain.call` as an unknown network: a refusal that read like the node
+    # was unreachable when the argument was simply in the other vocabulary.
+    net = chain.OPERATOR_NETWORKS[a.network]
+
+    result = record_settlement(net, a.contract, a.nonce,
                                expect_payer=a.payer, expect_token=a.token,
                                expect_workspace=workspace_key(a.workspace),
                                min_amount=a.min_amount)
@@ -162,15 +170,21 @@ def main(argv: list[str] | None = None) -> int:
     # is actually configured for. Recording a Nile licence while the service points at
     # mainnet is a perfectly reasonable thing to do and changes nothing on the rack, and
     # telling the operator otherwise sends them restarting a service that was never wrong.
-    net_env = (os.environ.get("SYM_GATEWAY_NETWORK") or "").strip().lower()
+    # Both sides resolved to the canonical key before comparing. They happen to be in the
+    # same vocabulary today -- `a.network` and the env var are both operator names -- and a
+    # comparison that is only correct because of that would break silently the first time one
+    # side moved. An env value outside the map resolves to "" and takes the mismatch branch,
+    # which is the honest answer: a surface configured with a name it refuses is not lit.
+    raw_env = (os.environ.get("SYM_GATEWAY_NETWORK") or "").strip().lower()
+    net_env = chain.OPERATOR_NETWORKS.get(raw_env, "")
     addr_env = (os.environ.get("SYM_GATEWAY_CONTRACT") or "").strip()
-    if not net_env or not addr_env:
+    if not raw_env or not addr_env:
         print("recorded. This shell has no SYM_GATEWAY_NETWORK/CONTRACT set, so whether the "
               "rack turns green depends on what the API service is configured for.")
-    elif (net_env, addr_env) == (a.network, a.contract):
+    elif (net_env, addr_env) == (net, a.contract):
         print("recorded — the Gateway unit will read `ready` on the next status poll")
     else:
-        print(f"recorded, but the configured surface is {net_env} · {addr_env}, so this "
+        print(f"recorded, but the configured surface is {raw_env} · {addr_env}, so this "
               "settlement does not light it. That is correct, not a bug.")
     return 0
 

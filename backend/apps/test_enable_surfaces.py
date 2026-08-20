@@ -90,10 +90,10 @@ class EnableSurfacesTests(unittest.TestCase):
         reformatted so `CASE_ARM` or `LOOP_PAIR` stops matching, the sets go empty and the
         subset assertions below all succeed against nothing. This fails first and loudly."""
         self.assertTrue(SCRIPT.is_file(), f"{SCRIPT} is gone")
-        self.assertGreaterEqual(len(self.arms), 5,
-                                f"CASE_ARM matched {len(self.arms)} arms; the script has 5")
-        self.assertGreaterEqual(len(self.loop), 4,
-                                f"LOOP_PAIR matched {len(self.loop)}; the loop carries 4")
+        self.assertGreaterEqual(len(self.arms), 6,
+                                f"CASE_ARM matched {len(self.arms)} arms; the script has 6")
+        self.assertGreaterEqual(len(self.loop), 5,
+                                f"LOOP_PAIR matched {len(self.loop)}; the loop carries 5")
         self.assertTrue(GATEWAY_SET.search(self.text), "the gateway write branch is gone")
         self.assertGreaterEqual(len(self.gated), 11,
                                 f"only {len(self.gated)} gated surfaces found in apps/")
@@ -117,20 +117,70 @@ class EnableSurfacesTests(unittest.TestCase):
                 self.assertIn(flag, self.writable,
                               f"`{arg}` sets WANT_{flag} and nothing ever reads it")
 
-    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_six(self):
+    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_five(self):
         """The gap this file exists to make visible, pinned in both directions.
 
-        Six gated surfaces have no switch here, and that is a design question rather than an
-        oversight -- ACCOUNTS and VOICE carry more configuration than a token, ASIC and MINING
-        point at hardware that may not be present, REINFORCE and EXP are gated for reasons
-        their own READMEs give. Naming them is not blessing them; it is refusing to let the
-        set drift unnoticed. This test fails when a twelfth gated surface appears with no
-        switch AND when one of these six gains one, and either way the fix is to make the
-        decision here rather than discover it from a rack row reading `offline`."""
-        known_unswitchable = {"ACCOUNTS", "ASIC", "EXP", "MINING", "REINFORCE", "VOICE"}
+        This was six. ASIC came off the list because its rack row was in exactly the state
+        Studio\'s had been -- SubUnit `asicminer` (api.py:1655) telling an operator to set
+        SYM_ASIC_ENABLED and SYM_ASIC_TOKEN with nothing sanctioned that would do it -- and
+        the earlier version of this docstring got its reason wrong: it said ASIC "points at
+        hardware that may not be present", which is true and is not an argument against a
+        switch. Absent hardware reads `offline · no rigs configured`, which is honest; an
+        unset switch the operator was told to set and given no command for is not.
+
+        The five that remain each have a different reason, recorded in the script itself
+        rather than here, and `test_the_script_records_why_each_unswitchable_one_has_no_arm`
+        below asserts the record still names them. This test fails when a twelfth gated
+        surface appears with no switch AND when one of these five quietly gains one, and
+        either way the fix is to make the decision there rather than discover it from a rack
+        row reading `offline`."""
+        known_unswitchable = {"ACCOUNTS", "EXP", "MINING", "REINFORCE", "VOICE"}
         self.assertEqual(self.gated - self.writable, known_unswitchable)
         self.assertEqual(self.writable - self.gated, set(),
                          "the script writes an ENABLED key no app reads")
+
+    def test_the_script_records_why_each_unswitchable_one_has_no_arm(self):
+        """A set assertion cannot tell a decision from an omission.
+
+        The test above pins WHICH surfaces have no arm. Nothing pinned WHY, so the next author
+        to add a `voice` arm would widen one set literal and never meet the argument against
+        it -- api.py:2317-2319 saying the row is deliberately absent because /voice.html does
+        not exist. The script carries that argument in a block under a stable heading; this
+        asserts every name in it is still there, so deleting the reasoning is a test failure
+        and not a tidy-up."""
+        head = "# ## The gated surfaces this script deliberately does not switch"
+        self.assertIn(head, self.text, "the record of why is gone, or its heading changed")
+        block = self.text.split(head, 1)[1].split("\ninstall -d", 1)[0]
+        for surface in sorted({"ACCOUNTS", "EXP", "MINING", "REINFORCE", "VOICE"}):
+            with self.subTest(surface=surface):
+                self.assertIn(surface.lower(), block,
+                              f"{surface} has no arm and the script no longer says why")
+        # Vacuity guard for this test specifically: an empty block would pass every `assertIn`
+        # above if the split ever stopped matching.
+        self.assertGreater(len(block), 800, "the block matched but is too short to be it")
+
+    def test_the_network_names_the_script_offers_are_the_ones_the_code_accepts(self):
+        """Two files had to agree and nothing made them.
+
+        `--network` is validated by a `case` list here; the value is resolved by
+        `chain.OPERATOR_NETWORKS` there. A name in one and not the other is either an argument
+        the script accepts and the surface refuses, or a working value nobody can discover.
+        Read rather than executed, for the reason the module docstring gives."""
+        from apps.gateway import chain          # noqa: PLC0415 -- see module docstring
+        for name in chain.OPERATOR_NETWORKS:
+            with self.subTest(network=name):
+                self.assertIn(name, self.text,
+                              f"{name} resolves in chain.py but --network rejects it")
+        # The canonical TRON names must not be ACCEPTED. They do appear in the script -- it
+        # has an arm that refuses them by name with a useful message, which is worth keeping --
+        # so this reads the accepting arm specifically rather than the whole file.
+        accept = [ln for ln in self.text.splitlines()
+                  if ln.strip().endswith(") ;;") and "symoneural-" in ln]
+        self.assertEqual(len(accept), 1, f"expected one accepting --network arm, got {accept}")
+        for canonical in chain.NODES:
+            with self.subTest(canonical=canonical):
+                self.assertNotIn(canonical, accept[0],
+                                 f"--network accepts {canonical}, which the code refuses")
 
     def test_every_switchable_surface_is_named_in_the_usage_header(self):
         """A switch nobody can discover is barely a switch. The header block is the only
@@ -168,12 +218,24 @@ class WriteLoopBehaviourTests(unittest.TestCase):
             found, "the write loop is no longer a `for pair in ... done` block; this class "
                    "silently stops testing anything if that regex is left unfixed")
         body = found.group(0)
-        # `set -u` so a renamed WANT_ variable is an error here rather than an empty write.
+        # Every flag the PARSER sets, defaulted off, with the caller\'s overrides on top.
+        #
+        # The defaults deliberately come from `CASE_ARM` -- the `coder) WANT_CODER=1` arms --
+        # and not from the loop being tested. Reading them off the loop would define whatever
+        # the loop mentions, which is exactly what `set -u` is here to catch: rename the
+        # loop\'s `$WANT_CODER` to `$WANT_KODER` and this still fails, because the parser
+        # never sets WANT_KODER. Before this, each test listed the flags by hand and adding a
+        # sixth surface broke three tests that were not about the sixth surface.
+        flags = {flag: 0 for flag in CASE_ARM.findall(SCRIPT.read_text())}
+        flags = {f: 0 for _arg, f in CASE_ARM.findall(SCRIPT.read_text())}
+        flags.update(wants)
+        # `set -u` so a WANT_ variable the loop reads but the parser never sets is an error
+        # here rather than an empty write.
         program = "\n".join([
             "set -u",
             "set_kv() { printf '%s=%s\\n' \"$1\" \"$2\"; }",
             "gen_token() { printf TOK; }",
-            *(f"WANT_{name}={value}" for name, value in wants.items()),
+            *(f"WANT_{name}={value}" for name, value in flags.items()),
             body,
         ])
         out = subprocess.run(["bash", "-c", program], capture_output=True, text=True,

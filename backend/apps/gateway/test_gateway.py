@@ -404,46 +404,80 @@ class TestUnitState(unittest.TestCase):
             self.assertIn(token, detail)
 
     def test_bad_network_names_what_was_found_and_what_is_expected(self):
+        """The message must echo what the operator actually typed and list what would work.
+
+        It lists the OPERATOR vocabulary, not `chain.NODES`' keys: those are the canonical
+        chain names, they are not accepted from the environment, and printing them as the
+        remedy would send someone to set a value this code refuses.
+        """
         with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nilee"):
             _, detail = gateway.unit_state()
         self.assertIn("SYM_GATEWAY_NETWORK=nilee", detail)
-        for n in chain.NODES:
+        for n in chain.OPERATOR_NETWORKS:
             self.assertIn(n, detail)
+        # And the remedy never names a value that would be refused.
+        for canonical in chain.NODES:
+            self.assertNotIn(f"{canonical}," , detail)
+
+    def test_the_operator_vocabulary_covers_every_chain_exactly_once(self):
+        """`OPERATOR_NETWORKS` and `NODES` are two dicts that have to agree, and nothing but
+        this test makes them. A chain with no operator name is unreachable; two names for one
+        chain would make `settlement/__main__.py`'s NET_ENV lookup ambiguous."""
+        self.assertEqual(sorted(chain.OPERATOR_NETWORKS.values()), sorted(chain.NODES))
+
+    def test_trons_own_network_names_are_refused(self):
+        """The rename is only worth anything if the old vocabulary actually stops working.
+
+        `network()` resolves through `OPERATOR_NETWORKS`; if it fell back to returning the raw
+        value, "nile" would be a valid `NODES` key and would configure a chain nobody named --
+        silently, and with a detail line reading `ready`. That is the failure this pins.
+        """
+        for canonical in chain.NODES:
+            with self.subTest(net=canonical):
+                with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK=canonical,
+                         SYM_GATEWAY_CONTRACT=USDT):
+                    self.assertEqual(gateway.network(), "",
+                                     f"{canonical} resolved instead of being refused")
+                    ok, why = gateway.configured()
+                    self.assertFalse(ok, f"{canonical} was accepted as configured")
+                    self.assertIn(canonical, why)         # echoes what was typed
+                    state, _ = gateway.unit_state(reading_for(net=canonical))
+                    self.assertEqual(state, "offline")
 
     def test_missing_contract_names_the_variable_and_the_shape(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile"):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test"):
             _, detail = gateway.unit_state()
         self.assertIn("SYM_GATEWAY_CONTRACT unset", detail)
         self.assertIn("Nile testnet", detail)
 
     def test_malformed_contract_says_which_fault(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test",
                  SYM_GATEWAY_CONTRACT=USDT_TRANSPOSED):
             _, detail = gateway.unit_state()
         self.assertIn("malformed", detail)
         self.assertIn("checksum", detail)
 
     def test_configured_but_unprobed_says_so(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             _, detail = gateway.unit_state(None)
         self.assertIn("has not been read yet", detail)
 
     def test_a_reading_for_a_different_configuration_is_discarded(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             _, detail = gateway.unit_state(reading_for(net="shasta"))
             self.assertIn("has not been read yet", detail)
             _, detail = gateway.unit_state(reading_for(addr=address.from_hex("41" + "11" * 20)))
             self.assertIn("has not been read yet", detail)
 
     def test_a_failed_reading_surfaces_the_reason_verbatim(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             _, detail = gateway.unit_state(reading_for(error="node rate-limited this box (HTTP 429)",
                                                        contract_present=None))
         self.assertIn("cannot verify", detail)
         self.assertIn("HTTP 429", detail)
 
     def test_absent_contract_is_stated_as_a_measurement(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             _, detail = gateway.unit_state(reading_for(contract_present=False,
                                                        contract_name=None, abi_functions=None))
         self.assertIn("measured", detail)
@@ -457,7 +491,7 @@ class TestUnitState(unittest.TestCase):
         wrong commit that this surface invites. A present contract, a reachable node and a
         clean reading must still be `offline` while no licence has ever settled.
         """
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             state, detail = gateway.unit_state(reading_for())
         self.assertEqual(state, "offline")
         self.assertIn("measured", detail)
@@ -469,7 +503,7 @@ class TestUnitState(unittest.TestCase):
         for boom in (OSError("permission denied"), ValueError("corrupt"),
                      ImportError("no licensing package"), RuntimeError("boom")):
             with mock.patch.object(gateway, "_cleared", side_effect=boom):
-                with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test",
                          SYM_GATEWAY_CONTRACT=USDT):
                     try:
                         state, _ = gateway.unit_state(reading_for())
@@ -485,13 +519,13 @@ class TestUnitState(unittest.TestCase):
         # that filtering is store.latest's job and is tested in apps/licensing. Here we only
         # assert unit_state honours a None as "not ready".
         with mock.patch.object(gateway, "_cleared", return_value=(None, None)):
-            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test",
                      SYM_GATEWAY_CONTRACT=USDT):
                 state, _ = gateway.unit_state(reading_for())
         self.assertEqual(state, "offline")
 
         with mock.patch.object(gateway, "_cleared", return_value=(rec, None)):
-            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test",
                      SYM_GATEWAY_CONTRACT=USDT):
                 state, detail = gateway.unit_state(reading_for())
         self.assertEqual(state, "ready")
@@ -502,7 +536,7 @@ class TestUnitState(unittest.TestCase):
         """Even with a settlement on record, a missing or unverified contract stays offline."""
         rec = types.SimpleNamespace(nonce=1, at_block=1)
         with mock.patch.object(gateway, "_cleared", return_value=(rec, None)):
-            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+            with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test",
                      SYM_GATEWAY_CONTRACT=USDT):
                 for reading in (None,
                                 reading_for(contract_present=False, contract_name=None,
@@ -520,7 +554,7 @@ class TestUnitState(unittest.TestCase):
             with mock.patch.object(gateway, "_cleared", return_value=(cleared, None)):
                 for kw in ({}, {"error": "boom"}, {"contract_present": False},
                            {"contract_present": None}):
-                    with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile",
+                    with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test",
                              SYM_GATEWAY_CONTRACT=USDT):
                         seen.add(gateway.unit_state(reading_for(**kw))[0])
                     with env():
@@ -530,10 +564,12 @@ class TestUnitState(unittest.TestCase):
     def test_every_detail_line_names_the_network_once_one_is_chosen(self):
         """A gateway that does not say which chain it is on is one misconfiguration away
         from taking real USDT while everyone believes it is a test."""
-        for net, name in [(n, v[0]) for n, v in chain.NODES.items()]:
+        for op, name in [(o, chain.NODES[c][0]) for o, c in
+                         chain.OPERATOR_NETWORKS.items()]:
+            net = chain.OPERATOR_NETWORKS[op]
             for reading in (None, reading_for(net=net), reading_for(net=net, error="boom"),
                             reading_for(net=net, contract_present=False)):
-                with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK=net,
+                with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK=op,
                          SYM_GATEWAY_CONTRACT=USDT):
                     _, detail = gateway.unit_state(reading)
                 with self.subTest(net=net, reading=bool(reading)):
@@ -542,7 +578,7 @@ class TestUnitState(unittest.TestCase):
     def test_no_detail_line_is_truncated(self):
         """`.claude/CLAUDE.md`: folding is allowed, trimming is data loss. asicminer slices
         its detail to 90 characters; this surface must not copy that."""
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             long = "x" * 400
             _, detail = gateway.unit_state(reading_for(error=long))
         self.assertIn(long, detail)
@@ -567,7 +603,8 @@ class TestUnitState(unittest.TestCase):
                     {"network": "nile", "contract": USDT, "block": 1, "contract_present": True,
                      "error": None, "state": "ready", "ok": True, "licensed": True}]
         switches = itertools.product(["", "1", "true", "0"],
-                                     ["", "nile", "shasta", "mainnet", "bogus"],
+                                     ["", "nile", "shasta", "mainnet", "bogus",
+                                      "symoneural-test", "symoneural-live"],
                                      ["", USDT, USDT_TRANSPOSED, "garbage"])
         checked = 0
         for on, net, addr in switches:
@@ -590,7 +627,7 @@ class TestUnitState(unittest.TestCase):
         self.assertEqual(s["id"], "gateway")
         self.assertEqual(s["bus"], "net")
         self.assertEqual(s["state"], "offline")
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             self.assertEqual(gateway.status(reading_for())["detail"],
                              gateway.unit_state(reading_for())[1])
 
@@ -599,7 +636,7 @@ class TestUnitState(unittest.TestCase):
         drives the websocket -- it would take the rack down for every visitor."""
         allowed = {"ready", "busy", "queued", "offline"}
         for on in ("", "1"):
-            with env(SYM_GATEWAY_ENABLED=on, SYM_GATEWAY_NETWORK="nile",
+            with env(SYM_GATEWAY_ENABLED=on, SYM_GATEWAY_NETWORK="symoneural-test",
                      SYM_GATEWAY_CONTRACT=USDT):
                 self.assertIn(gateway.unit_state(reading_for())[0], allowed)
 
@@ -625,19 +662,19 @@ class TestCacheAndRefresher(unittest.TestCase):
 
     def test_refresh_stores_what_the_probe_measured(self):
         want = reading_for()
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             with mock.patch.object(chain, "probe", return_value=want) as p:
                 got = asyncio.run(gateway.refresh_once())
         self.assertEqual(got["block"], want["block"])
         self.assertEqual(p.call_args.args, ("nile", USDT))
 
     def test_a_bug_in_the_probe_is_stored_as_a_failure_not_swallowed(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             with mock.patch.object(chain, "probe", side_effect=RuntimeError("kaboom")):
                 got = asyncio.run(gateway.refresh_once())
         self.assertIn("kaboom", got["error"])
         self.assertIsNone(got["contract_present"])
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             self.assertEqual(gateway.unit_state(got)[0], "offline")
 
 
@@ -665,7 +702,7 @@ class TestDetailEncoding(unittest.TestCase):
     """
 
     def test_the_punctuation_survives_a_json_round_trip(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             details = [gateway.unit_state(r)[1] for r in
                        (None, reading_for(), reading_for(contract_present=False),
                         reading_for(error="node rate-limited this box (HTTP 429)"))]
@@ -690,7 +727,7 @@ class TestRoute(unittest.TestCase):
         self.assertIn("SYM_GATEWAY_ENABLED=1", cm.exception.detail)
 
     def test_it_serves_the_cache_and_never_fetches(self):
-        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="nile", SYM_GATEWAY_CONTRACT=USDT):
+        with env(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK="symoneural-test", SYM_GATEWAY_CONTRACT=USDT):
             gateway.CACHE.put(reading_for())
             with mock.patch.object(chain, "http_post", side_effect=AssertionError("fetched!")):
                 out = routes.state()

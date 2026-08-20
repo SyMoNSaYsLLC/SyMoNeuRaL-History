@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
-# Switch on the token-gated surfaces that ship OFF by default: Coder, Project, Studio, and
-# the operator power switch this repo calls Rack. Optionally the TRON licensing Gateway,
+# Switch on the token-gated surfaces that ship OFF by default: Coder, Project, Studio, Asic,
+# and the operator power switch this repo calls Rack. Optionally the TRON licensing Gateway,
 # which needs two facts this script cannot invent.
 #
 #   sudo ./scripts/enable-surfaces.sh project rack
 #   sudo ./scripts/enable-surfaces.sh coder studio                # local-only, see below
-#   sudo ./scripts/enable-surfaces.sh gateway --network nile \
+#   sudo ./scripts/enable-surfaces.sh asic --rigs 10.0.0.11,10.0.0.12
+#   sudo ./scripts/enable-surfaces.sh gateway --network symoneural-test \
 #          --contract TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #   sudo ./scripts/enable-surfaces.sh --show                      # what is set, no secrets
 #
@@ -72,10 +73,11 @@ show() {
 
 # ---------------------------------------------------------------- arguments
 
-WANT_CODER=0 WANT_PROJECT=0 WANT_RACK=0 WANT_GATEWAY=0 WANT_STUDIO=0
-GW_NETWORK="" GW_CONTRACT=""
+WANT_CODER=0 WANT_PROJECT=0 WANT_RACK=0 WANT_GATEWAY=0 WANT_STUDIO=0 WANT_ASIC=0
+GW_NETWORK="" GW_CONTRACT="" ASIC_RIGS=""
 
-[ $# -gt 0 ] || die "Nothing asked for. Surfaces: coder project studio rack gateway (or --show)."
+[ $# -gt 0 ] || die "Nothing asked for." \
+  "Surfaces: coder project studio asic rack gateway (or --show)."
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -84,7 +86,9 @@ while [ $# -gt 0 ]; do
     rack)    WANT_RACK=1 ;;
     gateway) WANT_GATEWAY=1 ;;
     studio)  WANT_STUDIO=1 ;;
+    asic)    WANT_ASIC=1 ;;
     --network)  GW_NETWORK="${2:-}"; shift ;;
+    --rigs)     ASIC_RIGS="${2:-}"; shift ;;
     --contract) GW_CONTRACT="${2:-}"; shift ;;
     --show)  show; exit 0 ;;
     *) die "Unknown argument: $1" ;;
@@ -92,14 +96,24 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# The two facts this script cannot invent. `mainnet` is real money and a contract address is
-# not guessable, so a missing one is a hard stop rather than a default.
+# The two facts this script cannot invent. symoneural-live is real money and a contract
+# address is not guessable, so a missing one is a hard stop rather than a default.
+#
+# These are the only three names accepted, and TRON's own (nile, shasta, mainnet) are not
+# among them: backend/apps/gateway/chain.py holds the one-way map and refuses anything outside
+# it, so writing `nile` here would produce a surface that reads `offline` with a message
+# listing these three. One vocabulary, so a value that looks configured cannot mean a chain
+# nobody chose. The rack still prints TRON's name for the chain it is actually on.
 if [ "$WANT_GATEWAY" -eq 1 ]; then
   case "$GW_NETWORK" in
-    nile|shasta|mainnet) ;;
-    "") die "gateway needs --network nile|shasta|mainnet." \
-            "There is no sane default: mainnet is real money." ;;
-    *)  die "--network must be one of nile, shasta, mainnet (got '$GW_NETWORK')." ;;
+    symoneural-live|symoneural-test|symoneural-test-old) ;;
+    "") die "gateway needs --network symoneural-live|symoneural-test|symoneural-test-old." \
+            "There is no sane default: symoneural-live is real money." ;;
+    nile|shasta|mainnet)
+        die "--network takes symoneural-live|symoneural-test|symoneural-test-old, not TRON's" \
+            "own name for the chain. symoneural-test is the testnet you want." ;;
+    *)  die "--network must be one of symoneural-live, symoneural-test," \
+            "symoneural-test-old (got '$GW_NETWORK')." ;;
   esac
   [ -n "$GW_CONTRACT" ] || die "gateway needs --contract, the deployed licensing contract" \
                                "address (34 chars, begins with T)."
@@ -108,6 +122,14 @@ if [ "$WANT_GATEWAY" -eq 1 ]; then
     *) die "--contract does not look like a TRON address:" \
            "expected 34 characters beginning with T." ;;
   esac
+fi
+
+# Unlike --network, --rigs is optional: `asic` with no addresses is a legitimate state and
+# the rack says so in as many words ("no rigs configured"). But --rigs with no `asic` writes
+# nothing at all, and a silently ignored argument is the same defect as a WANT_ flag that no
+# write path reads -- so it stops here rather than looking like it worked.
+if [ -n "$ASIC_RIGS" ] && [ "$WANT_ASIC" -eq 0 ]; then
+  die "--rigs only means something with the asic surface. Add 'asic' to the arguments."
 fi
 
 # ---------------------------------------------------------------- write
@@ -152,18 +174,58 @@ printf 'Writing %s\n' "$ENV_FILE"
 # adding Studio would have made a fourth, so the shape is a loop over "want-flag NAME" pairs.
 # Gateway is not in here because it takes two more values and cannot share the body.
 for pair in "$WANT_CODER CODER" "$WANT_PROJECT PROJECT" "$WANT_RACK RACK" \
-            "$WANT_STUDIO STUDIO"; do
+            "$WANT_STUDIO STUDIO" "$WANT_ASIC ASIC"; do
   want=${pair% *}
   name=${pair#* }
   [ "$want" -eq 1 ] || continue
   set_kv "SYM_${name}_ENABLED" 1
   set_kv "SYM_${name}_TOKEN" "$(gen_token)"
 done
+# Not a token, so it is printed rather than reported as "generated", and it goes in the same
+# 0600 file anyway rather than an `Environment=` line -- backend/apps/asicminer/README.md:65
+# suggests a drop-in for it, which is fine for a rig address and wrong for the token beside it.
+# One file, one place to look. Empty stays empty: `rigs()` at asicminer/__init__.py:80 treats
+# unset and "" identically, so there is nothing to write when the operator gave no addresses.
+if [ "$WANT_ASIC" -eq 1 ] && [ -n "$ASIC_RIGS" ]; then
+  set_kv SYM_ASIC_RIGS "$ASIC_RIGS"
+fi
 if [ "$WANT_GATEWAY" -eq 1 ]; then
   set_kv SYM_GATEWAY_ENABLED 1
   set_kv SYM_GATEWAY_NETWORK "$GW_NETWORK"
   set_kv SYM_GATEWAY_CONTRACT "$GW_CONTRACT"
 fi
+
+# ## The gated surfaces this script deliberately does not switch
+#
+# Six env-gated surfaces had no arm here. Asic gained one above, because its rack row was in
+# exactly the state Studio's was -- SubUnit `asicminer` (backend/api.py:1655) told an operator
+# to "set SYM_ASIC_ENABLED=1 ... and SYM_ASIC_TOKEN" and nothing sanctioned would do it. The
+# other five are not oversights and each is a different reason, so they are named rather than
+# left as a silence someone has to re-derive:
+#
+#   accounts   -- the key is not a token. `enabled()` (apps/accounts/__init__.py:233) wants
+#                 SYM_SESSION_SECRET of at least MIN_SECRET_CHARS=32 (:139), and minting a
+#                 SYM_ACCOUNTS_TOKEN here would write a key nothing reads. Its unit_state()
+#                 at :865 says "if this ever becomes a rack unit" -- prospective, no row.
+#   voice      -- backend/api.py:2317-2319 says in the source that the row is deliberately
+#                 absent because href /voice.html does not exist. Switching it on would light
+#                 nothing an operator can see; the page comes first, by that comment's rule.
+#   exp        -- measured, not assumed: the row reads `queued` with the switch set and with
+#                 it unset. gate.py:26-27 gates mutation only, so an arm would change no
+#                 reading on the rack and its whole visible effect would be zero.
+#   reinforce  -- the surface imports and serves without torch (the import is inside a
+#                 function, apps/reinforce/runner.py:299), and torch is not installed on this
+#                 box. An arm would green a training surface whose every run fails. Installing
+#                 torch is the prerequisite, and it is not this script's business.
+#   mining     -- it already has a sanctioned path, and this would break it. load_env()
+#                 (apps/cryptominer/__init__.py:134) merges apps/cryptominer/miner.env and
+#                 never overrides an exported variable, so a key written here would be
+#                 exported by EnvironmentFile= and permanently beat the file the package
+#                 documents as the operator channel. SYM_MINER_CMD cannot be invented either.
+#
+# apps/test_enable_surfaces.py pins this list in both directions: it fails if a twelfth gated
+# switch appears, if one of these five quietly gains an arm, and if a name is dropped from
+# this block. Adding an arm means deciding here first, not discovering it from a rack row.
 
 install -d -m 0755 "$DROPIN_DIR"
 cat > "$DROPIN" <<EOF

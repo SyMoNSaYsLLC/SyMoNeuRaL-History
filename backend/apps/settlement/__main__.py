@@ -41,7 +41,11 @@ from gateway import address as A                                   # noqa: E402
 from settlement import entitlement, store, verify                   # noqa: E402
 
 FIXTURE = _APPS.parent.parent / "ops/gateway/artifacts/licence-record.json"
+# NET is the canonical chain key -- what readings, `verify` and the clearance store are all
+# keyed by. NET_ENV is the name an operator sets, which is a different vocabulary on purpose
+# (gateway/chain.py argues why). The two must agree, so NET_ENV is resolved rather than typed.
 NET, CONTRACT = "nile", "TNPeeaaFB7K9cmo4uQpcU32zGK8G1NYqeL"
+NET_ENV = next(k for k, v in gateway.chain.OPERATOR_NETWORKS.items() if v == NET)
 
 GREEN, RED, DIM, OFF = "\033[32m", "\033[31m", "\033[2m", "\033[0m"
 
@@ -102,7 +106,7 @@ def main() -> int:
                    "contract_name": "SymoneuralLicence", "error": None}
 
         import os
-        os.environ.update(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK=NET,
+        os.environ.update(SYM_GATEWAY_ENABLED="1", SYM_GATEWAY_NETWORK=NET_ENV,
                           SYM_GATEWAY_CONTRACT=CONTRACT)
         before, detail_before = gateway.unit_state(reading)
         ok &= step("before any settlement the rack is offline", before == "offline",
@@ -124,9 +128,9 @@ def main() -> int:
                        detail_after[-70:])
             # Point the surface at mainnet while the only settlement on record is a Nile one.
             # A testnet purchase must not light the mainnet light.
-            os.environ["SYM_GATEWAY_NETWORK"] = "mainnet"
+            os.environ["SYM_GATEWAY_NETWORK"] = "symoneural-live"
             mstate, _ = gateway.unit_state({**reading, "network": "mainnet"})
-            os.environ["SYM_GATEWAY_NETWORK"] = NET
+            os.environ["SYM_GATEWAY_NETWORK"] = NET_ENV
             ok &= step("a settlement on ANOTHER network does not light this one",
                        mstate == "offline", f"mainnet reads {mstate} with only a {NET} licence")
         finally:
