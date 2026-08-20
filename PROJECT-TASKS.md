@@ -518,10 +518,25 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: from him IS the decision the box represents, and the rule exists to stop me
         note: starting work on my own judgement, not to make me decline an order.
 
-        check: exists bin/symoneural-code
+        Every check below names a symbol or a sentence that cannot exist unless the behaviour
+        does. The seven this block opened with -- `exists bin/symoneural-code`, `grep slash`,
+        `grep permission`, `exists desktop/README.md` -- were satisfiable by a docstring and an
+        empty file, which under the archiving rule means this task would have filed itself as
+        finished off four placeholders. That is the failure CLAUDE.md names outright: *"a check
+        that can pass without the work being finished is worse than no check, since it will
+        archive the task."* Tightened before any of the files were written, so the percentage
+        was never inflated. One survived a round anyway: `grep permission_required --
+        bin/symoneural-cli` went green the moment `/permissions` *mentioned* the frame in the
+        sentence explaining that it does not exist yet. It now reads `grep def approve`, which
+        is the function that answers the gate and cannot be a sentence about one.
+
         check: grep def cmd_repl -- bin/symoneural-cli
-        check: exists tests/code_cli.mjs
-        check: grep slash -- bin/symoneural-cli
-        check: grep permission -- bin/symoneural-cli
-        check: exists docs/specs/code-client-spec.md
-        check: exists desktop/README.md
+        check: grep stdin.isatty -- bin/symoneural-cli
+        check: grep /resume -- bin/symoneural-cli
+        check: grep dangerously-allow-all -- bin/symoneural-cli
+        check: grep def approve -- bin/symoneural-cli
+        check: grep permission_required -- backend/apps/studio/agent.py
+        check: grep symoneural-cli -- bin/symoneural-code
+        check: grep a bare invocation with no stdin tty -- tests/code_cli.mjs
+        check: grep events, not tokens -- docs/specs/code-client-spec.md
+        check: grep MiB -- desktop/README.md
