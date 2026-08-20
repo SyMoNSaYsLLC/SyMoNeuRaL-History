@@ -31,13 +31,37 @@ import subprocess
 import time
 from pathlib import Path
 
-TASK_ROW = re.compile(r"^([◼◻▶]) ((?:\(unnumbered[^)]*\))|#\d+) — (.+)$")
+TASK_ROW = re.compile(r"^([◼◻▶⊘]) ((?:\(unnumbered[^)]*\))|#\d+) — (.+)$")
 SHA_IN_TEXT = re.compile(r"`([0-9a-f]{7,40})`")
 SUITE_ROW = re.compile(r"^- ([^:]+): (.+?) @ `([0-9a-f]{7,40})`$")
 AUDIT_HEAD = re.compile(r"^#{2,3}\s*(\d+)\.\s+(.*)$")
 REQUEST_HEAD = re.compile(r"^## (R-\d+) — (.+)$")
 
-MARKER_STATE = {"◼": "done", "◻": "pending", "▶": "in progress"}
+MARKER_STATE = {"◼": "done", "◻": "pending", "▶": "in progress", "⊘": "cancelled"}
+
+#: Steps that are settled without being done. A phase containing one is still complete: the
+#: work is closed, and there is nothing left for anybody to pick up. Without this, Garrett
+#: cancels three steps and Phase 1 stays "current phase" for the rest of the project.
+SETTLED = ("done", "cancelled", "no move")
+
+#: Phase 2a, resolved against the filesystem: ref → (path that must be GONE, path that must
+#: EXIST). "Did this folder move" is a question the disk can answer, and a table of task rows
+#: can only claim. Roots are repo-relative.
+RESTRUCTURE = {
+    "RESTRUCTURE-NEWS":       ("backend/apps/symoneuralnews", "backend/apps/news"),
+    "RESTRUCTURE-SETTLEMENT": ("backend/apps/settlement", "backend/apps/gateway/settlement"),
+    "RESTRUCTURE-STUDIO":     ("backend/apps/symoneuralstudio", "backend/apps/studio"),
+    "RESTRUCTURE-STREAMER":   ("backend/apps/tuner", "backend/apps/streamer"),
+    "RESTRUCTURE-CONTROLS":   ("backend/apps/rackpower", "backend/apps/controls"),
+    # The plugin interface has no "before" path -- it is new code, not a move. An empty `old`
+    # means "nothing has to disappear", which `step_state` reads as never-present.
+    "RESTRUCTURE-PLUGIN":     ("", "backend/apps/studio/plugins/__init__.py"),
+    "RESTRUCTURE-EXP":        ("backend/apps/symoneuralexp", "backend/apps/studio/plugins/exp"),
+    "RESTRUCTURE-DISCOVERY":  ("backend/apps/symoneuraldiscovery",
+                               "backend/apps/studio/plugins/discovery"),
+    "RESTRUCTURE-REINFORCE":  ("backend/apps/reinforce", "backend/apps/studio/plugins/reinforce"),
+    "RESTRUCTURE-HARNESS":    ("", "backend/apps/studio/plugins/harness"),
+}
 
 # The MERGED-EXECUTION-PLAN's step → task mapping, static on purpose: the plan is frozen
 # prose in GARRETT-INBOX.md, so a table here is the honest encoding, not a parser guessing.
@@ -46,18 +70,36 @@ PHASES = [
     ("Phase 1 — cut and archive v3", [
         ("1.1 four suites at HEAD", "#13"),
         ("1.2 upgrade path committed", "#11"),
-        ("1.3 .deb + repo tarball", "#14"),
-        ("1.4 hardlink staging + index", "#15"),
-        ("1.5 allv3 archives to Desktop", "#16"),
-        ("1.6 milestone records", "MILESTONE"),
+        ("1.3 .deb + repo tarball", "CANCELLED"),
+        ("1.4 hardlink staging + index", "CANCELLED"),
+        ("1.5 allv3 archives to Desktop", "CANCELLED"),
+        ("1.6 milestone records", "CANCELLED"),
+    ]),
+    # Phase 2a is the live work and did not exist when this table was first written. It is
+    # resolved against the FILESYSTEM rather than against a task row, because "did this folder
+    # move" is a question the disk can answer and a checklist can only claim. See RESTRUCTURE.
+    ("Phase 2a — backend/apps restructure (R-132/137/138/139/140)", [
+        ("symoneuralnews → news", "RESTRUCTURE-NEWS"),
+        ("settlement → gateway", "RESTRUCTURE-SETTLEMENT"),
+        ("symoneuralstudio → studio", "RESTRUCTURE-STUDIO"),
+        ("tuner + guide → streamer", "RESTRUCTURE-STREAMER"),
+        ("rackpower + livestack + console → controls", "RESTRUCTURE-CONTROLS"),
+        ("studio plugin interface — gates the four below", "RESTRUCTURE-PLUGIN"),
+        ("symoneuralexp → studio plugin", "RESTRUCTURE-EXP"),
+        ("symoneuraldiscovery → studio", "RESTRUCTURE-DISCOVERY"),
+        ("reinforce → studio", "RESTRUCTURE-REINFORCE"),
+        ("harness → studio", "RESTRUCTURE-HARNESS"),
+        ("asicminer / cryptominer — no move, two distinct miners (R-140)", "NOMOVE"),
     ]),
     ("Phase 2 — the restructure train", [
         ("2.1 studio render from disk", "#31"),
         ("2.2 /livestack/<name> routes", "#26"),
         ("2.3 Live Stack typography", "#27"),
-        ("2.4 IPTV rename + Sigils merge", "#28"),
+        # Was "IPTV rename + Sigils merge". R-132/R-137 contradict #28 on both points: the
+        # name is streamer, not IPTV, and sigils stays its own application.
+        ("2.4 tuner + guide → streamer (was: IPTV + Sigils merge)", "#28"),
         ("2.5 SymonSays naming sweep", "#25"),
-        ("2.6 symoneural-harness", "#21"),
+        ("2.6 harness → studio (was: name the harness)", "#21"),
         ("2.7 exp → studio plugin", "#22"),
         ("2.8 reinforce → studio", "#23"),
         ("2.9 ComfyUI → symoneural-ui", "#20"),
@@ -95,6 +137,10 @@ th { color:var(--dim); font-weight:600; }
 .s-done { color:var(--ok); }  .s-pending { color:var(--warn); }
 .s-in-progress { color:var(--run); } .s-open { color:var(--bad); }
 .s-other { color:var(--dim); }
+/* Cancelled and no-move are struck through, not merely greyed: at a glance the eye has to be
+   able to tell "closed, nobody is doing this" from "not started yet". They read the same in
+   plain text, which is exactly how three cancelled steps sat on this page as pending work. */
+.s-cancelled, .s-no-move { color:var(--dim); text-decoration:line-through; }
 ul { margin:.3rem 0 .3rem 1.2rem; padding:0; }
 li { margin:.15rem 0; }
 .phase { background:var(--panel); border:1px solid var(--line); border-radius:8px;
@@ -233,6 +279,24 @@ def step_state(ref: str, task_by_id: dict, audit: list[dict], root: Path,
                milestone_hit: bool, audit_done_file: bool) -> str:
     if ref == "PLAN-RECORDED-DONE":
         return "done"
+    if ref == "CANCELLED":
+        return "cancelled"
+    if ref == "NOMOVE":
+        return "no move"
+    if ref in RESTRUCTURE:
+        old, new = RESTRUCTURE[ref]
+        old_here = (root / old).exists() if old else False
+        new_here = (root / new).exists() if new else False
+        # Both present is the honest "in progress": the move has started and the old path is
+        # still there. Neither present is pending, not done -- an absent destination is not
+        # evidence of a completed move, and the previous version of this function returned
+        # "pending" for a DELETED task, which is how three cancelled steps kept reading as
+        # merely not-done-yet.
+        if new_here and not old_here:
+            return "done"
+        if new_here and old_here:
+            return "in progress"
+        return "pending"
     if ref == "MILESTONE":
         return "done" if milestone_hit else "pending"
     if ref == "AUDIT-DONE-FILE":
@@ -282,7 +346,7 @@ def build(root: Path) -> str:
         states = [(label, step_state(ref, task_by_id, audit, root,
                                      milestone_hit, audit_done_file))
                   for label, ref in steps]
-        phase_done = all(s == "done" for _, s in states)
+        phase_done = all(s in SETTLED for _, s in states)
         if not phase_done and current_phase is None:
             current_phase = title
         phase_blocks.append((title, states, phase_done))
