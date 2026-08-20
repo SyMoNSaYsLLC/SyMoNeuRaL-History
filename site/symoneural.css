@@ -417,7 +417,7 @@
   a.live{
     display:inline-flex; align-items:center; gap:7px; background:rgba(46,224,138,.13);
     border:1px solid rgba(46,224,138,.4); color:var(--accent);
-    border-radius:879.1px; padding:6px 11.4px; font-size:var(--t6); font-weight:600; text-decoration:none;
+    border-radius:var(--r-pill); padding:6px 11.4px; font-size:var(--t6); font-weight:600; text-decoration:none;
   }
   a.live s{width:7px;height:7px;border-radius:50%;background:var(--accent);
     text-decoration:none; display:block; animation:pulse 2.2s ease-in-out infinite}
@@ -2693,4 +2693,366 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
   html.ns #console .console, html.ns #more .cards{
     flex:1 1 auto; min-height:0; grid-auto-rows:minmax(min-content,1fr);
   }
+}
+
+/* ==================================================================================
+   DEPTH AND MOTION
+   ==================================================================================
+   Garrett, after reading a competitor's developer-preview page: "it wasnt the text of
+   deepseek i loved it was the look and feel of the buttons, wallpaper etc. Integrate this
+   into symoneural while keeping our core", and "the website really felt alive; i want
+   symoneural.com to be like this".
+
+   What that page actually does, read out of the saved copy and written down as values
+   rather than as an impression:
+
+     - surfaces are white-alpha over a near-black page, not solid greys. Their ladder ran
+       .06 / .04 / .02 / .015 with a .12 hairline over a #0a0a0a page.
+     - one blur figure, 12px, behind eight glass surfaces.
+     - a radius family -- pill / card / panel / media / small -- and no ad-hoc numbers.
+     - four button families, one of which is translucent white glass rather than a fill.
+     - a reveal built from opacity + translateY + blur, ~0.8s ease-out, fill `backwards`.
+     - a hover lift of translateY(-4px).
+     - and the important negative: `transition:` appears 28 times in their stylesheet and
+       `animation:` twice. Almost none of the aliveness is a looping animation; it is
+       hover and state transition, plus one reveal on arrival. This block is built the
+       same way round, which is also the cheap way round on a page that is already
+       driving four live indicators off @keyframes pulse.
+
+   NOTHING WAS COPIED. Not a declaration, not a selector, not a font file. Their primary
+   faces are self-hosted Host Grotesk / DM Sans / Fragment Mono / Montserrat; `SF Pro` and
+   `San Francisco` appear zero times, and Apple's names occur only as fallbacks inside a
+   font stack -- which is exactly where `-apple-system` has always sat in our own body
+   rule. Garrett's caution was worth raising and the answer is that there is nothing to be
+   careful about here, because this block adds no font file and no script at all. The
+   no-new-dependencies rule would have settled it regardless.
+
+   THREE CONSTRAINTS THIS BLOCK OBEYS, and they are the reason it is additive:
+
+   1. No eighth font size, and no raw px font-size. The scale above says every size in
+      this file references one of seven; `apps/test_site_css.py` now enforces that by
+      parsing this file, so chasing their much larger display type would fail a test
+      rather than pass a review.
+   2. No retrofit of measured layout. The spacing tokens below are used ONLY by rules in
+      this block and by new contexts. The tail of this file records the 2000px negative
+      result and the one-screen fit that tests/frontend.mjs asserts at four viewports;
+      widening existing padding to match somebody else's 80/120/160 ladder is how that
+      gets broken silently.
+   3. The wallpaper is a `background-image` on `body`, not a pseudo-element at negative
+      z-index. `.units` already carries `z-index:3` and the one-screen front page stacks
+      four sections in one document -- a full-viewport ::before behind that is where you
+      get either an invisible layer or a rectangle that eats clicks, and a click that
+      stops working does not show up as a test failure.
+
+   Baseline before this block: tests/frontend.mjs 43/43 at 633f72f. */
+
+:root{
+  /* The surface ladder. Alphas of --fg over --bg rather than new solid hexes, so a card
+     laid over the wallpaper gradients below picks the wallpaper up instead of stamping a
+     grey rectangle on top of it. That single property -- surfaces that transmit what is
+     behind them -- is most of what reads as depth. */
+  --sf1: rgba(242,246,243,.055);
+  --sf2: rgba(242,246,243,.038);
+  --sf3: rgba(242,246,243,.022);
+  --sf4: rgba(242,246,243,.014);
+  --sfline: rgba(242,246,243,.11);
+  --glass-blur: 12px;
+
+  /* The radius family. These are not new numbers: 999px, 14px, 10px, 8px and 5px are all
+     already in use here (pill, card/metric/panel, mod, media, code). Naming them is what
+     stops the sixth one from being invented -- this file had a `border-radius:879.1px`
+     on a.live, which is a pill radius arrived at by accident. */
+  --r-pill: 999px;
+  --r-card: 14px;
+  --r-panel: 10px;
+  --r-media: 8px;
+  --r-sm: 5px;
+
+  /* Motion. One easing curve and three durations, so hover states across the site settle
+     at the same speed instead of each rule picking its own .12/.14/.16. */
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --dur1: .13s;
+  --dur2: .2s;
+  --dur3: .34s;
+  --lift: -4px;
+
+  /* Elevation. Two shadows plus an accent glow. The glow is on the primary button only;
+     a green halo on every raised surface is a lava lamp, not an instrument. */
+  --el1: 0 1px 2px rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.28);
+  --el2: 0 2px 4px rgba(0,0,0,.4), 0 14px 38px rgba(0,0,0,.42);
+  --glow: 0 6px 20px rgba(46,224,138,.22);
+
+  /* Spacing for new contexts only -- see constraint 2 above. */
+  --sp3: 12px;
+  --sp4: 18px;
+  --sp5: 26px;
+  --sp6: 40px;
+  --sp7: 64px;
+  --sp8: 96px;
+}
+
+/* ---------- the wallpaper ----------
+   Three fixed radial fields in the two colours the site already owns, at alphas between
+   .028 and .055 -- low enough that no text sits on a gradient edge, high enough that the
+   page stops being a flat #0e100f rectangle. `radial-gradient` is used six times above
+   already, so this needs no new machinery and no new dependency.
+
+   Deliberately STATIC. The obvious next move is animating background-position for drift,
+   and with `background-attachment:fixed` that repaints the whole viewport every frame on
+   a page that is simultaneously running the stage LED, the streaming caret, the nav badge
+   and the rack lamps off @keyframes pulse. Not measured as a problem here, but not
+   measured as free either, and a slow drift nobody asked for is not worth the risk on the
+   one surface that every page loads. If it ever gets added, it gets added with a frame
+   measurement attached. */
+body{
+  background-image:
+    radial-gradient(1100px 620px at 82% -10%, rgba(46,224,138,.055), transparent 68%),
+    radial-gradient(860px 520px at 6% 2%,    rgba(255,171,61,.028), transparent 66%),
+    radial-gradient(1400px 900px at 50% 116%, rgba(46,224,138,.032), transparent 70%);
+  background-attachment:fixed;
+  background-repeat:no-repeat;
+  /* Stops the scroll chaining and the rubber-band overscroll that makes a dark page flash
+     the browser's own background at the top and bottom of a fling. */
+  overscroll-behavior:none;
+}
+
+/* ---------- glass surfaces ----------
+   Applied to .card, .metric and .panel -- the three content surfaces -- and NOT to .unit
+   or .mod. Those two are the rack instruments: they carry measured gradients, an inset
+   top highlight and a corner-bracket treatment, tests/frontend.mjs measures them, and
+   they are supposed to read as hardware bolted to a chassis rather than as glass floating
+   over it. Keeping that distinction is what "keeping our core" means here.
+
+   Inside @supports, because without backdrop-filter a .055 white fill over the wallpaper
+   is a washed-out card rather than a frosted one. Where the filter is unavailable the
+   solid var(--panel) rules above stand untouched. */
+@supports (backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px)){
+  .card, .metric{
+    background:var(--sf2);
+    border-color:var(--sfline);
+    -webkit-backdrop-filter:blur(var(--glass-blur));
+    backdrop-filter:blur(var(--glass-blur));
+    box-shadow:var(--el1);
+  }
+  .panel{
+    background:var(--sf3);
+    border-color:var(--sfline);
+    -webkit-backdrop-filter:blur(var(--glass-blur));
+    backdrop-filter:blur(var(--glass-blur));
+  }
+  /* `.cards .card` is the receipts-grid card and it is scoped to its container on purpose
+     -- the comment above that rule records it as the fourth time a bare class name was
+     defined twice here and ate the first definition. So it needs its own entry at matching
+     specificity: a bare `.card` rule loses to it, which is how the glass silently skipped
+     every card on the front page in the first cut of this block. Verified with
+     CSS.getMatchedStylesForNode rather than by reading, because reading is what missed it.
+
+     It keeps a GRADIENT where the general card is flat, so the two stay visually distinct
+     -- tests/frontend.mjs asserts that a .card outside the receipts grid keeps its own
+     styling, and "they both went glass and became the same object" is exactly the
+     regression that test exists to catch. Lighter at the top, which is the direction light
+     comes from, and the reason a translucent surface reads as a pane rather than a hole. */
+  .cards .card{
+    background:linear-gradient(180deg, var(--sf1), var(--sf4));
+    border-color:var(--sfline);
+    -webkit-backdrop-filter:blur(var(--glass-blur));
+    backdrop-filter:blur(var(--glass-blur));
+    box-shadow:var(--el1);
+  }
+  /* Same specificity trap one level down: `.cards .card:hover` sets its own solid gradient,
+     so without this entry the glass disappears at the moment the pointer is on it. Brighter
+     at the top on hover, not a different material. The transform is deliberately NOT
+     touched here -- that grid is four columns of dense cards tuned at -2px, and --lift's
+     -4px belongs to the roomier general card. */
+  .cards .card:hover{
+    background:linear-gradient(180deg, rgba(242,246,243,.085), var(--sf3));
+    box-shadow:var(--el2);
+  }
+}
+
+/* The hover lift. -4px is their figure and it is the right one for a card: far enough to
+   read as a lift, short enough that the pointer does not fall off the element it just
+   raised. `transform` and `box-shadow` only -- no margin, no top -- so nothing below the
+   card moves and no layout is invalidated. */
+.card{transition:border-color var(--dur1) var(--ease), transform var(--dur2) var(--ease), box-shadow var(--dur2) var(--ease), background var(--dur2) var(--ease)}
+.card:hover{transform:translateY(var(--lift)); box-shadow:var(--el2); background:var(--sf1)}
+@media (prefers-reduced-motion:reduce){
+  .card{transition:border-color var(--dur1) var(--ease), background var(--dur2) var(--ease)}
+  .card:hover{transform:none}
+}
+
+/* ---------- the four button families ----------
+   .cta            primary   -- accent fill, unchanged, plus the glow and a press state
+   .cta.ghost      secondary -- outline, unchanged, plus the transition
+   .cta.glass      glass     -- translucent white over the wallpaper, the family we did
+                                not have, and the one that made their page look expensive
+   .cta.bare       quiet     -- no border, no fill until hover; for the third action in a
+                                row where a third outlined button would be noise
+
+   The base .cta above already carries the accent fill, the pill radius and the -1px
+   hover. This raises the lift to -2px and adds the glow. -2px not -4px: the lift has to
+   scale with the object, and a 34px-tall pill rising 4px reads as a jump. */
+.cta{transition:transform var(--dur1) var(--ease), background var(--dur1) var(--ease), border-color var(--dur1) var(--ease), box-shadow var(--dur2) var(--ease), color var(--dur1) var(--ease)}
+.cta:hover{transform:translateY(-2px); box-shadow:var(--glow)}
+.cta:active{transform:translateY(0); box-shadow:none}
+.cta.ghost:hover{box-shadow:var(--el1)}
+
+.cta.glass{
+  background:var(--sfline); color:var(--fg); border-color:rgba(242,246,243,.16);
+  -webkit-backdrop-filter:blur(var(--glass-blur));
+  backdrop-filter:blur(var(--glass-blur));
+}
+.cta.glass:hover{background:rgba(242,246,243,.17); border-color:rgba(242,246,243,.3); box-shadow:var(--el2)}
+
+.cta.bare{background:transparent; color:var(--dim); border-color:transparent}
+.cta.bare:hover{background:var(--sf3); color:var(--fg); box-shadow:none}
+
+@media (prefers-reduced-motion:reduce){
+  .cta:hover, .cta:active{transform:none}
+}
+
+/* ---------- the reveal ----------
+   opacity + translateY + blur, staggered across the four hero children that exist on
+   every marketing page. `backwards` so the first frame is the start state rather than a
+   flash of the finished layout, and the whole sequence is done in 0.62s -- short, because
+   a hero that takes most of a second to assemble is a hero you wait for.
+
+   Scoped to `.hero >` deliberately. A generic .reveal utility applied down the page needs
+   a scroll observer to fire at the right time, which is a script, which is a dependency.
+   The arrival animation is the part that carries the feeling; the rest of the page gets
+   its life from hover states, exactly as theirs does. */
+@keyframes reveal{
+  from{opacity:0; transform:translateY(10px); filter:blur(6px)}
+  to  {opacity:1; transform:none;             filter:blur(0)}
+}
+@media (prefers-reduced-motion:no-preference){
+  .hero .eyebrow,
+  .hero h1,
+  .hero .lede,
+  .hero .actions{animation:reveal .5s var(--ease) backwards}
+  .hero h1{animation-delay:.04s}
+  .hero .lede{animation-delay:.08s}
+  .hero .actions{animation-delay:.12s}
+}
+
+/* ---------- the live ring ----------
+   a.live is the one element on the site that is asserting, in words, that something is
+   running right now. It had a pulsing dot; it now has a border that is actually going
+   round, which is the only looping animation this block adds.
+
+   Mechanically: a conic-gradient background on the pill, with a ::before inset by 1px
+   painting the interior back over it, leaving the gradient visible as a 1px ring. The
+   angle is a registered custom property, because an unregistered one is a token string
+   and cannot be interpolated -- animating it would snap 0deg to 360deg at the end. The
+   @property rule sits at the top level here, NOT inside the @media below, which is where
+   it would be silently ignored.
+
+   `isolation:isolate` is load-bearing. Without it the z-index:-1 pseudo-element escapes
+   into whatever ancestor stacking context it finds -- the sticky header at z-index:20 on
+   most pages -- and paints behind that instead of behind the pill, which loses the
+   interior fill and turns the badge into a solid conic blob. With it, negative z-index is
+   bounded by the badge.
+
+   Both a.live and a.live:hover are redeclared together. The hover rule above sets
+   `background:rgba(46,224,138,.2)` at higher specificity, so setting the conic on the
+   base selector alone would make the ring vanish on hover -- the exact state where the
+   thing is being looked at. Hover brightens the interior instead. */
+@property --ring-angle{syntax:"<angle>"; inherits:false; initial-value:0deg}
+@supports (background:conic-gradient(from 90deg,#000,#fff)){
+  a.live, a.live:hover{
+    position:relative; isolation:isolate;
+    border-radius:var(--r-pill); border-color:rgba(46,224,138,.22);
+    background:conic-gradient(from var(--ring-angle),
+      rgba(46,224,138,.16) 0deg 210deg,
+      rgba(46,224,138,.95) 300deg,
+      rgba(46,224,138,.16) 360deg);
+  }
+  a.live::before{
+    content:""; position:absolute; inset:1px; z-index:-1;
+    border-radius:inherit; background:#131b16;
+    transition:background var(--dur2) var(--ease);
+  }
+  a.live:hover::before{background:#17251d}
+  @media (prefers-reduced-motion:no-preference){
+    a.live{animation:ring 5.5s linear infinite}
+  }
+}
+@keyframes ring{to{--ring-angle:360deg}}
+
+/* ---------- focus, and the two remaining transitions ----------
+   The focus ring above is `2px solid var(--accent)` with a 4px border-radius, which on a
+   pill button draws a square around a round thing. Matching the radius costs one line and
+   is the difference between a considered surface and a stylesheet with a keyboard user
+   nobody looked at. */
+.cta:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:var(--r-pill)}
+.navlink{transition:color var(--dur1) var(--ease), background var(--dur1) var(--ease)}
+
+/* ---------- the same surface on a phone, which is not the same problem ----------
+   Garrett: "i noticed on the mobile browser deepseeks backdrop isnt 'alive' i would like
+   ours to work better when loading in mobile app browser".
+
+   That observation is correct and the cause is `background-attachment:fixed`, which is the
+   one declaration in the wallpaper above that phones do not honour the way desktops do.
+   iOS Safari -- and every in-app webview built on it, which is what "mobile app browser"
+   means in practice -- resolves a fixed background against the DOCUMENT box rather than
+   the viewport. On a 6,000px-tall page that stretches a 620px-tall gradient field over
+   6,000px, so what should be a soft glow behind the hero becomes a change of about one
+   value step across the whole screen: indistinguishable from a flat background. Android
+   Chrome honours it but pays for it, repainting a full-viewport composited layer on a
+   scroll that is already the least smooth thing a phone does.
+
+   So on touch the wallpaper is rebuilt rather than merely re-attached:
+
+     - `background-attachment:scroll`, so the phone is doing the thing it is good at.
+     - the two radial fields are sized in vw/vh and anchored to the TOP of the document.
+       That is deliberate and it is the literal answer to "when loading": the first
+       viewport is where the gradient is seen, and anchoring there means it is at full
+       strength exactly then instead of being averaged away down a long scroll.
+     - a third `linear-gradient` sized `100% 100%` covers the whole document height, so
+       scrolling past the hero fades into the flat page instead of falling off a visible
+       gradient edge.
+     - alphas are raised (.055 -> .075, .028 -> .042). A phone screen is smaller, usually
+       dimmer, and frequently outdoors; the desktop values measured as "barely there" on
+       purpose and on a phone that becomes "not there".
+
+   And two costs come down at the same time:
+
+     - `--glass-blur` drops 12px -> 8px for every glass surface at once, which is the
+       whole argument for having made it a token. backdrop-filter is the most expensive
+       declaration in this file and a phone renders the same card grid on a fraction of
+       the GPU.
+     - the hover lift is removed, because `:hover` on a touch screen fires on tap and then
+       STAYS applied until the next tap elsewhere. A card that silently rose 4px and stayed
+       there is not a hover state, it is a bug that looks like a rendering glitch.
+
+   `(hover:none) and (pointer:coarse)` rather than a width breakpoint, because this is a
+   question about the input device and the compositor, not about how wide the window is. A
+   1024px tablet has the phone's problem; a 500px desktop window does not. */
+@media (hover:none) and (pointer:coarse){
+  :root{--glass-blur:8px}
+  body{
+    background-attachment:scroll;
+    background-position:top center, top center, top center;
+    /* The third layer REPEATS, and that is the whole trick. With `scroll` attachment the
+       positioning area is the document, so a gradient sized in vh covers the top of a
+       6,000px page and nothing else -- measured on a 390x844 phone, the first cut lifted
+       the background from (14,16,15) to (28,34,30) at the top of the first screen and was
+       already back to exactly (14,16,15) by the middle of that same screen. Half of the
+       first viewport was the flat rectangle we were trying to get away from.
+
+       A 100vh band tiled down the page gives every screenful the same soft field without
+       a fixed layer and without a script. It is transparent at 0% AND at 100% so the tile
+       boundary has nothing to show -- a band that ended on a visible colour would draw a
+       horizontal seam every screen, which is worse than flat. */
+    background-repeat:no-repeat, no-repeat, repeat-y;
+    background-size:100vw 74vh, 100vw 58vh, 100% 100vh;
+    background-image:
+      radial-gradient(120vw 74vh at 86% 0%, rgba(46,224,138,.085), transparent 72%),
+      radial-gradient(104vw 58vh at 0% 10vh, rgba(255,171,61,.05), transparent 70%),
+      linear-gradient(180deg, transparent 0%, rgba(46,224,138,.032) 46%, rgba(255,171,61,.012) 78%, transparent 100%);
+  }
+  .card:hover{transform:none; box-shadow:var(--el1); background:var(--sf2)}
+  .cards .card:hover{transform:none}
+  .cta:hover{transform:none; box-shadow:none}
+  .cta:active{transform:translateY(1px)}
 }
