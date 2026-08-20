@@ -55,7 +55,9 @@ for m in fastapi uvicorn pydantic sympy; do
 done
 
 say "Engines"
-for e in contrib/llama.cpp/build/bin/llama-server contrib/stable-diffusion.cpp/build/bin/sd-cli; do
+for e in engines/symoneural-llm/build/bin/symoneural-llm \
+         engines/symoneural-llm/build/bin/symoneural-llm-cli \
+         engines/symoneural-diffuse/build/bin/symoneural-diffuse; do
   if [ -x "$e" ]; then
     if ldd "$e" 2>/dev/null | grep -q 'not found'; then
       bad "$e is present but has unresolved libraries: $(ldd "$e" | grep 'not found' | head -1 | xargs)"
@@ -63,7 +65,7 @@ for e in contrib/llama.cpp/build/bin/llama-server contrib/stable-diffusion.cpp/b
       pass "$e"
     fi
   else
-    bad "$e not built — clone and build it, or copy the build tree in"
+    bad "$e not built — run tools/fork_engines.sh"
   fi
 done
 

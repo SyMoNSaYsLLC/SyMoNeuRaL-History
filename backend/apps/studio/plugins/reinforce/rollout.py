@@ -73,9 +73,9 @@ import urllib.request
 
 from .registry import ROOT
 
-# The local llama.cpp server binary. Detected only so this module can state, accurately, that it
-# exists and is still not used for rollouts. Nothing here executes it.
-LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
+# Our LLM engine. Detected only so this module can state, accurately, that it exists and is
+# still not used for rollouts. Nothing here executes it.
+LLM_ENGINE = ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
 
 BACKENDS = {
     "transformers": {
@@ -186,8 +186,8 @@ def describe() -> dict:
         "backends": rows,
         "default": "transformers",
         "vllm": state,
-        "llama_server_present": LLAMA_SERVER.is_file(),
-        "llama_server_note": ("present on this box and still not used for rollouts -- it serves "
+        "llm_engine_present": LLM_ENGINE.is_file(),
+        "llm_engine_note": ("present on this box and still not used for rollouts -- it serves "
                               "a GGUF of the base model and cannot carry the adapter being "
                               "trained. A fast generator that is not the policy is not a rollout "
                               "engine, it is a different model's opinion."),
@@ -218,4 +218,4 @@ def check(backend: str) -> dict:
     return {"ok": True, "reason": "", "message": "", "url": state["url"]}
 
 
-__all__ = ["BACKENDS", "URL_ENV", "vllm_base_url", "probe", "describe", "check", "LLAMA_SERVER"]
+__all__ = ["BACKENDS", "URL_ENV", "vllm_base_url", "probe", "describe", "check", "LLM_ENGINE"]

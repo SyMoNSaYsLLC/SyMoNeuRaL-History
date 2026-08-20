@@ -17,7 +17,7 @@ Why nothing caught it, test by test:
 
 This file closes both gaps and adds the linkage between them:
   * every path the rack probes read (api.py's CHAT_MODEL, DRAFT_MODEL, FLUX, CHAT_ADAPTER,
-    LLAMA_SERVER, SD_CLI; sigils' SD_CLI and WEIGHTS) must exist on disk. Rename either
+    LLM_ENGINE, DIFFUSE_ENGINE; sigils' DIFFUSE_ENGINE and WEIGHTS) must exist on disk. Rename either
     side without the other and this goes red AT COMMIT TIME. The paths are extracted from
     api.py's SOURCE -- the house discipline from `test_status_rack.py`: importing the
     serving module builds rate limiters, resolves the governor and mounts site/;
@@ -58,7 +58,7 @@ def api_probe_paths() -> dict:
     """
     paths = {}
     for m in re.finditer(
-            r'^(LLAMA_SERVER|SD_CLI|CHAT_ADAPTER) = ROOT((?: / "[^"]+")+)',
+            r'^(LLM_ENGINE|DIFFUSE_ENGINE|CHAT_ADAPTER) = ROOT((?: / "[^"]+")+)',
             API_SOURCE, re.M):
         paths[m.group(1)] = ROOT.joinpath(*re.findall(r'"([^"]+)"', m.group(2)))
     for m in re.finditer(r'MODELS((?: / "[^"]+")+)', API_SOURCE):
@@ -88,7 +88,7 @@ class ProbePathsAgreeWithDisk(unittest.TestCase):
         edited to a wrong basename turned exactly this test red.)
         """
         paths = api_probe_paths()
-        binaries = {k for k in paths if k in ("LLAMA_SERVER", "SD_CLI", "CHAT_ADAPTER")}
+        binaries = {k for k in paths if k in ("LLM_ENGINE", "DIFFUSE_ENGINE", "CHAT_ADAPTER")}
         self.assertEqual(len(binaries), 3,
                          "extraction lost a ROOT-anchored probe constant in api.py")
         weights = [k for k in paths if k not in binaries]
@@ -103,24 +103,24 @@ class ProbePathsAgreeWithDisk(unittest.TestCase):
     def test_sigils_probe_agrees_with_disk_and_drives_its_state(self):
         """The sigils half of the same agreement, plus the in-suite mutation.
 
-        weights_present() must be True against the real disk, and pointing its SD_CLI at
+        weights_present() must be True against the real disk, and pointing its DIFFUSE_ENGINE at
         a name that is not there must flip it -- proving the reading derives from these
         paths and not from anything softer.
         """
         from apps.sigils import render
-        self.assertTrue(render.SD_CLI.is_file(),
-                        f"sigils probes {render.SD_CLI}, which is not on disk")
+        self.assertTrue(render.DIFFUSE_ENGINE.is_file(),
+                        f"sigils probes {render.DIFFUSE_ENGINE}, which is not on disk")
         for k, p in render.WEIGHTS.items():
             self.assertTrue(p.is_file(), f"sigils probes {k} at {p}, not on disk")
         self.assertTrue(render.weights_present())
-        real = render.SD_CLI
+        real = render.DIFFUSE_ENGINE
         try:
-            render.SD_CLI = real.with_name("sd-cli-renamed-out-from-under-the-probe")
+            render.DIFFUSE_ENGINE = real.with_name("symoneural-diffuse-renamed-out-from-under-the-probe")
             self.assertFalse(render.weights_present(),
-                             "weights_present() ignored SD_CLI -- the state no longer "
+                             "weights_present() ignored DIFFUSE_ENGINE -- the state no longer "
                              "derives from the probe this file pins")
         finally:
-            render.SD_CLI = real
+            render.DIFFUSE_ENGINE = real
 
 
 class ProbesDriveTheStates(unittest.TestCase):
@@ -132,8 +132,8 @@ class ProbesDriveTheStates(unittest.TestCase):
 
     def test_api_status_derives_chat_and_image_from_the_probes(self):
         for needle in (
-                "chat_ok = CHAT_MODEL.exists() and LLAMA_SERVER.exists()",
-                'image_ok = all(p.exists() for p in FLUX.values()) and SD_CLI.exists()',
+                "chat_ok = CHAT_MODEL.exists() and LLM_ENGINE.exists()",
+                'image_ok = all(p.exists() for p in FLUX.values()) and DIFFUSE_ENGINE.exists()',
                 'state=gpu_unit("chat", chat_ok)',
                 'state=gpu_unit("image", image_ok)'):
             self.assertIn(needle, API_SOURCE,

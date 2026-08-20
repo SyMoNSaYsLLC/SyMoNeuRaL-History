@@ -1,7 +1,7 @@
 """Make the fourth channel. Standard library only.
 
 The image engine returns three channels. A sticker needs four, and nothing in the render
-path can produce the fourth: `sd-cli --help` on the built binary has `--mask` as an *input*
+path can produce the fourth: `symoneural-diffuse --help` on the built binary has `--mask` as an *input*
 for inpainting and no alpha, RGBA or transparency output of any kind. So the subject is
 drawn on a flat, saturated field that a sticker will never legitimately contain, and this
 module keys that field out arithmetically.

@@ -157,8 +157,19 @@ from apps import controlboard as rackpower  # noqa: E402  -- the per-unit power 
 # import list top to bottom should end at the thing that has the last word.
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
-LLAMA_SERVER = ROOT / "contrib" / "llama.cpp" / "build" / "bin" / "llama-server"
-SD_CLI = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
+# The two GPU engines, and they are ours. They pointed into `references/` until 2026-08-20,
+# which broke two standing rules at once -- nothing under `references/` is imported, built or
+# linked, and nothing here ships under a third-party name -- and it took chat and image
+# offline the moment that tree moved. `tools/fork_engines.sh` builds both from our own tree
+# and renames every shipped artefact; the constants below carry our names because a constant
+# spelling a third-party product is the same leak as a filename doing it.
+#
+# Provenance is checkable, and `grep` is not how you check it: a name matches whether or not
+# an engine is on disk. `readelf -d` on either binary shows a RUNPATH inside `engines/`, and
+# each reports the *SyMoNeuRaL* commit it was built from -- the fork excludes `.git/`, so
+# CMake walks up and reads this repo's HEAD. That is kept deliberately.
+LLM_ENGINE = ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
+DIFFUSE_ENGINE = ROOT / "engines" / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse"
 MODELS = HERE / "models"  # weights are a backend concern; backend/models/
 SITE = ROOT / "site"          # the website: static files Caddy serves and deploy.sh publishes
 # Renders are API output, not site content. They used to be written into site/, which meant
@@ -1126,12 +1137,12 @@ async def start_llama() -> bool:
     async with _llama_lock:
         if await llama_up():
             return True
-        if not CHAT_MODEL.exists() or not LLAMA_SERVER.exists():
+        if not CHAT_MODEL.exists() or not LLM_ENGINE.exists():
             return False
         # No acquire here: every caller is already inside gpu.hold("chat"), so the card
         # is ours. Taking a second, longer-lived lock here is exactly what locked the CLI
         # out for the lifetime of the process.
-        argv = [str(LLAMA_SERVER), "-m", str(CHAT_MODEL), "-ngl", "99",
+        argv = [str(LLM_ENGINE), "-m", str(CHAT_MODEL), "-ngl", "99",
                 "--host", "127.0.0.1", "--port", str(LLAMA_PORT),
                 # `-c` is the TOTAL context, divided by `-np`. At the old 8192/4 every
                 # chat slot had 2,048 tokens -- roughly 8,000 characters of prompt, reply
@@ -1548,8 +1559,8 @@ def build_status() -> Status:
     # fine-tune is mid-epoch is lying to the visitor -- they click, wait five minutes behind
     # a lock, and conclude the site is broken. So the governor's own record wins.
     holder = gpu.current or external_holder()
-    chat_ok = CHAT_MODEL.exists() and LLAMA_SERVER.exists()
-    image_ok = all(p.exists() for p in FLUX.values()) and SD_CLI.exists()
+    chat_ok = CHAT_MODEL.exists() and LLM_ENGINE.exists()
+    image_ok = all(p.exists() for p in FLUX.values()) and DIFFUSE_ENGINE.exists()
 
     def gpu_unit(name: str, ok: bool) -> str:
         if not ok:
@@ -2075,7 +2086,7 @@ async def image(body: ImageRequest,
     if denied(body.prompt):
         log.warning("denied image prompt: %r", body.prompt[:200])
         raise HTTPException(400, "That one specific combination is refused. Nothing else is.")
-    if any(not p.exists() for p in FLUX.values()) or not SD_CLI.exists():
+    if any(not p.exists() for p in FLUX.values()) or not DIFFUSE_ENGINE.exists():
         raise HTTPException(503, "Image surface is still warming up.")
 
     # secrets, not the clock. int(time.time()) % 100000 gave every render in the same
@@ -2084,7 +2095,7 @@ async def image(body: ImageRequest,
     seed = body.seed if body.seed is not None else secrets.randbelow(2**31 - 1)
     stamp = f"gen-{int(time.time() * 1000)}-{seed}.png"
     out = RENDERS / stamp
-    argv = [str(SD_CLI),
+    argv = [str(DIFFUSE_ENGINE),
             "--diffusion-model", str(FLUX["unet"]), "--vae", str(FLUX["vae"]),
             "--clip_l", str(FLUX["clip"]), "--t5xxl", str(FLUX["t5"]),
             "-p", body.prompt, "--cfg-scale", "1.0", "--sampling-method", "euler",

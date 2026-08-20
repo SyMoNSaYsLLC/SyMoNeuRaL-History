@@ -13,7 +13,7 @@ Scope, deliberately narrow, because a general PNG decoder is a much bigger and m
 testable thing than the one this needs:
 
   * read  -- 8-bit, non-interlaced, colour type 2 (RGB) or 6 (RGBA). That is exactly what
-             `sd-cli` writes (verified against a real render: IHDR reports 768x768x8, colour
+             `symoneural-diffuse` writes (verified against a real render: IHDR reports 768x768x8, colour
              type 2, interlace 0), and anything else raises rather than guessing.
   * write -- 8-bit RGBA, non-interlaced, with `tEXt` chunks for provenance.
 

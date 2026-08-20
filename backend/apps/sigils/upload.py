@@ -28,7 +28,7 @@ different uploads:
 
 At 0.85 the upload contributes nothing: the same sticker comes back whatever you send. A
 mode called "image to sticker" that ignores the image is a lie, so `MAX_STRENGTH` is capped
-below it and the cap carries this reason. `sd-cli` also quantises img2img to
+below it and the cap carries this reason. `symoneural-diffuse` also quantises img2img to
 `int(steps * strength)` denoise steps, which is why 0.55 and 0.70 produced identical output
 at four steps -- both round to two. Strength is therefore a coarse dial at low step counts,
 and that is a property of the engine rather than of this code.
@@ -87,7 +87,7 @@ async def normalise(blob: bytes, dest: pathlib.Path, size: int, *, square: bool)
 
     `square` is the difference between the two modes and it is not cosmetic:
 
-    * **redraw needs a square** -- `sd-cli` renders at one geometry, and the decoder
+    * **redraw needs a square** -- `symoneural-diffuse` renders at one geometry, and the decoder
       downsamples by 8 while the transformer patches by 2, so the side must be a multiple
       of 64. The padding is white and it does not matter, because the engine repaints it.
     * **cutout must NOT be padded.** Padding invents a border in a colour the photograph

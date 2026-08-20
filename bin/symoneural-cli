@@ -3,8 +3,8 @@
 
 Three surfaces share one workstation, and they do not share it equally:
 
-    chat    llama.cpp + Qwen2.5-7B Q4_K_M    8.1 GiB resident, measured   needs the card
-    image   stable-diffusion.cpp + FLUX.1-schnell q4_k   11.8 GiB of weights   needs the card
+    chat    symoneural-llm + Qwen2.5-7B Q4_K_M    8.1 GiB resident, measured   needs the card
+    image   symoneural-diffuse + FLUX.1-schnell q4_k   11.8 GiB of weights   needs the card
     ravencalc   sympy, exact symbolic         CPU only, never queues       needs nothing
 
 The chat figure is the whole resident cost measured on this box -- 4.36 GiB of weights plus
@@ -74,20 +74,23 @@ UNIT = "symoneural-api"
 # SYMONEURAL_STATE_DIR exists so the tests can point this at a tmpdir; nothing else sets it.
 STATE = Path(os.environ.get("SYMONEURAL_STATE_DIR", "/var/lib/symoneural"))
 
-LLAMA_BIN = ROOT / "contrib" / "llama.cpp" / "build" / "bin"
-SD_BUILD = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin"
+# Our own engines, built by `tools/fork_engines.sh`. These pointed into `references/`
+# until 2026-08-20 -- a tree this project may not build or link against -- which is why
+# `status` read "not built" with both engines present somewhere else on the box.
+LLM_BIN = ROOT / "engines" / "symoneural-llm" / "build" / "bin"
+DIFFUSE_BIN = ROOT / "engines" / "symoneural-diffuse" / "build" / "bin"
 
 # The resident workhorse, and the base the SyMoNeuRaL adapter is trained against. The 14B is
 # the heavy tier -- better answers, ~98 tok/s instead of ~170, and no adapter.
-CHAT_MODEL = MODELS / "llm" / "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
-CHAT_MODEL_HEAVY = MODELS / "llm" / "Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+CHAT_MODEL = MODELS / "llm" / "symon-1.0-7b-q4_k_m.gguf"
+CHAT_MODEL_HEAVY = MODELS / "llm" / "symon-1.0-14b-q4_k_m.gguf"
 # Present once the fine-tune has run; served as an adapter rather than merged so the base
 # weights stay shared and reverting is a flag rather than a redeploy.
 CHAT_ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"
-FLUX_UNET = MODELS / "image" / "flux1-schnell-q4_k.gguf"
-FLUX_VAE = MODELS / "image" / "ae.safetensors"
-FLUX_CLIP = MODELS / "image" / "clip_l.safetensors"
-FLUX_T5 = MODELS / "image" / "t5xxl-Q8_0.gguf"
+FLUX_UNET = MODELS / "image" / "symoneural-image-unet-q4_k.gguf"
+FLUX_VAE = MODELS / "image" / "symoneural-image-vae.safetensors"
+FLUX_CLIP = MODELS / "image" / "symoneural-image-clip.safetensors"
+FLUX_T5 = MODELS / "image" / "symoneural-image-t5-q8_0.gguf"
 
 CHAT_PORT = 8081
 CHAT_PIDFILE = RUN / "chat.pid"
@@ -121,13 +124,16 @@ def smi(field: str) -> str:
         return ""
 
 
-def sd_binary() -> Path | None:
-    """stable-diffusion.cpp renamed its CLI mid-flight; accept either name."""
-    for name in ("sd-cli", "sd"):
-        candidate = SD_BUILD / name
-        if candidate.exists():
-            return candidate
-    return None
+def diffuse_binary() -> Path | None:
+    """The image engine, or None when it has not been built.
+
+    This used to try two names, because the upstream project renamed its CLI mid-flight
+    and a build from either side of that had a different filename. `fork_engines.sh`
+    builds this engine from our own tree and sets the name, so there is one name and no
+    guess -- and a fallback that can never fire is a place for a real miss to hide.
+    """
+    candidate = DIFFUSE_BIN / "symoneural-diffuse"
+    return candidate if candidate.exists() else None
 
 
 def governor(*args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -151,9 +157,9 @@ def cmd_status(_args) -> int:
     print(f"{c('resident surface', DIM)}   {resident}")
     print(f"{c('gpu lock', DIM)}           {c('HELD', AMBER) if locked else 'free'}")
     print()
-    print(f"{c('chat', DIM)}   {'built' if (LLAMA_BIN / 'llama-server').exists() else c('not built', AMBER)}"
+    print(f"{c('chat', DIM)}   {'built' if (LLM_BIN / 'symoneural-llm').exists() else c('not built', AMBER)}"
           f"   {'weights present' if CHAT_MODEL.exists() else c('weights missing', AMBER)}")
-    sdb = sd_binary()
+    sdb = diffuse_binary()
     print(f"{c('image', DIM)}  {'built' if sdb else c('not built', AMBER)}"
           f"   {'weights present' if FLUX_UNET.exists() else c('weights missing', AMBER)}")
     print(f"{c('ravencalc', DIM)}   always available {c('(cpu, no gpu, never queues)', DIM)}")
@@ -331,12 +337,12 @@ def cmd_stop_chat(_args) -> int:
         except Exception:
             pass
         CHAT_PIDFILE.unlink(missing_ok=True)
-    subprocess.run(["pkill", "-f", "llama-server"], check=False)
+    subprocess.run(["pkill", "-f", "bin/symoneural-llm"], check=False)
     return 0
 
 
 def cmd_chat(args) -> int:
-    server = LLAMA_BIN / "llama-cli"
+    server = LLM_BIN / "symoneural-llm-cli"
     if not server.exists():
         print("chat engine is not built yet -- run the build first", file=sys.stderr)
         return 1
@@ -360,7 +366,7 @@ def cmd_chat(args) -> int:
         # this build and waits on stdin, which is an unbounded hang inside a governor hold.
         "-no-cnv", "-st",
     ]
-    # The adapter only matches the 7B base it was trained on; asking llama.cpp to apply it to
+    # The adapter only matches the 7B base it was trained on; asking the engine to apply it to
     # the 14B would be a rank/shape error, so it is simply not offered there.
     if not args.heavy and not args.no_adapter and CHAT_ADAPTER.exists():
         cmd += ["--lora", str(CHAT_ADAPTER)]
@@ -375,7 +381,7 @@ def cmd_chat(args) -> int:
 # --------------------------------------------------------------------------
 
 def cmd_image(args) -> int:
-    sdb = sd_binary()
+    sdb = diffuse_binary()
     if not sdb:
         print("image engine is not built yet -- run the build first", file=sys.stderr)
         return 1

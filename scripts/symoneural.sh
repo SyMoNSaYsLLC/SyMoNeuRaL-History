@@ -48,8 +48,8 @@ case "${1:-status}" in
     rm -f "$PIDFILE"
     # Whatever the API left holding the card goes too, then the lock is cleared so the
     # next tenant is not left waiting behind a process that no longer exists.
-    pkill -f 'llama-server' 2>/dev/null
-    pkill -f 'sd-cli' 2>/dev/null
+    pkill -f 'bin/symoneural-llm' 2>/dev/null
+    pkill -f 'bin/symoneural-diffuse' 2>/dev/null
     # Only our own surfaces -- a fine-tune holding the card is not ours to end.
     "$ROOT/scripts/gpu-governor.sh" release chat >/dev/null 2>&1
     "$ROOT/scripts/gpu-governor.sh" release image >/dev/null 2>&1

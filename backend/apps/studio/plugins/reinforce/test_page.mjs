@@ -97,8 +97,8 @@ const REWARDS = [
 
 const ROLLOUT = {
   default: 'transformers',
-  llama_server_present: true,
-  llama_server_note: 'present on this box and still not used for rollouts.',
+  llm_engine_present: true,
+  llm_engine_note: 'present on this box and still not used for rollouts.',
   note: 'only the reinforcement method generates anything.',
   vllm: { configured: false, reachable: false, url: null, detail: 'no external rollout server configured.' },
   backends: [

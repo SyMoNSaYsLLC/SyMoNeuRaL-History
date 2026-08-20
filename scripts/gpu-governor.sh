@@ -30,6 +30,13 @@ set -uo pipefail
 # both load weights, and ~12 GB of models hit a 16 GB card.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
+# HERE is the repo ROOT, not this script's directory, and the two call sites below spell
+# their paths from the root accordingly. They did not until 2026-08-20: they read
+# "$HERE/symoneural" and "$HERE/comfyui.sh", neither of which has ever existed at the
+# root, so both graceful stops silently fell through to their `||` pkill fallback --
+# and for comfy that fallback is precisely the ungraceful kill the comment on its arm
+# argues against. A `||` fallback hides a broken primary; both are checked by
+# apps/test_governor_paths.py now.
 HERE="$ROOT"
 RUN="$ROOT/run"
 LOCKDIR="$RUN/gpu.lock.d"
@@ -86,22 +93,22 @@ evict() {
   [ -z "$prev" ] && return 0
   log evict "stopping '$prev' to make room -- the weight sets do not co-fit"
   case "$prev" in
-    chat)  "$HERE/symoneural" _stop-chat >/dev/null 2>&1 || pkill -f 'llama-server' 2>/dev/null || true ;;
-    image) pkill -f 'sd-cli' 2>/dev/null || true ;;
+    chat)  "$HERE/bin/symoneural-cli" _stop-chat >/dev/null 2>&1 || pkill -f 'bin/symoneural-llm' 2>/dev/null || true ;;
+    image) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
     # Stickers. Same engine as image, so the same kill -- but the name has to be here
     # anyway, because without a case of its own it falls to *) below, and *) pkills
-    # llama-server too and takes chat down as collateral. Registering a surface name
+    # the LLM engine too and takes chat down as collateral. Registering a surface name
     # and adding its case are one change, not two: the miner) arm exists because the
     # *) arm was once found logging a successful eviction while the tenant kept the card.
     #
-    # Known and deliberate: `pkill -f 'sd-cli'` cannot tell a sigil render from an image
-    # render, so evicting either kills both. The global lock serialises them and sd-cli
-    # is not resident between jobs, so the window is small -- but it is written down
+    # Known and deliberate: `pkill -f 'bin/symoneural-diffuse'` cannot tell a sigil render from an image
+    # render, so evicting either kills both. The global lock serialises them and the
+    # engine is not resident between jobs, so the window is small -- but it is written down
     # here rather than discovered by whoever next sees an image render die unexplained.
-    sigil) pkill -f 'sd-cli' 2>/dev/null || true ;;
+    sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
     # ComfyUI. It is a long-lived HTTP server that holds ~12 GB of FLUX weights while
-    # resident, so it MUST have its own arm: the '*)' arm below pkills llama-server and
-    # sd-cli, neither of which is ComfyUI, and would log a successful eviction while the
+    # resident, so it MUST have its own arm: the '*)' arm below pkills the LLM and
+    # diffusion engines, neither of which is ComfyUI, and would log a successful eviction while the
     # card stayed full -- the exact failure the miner) comment records.
     #
     # The stop is deliberately graceful and staged. `scripts/comfyui.sh stop` asks the
@@ -109,7 +116,7 @@ evict() {
     # process mid-CUDA-teardown returns the lock before the driver has taken the memory
     # back and the next tenant OOMs at step 0 -- which is what `drain` below exists to
     # catch. The pkill is the fallback for a server started outside the script.
-    comfy) "$HERE/comfyui.sh" stop >/dev/null 2>&1 || pkill -f 'ComfyUI/main.py' 2>/dev/null || true ;;
+    comfy) "$HERE/scripts/comfyui.sh" stop >/dev/null 2>&1 || pkill -f 'ComfyUI/main.py' 2>/dev/null || true ;;
     # A training run holds ~10-13 GB for hours. It is never killed to make room for a demo
     # request -- a half-finished fine-tune is not worth a page view. Serving surfaces queue
     # behind it instead, which is what the acquire timeout is for.
@@ -130,13 +137,13 @@ evict() {
     #
     # This case is inert until SYMONEURAL_MINER_CMD names a real binary: nothing writes 'miner'
     # into run/resident before then. Without it, a miner tenant would fall through to the
-    # '*)' arm below and be "evicted" by pkilling llama-server -- which would leave the
+    # '*)' arm below and be "evicted" by pkilling the LLM engine -- which would leave the
     # miner holding the card while the governor logged a successful eviction.
     miner)
       python3 -c 'import sys; sys.path.insert(0, "'"$ROOT"'/backend/apps"); import cryptominer; cryptominer.stop()' \
         >/dev/null 2>&1 || pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null || true
       ;;
-    *)     pkill -f 'llama-server|sd-cli' 2>/dev/null || true ;;
+    *)     pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse' 2>/dev/null || true ;;
   esac
   drain
 }

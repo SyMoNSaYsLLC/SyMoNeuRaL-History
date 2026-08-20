@@ -52,7 +52,7 @@ package is standard library only.
   `scripts/gpu-governor.sh with sigil -- ...`, which releases even on a crash and names its
   surface when it does. The matte, the encode and the write all happen after the release.
 * **A surface name is also a `case` in the governor's `evict()`.** Add
-  `sigil) pkill -f 'sd-cli' ;;` beside the `image)` arm in the same commit that first writes
+  `sigil) pkill -f 'bin/symoneural-diffuse' ;;` beside the `image)` arm in the same commit that first writes
   `sigil` into `run/resident`; without it the name falls to `*)`, which takes chat down as
   collateral. See `render.py`.
 * **No content policy.** The bounds here are structural -- one job at a time, a canvas the

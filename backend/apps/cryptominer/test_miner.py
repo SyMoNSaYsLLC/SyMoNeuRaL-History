@@ -427,7 +427,7 @@ class TestGovernorContract(unittest.TestCase):
         gov = (cryptominer.ROOT / "scripts" / "gpu-governor.sh").read_text()
         self.assertIn(f"    {cryptominer.SURFACE})", gov,
                       f"gpu-governor.sh has no `{cryptominer.SURFACE})` arm — eviction "
-                      "would fall through to the '*)' arm and pkill llama-server instead")
+                      "would fall through to the '*)' arm and pkill the LLM engine instead")
 
     def test_no_bare_release_anywhere_in_this_module(self):
         import re as _re

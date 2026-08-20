@@ -158,3 +158,16 @@ backend/apps/gateway/target/
 # 2026-08-20 and caught before the commit; an ignore rule is the durable version of catching it.
 INTAKE.md
 GARRETT-REQUESTS.md
+
+# Built engines. engines/ is produced by tools/fork_engines.sh from the vendored upstream
+# source in references/ (itself untracked), so it is a derived tree: 874 MB of C++ plus a
+# ~1.1 GB build. The tracked artefact is the script, which is the provenance -- re-run it
+# and you get the same engines. Do not track a derived copy of an untracked source.
+/engines/
+
+# Third-party application binaries Garrett drops in for reference. `bin/` is otherwise
+# tracked, and these are large (claude is ~308 MB) and proprietary -- committing one
+# would put somebody else's licensed application into this history permanently, and
+# there is no remote to make that recoverable by deleting it upstream.
+bin/claude
+bin/claude-desktop

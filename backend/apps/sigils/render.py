@@ -19,10 +19,10 @@ reason is measured rather than theoretical.** Tested here on 2026-08-17 with `ru
 set to `image`:
 
     gpu-governor.sh with sigil -- /bin/sleep 2                    ->  rc 0
-    gpu-governor.sh with sigil -- /bin/sleep 2 <path>/sd-cli      ->  rc 143, SIGTERM
+    gpu-governor.sh with sigil -- /bin/sleep 2 <path>/symoneural-diffuse      ->  rc 143, SIGTERM
 
 `cmd_acquire` evicts the previous resident before handing over, and `evict()`'s `image)` arm
-is `pkill -f 'sd-cli'`. `pkill -f` matches the **whole command line**, and the wrapper's own
+is `pkill -f 'bin/symoneural-diffuse'`. `pkill -f` matches the **whole command line**, and the wrapper's own
 command line contains the engine path -- so the `with` form asks the governor to kill the
 process that is running the governor. Sixteen consecutive renders died there, and the
 failure is silent unless the exit status is read, because the eviction logs a success.
@@ -45,10 +45,10 @@ self-deadlocks, and it only surfaced 120 s later as a job timeout):
 
 One thing to fix in the same commit that first writes `sigil` into `run/resident`: the
 governor's `evict()` has a `case` per surface, and an unregistered name falls to `*)`, which
-pkills `llama-server|sd-cli` -- stopping a sigil render, and taking chat with it as
+pkills `bin/symoneural-llm|bin/symoneural-diffuse` -- stopping a sigil render, and taking chat with it as
 collateral. The arm to add, beside `image)`:
 
-    sigil) pkill -f 'sd-cli' 2>/dev/null || true ;;
+    sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
 
 Registering a surface name without its `case` is the same split contract as the generators'
 BEGIN/END markers: two files have to change together or the mechanism silently half-works.
@@ -67,7 +67,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found at {ROOT}"
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
-SD_CLI = ROOT / "contrib" / "stable-diffusion.cpp" / "build" / "bin" / "sd-cli"
+#: Our diffusion engine, built by `tools/fork_engines.sh`. It was pointed into
+#: `references/` -- a tree this project may not build or link -- which is what took
+#: the sigil surface offline with every weight file present.
+DIFFUSE_ENGINE = ROOT / "engines" / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse"
 MODELS = ROOT / "backend" / "models" / "image"
 #: Renders are API output. They go to backend/output/ and come back as /api/gen/<name>;
 #: they never go to site/, which is the staging webroot the web server does not serve.
@@ -133,7 +136,7 @@ def compose_redraw(subject: str) -> str:
 
 
 def weights_present() -> bool:
-    return SD_CLI.is_file() and all(p.is_file() for p in WEIGHTS.values())
+    return DIFFUSE_ENGINE.is_file() and all(p.is_file() for p in WEIGHTS.values())
 
 
 def output_name(stamp_ms: int, seed: int) -> str:
@@ -181,7 +184,7 @@ def build_argv(prompt: str, out: pathlib.Path, seed: int, steps: int, size: int,
       produced byte-identical PNGs. `upload.MAX_STRENGTH` caps below that, and the cap
       exists to stop the surface claiming to use a picture it is ignoring.
     """
-    argv = [str(SD_CLI),
+    argv = [str(DIFFUSE_ENGINE),
             "--diffusion-model", str(WEIGHTS["unet"]), "--vae", str(WEIGHTS["vae"]),
             "--clip_l", str(WEIGHTS["clip"]), "--t5xxl", str(WEIGHTS["t5"]),
             "-p", prompt, "--cfg-scale", "1.0", "--sampling-method", "euler",

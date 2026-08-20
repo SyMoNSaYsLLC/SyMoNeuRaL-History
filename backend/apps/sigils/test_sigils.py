@@ -271,8 +271,8 @@ class TestGovernor(unittest.TestCase):
         self.assertEqual(argv[1:], ["acquire", render.SURFACE, "42"])
 
     def test_the_engine_is_not_run_through_the_with_wrapper(self) -> None:
-        """Measured 2026-08-17: `gpu-governor.sh with sigil -- <path>/sd-cli` is SIGTERMed
-        by its own eviction, because `evict()`'s image arm is `pkill -f 'sd-cli'` and
+        """Measured 2026-08-17: `gpu-governor.sh with sigil -- <path>/symoneural-diffuse` is SIGTERMed
+        by its own eviction, because `evict()`'s image arm is `pkill -f 'bin/symoneural-diffuse'` and
         `pkill -f` matches the wrapper's own command line. The engine argv must therefore
         never be handed to the `with` form."""
         source = pathlib.Path(render.__file__).read_text()
@@ -333,12 +333,12 @@ class TestSurface(unittest.TestCase):
 
     def test_status_is_offline_without_the_engine(self) -> None:
         """Never `ready` on the strength of the module importing."""
-        original = render.SD_CLI
-        render.SD_CLI = pathlib.Path("/nonexistent/sd-cli")
+        original = render.DIFFUSE_ENGINE
+        render.DIFFUSE_ENGINE = pathlib.Path("/nonexistent/symoneural-diffuse")
         try:
             unit = routes.status()
         finally:
-            render.SD_CLI = original
+            render.DIFFUSE_ENGINE = original
         self.assertEqual(unit["state"], "offline")
         self.assertIn("not installed", unit["detail"])
 

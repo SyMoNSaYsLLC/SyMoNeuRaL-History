@@ -84,9 +84,13 @@ SRC = CLI_PATH.read_text(encoding="utf-8")
 # `[str(GOVERNOR), "with", "chat", "--", ...]` -- the verb and the surface, as literals.
 GOVERNOR_ARGV = re.compile(r'\[str\(GOVERNOR\),\s*"(\w+)",\s*"(\w+)"')
 
-# The two sanctioned mentions of llama-server: the built-yet probe, and the janitor's pkill.
-LLAMA_PROBE = re.compile(r"LLAMA_BIN / 'llama-server'\)\.exists\(\)")
-LLAMA_PKILL = re.compile(r'\["pkill", "-f", "llama-server"\]')
+# The two sanctioned mentions of the LLM *server*: the built-yet probe, and the janitor's
+# pkill. Pinned by their exact quoting rather than by the bare name, because after the
+# engines were forked under our own names the bare string also appears in `LLM_BIN`'s path
+# segment and inside `symoneural-llm-cli` -- and neither of those is the server.
+SERVER_PROBE = re.compile(r"LLM_BIN / 'symoneural-llm'\)\.exists\(\)")
+SERVER_PKILL = re.compile(r'\["pkill", "-f", "bin/symoneural-llm"\]')
+SERVER_MENTION = re.compile(r"'symoneural-llm'|\"bin/symoneural-llm\"")
 
 # The subcommand table as declared: direct `add_parser("name")` calls, plus the four that go
 # through the `studio("name", ...)` helper, whose own `add_parser(name, ...)` takes a
@@ -255,17 +259,22 @@ class DeviceProbeTests(unittest.TestCase):
                 shim_subprocess(self.cli, fake)
                 self.assertEqual(self.cli.smi("memory.free"), "")
 
-    def test_sd_binary_accepts_either_name_and_prefers_the_current(self):
-        """stable-diffusion.cpp renamed its CLI mid-flight. A box built before the rename
-        has `sd`, one built after has `sd-cli`; 'tidying' the fallback away silently marks
-        the image surface `not built` on half the installs."""
+    def test_diffuse_binary_takes_the_one_name_this_fork_produces(self):
+        """This used to accept two names, because the upstream project renamed its CLI
+        mid-flight and a build from either side of that had a different filename. We build
+        this engine ourselves now and `fork_engines.sh` sets the name, so there is exactly
+        one and the fallback is gone -- a branch that can never fire is where a real miss
+        hides. The old upstream names must NOT be accepted: finding one would mean the CLI
+        is pointing at somebody else's build tree again."""
         with tempfile.TemporaryDirectory() as td:
-            self.cli.SD_BUILD = Path(td)
-            self.assertIsNone(self.cli.sd_binary())
-            (Path(td) / "sd").touch()
-            self.assertEqual(self.cli.sd_binary().name, "sd")
-            (Path(td) / "sd-cli").touch()
-            self.assertEqual(self.cli.sd_binary().name, "sd-cli")
+            self.cli.DIFFUSE_BIN = Path(td)
+            self.assertIsNone(self.cli.diffuse_binary())
+            for stale in ("sd", "sd-cli"):
+                (Path(td) / stale).touch()
+            self.assertIsNone(self.cli.diffuse_binary(),
+                              "an upstream engine name still satisfies the image probe")
+            (Path(td) / "symoneural-diffuse").touch()
+            self.assertEqual(self.cli.diffuse_binary().name, "symoneural-diffuse")
 
 
 class RunStateDegradationTests(unittest.TestCase):
@@ -327,7 +336,7 @@ class RunStateDegradationTests(unittest.TestCase):
             rc, _, _ = call(self.cli.cmd_stop_chat, types.SimpleNamespace())
             self.assertEqual(rc, 0)
             self.assertEqual(kills, [])
-            self.assertEqual(calls, [["pkill", "-f", "llama-server"]])
+            self.assertEqual(calls, [["pkill", "-f", "bin/symoneural-llm"]])
 
         with self.subTest(state="garbage pidfile"):
             pidfile.write_text("junk")
@@ -357,8 +366,8 @@ class StatusNoDeviceTests(unittest.TestCase):
         self.cli.smi = lambda field: ""
         self.cli.RUN = self.run_dir
         self.cli.STATE = t / "state"
-        self.cli.LLAMA_BIN = t / "llama-bin"
-        self.cli.SD_BUILD = t / "sd-bin"
+        self.cli.LLM_BIN = t / "llm-bin"
+        self.cli.DIFFUSE_BIN = t / "diffuse-bin"
         self.cli.CHAT_MODEL = t / "7b.gguf"
         self.cli.FLUX_UNET = t / "flux.gguf"
 
@@ -1054,7 +1063,7 @@ class ChatCommandTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         t = Path(self.tmp.name)
-        self.cli.LLAMA_BIN = t / "bin"
+        self.cli.LLM_BIN = t / "bin"
         self.cli.CHAT_MODEL = t / "7b.gguf"
         self.cli.CHAT_MODEL_HEAVY = t / "14b.gguf"
         self.cli.CHAT_ADAPTER = t / "adapter.gguf"
@@ -1067,8 +1076,8 @@ class ChatCommandTests(unittest.TestCase):
                                         "no_adapter": False, **kw})
 
     def build_engine(self, heavy_weights=False, adapter=False):
-        self.cli.LLAMA_BIN.mkdir(parents=True, exist_ok=True)
-        (self.cli.LLAMA_BIN / "llama-cli").touch()
+        self.cli.LLM_BIN.mkdir(parents=True, exist_ok=True)
+        (self.cli.LLM_BIN / "symoneural-llm-cli").touch()
         self.cli.CHAT_MODEL.touch()
         if heavy_weights:
             self.cli.CHAT_MODEL_HEAVY.touch()
@@ -1122,7 +1131,7 @@ class ChatCommandTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             argv = self.calls[-1]
             self.assertEqual(argv[:4], [gov, "with", "chat", "--"])
-            self.assertEqual(argv[4], str(self.cli.LLAMA_BIN / "llama-cli"))
+            self.assertEqual(argv[4], str(self.cli.LLM_BIN / "symoneural-llm-cli"))
             self.assertEqual(argv[argv.index("-m") + 1], str(self.cli.CHAT_MODEL))
             self.assertIn("-no-cnv", argv)
             self.assertIn("-st", argv)
@@ -1147,7 +1156,7 @@ class ImageCommandTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.t = Path(self.tmp.name)
-        self.cli.SD_BUILD = self.t / "bin"
+        self.cli.DIFFUSE_BIN = self.t / "bin"
         for name in ("FLUX_UNET", "FLUX_VAE", "FLUX_CLIP", "FLUX_T5"):
             setattr(self.cli, name, self.t / f"{name.lower()}.bin")
         self.calls: list[list[str]] = []
@@ -1165,8 +1174,8 @@ class ImageCommandTests(unittest.TestCase):
             rc, _, err = call(self.cli.cmd_image, self.args())
             self.assertEqual(rc, 1)
             self.assertIn("not built", err)
-        self.cli.SD_BUILD.mkdir(parents=True)
-        (self.cli.SD_BUILD / "sd-cli").touch()
+        self.cli.DIFFUSE_BIN.mkdir(parents=True)
+        (self.cli.DIFFUSE_BIN / "symoneural-diffuse").touch()
         self.cli.FLUX_UNET.touch()
         self.cli.FLUX_CLIP.touch()
         with self.subTest(missing="two of four weight files"):
@@ -1182,15 +1191,15 @@ class ImageCommandTests(unittest.TestCase):
         cfg-scale 1.0 (a distilled model degrades above it), --vae-tiling and
         --diffusion-fa (what makes 768 fit at all), and te=cpu for the text encoder. A
         'cleanup' dropping any of these OOMs or degrades quietly on the real card."""
-        self.cli.SD_BUILD.mkdir(parents=True)
-        (self.cli.SD_BUILD / "sd-cli").touch()
+        self.cli.DIFFUSE_BIN.mkdir(parents=True)
+        (self.cli.DIFFUSE_BIN / "symoneural-diffuse").touch()
         for name in ("FLUX_UNET", "FLUX_VAE", "FLUX_CLIP", "FLUX_T5"):
             getattr(self.cli, name).touch()
         rc, out, _ = call(self.cli.cmd_image, self.args())
         self.assertEqual(rc, 0)
         argv = self.calls[-1]
         self.assertEqual(argv[:4], [str(self.cli.GOVERNOR), "with", "image", "--"])
-        self.assertEqual(argv[4], str(self.cli.SD_BUILD / "sd-cli"))
+        self.assertEqual(argv[4], str(self.cli.DIFFUSE_BIN / "symoneural-diffuse"))
         self.assertEqual(argv[argv.index("--cfg-scale") + 1], "1.0")
         self.assertEqual(argv[argv.index("-W") + 1], "512")
         self.assertEqual(argv[argv.index("-H") + 1], "512")
@@ -1479,17 +1488,17 @@ class StructuralRuleTests(unittest.TestCase):
                             "the word `release` entered the CLI; releases are the "
                             "governor's job, scoped by `with`, never the CLI's")
 
-    def test_the_cli_never_spawns_llama_server(self):
-        """`api.py` owns llama-server inside `gpu.hold(\"chat\")`; a second spawner races
+    def test_the_cli_never_spawns_the_llm_server(self):
+        """`api.py` owns the LLM server inside `gpu.hold(\"chat\")`; a second spawner races
         it for :8081 and the lease. The CLI may mention the binary exactly twice -- the
         built-yet probe in `cmd_status` and the janitor's pkill in `cmd_stop_chat` -- and
-        `cmd_chat` must run the one-shot `llama-cli` instead."""
-        mentions = [l for l in SRC.splitlines() if "llama-server" in l]
+        `cmd_chat` must run the one-shot `symoneural-llm-cli` instead."""
+        mentions = [l for l in SRC.splitlines() if SERVER_MENTION.search(l)]
         self.assertEqual(len(mentions), 2, mentions)
         for line in mentions:
-            self.assertTrue(LLAMA_PROBE.search(line) or LLAMA_PKILL.search(line),
-                            f"an unsanctioned llama-server mention: {line.strip()!r}")
-        self.assertIn('"llama-cli"', inspect.getsource(self.cli.cmd_chat))
+            self.assertTrue(SERVER_PROBE.search(line) or SERVER_PKILL.search(line),
+                            f"an unsanctioned LLM-server mention: {line.strip()!r}")
+        self.assertIn('"symoneural-llm-cli"', inspect.getsource(self.cli.cmd_chat))
 
     def test_ravencalc_never_touches_the_governor_or_a_subprocess(self):
         """CLAUDE.md: RavenCalc deliberately never takes the lock -- CPU-only and
@@ -1538,8 +1547,8 @@ class StructuralRuleTests(unittest.TestCase):
         self.assertGreater(len(SRC), 25_000, "the CLI shrank to a stub; SRC is not it")
         self.assertEqual(len(GOVERNOR_ARGV.findall(SRC)), 2,
                          "GOVERNOR_ARGV no longer matches the two `with` invocations")
-        self.assertEqual(len([l for l in SRC.splitlines() if "llama-server" in l]), 2,
-                         "the llama-server mention count moved; re-audit the contexts")
+        self.assertEqual(len([l for l in SRC.splitlines() if SERVER_MENTION.search(l)]), 2,
+                         "the LLM-server mention count moved; re-audit the contexts")
         self.assertEqual(len(ADD_PARSER.findall(SRC)), 8,
                          "direct add_parser() count moved; update KNOWN_SUBCOMMANDS "
                          "and the dispatch TABLE together")

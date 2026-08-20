@@ -361,7 +361,7 @@
     });
     var note = $('rf-rollout-note');
     note.textContent = data.note + ' ' +
-      (data.llama_server_present ? data.llama_server_note : '') +
+      (data.llm_engine_present ? data.llm_engine_note : '') +
       ' Default: ' + data.default + '.';
   }
 

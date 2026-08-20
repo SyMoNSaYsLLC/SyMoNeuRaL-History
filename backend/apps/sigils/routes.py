@@ -170,7 +170,7 @@ async def make(body: SigilRequest) -> dict:
                 log.error("sigil render failed rc=%s: %s", rc,
                           err.decode("utf-8", "replace")[-800:])
                 raise HTTPException(500, "The render failed.")
-            # The card is already back: `with` released it when sd-cli exited. Everything
+            # The card is already back: `with` released it when the engine exited. Everything
             # below is CPU work and it runs in a thread, because a quarter of a second of
             # byte-plane arithmetic on the event loop stalls the live status socket.
             result = await asyncio.to_thread(

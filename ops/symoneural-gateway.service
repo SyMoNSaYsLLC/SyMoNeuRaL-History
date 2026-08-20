@@ -29,8 +29,8 @@ ExecStart=@@ROOT@@/symon-gateway/target/release/symon-gateway
 # --- environment -------------------------------------------------------------------------
 Environment=SYMON_GATEWAY_BIND=127.0.0.1:8000
 Environment=SYMON_API_UPSTREAM=http://127.0.0.1:8800
-# Deliberately the same :8800 as the API and NOT an engine port. On this machine llama-server
-# is not a service -- backend/api.py:113 spawns it as a child process per job while holding
+# Deliberately the same :8800 as the API and NOT an engine port. On this machine the LLM
+# engine is not a service -- backend/api.py spawns it (see LLM_ENGINE) per job while holding
 # the mutex in scripts/gpu-governor.sh. Nothing listens on :8080 or :9001 between jobs, and a
 # gateway that reached one directly would be using the GPU without the governor lock.
 Environment=SYMON_ENGINE_UPSTREAM=http://127.0.0.1:8800
