@@ -115,11 +115,25 @@ better, resolving a folder move against the disk, survives as `resolve:`.
            reconcile the directory against it, and make `tools/build_rack.py` read it instead
            of carrying rows by hand. Three lists that disagree is the three-state-documents
            failure with a different filename.
-        2. **Finish the streamer merge** (#28). Guide and tuner were merged by hand and the
-           collision was left in the tree: `routesmergemewithotherroutes.py` and
-           `READMEmergemewithotherreadme.md` are literally named for the job, and tuner's
-           `__init__.py` was overwritten by guide's — its `router`/`status` exports exist only
-           in git history now. Merge all three, then delete the placeholders.
+        2. **Finish the streamer merge — the namespace, not just the files** (#28). The file
+           half is done: `routesmergemewithotherroutes.py` and `READMEmergemewithotherreadme.md`
+           are gone, guide is a subpackage, and tuner's clobbered `__init__.py` exports were
+           recovered from git history (`0c0f969`). **The namespace half was not**, and Garrett
+           corrected it on 2026-08-20: *"i said tuner and guide needed to be merged and
+           migrated to streamer"*. The package is `apps/streamer` while everything a visitor
+           or a caller touches still says tuner — `/api/tuner/*`, `/api/guide/*`,
+           `site/tuner.html`, `site/tuner-watch.html`, `id="tuner"` on the rack, four test
+           files, and six `localStorage` keys under `symoneural.tuner.*`. One surface, one
+           name: `/api/streamer/*` with guide nested at `/api/streamer/guide/*` — they both
+           declare `/state`, so a shared flat prefix would collide — one row reading
+           `streamer`, and `site/streamer.html`.
+           Two things must survive the rename and are the reason this is not a blind sweep:
+           the visitors' `localStorage` (playlists, Xtream credentials, favourites) needs a
+           one-time read-old-write-new migration or people lose their setup, and the prose
+           explaining *why* the merge happened has to keep saying "tuner" and "guide" —
+           renaming the words inside the sentence that records the decision falsifies the
+           record. `symon_ml/training/tuner.py` in `docs/specs/symon-ml-review.md` is a
+           third-party path and a hyperparameter tuner: different word, leave it.
         3. **The plugin interface** (#54). `backend/apps/studio/plugins/__init__.py` is the
            contract the three plugins load through, and it does not exist yet; exp's CATALOGUE
            is the working prototype to generalise from.
@@ -145,13 +159,22 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists backend/apps/studio/plugins/discovery/__init__.py
         check: absent backend/apps/streamer/routesmergemewithotherroutes.py
         check: absent backend/apps/streamer/READMEmergemewithotherreadme.md
-        check: grep tuner_router -- backend/apps/streamer/__init__.py
+        check: grep "include_router" -- backend/apps/streamer/__init__.py
+        check: exists site/streamer.html
+        check: absent site/tuner.html
+        check: grep "/api/streamer" -- backend/api.py
+        check: ngrep "/api/tuner" -- backend/api.py
+        check: ngrep ROW_OF_MODULE -- backend/apps/test_status_rack.py
         check: grep 8188 -- backend/apps/studio/registry.py
         check: exists ops/symoneural-deploy.service
-        note: `grep tuner_router`, not `grep tuner`: the word "tuner" already appears in
-        note: guide's docstring, so the loose form passed while tuner's exports were still
-        note: missing. A check that passes before the work is done is worse than no check —
-        note: this one would have archived the task. Verified by running it before and after.
+        note: `grep tuner_router` used to stand here, and it has been REMOVED rather than kept.
+        note: It was a good check for the file merge — the loose `grep tuner` passed on guide's
+        note: docstring while tuner's exports were still missing — but it became an anti-check the
+        note: moment the task grew the namespace half: finishing the merge properly *deletes*
+        note: `tuner_router` in favour of one `router`, so the check would go false as the work
+        note: got more done, and a re-run would read as a regression. `grep "include_router"` in
+        note: `__init__.py` replaces it and is true only when the package composes the two halves
+        note: itself instead of handing api.py two routers to wire.
         note: The `resolve:` lines that closed #51, #53 and #55 read the filesystem, which is
         note: why they could close themselves the moment the folders moved. The checks above
         note: are chosen the same way — each one is false today and can only be made true by
@@ -172,6 +195,30 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         `references/` is a read-only reading room: nothing under it may be imported, built or
         shipped. A rebranded tree lives in its own proper location and is what the build points
         at. Choosing that location is mine to do and to write down here when I do it.
+
+        **The standard, widened 2026-08-20.** Garrett: *"we should have the goal of rebranding
+        and/or writing fresh code for everything. You better have a really good and justified
+        reason for not doing so and this includes what is in the requirements.txt for python
+        modules"*, and then the line that draws the boundary: *"nvidia sources i understand being
+        locked down as of right now i see no other sources as 'locked down' and they should be
+        recreated"*. So the default for every dependency is **recreate**, and not-recreating is
+        the thing that needs an argument written down beside it.
+
+        **The one exemption, in his words:** *"only thing that doesnt get rebranded is CUDA to my
+        knowledge"*, and *"CUDA can be moved out of references to the professional repo location
+        if needed as well as other nvidia sources"*. CUDA, cuDNN, NVENC, nvidia-smi and the driver
+        stay named as they are — they are proprietary, they are the hardware's own interface, and
+        renaming them would make every measured figure on the site unverifiable. They may still
+        move out of `references/` into the built tree; the exemption is from *renaming*, not from
+        the relocation.
+
+        **The method is mine, the outcome is his.** Garrett 2026-08-20: *"i dont care if you
+        rebrand, recreate or write it completely from scratch with no references i just put the
+        references there to make it easier"*. So there is no question to ask him per dependency,
+        and no need for a plan approval before starting one: pick whichever of the three is
+        honest for that component and write the choice down in `backend/DEPENDENCIES.md`. What is
+        NOT mine is the outcome — nothing ships under a third-party name, and nothing under
+        `references/` is imported, built or linked. Those two are the acceptance test.
 
         1. **The engines** (#33). `llama-server` → `symoneural-llm`, `sd-cli` →
            `symoneural-diffuse`, `kawpowminer` → `symoneural-miner`, `whisper` →
@@ -199,6 +246,60 @@ better, resolving a folder move against the disk, survives as `resolve:`.
            substance, and #25 in particular — "apply a naming system tastefully" — has no
            predicate that means done. It is unmeasured on purpose.
 
+        5. **The Python dependency layer** — new, and the widened standard's hardest case.
+           Six `requirements.txt` files ship (`backend/apps/remix`, `backend/apps/studio`,
+           `studio/plugins/reinforce`, `studio/plugins/discovery`, `apps/cryptominer/…PROD…`,
+           `deploy/bento`), and the serving path deliberately has none — it runs on the system
+           interpreter's fastapi, uvicorn, pydantic and sympy. Three different jobs hide under one
+           word here and they must not be conflated:
+           - **Recreate** what is small enough to own and central enough to matter. `sympy`'s use
+             here is `sympify`, `diff`, `integrate`, `solve`, `latex` — RavenCalc is a thin surface
+             over a handful of calls, and a SyMoNeuRaL symbolic core is a real project rather than
+             an impossible one. Same for the SSRF/fetch helpers and anything under 2 kLOC.
+           - **Facade** what cannot honestly be recreated. No application module may name a
+             third-party package directly; imports go through our own module so the vendor name
+             appears in exactly one file per dependency and the swap is a one-file change later.
+             This is the answer to "rebrand a library you install from PyPI": the import name *is*
+             the package's identity, so the rebranding that is actually available is the boundary.
+           - **Argue, in writing, for the rest.** `backend/DEPENDENCIES.md` gets one row per
+             package: what it does, what replacing it would cost, and the decision. A row with no
+             reason is the failure this item exists to prevent. My standing candidates for *keep*
+             are the ASGI stack (fastapi/uvicorn/pydantic) and torch — rewriting an ASGI server or
+             an autograd engine would take the site's numbers *down*, which is the opposite of the
+             point. That is the argument; it goes in the file to be accepted or overruled.
+
+        6. **Swagger UI** — Garrett 2026-08-20: *"Swagger UI needs to be rebranded also"*. This is
+           `backend/api.py:1477-1496`: `get_swagger_ui_html` with our palette laid over it and the
+           assets served from this box (`/swagger-ui-bundle.js`, `/swagger-ui.css`,
+           `/swagger-dark.css`). Today it is Swagger wearing our colours and it still says Swagger.
+           The API reference is a visitor-facing page and should be a SyMoNeuRaL surface: our own
+           renderer over `/openapi.json`, our own asset names, no `swagger` in a URL a visitor
+           sees. Apache-2.0, so the notice moves to `LICENSES.md` and does not vanish.
+
+        7. **SymPy on the RavenCalc surface** — Garrett 2026-08-20, pasting the live page: *"SymPy
+           needs rebranding also this from the https://symoneural.com/ravencalc.html"*. It is named
+           in **16 site files** and 3 backend files (`sympy` lowercase in 1 more site file and 9
+           backend), including the page's central claims — "RavenCalc is SymPy underneath", "SymPy
+           computing it", "The keys type SymPy". Note what survives the rename and what does not:
+           the *argument* is "exact symbolic computation, not a language model guessing at algebra",
+           and that sentence is true of a SyMoNeuRaL engine word for word. Only the vendor's name
+           goes. BSD-3-Clause requires the notice in accompanying documentation, so it moves to
+           `LICENSES.md`; it is not deleted. Pairs with item 5's recreate case.
+
+        note: 2026-08-20 — the licence position for the whole task, written once so no part of it
+        note: has to re-derive it. Renaming a permissively licensed dependency in what we ship is
+        note: allowed by MIT, BSD-3-Clause and Apache-2.0 alike; what none of the three allow is
+        note: dropping the copyright notice from the accompanying materials. `LICENSES.md` is that
+        note: material and is where every notice lands. Two carry more than a notice: ComfyUI is
+        note: GPL-3.0, so a rebranded derivative still owes a source offer and still has to stay
+        note: GPL — which is exactly why "recreated" is the cheaper path there, not the dearer one
+        note: — and Apache-2.0 §6 grants no trademark rights, which means using the upstream mark
+        note: is the legally weaker choice and rebranding is the safer one. The precedent is
+        note: already set in this repo: `built on Qwen2.5-7B-Instruct` is called an Apache-2.0
+        note: condition in `.claude/CLAUDE.md`, and every `text-overflow:ellipsis` rule was
+        note: deleted from the CSS because that attribution had been truncated to `…7B-Ins…`.
+        note: So: the presented name is ours to change, the notice is not ours to remove.
+
         note: The two `ngrep`s match the quoted literals `"llama.cpp"` and
         note: `"stable-diffusion.cpp"`, not the path `contrib/llama.cpp`. `api.py:154-155`
         note: builds those paths from segments — `ROOT / "contrib" / "llama.cpp" / ...` — so
@@ -215,6 +316,10 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep symoneural-diffuse -- backend/api.py
         check: exists backend/models/NAMES.md
         check: grep upstream -- backend/models/NAMES.md
+        check: exists backend/DEPENDENCIES.md
+        check: grep "would cost" -- backend/DEPENDENCIES.md
+        check: ngrep "swagger" -- backend/api.py
+        check: ngrep "SymPy" -- site/ravencalc.html
 
 ◻ #75 — Secrets, credentials and leak containment
         owner: coder
