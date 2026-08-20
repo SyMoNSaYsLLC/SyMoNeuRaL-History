@@ -794,6 +794,74 @@ def _one_line(value: object, width: int) -> str:
     return f"{flat[:width]}... ({len(text)} chars)"
 
 
+# The four verdicts, and the keys that give them. `always` is per-invocation and is never
+# written to disk: a persisted "always" is a decision made once and applied forever by a file
+# nobody re-reads, which is how `run_command` ends up ungated on a box whose owner does not
+# remember agreeing to it.
+APPROVE_KEYS = {"y": "yes", "yes": "yes", "": "yes",
+                "n": "no", "no": "no",
+                "a": "always", "always": "always",
+                "q": "quit", "quit": "quit"}
+
+
+def have_tty() -> bool:
+    """Is there a human to ask? Answered by opening the controlling terminal, not by testing
+    stdin -- in `agent "..."` stdin may be a pipe carrying the query and in the repl it is
+    the session transcript, and neither absence means there is nobody at the keyboard."""
+    try:
+        with open("/dev/tty", "r"):
+            return True
+    except OSError:
+        return False
+
+
+def approve(name: str, arguments: object, reason: str = "") -> str:
+    """Ask about one gated tool call, and show the arguments that will actually run.
+
+    Returns "yes", "no", "always" or "quit". The arguments are printed in full and never
+    elided -- this is the one place in the client where a truncated line would mean a human
+    approved something they had not read, and the layout rule against `text-overflow` is the
+    same rule for the same reason.
+
+    Reading from `/dev/tty` rather than stdin is deliberate: in `symoneural-cli agent "..."`
+    stdin may be a pipe carrying the query, and in the repl it is the transcript of the
+    session. Neither is a human. If there is no controlling terminal there is nobody to ask,
+    and the caller must not reach this function at all -- it asserts that rather than falling
+    back to a default, because a default here is a policy invented at the worst moment.
+    """
+    print()
+    print(f"  {c('permission required', AMBER)}  {c(name, BOLD)}"
+          + (f"  {c(reason, DIM)}" if reason else ""))
+    for line in json.dumps(arguments, indent=2, default=str).splitlines():
+        print(f"    {line}")
+    print(f"  {c('[y]', BOLD)}es once   {c('[n]', BOLD)}o, tell the model it was refused   "
+          f"{c('[a]', BOLD)}lways this session   {c('[q]', BOLD)}uit the turn")
+    with open("/dev/tty", "r", encoding="utf-8") as tty:
+        while True:
+            print("  > ", end="", flush=True)
+            line = tty.readline()
+            if not line:                      # the terminal went away mid-question
+                print(c("no answer; refusing", DIM))
+                return "no"
+            verdict = APPROVE_KEYS.get(line.strip().lower())
+            if verdict:
+                return verdict
+            print(c("  y, n, a or q", DIM))
+
+
+def gated_result(name: str, verdict: str) -> dict:
+    """What the model is told when a human refuses. It is told the truth: a person said no.
+
+    Not an error and not an empty result. `{"error": "..."}` would invite a retry, and a
+    silent empty result would have the model reason from a tool it thinks succeeded.
+    """
+    return {"error": "not_permitted", "tool": name,
+            "detail": ("the operator declined this call. Do not retry it; say what you "
+                       "needed it for, or continue without it."
+                       if verdict == "no" else
+                       "the operator ended the turn at this call.")}
+
+
 def cmd_agent(args) -> int:
     """Drive one agent turn and render the SSE stream as it arrives.
 
@@ -850,6 +918,124 @@ def cmd_agent(args) -> int:
     if args.context:
         body["context"] = args.context
 
+    # The permission policy. `auto` is the only sane default and it is decided by whether
+    # there is a terminal to ask on: with one, the loop stops and asks; without one, it
+    # refuses and tells the model it was refused, which keeps the turn completing. The third
+    # possibility -- assume yes because nobody is watching -- is the one this must never be,
+    # and `--dangerously-allow-all` is spelled the way it is so that choosing it is a
+    # sentence somebody typed rather than a default they inherited.
+    mode = getattr(args, "permissions", "auto")
+    if getattr(args, "dangerously_allow_all", False):
+        mode = "allow"
+    if mode == "auto":
+        mode = "ask" if have_tty() else "deny"
+    body["permissions"] = mode
+    if getattr(args, "allow_tool", None):
+        body["allow"] = list(args.allow_tool)
+
+    # One turn may take several requests: a `permissions: "ask"` run stops the moment the
+    # model chooses a gated tool, and resuming it is another POST. So the request is a loop,
+    # and `t0` is deliberately outside it -- the stamps a user reads are elapsed-since-asked,
+    # not elapsed-since-the-latest-segment, and resetting them at each gate would make the
+    # clock appear to run backwards every time somebody answered a prompt.
+    t0 = time.monotonic()
+    frames: list[dict] = []
+    answer = ""
+    failed = False
+    segments = 0
+
+    while True:
+        seg = stream_turn(args, body, t0)
+        segments += 1
+        frames += seg["frames"]
+        if seg["answer"]:
+            answer = seg["answer"]
+        if seg["failed"]:
+            failed = True
+        if seg["http"] is not None:
+            return seg["http"]
+
+        ask = seg["permission"]
+        if ask is None:
+            break
+
+        name, arguments = ask.get("name"), ask.get("arguments")
+        for dropped in ask.get("dropped") or []:
+            print(c(f"  (and {dropped} after it, not run and not approved)", DIM))
+        verdict = approve(name, arguments, ask.get("reason") or "")
+
+        # `pending` is what the server appended during the stopped step: the assistant message
+        # carrying the tool call, plus any results from calls before this one. It has to go
+        # into `resume` verbatim, or the transcript the model reads next will not contain the
+        # call it is being handed a result for.
+        body.setdefault("resume", [])
+        body["resume"] += list(ask.get("pending") or [])
+
+        if verdict == "quit":
+            print(c("  turn ended at the gate", DIM))
+            result = gated_result(name, "quit")
+        elif verdict == "no":
+            result = gated_result(name, "no")
+        else:
+            if verdict == "always":
+                body.setdefault("allow", [])
+                if name not in body["allow"]:
+                    body["allow"].append(name)
+                print(c(f"  {name} allowed for the rest of this invocation", DIM))
+            # THE CLIENT runs it, with the argument object it just displayed. Re-issuing the
+            # turn with the tool merely permitted would let the model choose its arguments
+            # again at temperature, so what ran could differ from what was read and approved.
+            print(c(f"  running {name}", GREEN))
+            try:
+                result = api_json(f"/api/studio/tool/{name}", base=args.url, method="POST",
+                                  body={"arguments": arguments}, timeout=args.timeout)
+            except Exception as exc:                       # noqa: BLE001
+                result = {"error": "tool_failed", "tool": name,
+                          "detail": f"{type(exc).__name__}: {exc}"}
+            print(f"  {c('   ->', DIM)} "
+                  f"{_one_line(result, max(20, shutil.get_terminal_size((100, 24)).columns - 30))}")
+
+        entry: dict = {"role": "tool", "name": name,
+                       "content": json.dumps(result, default=str)}
+        if ask.get("call_id"):
+            entry["tool_call_id"] = ask["call_id"]
+        body["resume"].append(entry)
+
+        if verdict == "quit":
+            failed = False
+            break
+
+    # Record the exchange whether or not this turn read the thread, so that a later `-c` has
+    # something to send. A failed turn is not appended: half a turn is worse than none.
+    if answer and not failed and not args.no_save:
+        transcript_write(path, transcript_read(path)
+                         + [{"role": "user", "content": query},
+                            {"role": "assistant", "content": answer}])
+
+    if args.output_format == "json":
+        print(json.dumps({"query": query, "answer": answer, "events": frames,
+                          "session": args.session, "history_sent": len(prior),
+                          "segments": segments,
+                          "elapsed_s": round(time.monotonic() - t0, 3),
+                          "ok": not failed}, indent=2, default=str))
+    return 1 if failed else 0
+
+
+def stream_turn(args, body: dict, t0: float) -> dict:
+    """One POST to `/api/studio/agent`, rendered as it arrives.
+
+    Returns what the caller needs to decide whether the turn is over:
+
+        frames      every frame, in order
+        answer      the final text, or ""
+        failed      an `error` frame arrived
+        permission  the `permission_required` frame, if the turn stopped on a gate
+        http        an exit code, if the request itself failed; otherwise None
+
+    Split out of `cmd_agent` when the gate landed, because a turn is no longer one request.
+    The renderer is unchanged and still prints frames it has not been taught rather than
+    dropping them -- a terminal quieter than the loop it is watching is the failure mode.
+    """
     import urllib.error
 
     try:
@@ -862,14 +1048,15 @@ def cmd_agent(args) -> int:
         except ValueError:
             detail = raw.strip()[:400]
         print(f"HTTP {exc.code}: {detail}", file=sys.stderr)
-        return 1
+        return {"frames": [], "answer": "", "failed": True, "permission": None, "http": 1}
     except urllib.error.URLError as exc:
-        return unreachable(args.url, {"detail": str(exc.reason)})
+        return {"frames": [], "answer": "", "failed": True, "permission": None,
+                "http": unreachable(args.url, {"detail": str(exc.reason)})}
 
-    t0 = time.monotonic()
     frames: list[dict] = []
     answer = ""
     failed = False
+    permission = None
     width = shutil.get_terminal_size((100, 24)).columns
     with resp:
         for raw in resp:
@@ -886,6 +1073,8 @@ def cmd_agent(args) -> int:
                 answer = frame.get("text") or ""
             if kind == "error":
                 failed = True
+            if kind == "permission_required":
+                permission = frame
             if args.output_format == "stream-json":
                 print(json.dumps(frame, default=str), flush=True)
                 continue
@@ -907,6 +1096,12 @@ def cmd_agent(args) -> int:
                          if args.verbose else _one_line(frame.get("result"),
                                                         max(20, width - 30)))
                 print(f"{stamp} {c('   ->', DIM)} {shown}")
+            elif kind == "permission_required":
+                # The prompt itself is `approve()`'s, printed by the caller once the stream
+                # has finished. Announcing it here keeps the stamp sequence honest: the turn
+                # stopped at this moment, and the seconds a human then spends deciding are
+                # not the loop's.
+                print(f"{stamp} {c('stopped', AMBER)} {frame.get('name')} needs permission")
             elif kind == "answer":
                 print(f"{stamp} {c('answer', BOLD)}"
                       f"{c('  (step limit reached)', AMBER) if frame.get('truncated') else ''}")
@@ -917,6 +1112,8 @@ def cmd_agent(args) -> int:
                 print(f"{stamp} {c('error', AMBER)} {frame.get('code')}: "
                       f"{frame.get('detail')}", file=sys.stderr)
             elif kind == "done":
+                if frame.get("awaiting_permission"):
+                    continue            # the turn is not done; the caller is about to ask
                 used, secs = frame.get("tools_used"), frame.get("seconds")
                 print(f"{stamp} {c('done', DIM)} {c(str(frame.get('steps')) + ' steps', DIM)}"
                       + (c(f", tools {used}", DIM) if used else "")
@@ -926,19 +1123,8 @@ def cmd_agent(args) -> int:
             else:  # an event this renderer has not been taught: show it, do not swallow it
                 print(f"{stamp} {c('?', AMBER)} {json.dumps(frame, default=str)}")
 
-    # Record the exchange whether or not this turn read the thread, so that a later `-c` has
-    # something to send. A failed turn is not appended: half a turn is worse than none.
-    if answer and not failed and not args.no_save:
-        transcript_write(path, transcript_read(path)
-                         + [{"role": "user", "content": query},
-                            {"role": "assistant", "content": answer}])
-
-    if args.output_format == "json":
-        print(json.dumps({"query": query, "answer": answer, "events": frames,
-                          "session": args.session, "history_sent": len(prior),
-                          "elapsed_s": round(time.monotonic() - t0, 3),
-                          "ok": not failed}, indent=2, default=str))
-    return 1 if failed else 0
+    return {"frames": frames, "answer": answer, "failed": failed,
+            "permission": permission, "http": None}
 
 
 def cmd_mcp(args) -> int:
@@ -1027,7 +1213,7 @@ SLASH: list[tuple[str, str]] = [
     ("/model [NAME]", "show, set, or clear the model this session asks for"),
     ("/resume [ID]", "list the recorded sessions, or switch to one"),
     ("/session", "this session's id, its file, and how many messages are in it"),
-    ("/permissions", "what is gated, and whether this session is skipping the gate"),
+    ("/permissions", "what is gated, what this session does about it, and change it"),
     ("/exit", "leave -- Ctrl-D does the same; Ctrl-C only cancels the line"),
 ]
 
@@ -1116,7 +1302,12 @@ def agent_namespace(args, session: str, query: str, cont: bool) -> argparse.Name
         query=[query], cont=cont, session=session, history_limit=args.history_limit,
         no_save=False, forget=False, max_steps=args.max_steps, model=args.model,
         context=args.context, output_format="text", verbose=args.verbose,
-        timeout=args.timeout, url=args.url)
+        timeout=args.timeout, url=args.url,
+        # The gate's settings live on the repl's own args so that `/permissions` can change
+        # them mid-session and the next turn honours it. Copying them per turn rather than
+        # reading them once is what makes that possible.
+        permissions=args.permissions, dangerously_allow_all=args.dangerously_allow_all,
+        allow_tool=list(args.allow_tool or []))
 
 
 def cmd_repl(args) -> int:
@@ -1229,14 +1420,37 @@ def cmd_repl(args) -> int:
                         f"{len(transcript_read(transcript_path(session)))} messages", DIM))
                 continue
             if verb == "/permissions":
-                # Item 1 of task #78 is the session; the gate is item 3 and is not built yet.
-                # This says so rather than reporting a policy that is not being enforced -- a
-                # client that claims to be gating tools while the server runs them unasked is
-                # the dishonest-indicator rule applied to a terminal.
-                print(c("not gated yet: the loop runs server-side and executes its own "
-                        "tools, so nothing here can intercept one. Task #78 item 3 adds a "
-                        "`permission_required` frame to the loop and answers it here.",
-                        AMBER))
+                if rest in ("ask", "deny", "allow"):
+                    args.permissions = rest
+                    args.dangerously_allow_all = rest == "allow"
+                    print(c(f"permissions: {rest}", DIM))
+                    continue
+                if rest.startswith("+") and len(rest) > 1:
+                    args.allow_tool = list(args.allow_tool or []) + [rest[1:]]
+                    print(c(f"exempt for this session: {', '.join(args.allow_tool)}", DIM))
+                    continue
+                if rest.startswith("-") and len(rest) > 1:
+                    args.allow_tool = [x for x in (args.allow_tool or []) if x != rest[1:]]
+                    print(c(f"exempt for this session: "
+                            f"{', '.join(args.allow_tool) or 'nothing'}", DIM))
+                    continue
+                mode = "allow" if args.dangerously_allow_all else args.permissions
+                shown = mode
+                if mode == "auto":
+                    # Say what auto RESOLVES to, not just that it is auto. "auto" alone tells
+                    # a reader the setting and not the state, and the state is the thing they
+                    # asked about.
+                    shown = f"auto -> {'ask' if have_tty() else 'deny'}"
+                print(c(f"permissions: {shown}", DIM))
+                # The gated set comes from the registry that decides it, over /state, rather
+                # than from a list typed into this client -- a copied list is a list that
+                # drifts, and the drift is silent in exactly the direction that matters.
+                gated = (api_json("/api/studio/state", base=args.url) or {}).get("gated")
+                print(c(f"gated: {', '.join(gated) if gated else 'unknown (no api)'}", DIM))
+                print(c(f"exempt this session: "
+                        f"{', '.join(args.allow_tool or []) or 'nothing'}", DIM))
+                print(c("  /permissions ask|deny|allow, /permissions +NAME, "
+                        "/permissions -NAME", DIM))
                 continue
             print(c(f"{verb}: no such command -- /help", AMBER))
             continue
@@ -1314,6 +1528,22 @@ def main() -> int:
                        help=f"the API to talk to (default {DEFAULT_API}, or $SYMONEURAL_API_URL)")
         return q
 
+    # The gate's flags are identical on `agent` and `repl` and are added by one function, so
+    # the two cannot drift into disagreeing about what `--dangerously-allow-all` means.
+    def gate_flags(q):
+        q.add_argument("--permissions", choices=("auto", "ask", "deny", "allow"),
+                       default="auto",
+                       help="what to do when the model chooses a tool the registry marks "
+                            "dangerous: ask (stop and prompt), deny (refuse and tell the "
+                            "model), allow (run it). auto asks if there is a terminal and "
+                            "denies if there is not")
+        q.add_argument("--dangerously-allow-all", action="store_true",
+                       help="equivalent to --permissions allow: run delete_path, env_set, "
+                            "run_command and write_file without asking")
+        q.add_argument("--allow-tool", action="append", metavar="NAME",
+                       help="exempt one tool from the gate; repeatable")
+        return q
+
     p = studio("agent", "one agent turn, streamed -- thinking, tool calls, results, answer")
     p.add_argument("query", nargs="*", help="what to ask")
     # `history` is a parameter the endpoint reads, so it gets a flag. The thread is a file this
@@ -1339,6 +1569,7 @@ def main() -> int:
     p.add_argument("-v", "--verbose", action="store_true",
                    help="print whole tool results instead of one line each")
     p.add_argument("--timeout", type=float, default=900.0)
+    gate_flags(p)
     p.set_defaults(fn=cmd_agent)
 
     p = studio("tools", "the tool registry the model is handed")
@@ -1377,6 +1608,7 @@ def main() -> int:
     p.add_argument("-v", "--verbose", action="store_true",
                    help="print whole tool results instead of one line each")
     p.add_argument("--timeout", type=float, default=900.0)
+    gate_flags(p)
     p.set_defaults(fn=cmd_repl)
 
     p = sub.add_parser("mcp", help="the MCP transport: tools, readiness, client wiring")

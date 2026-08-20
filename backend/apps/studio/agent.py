@@ -235,7 +235,10 @@ def _strip_calls(text: str) -> str:
 async def run(query: str, history: list[dict] | None = None, *,
               max_steps: int | None = None, context: str = "",
               model: str | None = None,
-              temperature: float = 0.6) -> AsyncIterator[dict]:
+              temperature: float = 0.6,
+              permissions: str = "allow",
+              allow: list[str] | None = None,
+              resume: list[dict] | None = None) -> AsyncIterator[dict]:
     """Run one agent turn, yielding events as they happen.
 
     Events, all `{"event": ..., ...}`:
@@ -244,12 +247,49 @@ async def run(query: str, history: list[dict] | None = None, *,
         thinking  prose the model produced on an intermediate step
         tool_call name + arguments, before execution
         tool_result the raw return value, after execution
+        permission_required  a gated tool was chosen; the turn STOPS without running it
         answer    the final synthesis
         error     something failed; the turn is over
         done      step count and wall clock
 
     Yielding rather than returning is what lets the browser show a tool executing while it
     executes, instead of a spinner followed by a wall of text.
+
+    `permissions` decides what happens when the model chooses a tool the registry marks
+    `dangerous=True` -- `delete_path`, `env_set`, `run_command`, `write_file` -- and `allow`
+    names individual tools exempted from it whatever the mode:
+
+        "allow"  run it. The default, because it is what this endpoint did before the mode
+                 existed and the /studio page has no way to answer a prompt. Changing the
+                 default would have gated the browser surface silently, which is a different
+                 decision that belongs to whoever makes it deliberately.
+        "deny"   do not run it; hand the model a `not_permitted` result and keep going. This
+                 is for a caller that cannot be asked -- a pipe, a cron job -- and it is the
+                 honest shape for that case: the turn still completes and the model is told
+                 what it was refused, instead of a client pretending to have asked somebody.
+        "ask"    do not run it; yield `permission_required` and END THE TURN.
+
+    "ask" ends the turn rather than waiting because this transport is one-directional: SSE
+    cannot carry the answer back. The frame therefore carries everything the caller needs to
+    resume -- the exact `arguments`, and `pending`, the messages already appended during this
+    step. The caller runs the approved tool ITSELF via `POST /api/studio/tool/{name}` with the
+    arguments it displayed, appends the result, and re-issues the turn with the longer history.
+
+    That indirection is the point. The obvious design -- re-run the turn with the tool now
+    allowed -- lets the model re-choose at temperature, so it can call `run_command` with
+    different arguments than the ones a human read and approved, and every tool that ran
+    before the gate runs a second time. A prompt that displays A and executes B is worse than
+    no prompt at all.
+
+    `resume` is the other half of that: messages appended AFTER the user query rather than
+    before it, which is where the caller's approved tool call and its result belong. Sending
+    them as `history` would put them ahead of the query and the model would read its own tool
+    call as something that happened before it was asked, then find the question repeated at
+    the end of the transcript. One list cannot do both jobs, so there are two.
+
+    A resumed segment starts its step count at zero, because it is a new call. `steps` and
+    `tools_used` on `done` are therefore per-segment, and a caller that wants the whole turn
+    adds them up -- which is what the terminal client's status line does.
     """
     started = time.monotonic()
     steps = max_steps if max_steps is not None else MAX_STEPS
@@ -265,6 +305,7 @@ async def run(query: str, history: list[dict] | None = None, *,
     messages: list[dict] = [{"role": "system", "content": system_prompt(context)}]
     messages += list(history or [])
     messages.append({"role": "user", "content": query})
+    messages += list(resume or [])
 
     specs = registry.tool_specs()
     used = 0
@@ -308,12 +349,43 @@ async def run(query: str, history: list[dict] | None = None, *,
                          **({"tool_calls": message["tool_calls"]}
                             if message.get("tool_calls") else {})})
 
+        # Everything appended during this step, so that a gate can hand the caller exactly
+        # what it must add to its own history before resuming. Slicing `messages` would work
+        # today and would break the first time anything else appends; this is explicit.
+        pending: list[dict] = [messages[-1]]
+        exempt = set(allow or [])
+
         for call in calls:
             name, args = call["name"], call["arguments"]
-            yield {"event": "tool_call", "name": name, "arguments": args, "step": step + 1}
+            entry_tool = registry.get(name)
+            gated = (entry_tool is not None and entry_tool.dangerous
+                     and name not in exempt and permissions in ("ask", "deny"))
+
+            if gated and permissions == "ask":
+                # The turn ends here and NOTHING is run. Any tool call after this one in the
+                # same message is dropped on purpose: the model chose them as a set, and
+                # running the tail of a set whose head was never approved is a decision
+                # nobody made. They come back when the caller resumes.
+                yield {"event": "permission_required", "name": name, "arguments": args,
+                       "call_id": call.get("id"), "step": step + 1, "pending": pending,
+                       "reason": f"{name} is marked dangerous in the tool registry",
+                       "dropped": [c["name"] for c in calls[calls.index(call) + 1:]]}
+                yield {"event": "done", "steps": step + 1, "tools_used": used,
+                       "awaiting_permission": True,
+                       "seconds": round(time.monotonic() - started, 2)}
+                return
+
+            yield {"event": "tool_call", "name": name, "arguments": args, "step": step + 1,
+                   **({"gated": True} if gated else {})}
             t0 = time.monotonic()
             try:
-                result = await registry.call(name, args)
+                if gated:                                  # permissions == "deny" by here
+                    result = {"error": "not_permitted", "tool": name,
+                              "detail": "the caller refused this tool without asking a "
+                                        "human, because it has nobody to ask. Do not retry "
+                                        "it; say what you would have needed it for."}
+                else:
+                    result = await registry.call(name, args)
             except TypeError as e:
                 # Wrong arguments for a real tool. Recoverable: tell the model what it got
                 # wrong and let it try again rather than ending the turn.
@@ -324,7 +396,11 @@ async def run(query: str, history: list[dict] | None = None, *,
                 result = {"error": "tool_raised", "tool": name,
                           "detail": f"{type(e).__name__}: {e}"}
             elapsed = round(time.monotonic() - t0, 3)
-            used += 1
+            # A refused tool is not a used tool. `tools_used` is read as "the card and the
+            # filesystem were touched this many times", and counting a denial in it would
+            # inflate exactly the figure somebody would check that against.
+            if not gated:
+                used += 1
 
             yield {"event": "tool_result", "name": name, "result": result,
                    "seconds": elapsed, "step": step + 1}
@@ -334,6 +410,7 @@ async def run(query: str, history: list[dict] | None = None, *,
             if call.get("id"):
                 entry["tool_call_id"] = call["id"]
             messages.append(entry)
+            pending.append(entry)
 
     # Fell out of the loop with tools still being called. Ask once for a synthesis rather
     # than returning nothing, and label it -- an answer produced under a step cap is not the

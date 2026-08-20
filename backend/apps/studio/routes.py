@@ -348,6 +348,12 @@ async def state(request: Request) -> JSONResponse:
         "comfyui": {**comfy_state, "editor": "/studio/comfy/"},
         "lease": _KEEPER.snapshot(full=privileged),
         "max_steps": agent.MAX_STEPS,
+        # What a `permissions: "ask"` or `"deny"` run will stop on. Published here, without a
+        # token, so a client does not have to import the backend to know which tools it is
+        # about to be asked about -- and so that "what is gated" is answered by the registry
+        # that decides it, rather than by a list copied into a client and left to drift.
+        "gated": sorted(n for n in registry.names()
+                        if getattr(registry.get(n), "dangerous", False)),
     })
 
 
@@ -491,12 +497,29 @@ async def run_agent(request: Request) -> Response:
     history = body.get("history") if isinstance(body.get("history"), list) else None
     max_steps = body.get("max_steps")
 
+    # The permission mode, validated here rather than in the loop so a typo is a 400 and not
+    # a silently permissive run. `"allow"` is the default because it is what this endpoint did
+    # before the mode existed: the /studio page cannot answer a `permission_required` frame,
+    # so defaulting to "ask" would have gated the browser surface by accident.
+    permissions = str(body.get("permissions") or "allow")
+    if permissions not in ("allow", "deny", "ask"):
+        return JSONResponse({"error": "bad_permissions",
+                             "detail": 'permissions must be "allow", "deny" or "ask"',
+                             "got": permissions}, status_code=400)
+    allow = [str(x) for x in body.get("allow") or [] if isinstance(x, (str, int))]
+    # Messages that belong AFTER the user query: an approved tool call and its result, handed
+    # back by a caller resuming a turn that stopped on `permission_required`. Kept separate
+    # from `history` because history goes before the query and this must go after it.
+    resume = body.get("resume") if isinstance(body.get("resume"), list) else None
+
     async def stream() -> typing.AsyncIterator[bytes]:
         try:
             async for event in agent.run(query, history,
                                          max_steps=int(max_steps) if max_steps else None,
                                          context=str(body.get("context") or ""),
-                                         model=body.get("model")):
+                                         model=body.get("model"),
+                                         permissions=permissions, allow=allow,
+                                         resume=resume):
                 yield _sse(event)
                 if await request.is_disconnected():
                     break

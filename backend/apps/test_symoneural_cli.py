@@ -63,6 +63,7 @@ root.
 from __future__ import annotations
 
 import contextlib
+import copy
 import inspect
 import io
 import json
@@ -1500,6 +1501,156 @@ class SubcommandTableTests(unittest.TestCase):
         self.assertIn("usage:", err.getvalue())
         self.assertIn("not a terminal", err.getvalue())
         self.assertEqual(out.getvalue(), "", "usage must go to stderr, not stdout")
+
+
+class PermissionGateTests(unittest.TestCase):
+    """The gate, from the client's side. The rule being protected is one sentence: what runs
+    is the argument object that was displayed, chosen by nobody after it was displayed."""
+
+    GATE = [{"event": "backend", "name": "llama", "url": "http://127.0.0.1:8081"},
+            {"event": "permission_required", "name": "run_command",
+             "arguments": {"cmd": "rm -rf /tmp/x"}, "call_id": "c1",
+             "reason": "run_command is marked dangerous in the tool registry",
+             "dropped": ["write_file"],
+             "pending": [{"role": "assistant", "content": "",
+                          "tool_calls": [{"id": "c1"}]}]},
+            {"event": "done", "steps": 1, "tools_used": 0, "awaiting_permission": True}]
+    AFTER = [{"event": "backend", "name": "llama", "url": "http://127.0.0.1:8081"},
+             {"event": "answer", "text": "Removed."},
+             {"event": "done", "steps": 1, "tools_used": 0, "seconds": 0.1}]
+
+    def setUp(self):
+        self.cli = load_cli()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cli.RUN = Path(self.tmp.name)
+        self.sent: list[dict] = []
+        self.ran: list[dict] = []
+        # Two segments: the gated one, then whatever comes after the answer is given.
+        segments = [self.GATE, self.AFTER]
+
+        def api_open(path, *, base, method="GET", body=None, accept=None, timeout=None):
+            self.sent.append(copy.deepcopy(body))
+            return FakeSSE(segments[min(len(self.sent) - 1, len(segments) - 1)])
+        self.cli.api_open = api_open
+
+        def api_json(path, *, base, method="GET", body=None, timeout=None, **kw):
+            self.ran.append({"path": path, "body": copy.deepcopy(body)})
+            return {"ok": True, "stdout": ""}
+        self.cli.api_json = api_json
+
+    def args(self, **kw):
+        return types.SimpleNamespace(**{
+            "query": ["clean up"], "session": "g", "cont": False, "history_limit": 20,
+            "no_save": False, "forget": False, "max_steps": None, "model": None,
+            "context": None, "output_format": "text", "verbose": False,
+            "timeout": 900.0, "url": "http://cli.test", "permissions": "ask",
+            "dangerously_allow_all": False, "allow_tool": None, **kw})
+
+    def answer(self, verdict):
+        """Patch the prompt, not stdin: `approve()` reads /dev/tty on purpose and there is no
+        controlling terminal to give it under pytest. What is being tested here is what the
+        client DOES with a verdict, which is the half that can be wrong."""
+        self.cli.approve = lambda name, arguments, reason="": verdict
+
+    def test_approving_runs_the_arguments_that_were_displayed_and_not_a_fresh_choice(self):
+        """The whole reason the client executes the tool itself. Re-issuing the turn with
+        run_command merely permitted would let the model pick its arguments again at
+        temperature, so the command that ran could differ from the one a human read. This
+        asserts the exact object round-trips from the frame to POST /tool."""
+        self.answer("yes")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            rc, out, err = call(self.cli.cmd_agent, self.args())
+        self.assertEqual(rc, 0, err)
+        self.assertEqual([r["path"] for r in self.ran], ["/api/studio/tool/run_command"])
+        self.assertEqual(self.ran[0]["body"], {"arguments": {"cmd": "rm -rf /tmp/x"}})
+        self.assertIn("Removed.", out)
+
+    def test_the_resumed_request_carries_the_pending_messages_then_the_tool_result(self):
+        """Order is the assertion. `resume` goes AFTER the user query, and inside it the
+        assistant message that made the call must precede the result it is the call for --
+        a result with no call ahead of it is a transcript the template cannot render."""
+        self.answer("yes")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            call(self.cli.cmd_agent, self.args())
+        self.assertEqual(len(self.sent), 2, "the turn should have taken two requests")
+        self.assertNotIn("resume", self.sent[0])
+        resume = self.sent[1]["resume"]
+        self.assertEqual(resume[0]["role"], "assistant")
+        self.assertEqual(resume[1]["role"], "tool")
+        self.assertEqual(resume[1]["tool_call_id"], "c1")
+        self.assertEqual(resume[1]["name"], "run_command")
+        self.assertEqual(self.sent[1]["query"], self.sent[0]["query"],
+                         "the query must not be restated or altered on resume")
+
+    def test_refusing_runs_nothing_and_tells_the_model_a_person_said_no(self):
+        """A refusal must reach the model as a refusal. An empty result would have it reason
+        from a tool it believes succeeded, and a bare error would invite an immediate retry
+        of the exact call that was just declined."""
+        self.answer("no")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            rc, out, err = call(self.cli.cmd_agent, self.args())
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.ran, [], "nothing may execute after a refusal")
+        told = json.loads(self.sent[1]["resume"][1]["content"])
+        self.assertEqual(told["error"], "not_permitted")
+        self.assertIn("declined", told["detail"])
+        self.assertIn("Do not retry", told["detail"])
+
+    def test_always_exempts_that_tool_for_the_rest_of_the_invocation_only(self):
+        """`always` is per-invocation and is never written to disk. A persisted always is a
+        decision made once and applied forever by a file nobody re-reads."""
+        self.answer("always")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            call(self.cli.cmd_agent, self.args())
+        self.assertEqual(self.sent[1]["allow"], ["run_command"])
+        self.assertFalse(list(Path(self.tmp.name).glob("*allow*")),
+                         "an exemption must not be persisted anywhere under run/")
+
+    def test_quitting_stops_the_turn_without_running_it_and_is_not_an_error(self):
+        """Ending a turn at the gate is a decision, not a failure: exit 0, nothing executed,
+        and no second request -- a resumed segment after a quit would be the client asking
+        the model to carry on with a turn its operator just stopped."""
+        self.answer("quit")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            rc, out, err = call(self.cli.cmd_agent, self.args())
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.ran, [])
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("turn ended at the gate", out)
+
+    def test_the_dropped_calls_after_the_gated_one_are_named_not_silently_lost(self):
+        """The model chose those calls as a set. Running the tail of a set whose head was
+        never approved is a decision nobody made, so the server drops them -- and the client
+        has to say so, or a tool the model asked for vanishes with no trace on screen."""
+        self.answer("no")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            _, out, _ = call(self.cli.cmd_agent, self.args())
+        self.assertIn("write_file", out)
+        self.assertIn("not run and not approved", out)
+
+    def test_auto_asks_with_a_terminal_and_refuses_without_one(self):
+        """The one branch that must never resolve the third way. With nobody to ask, the
+        honest modes are "refuse and say so" and "stop"; "assume yes because the room is
+        empty" is the failure this whole mechanism exists to prevent."""
+        self.answer("no")
+        for tty, expected in ((True, "ask"), (False, "deny")):
+            with self.subTest(tty=tty):
+                self.sent.clear()
+                self.cli.have_tty = lambda t=tty: t
+                with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+                    call(self.cli.cmd_agent, self.args(permissions="auto"))
+                self.assertEqual(self.sent[0]["permissions"], expected)
+
+    def test_dangerously_allow_all_is_the_only_way_to_reach_allow_by_accident(self):
+        """It overrides the mode rather than being one of its choices, so that nothing can
+        arrive at `allow` by defaulting: `auto` cannot resolve to it and an unset flag
+        cannot imply it."""
+        self.answer("no")
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            call(self.cli.cmd_agent, self.args(permissions="auto",
+                                               dangerously_allow_all=True))
+        self.assertEqual(self.sent[0]["permissions"], "allow")
 
 
 class StructuralRuleTests(unittest.TestCase):
