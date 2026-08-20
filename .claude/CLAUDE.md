@@ -229,8 +229,11 @@ SYM_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
 bash scripts/comfyui.sh stop                        # /free, THEN SIGTERM -- see below
 ```
 
-**16/16 passed, measured 2026-08-19 at `d20e09b`**, including a 1024x1024 FLUX-schnell render
-decoding in the browser in 14.5 s. Its three `net::ERR_ABORTED` lines are labelled optional and
+**16/16 passed, re-measured 2026-08-19 at `1537262`**, including a 1024x1024 FLUX-schnell
+render decoding in the browser in 14.4 s (14.2 s server-side, card back in 4.1 s, lock
+released). The previous reading was the same 16/16 at `d20e09b`; it was re-run rather than
+re-dated because `backend/api.py` had changed underneath it, and studio.mjs runs against
+`api.py`. Its three `net::ERR_ABORTED` lines are labelled optional and
 404 upstream at :8188 as well; they are not proxy faults. `.claude/HANDOVER.md` has the reading
 and the VRAM curve. The state document claimed for two days that this suite could not run
 because ComfyUI "has no venv and no torch" — it has both (torch **2.13.0+cu130**, sm_120
