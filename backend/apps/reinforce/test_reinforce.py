@@ -1059,25 +1059,30 @@ class TradeSecretTests(unittest.TestCase):
             self.assertNotIn(sentinel, ctx.exception.message)
 
     def test_a_good_dataset_reports_shape_only(self):
+        # Sentinels are long and distinctive on purpose. Two-character markers ("q0"/"a0")
+        # collided with the random tempfile name in `path`, which to_dict() reports by
+        # design -- measured at one failure per ~100 runs. `tempfile` draws 8 characters
+        # from a 37-character alphabet, so over 400,000 trials "q0" appeared in 1 name in
+        # 208 and "a0" in 1 in 192. A 1% flake in a project that anchors every claim to a
+        # suite count at a SHA means a green reading could have been luck, so the fix is a
+        # needle that cannot collide -- not a silenced assertion.
+        USER = "SENTINEL-USER-CONTENT-DO-NOT-REPORT"
+        ASSIST = "SENTINEL-ASSISTANT-CONTENT-DO-NOT-REPORT"
         with tempfile.TemporaryDirectory() as td:
             p = pathlib.Path(td) / "ok.jsonl"
-            rows = [{"messages": [{"role": "user", "content": f"q{i}"},
-                                  {"role": "assistant", "content": f"a{i}"}]} for i in range(5)]
+            rows = [{"messages": [{"role": "user", "content": f"{USER}-{i}"},
+                                  {"role": "assistant", "content": f"{ASSIST}-{i}"}]}
+                    for i in range(5)]
             p.write_text("\n".join(json.dumps(r) for r in rows))
             info = dataset_guard.admit(str(p))
             self.assertEqual(info.rows, 5)
             d = info.to_dict()
-            # `path` is metadata the caller passed in and is legitimately echoed back; every
-            # other field must be shape only. Excluding it here is not a loophole -- row
-            # content never travels in `path`, and scanning it made this test fail roughly 1%
-            # of runs: `tempfile` names its directory from `[a-z0-9_]{8}`, so an adjacent "q0"
-            # or "a0" lands about once in 1369 per position, seven positions, two needles. Seen
-            # for real on 2026-08-20 (`/tmp/...q0.../ok.jsonl`), which read as a trade-secret
-            # leak and was a filename.
-            self.assertIn("path", d, "the report stopped naming the dataset it admitted")
-            payload = json.dumps({k: v for k, v in d.items() if k != "path"})
-            self.assertNotIn("q0", payload)
-            self.assertNotIn("a0", payload)
+            # `path` is a filesystem path and is reported deliberately. The guarantee under
+            # test is that no ROW CONTENT is reported, so assert against everything else.
+            self.assertEqual(d["path"], str(p))
+            shape = json.dumps({k: v for k, v in d.items() if k != "path"})
+            self.assertNotIn(USER, shape)
+            self.assertNotIn(ASSIST, shape)
 
     def test_there_is_no_default_dataset(self):
         with self.assertRaises(dataset_guard.Refused) as ctx:
