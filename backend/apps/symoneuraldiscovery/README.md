@@ -8,7 +8,7 @@ extracts them, and an optional synthesis step turns the extracted pages into a c
 
 This is the engine Garrett asked for when he asked for the ticker: *"I want a live ticker like
 this on the symoneural website but instead of sports live fed news… I believe we will need a
-symoneural webscraping agent and web search agent to accomplish this."* `apps/symoneuralnews`
+symoneural webscraping agent and web search agent to accomplish this."* `apps/news`
 is a consumer of it, not a competitor to it.
 
 ## Half of it runs right now, and it tells you which half

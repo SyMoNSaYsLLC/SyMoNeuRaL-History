@@ -134,9 +134,12 @@ from apps import symoneuralexp as exp  # noqa: E402  -- the plugin runtime. Boun
 # request and `boot()` mounts the preset there, not here -- and the runtime modules under it
 # are stdlib-only, so this import cannot fail for a missing PyYAML or a missing FastAPI. It is
 # the layer the other apps will eventually mount into rather than a surface of its own.
-from apps import symoneuralnews as news  # noqa: E402  -- the ticker's collector. Bound
-# to an alias because a bare `enabled`/`status` from the package would shadow this module's
-# own, the same reason as `studio` and `exp`. Importing it is free and makes no outbound
+from apps import news  # noqa: E402  -- the ticker's collector. Bound to
+# the package, not its names: a bare `enabled`/`status` pulled out of it would shadow this
+# module's own, the same reason as `studio` and `exp`. (This used to read "bound to an alias",
+# which was true when the package was `symoneuralnews` and needed `as news`. It is now named
+# `news`, so there is no alias -- but the binding rule it described is unchanged and is the
+# part that matters.) Importing it is free and makes no outbound
 # request: `feeds.py` is a tuple of literals, and nothing fetches until `refresher()` is
 # started below, which only happens when SYMONEURAL_NEWS_ENABLED=1. Placed above `rackpower`
 # because that import claims the last word and should keep it.
@@ -2436,7 +2439,7 @@ app.include_router(exp.router, prefix="/api/exp", tags=["exp"])
 # returns is a headline eight publishers hand to anyone who asks. Unlike the gateway it
 # answers 200 with an empty list rather than 503 when the surface is off, because its caller
 # is `site/ui.js` on every page load and a 503 in the default state would put a red line in
-# every visitor's console -- see `apps/symoneuralnews/routes.py`.
+# every visitor's console -- see `apps/news/routes.py`.
 app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 
 

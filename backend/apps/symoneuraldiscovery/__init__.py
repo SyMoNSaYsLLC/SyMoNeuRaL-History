@@ -4,7 +4,7 @@ Garrett asked for this twice, from two directions. Once as the engine for the ES
 ticker: *"I want a live ticker like this on the symoneural website but instead of sports live
 fed news… I believe we will need a symoneural webscraping agent and web search agent to
 accomplish this"* — and once, on 2026-08-20, as an app in its own right. This is the shared
-engine. `apps/symoneuralnews` is a consumer of it, not a competitor to it.
+engine. `apps/news` is a consumer of it, not a competitor to it.
 
 The user-facing name follows the house rule that every surface reads as **Symon Say <do
 something>**: Symon Say News, Symon Say Discovery. On disk the package drops the hyphen

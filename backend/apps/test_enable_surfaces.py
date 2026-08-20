@@ -135,7 +135,7 @@ class EnableSurfacesTests(unittest.TestCase):
         NEWS was never on the list and should have been from the day it landed. `GATE` above
         searched for `SYM_([A-Z0-9]+)_ENABLED`, and the news ticker was the first surface
         named in the house style ahead of the rename -- its gate has always been
-        `SYMONEURAL_NEWS_ENABLED` (apps/symoneuralnews/__init__.py:53). So this test, whose
+        `SYMONEURAL_NEWS_ENABLED` (apps/news/__init__.py:53). So this test, whose
         whole job is to notice a gated surface with no switch, could not see it: the surface
         was invisible to the regex rather than exempted by a decision. The rename made it
         visible, which is the second time in this repo that a naming change has surfaced a

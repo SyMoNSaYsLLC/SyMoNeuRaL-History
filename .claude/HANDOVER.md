@@ -3715,7 +3715,7 @@ symoneural webscraping agent and web search agent to accomplish this."* Two comm
 `16ddfb9` is the collector, `26cb58e` is the endpoint and the bar.
 
 **What the two agents actually are**, stated plainly because the name promises more than the
-code does (`backend/apps/symoneuralnews/__init__.py:9-13`): the collector arm reads
+code does (`backend/apps/news/__init__.py:9-13`): the collector arm reads
 publisher-authored RSS and Atom — documents published for exactly this purpose, no HTML
 scraping and no browser — and the search arm sends a query to public search feeds that need no
 API key and parses the results with the same parser. Query → feed → parse. That is the whole

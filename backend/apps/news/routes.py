@@ -1,7 +1,7 @@
 """The ticker's HTTP surface: one read-only endpoint that serves the cache.
 
-    from apps import symoneuralnews
-    app.include_router(symoneuralnews.router, prefix="/api/news")   # before the static mount
+    from apps import news
+    app.include_router(news.router, prefix="/api/news")   # before the static mount
 
 ## Three properties, all deliberate
 

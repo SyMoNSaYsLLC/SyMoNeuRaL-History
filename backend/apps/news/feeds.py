@@ -33,7 +33,7 @@ So:
     against `HOSTS` before it connects, so a query that tries to escape its template fails
     a host check rather than reaching a host of its choosing.
 
-`apps/symoneuralnews/test_news.py::test_no_environment_variable_can_change_the_host_fetched`
+`apps/news/test_news.py::test_no_environment_variable_can_change_the_host_fetched`
 is the regression test for that, and it is the one test in this package that is about
 security rather than about correctness.
 

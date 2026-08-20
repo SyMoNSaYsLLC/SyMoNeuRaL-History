@@ -228,7 +228,7 @@ fi
 #                 documents as the operator channel. SYMONEURAL_MINER_CMD cannot be invented either.
 #   news       -- the switch is not a surface toggle, it is an outbound-network decision.
 #                 Setting SYMONEURAL_NEWS_ENABLED=1 takes the box from "makes no outbound
-#                 requests at all" (apps/symoneuralnews/__init__.py:20-21) to a periodic
+#                 requests at all" (apps/news/__init__.py:20-21) to a periodic
 #                 fetcher against eight third-party hosts, ~112 requests an hour on the
 #                 default interval. There is also no token to mint -- the read endpoint is
 #                 public and serves a cache -- so the loop's shape above, `_ENABLED=1` plus a
