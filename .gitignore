@@ -149,3 +149,12 @@ backend/apps/symoneuraldiscovery/symoneural-discovery.env
 # Review artefacts: uncommitted by standing rule, same as the root ones they hold.
 /review/
 /AUDIT.md
+
+# Rust build output for the gateway. 7,620 files were staged in one `git add -A` on
+# 2026-08-20 because this was never ignored; cargo regenerates all of it from Cargo.toml.
+backend/apps/gateway/target/
+
+# Mode 600 and private, and they must stay untracked. Both were staged by a `git add -A` on
+# 2026-08-20 and caught before the commit; an ignore rule is the durable version of catching it.
+INTAKE.md
+GARRETT-REQUESTS.md

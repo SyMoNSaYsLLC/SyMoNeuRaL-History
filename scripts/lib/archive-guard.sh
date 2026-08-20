@@ -66,6 +66,25 @@ _AG_GIT_PATTERN='(^|/)\.git/'
 # Key names only. Never a value.
 _AG_SECRET_KEYS='SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|SPOTIFY_REDIRECT_URI|SYMON_URL|VLLM_API_KEY|DJ_TOKEN|DJ_TOKEN_PATH|DJ_HOST|DJ_PORT'
 
+# Bulk directories the content scan may skip -- and ONLY in local-authorized mode.
+#
+# The content scan reads bytes. `grep -I` skips binary files, but it must read a file to
+# decide it is binary, so "skip" costs a full read. On this box the working tree is 158 GiB
+# (backend/models 115G, references 12G, ComfyUI 8.5G, training/.venv 7.2G, contrib 6.9G), and
+# #15 hardlinks all of it. Scanning that unpruned takes hours; pruning it takes 0.33 s.
+#
+# WHY THIS IS SAFE FOR local-authorized AND NOT FOR shareable
+#
+# A shareable archive is built from `git ls-files`, so none of these directories can be in one
+# -- every entry here is gitignored bulk data. The scan therefore prunes NOTHING in shareable
+# mode: the archive is ~23 MiB, a full scan is cheap, and the mode whose failure ships a
+# credential is not the mode to take a shortcut in. In local-authorized mode the tree is the
+# whole 158 GiB and the material is authorized to be there anyway.
+#
+# Pruning is never silent. Every entry that exists under the root is printed on the summary
+# line as "not scanned", because a scan that quietly skipped 115 GiB reads as "clean".
+_AG_PRUNE_DIRS='backend/models	references	ComfyUI	contrib	.venv	node_modules	__pycache__	run'
+
 # archive_guard <shareable|local-authorized> <root> [label]
 # Returns 0 if the archive may be built, 1 if it may not. Prints findings to stderr.
 archive_guard() {

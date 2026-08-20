@@ -79,8 +79,18 @@ class DeterministicOnAnUnchangedTree(unittest.TestCase):
 class TheRowsDriveTheRender(unittest.TestCase):
 
     def test_every_task_number_in_the_canonical_list_renders(self):
-        ids = [m.group(2) for m in TASK_ROW.finditer((ROOT / "PROJECT-TASKS.md").read_text())]
-        self.assertGreaterEqual(len(ids), 20, "task-row extraction went blind")
+        text = (ROOT / "PROJECT-TASKS.md").read_text()
+        ids = [m.group(2) for m in TASK_ROW.finditer(text)]
+        # The floor used to be a literal 20, which rotted the moment Garrett consolidated
+        # forty-three tasks into five on 2026-08-20 -- a legitimate list became a failing
+        # test. Count the marker lines independently instead: "extraction went blind" means
+        # the regex found fewer rows than there are rows, and that is true at any list length.
+        marker_lines = [l for l in text.splitlines()
+                        if l[:1] in "\u25fc\u25fb\u25b6\u2298" and l[1:2] == " "]
+        self.assertTrue(marker_lines, "no task markers in the canonical list at all")
+        self.assertEqual(len(ids), len(marker_lines),
+                         "task-row extraction went blind: "
+                         f"{len(marker_lines)} marker lines but {len(ids)} rows parsed")
         with tempfile.TemporaryDirectory() as td:
             page = run_generator(ROOT, Path(td) / "p.html")
         for tid in ids:
@@ -100,24 +110,38 @@ class TheRowsDriveTheRender(unittest.TestCase):
         self.assertIn('http-equiv="refresh"', page)
 
     def test_deleting_a_row_from_a_temp_copy_deletes_it_from_the_page(self):
-        """The mutation check: #24's row removed from a copied tree → #24 gone, #23 stays.
+        """The mutation check: one row removed from a copied tree → it goes, its neighbour stays.
 
         This is what proves the table is parsed, not pasted: a generator that embedded a
-        stale snapshot of the task list would keep rendering #24 and go green above while
-        lying here.
+        stale snapshot of the task list would keep rendering the deleted row and go green
+        above while lying here.
+
+        The victim and the control are read out of the fixture rather than named. They were
+        hard-coded as #24 and #23 and both numbers left the list in the 2026-08-20
+        consolidation, so the test failed for a reason that had nothing to do with the
+        generator. A mutation test that names its own fixture rows can only be broken by the
+        thing it is testing.
         """
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             copy_tree(root)
             tasks = root / "PROJECT-TASKS.md"
-            kept = [l for l in tasks.read_text().splitlines()
-                    if not l.startswith("◻ #24 — ")]
-            self.assertNotIn("#24", "\n".join(l for l in kept if TASK_ROW.match(l)),
-                             "the #24 row survived the deletion; fixture is wrong")
+            lines = tasks.read_text().splitlines()
+            rows = [(i, m.group(2)) for i, l in enumerate(lines)
+                    if (m := TASK_ROW.match(l))]
+            self.assertGreaterEqual(len(rows), 2,
+                                    "need two rows to delete one and keep the other")
+            (victim_i, victim), (_, control) = rows[0], rows[1]
+            kept = [l for i, l in enumerate(lines) if i != victim_i]
+            self.assertNotIn(victim, [m.group(2) for l in kept
+                                      if (m := TASK_ROW.match(l))],
+                             f"the {victim} row survived the deletion; fixture is wrong")
             tasks.write_text("\n".join(kept) + "\n")
             page = run_generator(root, root / "p.html")
-        self.assertNotIn(">#24<", page, "a deleted row still renders — the table is static")
-        self.assertIn(">#23<", page, "the control row vanished with it — over-deletion")
+        self.assertNotIn(f">{victim}<", page,
+                         "a deleted row still renders — the table is static")
+        self.assertIn(f">{control}<", page,
+                      "the control row vanished with it — over-deletion")
 
     def test_missing_ledger_and_missing_git_degrade_to_labels(self):
         """The worst day still renders. Missing sources are a label, never a traceback."""

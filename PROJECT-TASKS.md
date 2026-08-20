@@ -24,13 +24,28 @@ assignment  ->  (answer, if it is a question)  ->  [x] ready  ->  task #NN
 ```
 
 So this file is the only thing I work from. An item that is not here is not mine to start,
-however obviously useful it looks — the exit from `INTAKE.md` is a ticked box, not my
-judgement. The obligation that comes back the other way is real and is written down as #64:
-*"you must give me information and help on getting the boxes checked"*. A box cannot be
-ticked on a title alone, so every assignment carries a brief.
+however obviously useful it looks. The obligation that comes back the other way is real:
+*"you must give me information and help on getting the boxes checked"*. A box cannot be ticked
+on a title alone, so every assignment carries a brief.
+
+**Ticking is now the exception, not the gate.** Garrett revised this on 2026-08-20: *"make sure
+as soon as i send a prompt it gets added to intake.md, automatically get pushed to task if no
+barriers and if they do have barriers remain in the intake.md/progress.html with specifics on
+the barrier"*. So an assignment with nothing blocking it promotes itself and arrives here with a
+number; only a **barrier** keeps something on `INTAKE.md`, and then the page must say what the
+barrier is. His later word wins over the earlier ticking rule. This is still three states, not
+four — capture, promote, or drop with a reason — and #77 is the task that builds it.
 
 **Intake is immediate.** *"as soon as i send a prompt it should quickly added to
 coder-task.md"*. A prompt becomes a task in the same turn it arrives.
+
+**Five tasks, deliberately.** *"consolidate all these tasks plus my recent request into 5
+detailed task max"* — 2026-08-20. Forty-three open rows, nearly all reading `no checks`, was an
+inventory rather than a list, and it did not answer "what is left". The forty-three are folded
+into #73-#77 and reproduced verbatim in `review/CONSOLIDATED-TASKS-2026-08-20.md`; nothing was
+dropped. **When you work a fold, read the original block in that file** — the summaries here are
+entry points, not replacements. If a sixth task is genuinely needed, fold something first: the
+cap is his instruction, not a suggestion.
 
 **Every task is labelled `owner: coder` or `owner: garrett`.** Unlabelled means coder — the
 default claims work for me rather than parking it on Garrett, and the standing authority rule
@@ -76,264 +91,257 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
 ## Open tasks
 
-◻ #20 — Rebrand ComfyUI as symoneural-ui, keeping GPL-3.0 compliance
+◻ #73 — The browser API server: every application online, one roster, one namespace
+        owner: coder
+        Folds #21 #22 #23 #24 #26 #28 #31 #34 #35 #43 #44 #45 #46 #51 #53 #54 #66 #68 #69 #70.
+        Read those blocks in `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
 
-◻ #21 — Move the agent harness into studio as a plugin (was: name it symoneural-harness)
-        REWRITTEN 2026-08-20 per R-134. Naming it was the smaller half; the harness lands
-        under backend/apps/studio/plugins/harness like exp, discovery and reinforce, and
-        is gated on the studio plugin interface being written first.
+        **Scope, cut by Garrett on 2026-08-20 and binding:** *"we are only building for browser
+        api applications right now let me know when the server is complete"*. The debian,
+        apple, windows, android and openembedded targets are held by his decision, not deferred
+        by my judgement, and they return only after he approves the browser application. The
+        last clause is a reporting duty on me: when the server is complete I tell him
+        unprompted, rather than waiting to be asked.
 
-◻ #22 — Demote exp from a rack row to a symoneural-studio plugin
+        **The shape, also his:** *"all applications should be in /backend/apps all plugins
+        should be in /backend/apps/studio/plugins"*. That is now true on disk — exp, reinforce
+        and discovery are packages under `backend/apps/studio/plugins/`, which closed #55 and
+        the plugin half of #22, #23 and #53 by reading the filesystem rather than by assertion.
 
-◻ #23 — Take reinforce out of the live stack and into symoneural-studio
+        What is left, in the order it unblocks itself:
 
-◻ #24 — Build symoneural-invest: a hardware configurator for server upgrade decisions
+        1. **One roster, and the rack generated from it** (#66, #43). `backend/apps/` and the
+           rack currently disagree. Write the roster down once as `backend/apps/ROSTER.md`,
+           reconcile the directory against it, and make `tools/build_rack.py` read it instead
+           of carrying rows by hand. Three lists that disagree is the three-state-documents
+           failure with a different filename.
+        2. **Finish the streamer merge** (#28). Guide and tuner were merged by hand and the
+           collision was left in the tree: `routesmergemewithotherroutes.py` and
+           `READMEmergemewithotherreadme.md` are literally named for the job, and tuner's
+           `__init__.py` was overwritten by guide's — its `router`/`status` exports exist only
+           in git history now. Merge all three, then delete the placeholders.
+        3. **The plugin interface** (#54). `backend/apps/studio/plugins/__init__.py` is the
+           contract the three plugins load through, and it does not exist yet; exp's CATALOGUE
+           is the working prototype to generalise from.
+        4. **Routing and surfaces** (#26, #44, #31). Applications move under
+           `/livestack/<name>`, `site/account.html` becomes an application rather than a page,
+           and the studio render is served from disk instead of proxying `GET /view`.
+        5. **The Studio row's readout** (#70). Probe the render engine and publish what comes
+           back — `offline` when nothing answers, and queue depth, loaded model and VRAM when
+           something does. Do not auto-start the engine to make a green light true; that parks
+           a 13 GiB-peak tenant on the card with nobody asking for a render.
+        6. **Everything online, and staying online** (#34, #35). Automate the deploy so
+           "online" survives a reboot without a person, then the four dark applications come
+           back. #35 before #34: bringing an app up by hand is not the same as it being up.
+        7. **Per-application model adapters and voice input** (#45, #46), then the environment
+           selector (#69) — browser-API environments only — and `symoneural-invest` (#24) last,
+           because it is new surface area and everything above it is repair.
 
-◻ #25 — Apply the SymonSays naming system across code and site
-        SCOPE ADDITION (Garrett, this turn, 2026-08-20): the site's user-facing action
-        phrases are IN SCOPE, not preserved prose. "talk to the box", "chat to the box",
-        "make it draw something" and sibling phrases update to the SymonSay(s) naming
-        system. Sweep greps: "the box" and "draw something" across site/ AND tools/
-        generators. Generators are the source of truth: edit generator, regenerate,
-        build_cachebust.py LAST, per the standing rule.
+        check: exists backend/apps/ROSTER.md
+        check: grep ROSTER -- tools/build_rack.py
+        check: exists backend/apps/studio/plugins/__init__.py
+        check: exists backend/apps/studio/plugins/exp/__init__.py
+        check: exists backend/apps/studio/plugins/reinforce/__init__.py
+        check: exists backend/apps/studio/plugins/discovery/__init__.py
+        check: absent backend/apps/streamer/routesmergemewithotherroutes.py
+        check: absent backend/apps/streamer/READMEmergemewithotherreadme.md
+        check: grep tuner_router -- backend/apps/streamer/__init__.py
+        check: grep 8188 -- backend/apps/studio/registry.py
+        check: exists ops/symoneural-deploy.service
+        note: `grep tuner_router`, not `grep tuner`: the word "tuner" already appears in
+        note: guide's docstring, so the loose form passed while tuner's exports were still
+        note: missing. A check that passes before the work is done is worse than no check —
+        note: this one would have archived the task. Verified by running it before and after.
+        note: The `resolve:` lines that closed #51, #53 and #55 read the filesystem, which is
+        note: why they could close themselves the moment the folders moved. The checks above
+        note: are chosen the same way — each one is false today and can only be made true by
+        note: doing the thing. Two parts of this task have no honest predicate and are
+        note: deliberately unmeasured: "every application online" (a reading of a live
+        note: process, not of the disk) and the voice/adapter work, which has no single
+        note: artefact. Do not invent a check for them; the percentage is allowed to top out
+        note: below the work.
 
-◻ #26 — Route rack applications under /livestack/<name> instead of /app.html
+◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
+        owner: coder
+        Folds #20 #25 #27 #33 #40 #71. Read those blocks in
+        `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
 
-◻ #27 — Fix Live Stack typography and promote the app brand icons
+        **The rule that makes this blocking rather than cosmetic**, Garrett 2026-08-20: *"we
+        cannot use code in references its for reference only we must rebrand if we want to use
+        it"*, and *"we can put them in the best professional folder location"*. So
+        `references/` is a read-only reading room: nothing under it may be imported, built or
+        shipped. A rebranded tree lives in its own proper location and is what the build points
+        at. Choosing that location is mine to do and to write down here when I do it.
 
-◻ #28 — Fold tuner + guide into Symoneural Streamer; sigils stays its own application
-        REWRITTEN 2026-08-20. The original wording — "Rename to Symoneural IPTV; merge
-        Sigils into Chat" — is contradicted on BOTH points by R-132 and R-137: the name
-        is streamer, not IPTV, and sigils keeps its own rack row rather than being
-        absorbed by chat. Kept under #28 because it is the same work, renamed.
+        1. **The engines** (#33). `llama-server` → `symoneural-llm`, `sd-cli` →
+           `symoneural-diffuse`, `kawpowminer` → `symoneural-miner`, `whisper` →
+           `symoneural-listen`, and vLLM — *"im cloning vllm into references for reference
+           rebranding"* — as the fifth. Our tree, our build script, our binary names, MIT
+           notice carried (LICENSES.md:119-120 records the engines as MIT, so renaming is
+           permitted). Then repoint `backend/api.py:154-155`, which today reaches straight into
+           `contrib/llama.cpp` and `contrib/stable-diffusion.cpp` and is exactly the import
+           from a reference tree the rule above forbids.
+        2. **The render UI** (#20). ComfyUI → `symoneural-ui`, and it is GPL-3.0, not MIT — so
+           unlike the engines this one carries a source-offer obligation. Rebranding is
+           permitted; quietly dropping the licence is not.
+        3. **The models** (#71). *"same thing goes for models in /backend/models they shall all
+           be rebranded"*. A vendor filename on disk becomes a vendor filename in a log, then
+           in an error message, then on a page. Rename every artefact and write
+           `backend/models/NAMES.md` mapping each SyMoNeuRaL name to its upstream model and
+           licence — that table is what the site renders attribution from.
+           **`built on Qwen2.5-7B-Instruct` is an Apache-2.0 condition, not decoration.** It
+           was once truncated to `…7B-Ins…` by a CSS ellipsis and that was treated as data
+           loss. Rebranding must not repeat it: rename the file, keep the attribution.
+           `backend/models/PROVENANCE.json` already exists and is the thing to build on.
+        4. **The naming system and the interface** (#25, #27, #40). Apply SymonSays across code
+           and site, fix Live Stack typography, promote the app brand icons, finish the
+           `symoneural-cli` polish. This part is last because it is taste applied over
+           substance, and #25 in particular — "apply a naming system tastefully" — has no
+           predicate that means done. It is unmeasured on purpose.
 
-◻ #31 — Serve the studio render from disk instead of proxying GET /view
+        note: The two `ngrep`s match the quoted literals `"llama.cpp"` and
+        note: `"stable-diffusion.cpp"`, not the path `contrib/llama.cpp`. `api.py:154-155`
+        note: builds those paths from segments — `ROOT / "contrib" / "llama.cpp" / ...` — so
+        note: the path form never appears in the file and an ngrep on it was trivially true.
+        note: Both checks passed on a tree where nothing had been rebranded, which would have
+        note: archived this task at 100% with the whole job outstanding.
 
-◻ #33 — Rebrand the four engines: llama.cpp, stable-diffusion.cpp, kawpowminer, whisper.cpp
-        R-150, and the highest-value item on this list because it is also the fix for #34.
-        `llama-server` → `symoneural-llm`, `sd-cli` → `symoneural-diffuse`,
-        `kawpowminer` → `symoneural-miner`, `whisper` → `symoneural-listen`. Our tree, our
-        build script, our binary names, MIT copyright notice carried (LICENSES.md:119-120
-        records both engines as MIT, so renaming is permitted). Then repoint
-        `backend/api.py:154-155`.
+        **Never blind-replace `MIT`.** Most matches in this corpus are ordinary words — limits,
+        limited, submit, emits. Whole phrases and filesystem paths only.
 
-◻ #34 — Bring every application back online, and keep it online
-        R-147, standing: *"THEY ONLY GO OFFLINE WHILE YOU WORK ON THEM"*. chat, remix, image
-        and sigils are dark for ONE reason — `api.py:1545-1546` gates them on
-        `LLAMA_SERVER.exists()` and `SD_CLI.exists()`, and both binaries are absent from the
-        paths api.py names. Every weight file is present. #33 lights all four. The rest
-        (gateway, miner, exp) are env-switch work and independent of it.
+        check: ngrep "llama\.cpp" -- backend/api.py
+        check: ngrep "stable-diffusion\.cpp" -- backend/api.py
+        check: grep symoneural-llm -- backend/api.py
+        check: grep symoneural-diffuse -- backend/api.py
+        check: exists backend/models/NAMES.md
+        check: grep upstream -- backend/models/NAMES.md
 
-◻ #35 — Automate the deploy
-        R-114, and Garrett has already approved it once: *"already approved, do not ask
-        again"*. Do not re-ask.
+◻ #75 — Secrets, credentials and leak containment
+        owner: coder
+        Folds #37 #38 #39 #48. Read those blocks in
+        `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
 
-◻ #36 — Close the live-wrong claim the deploy was blocking
-        R-115. Blocked by #35 — the claim is only false until the deploy runs.
+        Two live secrets are sitting in the working tree — `backend/apps/remix/.env` and
+        `backend/apps/cryptominer/miner.env` — and #48 names `VLLM_API_KEY` and `DJ_TOKEN` for
+        rotation. Rotate, then untrack, in that order: untracking a key that is still valid
+        moves it out of sight without making it harmless.
 
-◻ #37 — Automate secret rotation, split by who issues the secret
-        R-116, and the split is the requirement, not a detail: *"do not report the halves as
-        one"*. Secrets I can rotate are a different report from secrets only Garrett can
-        (SPOTIFY_CLIENT_SECRET is a dashboard action and is still NOT rotated).
+        1. **Rotate and untrack** (#48). Both keys, then the `.env` files out of the tree and
+           into whatever #39 builds, with `.gitignore` entries so they cannot come back.
+        2. **Split rotation by who issues the secret** (#37). Anything I can rotate, I rotate
+           on a schedule. Anything only Garrett can issue — a third-party dashboard with no
+           API, a payment credential — is his half, and the automation's job there is to tell
+           him it is due, not to pretend it rotated.
+        3. **`symoneuralcredentials`, CLI-driven** (#39). One place credentials live, one
+           command that reads them, nothing in a repo file.
+        4. **Extend the leak guard to every archive path** (#38). The guard exists for the
+           live tree; `review/`, `docs/archive/` and the retired-assignment files are archive
+           paths that receive whatever was typed on an entry, which is precisely where a
+           pasted credential would land unnoticed. This matters more now: #77 makes every
+           prompt a file, and a prompt is exactly where a key gets pasted by accident.
 
-◻ #38 — Extend the leak guard to every archive path
-        R-117: rotation does not fix the source. `scripts/lib/archive-guard.sh` is currently
-        modified, incomplete and uncommitted — `_AG_PRUNE_DIRS` is added but never consumed,
-        and `--exclude='*.md'` has not been removed. Finish the wiring or revert it; a
-        half-wired guard is worse than none because it reads as present.
+        **The two protected artefacts are in scope here as a boundary, not as work.**
+        `training/corpus.jsonl` and `training/build_dataset.py` are trade secret, protected
+        only by not being public, and `corpus.jsonl` **is currently tracked in git**. There is
+        no remote, which is doing all of the protecting. If a remote is ever added, that is the
+        thing to audit first — publish the numbers, keep the methods.
 
-◻ #39 — Build symoneuralcredentials, CLI-driven
-        R-89. Terminal paste flow, NOT DOM scraping. `run/credentials.env` mode 600.
-        Path-refusal must be mutation-checked. `X-Symoneural-Token`. A `/run` endpoint is
-        explicitly NO.
+        check: absent backend/apps/remix/.env
+        check: absent backend/apps/cryptominer/miner.env
+        check: exists scripts/symoneural-credentials
+        check: exists tools/rotate_secrets.sh
+        note: There is no check here for "the keys were actually rotated" and there cannot be
+        note: one from the disk — a rotated key and a stale key look identical to a grep. The
+        note: absence checks prove the files left the tree, which is the part a filesystem can
+        note: judge. Do not add a check that reads a secret to prove it changed.
 
-◻ #40 — Finish the symoneural-cli interface polish
-        R-81, flagged in the ledger itself as *"the interface-polish remainder has no task
-        number"* — this task is that number.
+◻ #76 — Close the audit, and anchor every published figure to a SHA
+        owner: coder
+        Folds #36 #41 #42 #47 #49 #50 #56 #67. Read those blocks in
+        `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
 
-◻ #41 — Fix audit item 26: gpu-governor.sh:200 labels a historical record as a live one
-        R-113, and Garrett was explicit that his own authorship is not a reason to leave it:
-        *"fix it; Garrett's authorship is not a reason to leave it"*. Not Garrett-only.
+        1. **The remaining audit items** (#47, #41). Items 7, 9, 10, 11, 12, 18, 19, then 15;
+           and item 26, where `gpu-governor.sh:200` labels a historical record as a live one.
+        2. **Reclassify every Garrett-only item** (#42) against the five categories — hardware,
+           credentials, third-party dashboard with no API, money, legal or business. The
+           standing rule is FIX, not FILE, and anything that fails all five categories comes
+           back to me. Report what moved rather than just moving it.
+        3. **A machine check per audit item** (#56), so the surface reports a reading instead
+           of a claim — the same discipline as the task percentages.
+        4. **Anchor every figure** (#67). Sweep `docs/` and `.claude/HANDOVER.md`; every
+           measured number gets the commit it was read on plus a label: measured, vendor, or
+           projected. Where the tree is no longer identifiable, re-measure or delete. **Never
+           carry a number forward and re-date it** — a published 1063 turned out never to have
+           been true of the commit beside it, and that is the exact defect this closes.
+        5. **Re-measure all four suites at the final HEAD** (#49) and write the result up
+           (#50, #36). The suite counts in `.claude/CLAUDE.md` are stale by construction after
+           the plugin restructure: they were read at `d3a4040`, before `backend/apps` moved,
+           and the `--ignore=apps/reinforce/tests` path no longer matches anything now that
+           reinforce lives under `studio/plugins/`. Re-read them and stamp the new SHA; do not
+           reprint 1229.
 
-◻ #42 — Reclassify every Garrett-only item against the five categories, and report what moved
-        R-112. Three are already known misclassified: audit 24 and 27 are missing commands,
-        26 is git-blame reasoning. None match the five categories (physical hardware,
-        credentials only he holds, third-party dashboards with no API, money, legal).
-
-◻ #43 — Resolve the three "gateway" namespaces into one
-        R-130. Three things now carry the name: `backend/apps/gateway` (Python: abi, chain,
-        keccak, routes), `backend/apps/symon-gateway` (Rust, and currently showing as deleted
-        in the working tree), and `ops/gateway/`. R-128/R-129 say one app per
-        `backend/apps/<name>`; this is that convention applied.
-
-◻ #44 — Make site/account.html an application
-        R-131, first half. Recorded as two asks *"sized very differently; do not conflate
-        them"* — so they are two tasks.
-
-◻ #45 — Give every application a model adapter
-        R-131, second half. The larger of the two by a wide margin.
-
-◻ #46 — Migrate symoneural voice into every app for voice input
-        R-136. Category 4: not a live-stack row of its own, a capability that lands in each
-        app. `whisper.cpp` → `symoneural-listen` from #33 is the engine underneath it, so
-        this is gated on #33.
-
-◻ #47 — Close audit items 7, 9, 10, 11, 12, 18, 19, then 15
-        R-84, the bypass-mode audit loop, exit condition AUDIT-DONE. Currently 13 DONE,
-        9 OPEN. Item 15 goes last because it counts the untracked review documents, and the
-        other items' closure changes that count.
-
-◻ #48 — Rotate VLLM_API_KEY and DJ_TOKEN, and untrack the .env
-        R-121. The *"then cut v3"* half of that request is cancelled with #14; the rotation
-        half stands on its own. Names and lengths only, never values.
-
-◻ #49 — Run all four suites at the final HEAD
-        Phase 3.3. Every figure SHA-anchored, no count carried forward as a re-run.
-
-◻ #50 — Write AUDIT-DONE-2026-08-19.md
-        Phase 3.4, and the audit loop's exit condition. Cannot land before #47.
-
-◻ #51 — Migrate settlement into gateway
-        R-139, which closes the destination table.
-        resolve: backend/apps/settlement -> backend/apps/gateway/settlement
-
-◻ #53 — Fold rackpower, the live stack and the control board into controls
-        R-138.
-        resolve: backend/apps/rackpower -> backend/apps/controls
-
-◻ #54 — Write the studio plugin interface
-        Gates #21, #22, #23 and #55 — all four land as studio plugins and none of them can
-        land before the interface they plug into exists. Do this one first.
-        resolve: -> backend/apps/studio/plugins/__init__.py
-
-◻ #55 — Migrate symoneuraldiscovery into studio as a plugin
-        R-137. Blocked by #54.
-        resolve: backend/apps/symoneuraldiscovery -> backend/apps/studio/plugins/discovery
-### Intake from Garrett's prompts, 2026-08-20
-
-Added the same turn they were sent, per the intake rule above. The prompts that were
-satisfied within that turn (the progress-page timer, the phase-tracker deletion, the
-questionnaire, the closed-task move, the status percentage) are already in
-`review/CLOSED-TASKS.md` rather than sitting here as work.
-
-◻ #56 — Give every audit item a machine check, so the surface reports a reading
-        Garrett: *"Audit surface needs to be automated"*. Half of it is done — `AUDIT.md`
-        carries the questions and `run/progress.html` generates the answered count. The
-        remaining half is the surface itself: several items ARE predicates and should be
-        tested rather than asserted. Item 10 is "does `docs/upgrading.md` exist", item 11 is
-        `yocto/README.md`, item 15 is a count of untracked root documents, item 19 parses
-        `BBFILE_PATTERN`. Give each one a `check:` line and report agree/disagree against the
-        recorded disposition, so a stale DONE cannot survive.
+        check: exists AUDIT-DONE-2026-08-19.md
         check: grep ^check: -- AUDIT-SURFACE-2026-08-19.md
+        check: exists docs/FIGURES.md
 
-◻ #57 — Make prompt-to-task intake verifiable, not just promised
-        Garrett: *"as soon as i send a prompt it should quickly added to coder-task.md"*.
-        The rule is written down; nothing enforces it. The ledger coverage panel is the
-        first half (an open ledger entry naming no task is now flagged red). The second half
-        is the other direction: a prompt that never reached the ledger at all is invisible to
-        that check. Cheapest honest version is a session-transcript sweep that lists user
-        turns with no matching ledger entry.
+◻ #77 — The task surface: a prompt becomes an assignment becomes a task, automatically
+        owner: coder
+        Folds #57 #58 #59 #64 #72. Read those blocks in
+        `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
+
+        Garrett, 2026-08-20: *"make sure as soon as i send a prompt it gets added to intake.md,
+        automatically get pushed to task if no barriers and if they do have barriers remain in
+        the intake.md/progress.html with specifics on the barrier and make sure when you
+        complete task they auto remove from progress.html"*. And, when #68 still read "four
+        frontends" minutes after he had cut it to one: *"i know its not working because i just
+        told you to not worry about anything other than the browser api applications and task
+        #68 is still in progress.html"*. That second message is the acceptance test: the page
+        must reflect an instruction within the turn it arrives, without me being told twice.
+
+        This changes the gate. Ticking `[x]` was his gate on promotion; an assignment with no
+        barrier now promotes itself. It does **not** add a fourth state — capture, promote, or
+        drop with a reason — and the header of this file has been rewritten to say so.
+
+        1. **Capture.** A prompt hook appends every prompt to a private source file, mode 600
+           and gitignored like `GARRETT-REQUESTS.md`. **Fail open**: a broken hook must never
+           block a prompt. The file must never be reachable from a public surface — `/api*` is
+           proxied to the internet, which is why the write endpoints are `/local/*` behind a
+           peer-address check, and a prompt is exactly where a credential gets pasted by
+           accident (see #75).
+        2. **Filter.** Not every prompt is an assignment; "continue" is not work. The predicate
+           is his own standing test: *"if it isnt going to break our project and its something
+           that will resolve itself naturally DROP IT"*, plus the two corollaries — a rule
+           already written down is not outstanding work, and a request already satisfied is not
+           outstanding work. Anything filtered out is dropped to
+           `review/RETIRED-ASSIGNMENTS.md` with the reason. Never silently discarded.
+        3. **Promote, or state the barrier.** No barrier means a task number, automatically.
+           A barrier means the entry stays on `INTAKE.md` and on the page saying **what** blocks
+           it, drawn from the five owner-garrett categories that already exist plus "this is a
+           question only he can answer". No new taxonomy — a sixth reason invented here is the
+           rejected fourth state wearing a different hat.
+        4. **Removal on completion.** `tools/archive_tasks.py` already removes a task at 100%,
+           and it works: #51, #53 and #55 archived themselves this way when the folders moved.
+           But only a task with checks can reach 100%, so this part is gated on the checks
+           declared throughout this list (#59). That is a dependency to respect, not a reason
+           to loosen a check — an over-loose check archives live work, which is worse than a
+           row that reads `no checks`.
+        5. **Verify it, don't promise it** (#57, #64). A prompt that never reached the ledger
+           at all is invisible to the coverage panel, so `tools/check_intake.py` sweeps the
+           transcript for user turns with no matching entry. And every assignment still needs
+           the brief he can decide on — what it is, what it costs, what I recommend and why,
+           and what happens if it is never ticked.
+        6. **Drain the ledger to four** (#58). *"our request ledger should hardly ever exceed 3
+           or 4 items"*. An entry that has become a task closes; a standing rule moves into the
+           working agreements; history moves to `review/`.
+
+        **Barrier now means something different, and the file has to say so.** "An assignment
+        with no `task:` line" described a queue nobody was draining. Under auto-promotion the
+        only uncarried assignments are the genuinely blocked ones, so rewrite that paragraph in
+        `INTAKE.md`'s header in the same change rather than leaving two meanings in play.
+
         check: exists tools/check_intake.py
-
-◻ #58 — Drain the request ledger to four or fewer open entries
-        Garrett: *"our request ledger should hardly ever exceed 3 or 4 items"*. It is at 148
-        entries with 58 not-done. The ledger is an inbox: an entry that has become a task
-        should close, standing rules belong in the working agreements rather than in the
-        inbox, and history belongs in `review/`. The page now renders the depth against a
-        target of four, so this task is measurable the moment it starts moving.
         check: maxcount 4 ^status: (captured|queued|in-progress|held) -- GARRETT-REQUESTS.md
-
-◻ #64 — Give every assignment the brief Garrett needs to tick its box
-        owner: coder
-        Garrett: *"until i check the box you have nothing to do except what is in the project
-        task however you must give me information and help on getting the boxes checked. You
-        must be thorough on things you have dissed me on"*.
-
-        That is the other half of the two-surface split. If ticking is the only thing asked of
-        him, then a title is not enough to tick on — an entry reading "R-39 — try harder to
-        avoid venvs" gives him nothing to decide with. Every assignment needs, in the file:
-        what it is, what it would cost, what I recommend and why, and what happens if it is
-        never ticked. Automatic where the source has the prose; hand-written where it needs a
-        recommendation, because a generated recommendation would be a guess in a confident
-        voice.
-
-        The second sentence is the sharper one and names a real pattern: items I deferred,
-        marked LOW, or filed as Garrett-only got a disposition and no argument. Those get the
-        fullest briefs — audit 23 (LOW), 24 and 27 (Garrett-only), 26 (NOT MINE), and every
-        ledger entry I marked `captured` and left. Where I was wrong to park it, the brief says
-        so instead of restating the disposition.
-        check: grep ^brief: -- INTAKE.md
         check: grep RECOMMEND -- tools/build_intake.py
-
-◻ #59 — Declare checks on every task that can carry one
-        The percentage is only as honest as its checks, and most tasks currently read `—`.
-        That is the correct rendering for an unmeasured task, but it is not a good resting
-        state: Garrett asked for percentages he can rely on, and a list where most rows are
-        blank does not deliver that. Work through the open tasks and give each one a check
-        set where 100% genuinely means done. Where it cannot — "apply a naming system
-        tastefully" has no predicate — say so in the task rather than inventing a number.
-
-◻ #68 — Build the full stack: debian backend and four frontends
-        owner: coder
-        R-11, and it is the largest single item on this list. Garrett: *"build the FULL
-        stack"* — a debian backend plus FOUR frontends: web, android/firestick, debian
-        desktop, and Darwin/swift.
-
-        Held per platform, deliberately, and R-118 is the carve-out that makes it actionable
-        now: the SDKs and toolchains ARE in scope even while the app builds are held. So the
-        work that can start today is the toolchain matrix — what compiles each target, where
-        it runs, and what is missing — not four app skeletons nobody asked for yet.
-
-        The web frontend already exists and ships; do not rebuild it. The honest reading of
-        this task is "three more frontends and the toolchains to build them", and the first
-        deliverable is the matrix that says which of the three this box can build at all.
-
-◻ #69 — Multi-environment servers: prod, sandbox, development, testing, tuning
-        owner: coder
-        R-55, with easy promotion of an app between environments. One box and one GPU is the
-        binding constraint — five live stacks cannot coexist in 15.92 GiB — so this is an
-        environment SELECTOR over one stack, not five stacks. Design it as a config layer
-        (which port, which weights, which surfaces enabled) that `scripts/symoneural.sh` can
-        switch between, and promotion becomes copying a config, not moving a service.
-
-        Do not start this before #34 and #35: promoting an app between environments is
-        meaningless while four applications are dark and the deploy is manual.
-
-◻ #70 — Make the Studio row tell the truth about ComfyUI
-        owner: coder
-        R-102, audit item 27. The Studio row renders green while nothing on this box starts
-        ComfyUI, so the row survives exactly one reboot before it is a lie. This is a direct
-        breach of the honesty rule that the whole site argues from — *"no decorative status
-        indicators"* — which is why it is a task and not a preference.
-
-        Two options were offered. Take option 2: fix the CLAIM, not the process. Auto-starting
-        ComfyUI at boot would put a 13 GiB-peak GPU tenant on the card with nobody asking for a
-        render, which contradicts the governor rule about holding for a job rather than a
-        lifetime. So the row must read from a real probe of :8188 and say `offline` when
-        nothing answers. Garrett's question A-Q6 (*"should ComfyUI start itself?"*) is answered
-        by this task rather than left open: no, it should not, and the row must stop implying
-        it does.
-
-◻ #66 — The live-stack application roster, and backend/apps made to match it
-        owner: coder
-        R-132. The roster is the authority on what an application IS; `backend/apps/` is
-        currently a superset of it and the rack renders a third list. Three lists that
-        disagree is the same failure as three state documents, and the fix is the same one:
-        pick the authority, make the others read from it.
-
-        Deliverable: the roster written down once, `backend/apps/` reconciled against it, and
-        the rack's rows generated from that single source rather than maintained by hand.
-        Related, and do not duplicate their work: #43 (gateway namespaces), #52 (studio
-        rename), #53 (fold rackpower/livestack/controls).
-
-◻ #67 — Anchor every figure in docs/ and .claude/HANDOVER.md to a SHA
-        owner: coder
-        Audit item 16, and Garrett's A-Q9 asked whether this was in scope. It is: the standing
-        rule is that a number with no SHA cannot be checked, only believed, and this project
-        has already published a test count (1063) that turned out never to have been true of
-        the commit beside it.
-
-        Sweep every measured figure in `docs/` and `.claude/HANDOVER.md`, and give each one
-        the commit it was read on plus a label — measured, vendor, or projected. Where the
-        tree it was read on is no longer identifiable, re-measure or delete the figure. Do not
-        carry a number forward and re-date it; that is the exact defect this closes.
+        check: exists .claude/hooks/capture-prompt.sh
+        check: grep UserPromptSubmit -- .claude/settings.json
+        check: grep barrier -- tools/build_intake.py

@@ -3,6 +3,158 @@
 Repo for symoneural.com: the public site, the live API behind it, the CUDA engine, and
 the engineering manual the site's numbers come from.
 
+## START HERE — you have just been opened in this repo and Garrett said "hi"
+
+Do not ask him what to work on. He has already answered, standing, 2026-08-20: *"i want to
+be able to cd /Symoneural lauch claude and say hi and the agent already know what we need to
+do"*. Everything you need is on disk. Read it, then say what you are picking up and why.
+
+**Three commands, in this order.** They take about a minute and they answer "what is the
+state of this project" without a single question.
+
+```bash
+python3 tools/build_progress.py     # rebuild the page from the disk -- never trust a stale one
+xdg-open run/progress.html          # or open file:///home/google/Symoneural/run/progress.html
+sed -n '1,80p' PROJECT-TASKS.md     # the standing rules for the task list itself
+```
+
+`run/progress.html` is the handover artefact and it is deliberately complete. Garrett:
+*"with our progress.html even if my computer blows up the next agent will have exactly what
+it needs to pick up the project and not miss a beat"*. It renders every open task with a
+**measured** percentage, every assignment waiting on him, the request ledger's depth, the
+four test suites with the commit each count was read on, and the comments people have left
+on individual tasks. It is generated from the files below, so it cannot drift from them; if
+it looks wrong, the file it reads is wrong and that is the bug.
+
+**Then pick up work like this:**
+
+1. Open **`PROJECT-TASKS.md`**. That is the only place work comes from. Take the lowest-
+   numbered open task whose blockers are clear, or the one Garrett just named.
+2. Anything not on that list is **not yours to start**, however obviously useful. The way in
+   is `INTAKE.md`, and the gate is Garrett ticking a box — not your judgement that it is
+   worth doing. This is the one rule that keeps the list meaning what it says.
+3. Work the task. When behaviour changes, prove it changed: break it on purpose and watch a
+   test fail, then fix it. A test that passes before and after your change tested nothing.
+4. Regenerate and commit — see *Completing a task*, below.
+
+**The one thing to be suspicious of on arrival:** a figure with no commit SHA beside it. This
+project has published a test count that was never true of the commit it sat next to, because
+somebody carried it forward and re-dated it. Re-measure anything you are about to rely on.
+
+## The two surfaces, and how to complete a task
+
+There are exactly two lists, they have different owners, and conflating them is the failure
+this structure exists to prevent.
+
+```
+INTAKE.md         assignments: requests, questions, audit findings.   GARRETT ticks.
+PROJECT-TASKS.md  numbered tasks.                                     THE AGENT works.
+
+assignment  ->  (answer, if it is a question)  ->  [x] Ready  ->  task #NN  ->  done
+```
+
+**Every entry is in exactly one of three states: `done`, `task`, or `intake`.** There is no
+fourth. "Pending" is a marker on a task, not a place to put something. An assignment that is
+neither carried by a task nor dropped is a **barrier** — recorded and uncarried — and the
+page counts them in red at the top, because an uncounted barrier is how work goes missing.
+The count was 58 on 2026-08-20 and is 0; keep it there.
+
+### Working a task
+
+Tasks live in `PROJECT-TASKS.md` as `◻ #41 — Title` with an **indented** detail block. The
+indentation is structural, not cosmetic: `tools/archive_tasks.py` ends a task's block at the
+first non-blank column-zero line, so an unindented line silently truncates its own task and
+takes every line under it out of the task.
+
+Declare machine checks so the percentage is measured rather than asserted:
+
+```
+◻ #62 — Per-app artefacts
+        owner: coder                        coder | garrett; unlabelled means coder
+        check: exists backend/apps          also: absent <path>
+        check: grep <pat> -- <path>         also: ngrep (true when NOT found)
+        check: maxcount <n> <pat> -- <path>
+        resolve: OLD -> NEW                 state read from disk: NEW present, OLD gone
+        note: 2026-08-20 garrett — comment  append-only; see the comments box below
+```
+
+The percentage is passing checks over declared checks, recomputed from the disk every two
+minutes. A task with no checks reads `—`, never `0%`, because an unmeasured task is not an
+unstarted one. **Choose checks where 100% genuinely means done** — a check that can pass
+without the work being finished is worse than no check, since it will archive the task.
+
+At 100% `archive_tasks.py` moves the block to `review/CLOSED-TASKS.md` verbatim with a line
+saying what judged it finished. Nothing is deleted; the list stays a reading of what is left.
+
+### Completing a task — the sequence, every time
+
+```bash
+python3 tools/build_intake.py        # assignments  -> INTAKE.md (+ review/RETIRED-*.md)
+python3 tools/build_progress.py      # everything   -> run/progress.html
+# run BOTH twice and diff: these generators re-read their own output, and one that does
+# not recognise something it emits will accumulate it, one copy per run. That bug has
+# now happened three times in this repo. Two runs with no diff is the check that catches it.
+cd backend && python3 -m pytest apps/test_build_progress.py -q
+```
+
+Then commit, with the reason in the message — `git log` is the answer to "why is the code
+like this" and is load-bearing here. Commit **between** items, not in one batch at the end.
+
+### Ready and Drop — the two controls on the page, and nothing else
+
+`run/progress.html` renders each assignment with two buttons, which POST to
+`/local/intake` and write `INTAKE.md` directly.
+
+- **Ready** (`[x]`) — Garrett judges it ready to become work. You then give it a task number.
+- **Drop** (`[-]`) — not needed. The entry is **removed** from the list and written to
+  `review/RETIRED-ASSIGNMENTS.md` with everything typed on it. Removed, not struck through:
+  *"i click drop and it doesnt remove from intake list"* was reported as a bug and fixed.
+
+**Do not invent a third state.** A "frozen"/"deferred"/"parked" bucket was proposed and
+rejected outright, and the reason generalises: a third state takes the decision away from
+Garrett while looking like it recorded one. If something cannot be carried, it is dropped
+with a reason, and the reason goes in the file.
+
+His standing test for whether an assignment should exist at all: *"if it isnt going to break
+our project and its something that will resolve itself naturally DROP IT"*. A rule already
+written down is not outstanding work. A request already satisfied is not outstanding work.
+
+### Assigning work to another agent
+
+Tasks are labelled `owner: coder` or `owner: garrett`, and **a coder-owned task can be handed
+to any coding agent** — that is what the label is for. Unlabelled means coder: the default
+claims work rather than parking it on Garrett.
+
+`owner: garrett` is reserved for exactly five things, and nothing else qualifies: physical
+hardware access, credentials only he holds, third-party dashboards with no API, money, and
+legal or business decisions. The standing rule is **FIX, not FILE** — filing a task back to
+him because it is awkward is the failure mode this list is guarding against.
+
+An agent picking up a `garrett` task should read its `[ ]` checkbox as a handoff: he ticks it
+when he has done his half, which sets the state to `ready for review` — deliberately **not**
+`done`, so the task cannot archive itself before anyone reads his answer.
+
+### The comments box
+
+Every task on the page has one. A comment is stored as an indented, append-only `note:` line
+in that task's own detail block, so it lives beside the thing it is about and travels with it
+in `git log`. Append-only means two people cannot overwrite each other and no generator run
+can eat a comment. Keep the `note:` prefix on **every** line of a multi-line comment: an
+unindented continuation would truncate the task, and a continuation reading `owner: garrett`
+would be parsed as a directive instead of as somebody's words.
+
+### Never do these to the task surface
+
+- **Never create a second state document.** Three files once claimed to describe current
+  state and agents kept acting on the stale one. If a harness offers you its own task list,
+  it is a second state document; `PROJECT-TASKS.md` is the canonical one.
+- **Never carry a figure forward and re-date it.** Re-run it or drop it.
+- **Never hand-edit `INTAKE.md`'s skeleton** — it is generated. Ticks, answers, task numbers,
+  briefs and prose are merged back over the top and preserved; everything else is rewritten.
+- `INTAKE.md` and `GARRETT-REQUESTS.md` are **mode 600** and stay that way. `/api*` is proxied
+  to the public internet by `ops/Caddyfile`, which is why the write endpoints are `/local/*`
+  behind a peer-address check that also refuses proxy headers.
+
 ## Where to look — there is exactly one of each
 
 Three files once all claimed to describe "current state" and agents kept acting on the stale
