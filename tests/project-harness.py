@@ -38,10 +38,23 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi import FastAPI                      # noqa: E402
 from fastapi.staticfiles import StaticFiles      # noqa: E402
+from apps import news                            # noqa: E402
 from apps import project                         # noqa: E402
 
 app = FastAPI()
 app.include_router(project.router, prefix="/api/project", tags=["project"])
+# The news ticker is mounted even though this harness is "only the project router", because
+# `site/ui.js` fetches `/api/news/ticker` on EVERY page load -- the bar is shared page chrome,
+# not a news-page feature. Without it the browser logs a 404 and `project.mjs`'s "no uncaught
+# JavaScript errors" assertion goes red for a reason that has nothing to do with this page;
+# that is what made the suite 15/16 here. `apps/news/routes.py` is explicit that this endpoint
+# is safe to expose in exactly this situation: it never triggers a fetch (the background
+# refresher owns the rate), it carries no token because everything it returns is already
+# public, and with the surface off it answers 200 with an empty bar rather than 503 -- and its
+# stated reason for that is this same red-line-in-the-console argument, applied to a visitor.
+# So this mount reproduces the production shape rather than papering over a gap: it imports
+# nothing but stdlib and fastapi, and touches neither the governor nor a model loader.
+app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 # Mounted LAST, exactly as api.py does, so it never shadows an API route.
 app.mount("/", StaticFiles(directory=str(ROOT / "site"), html=True), name="site")
 

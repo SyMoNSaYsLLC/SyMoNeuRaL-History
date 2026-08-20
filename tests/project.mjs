@@ -12,11 +12,13 @@
 // specificity (1,0,0) beat the UA stylesheet's `[hidden]` rule at (0,0,1), and nothing but
 // a computed style in a real browser would have caught it.
 
-// Playwright lives in the llama.cpp web UI's node_modules, installed when that UI was
-// built. Resolved relative to this file so the repo can be cloned anywhere. That directory
-// is untracked, so it is absent from a git worktree even though it is present in the
-// checkout the worktree came from. `browser.mjs` owns that resolution and its failure
-// message names the cause, so there is no fallback ladder here to keep in step with it.
+// Playwright is resolved by `browser.mjs`, which owns that resolution for all eight browser
+// suites and whose failure message names the cause, so there is no fallback ladder here to
+// keep in step with it. This comment used to say Playwright "lives in the llama.cpp web UI's
+// node_modules" -- true when it was written and doubly wrong now: that tree moved under
+// `references/`, which task #74 bars importing, building or linking, so an agent who fixed a
+// startup failure by restoring the path it names would have broken the rule while making the
+// suite green. It is `tests/node_modules` now, pinned in `tests/package.json`.
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from './browser.mjs';
