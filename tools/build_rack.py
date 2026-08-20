@@ -19,6 +19,15 @@ what we distribute, not repeated on every surface -- but it only works while the
 there, so do not drop it. Note that the per-unit detail lines come from `/api/status`, not
 from this file.
 
+**The `<noscript>` fallback is generated from `backend/apps/ROSTER.md`, not typed here.** It
+used to carry exactly one row, `chat`, with a hardcoded `data-state="ready"` -- a claim about
+this machine made by a file that has taken no reading, which is the decorative-indicator rule
+above broken in the one place nobody looks. It now lists every row in the roster and asserts
+nothing: no `data-state`, no state word, no per-unit spec. Those are readings, they come from
+`/api/status`, and a fallback that runs because the socket is unavailable is precisely the
+case where it does not have them. Identity is what it can honestly carry: what the unit is,
+which bus it is on, how much rack it takes, and where to click.
+
 Idempotent: the block lives between HTML markers and is replaced wholesale on each run.
 """
 from __future__ import annotations
@@ -39,6 +48,13 @@ import sys as _sys
 _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import _art  # noqa: E402
 
+# One reader for the roster, shared with `backend/apps/test_roster.py`. Safe to import from a
+# generator because there is no `backend/apps/__init__.py` -- `apps` is a namespace package,
+# so this pulls in a parser and nothing else. Importing `api.py` here would build every rate
+# limiter, resolve the GPU governor and mount `site/`.
+_sys.path.insert(0, str(ROOT / "backend"))
+from apps import roster  # noqa: E402
+
 # The two renders that flank the rack. They are here rather than in a row of their own for
 # the same reason the masthead's two are: the rack is 1120px wide inside a 1900px viewport
 # and the gutters either side were empty at every width above 1280px, while a four-across
@@ -55,6 +71,22 @@ END = "<!-- ===== RACK:END ===== -->"
 POWER_GLYPH = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
                'stroke-linecap="round"><path d="M12 3v9"/>'
                '<path d="M6.6 6.6a8 8 0 1 0 10.8 0"/></svg>')
+
+# `slot` and `bus` are identity: how much rack the unit occupies and which bus it sits on.
+# Neither is a reading, which is why they can be carried in a file. Bus is upper-cased for
+# the plate, and RavenCalc's `cpu` matters -- it is the row that is green while the GPU is
+# locked, so a fallback that dropped the bus would lose the one useful thing it can say.
+FALLBACK = "".join(
+    f'''          <a class="unit" href="{r["href"]}">
+            <span class="leds"><i class="led"></i></span>
+            <span class="pwr">{POWER_GLYPH}</span>
+            <span class="uname"><b>{r["label"]}</b></span>
+            <span class="ubus">{r["bus"].upper()}</span>
+            <span class="ustate"><span class="txt">&mdash;</span><span class="slot">{r["slot"]}</span></span>
+          </a>
+'''
+    for r in roster.rows()
+)
 
 RACK = f"""{BEGIN}
 <section id="rack">
@@ -87,16 +119,13 @@ RACK = f"""{BEGIN}
       <div class="rail r"><i></i><i></i><i></i><i></i><i></i></div>
 
       <div class="units" id="units">
-        <!-- units are rendered from /api/status; this is the pre-JS fallback -->
+        <!-- Units are rendered from /api/status. Below is the pre-JS fallback, generated
+             from backend/apps/ROSTER.md: every row, identity only. No unit carries a
+             data-state or a state word here, because this markup has measured nothing --
+             the em dash is the same "no reading yet" mark the gauges below use. An unlit
+             .led is the honest LED for a row whose state is unknown. -->
         <noscript>
-          <a class="unit" data-state="ready" href="/chat.html">
-            <span class="leds"><i class="led on"></i></span>
-            <span class="pwr">{POWER_GLYPH}</span>
-            <span class="uname"><b>SyMoNeuRaL Chat</b><span>SymonChat S1-7B</span></span>
-            <span class="ubus">GPU</span>
-            <span class="ustate"><span class="txt">ready</span><span class="slot">1U</span></span>
-          </a>
-        </noscript>
+{FALLBACK}        </noscript>
       </div>
 
       <div class="chassis">

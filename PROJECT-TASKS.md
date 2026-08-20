@@ -153,6 +153,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         check: exists backend/apps/ROSTER.md
         check: grep ROSTER -- tools/build_rack.py
+        check: grep RosterMatchesApiTests -- backend/apps/test_roster.py
         check: exists backend/apps/studio/plugins/__init__.py
         check: exists backend/apps/studio/plugins/exp/__init__.py
         check: exists backend/apps/studio/plugins/reinforce/__init__.py
@@ -175,6 +176,25 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: got more done, and a re-run would read as a regression. `grep "include_router"` in
         note: `__init__.py` replaces it and is true only when the package composes the two halves
         note: itself instead of handing api.py two routers to wire.
+        note: 2026-08-20 coder — item 1 done. `backend/apps/ROSTER.md` is the written roster:
+        note: thirteen rows, twenty rack units, identity only — live state stays in /api/status,
+        note: which measures it. `apps/roster.py` is the one parser and RAISES on a malformed
+        note: row rather than skipping it, because a skipped line loses a rack row silently.
+        note: `tools/build_rack.py` now generates the <noscript> fallback from it: every row,
+        note: and no `data-state` at all. It carried exactly one row before, chat, hardcoded
+        note: `data-state="ready"` — a decorative indicator in the one file nobody looks at,
+        note: and worst there, since the fallback renders precisely when the socket that could
+        note: have measured it is gone. The state cell reads `&mdash;`, same as the gauges.
+        note: The third check above is why `exists` is not enough: `exists` passes on an empty
+        note: file, so the gate is `apps/test_roster.py` reconciling the roster against
+        note: `build_status()`, the modules' own `status()`, the directory listing,
+        note: `controlboard.TOGGLEABLE` and the generated page. All six were broken on purpose
+        note: first and each failed for its own reason. `EXPECTED` in `test_status_rack.py` and
+        note: `TOGGLEABLE` are deliberately NOT derived from the roster — a tripwire wired to
+        note: the thing it watches is not a tripwire — so they stay hand-typed and a test
+        note: compares them. `ravencalc` and `remix` are the reason this was needed: neither
+        note: has an `__init__.py`, so any roster built by looking for packages drops two live
+        note: surfaces without saying so.
         note: The `resolve:` lines that closed #51, #53 and #55 read the filesystem, which is
         note: why they could close themselves the moment the folders moved. The checks above
         note: are chosen the same way — each one is false today and can only be made true by
