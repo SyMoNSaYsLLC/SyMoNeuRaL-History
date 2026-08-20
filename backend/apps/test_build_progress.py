@@ -375,3 +375,86 @@ class EveryLedgerEntryIsDoneOrTaskOrIntake(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def run_intake_stderr(root: Path) -> str:
+    """build_intake.py's warnings, for the checks that report rather than fail.
+
+    Separate from `run_intake` because that helper treats stderr as a failure report and
+    discards it on success. `check_task_pointers` warns on a zero exit by design -- see its
+    docstring -- so the only way to assert on it is to keep stderr from a successful run.
+    """
+    r = subprocess.run([sys.executable, str(INTAKE_GENERATOR), "--root", str(root)],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise AssertionError(f"build_intake failed rc={r.returncode}\n{r.stderr}")
+    return r.stderr
+
+
+class EveryTaskPointerResolves(unittest.TestCase):
+    """`task: #NN` must name exactly one task, and be reported when it does not.
+
+    The gap this closes: `TASK_REF` only ever asked whether a reference was PRESENT. Both the
+    barrier count in build_intake.py and `covered` in build_progress.py read "has a `task:`
+    line" as "is being carried", so a pointer at a task number that does not exist renders as
+    carried work -- a barrier wearing a task's clothes, invisible exactly where the count
+    claims to be complete.
+
+    Not hypothetical: `7fcc96d` numbered 58 assignments and reused #60-#63, which had already
+    been spent on tasks archived in the same window, and nothing reported it.
+    """
+
+    TASKS = ("# tasks\n\n"
+             "◻ #1 — first thing\n"
+             "        owner: coder\n\n"
+             "◻ #2 — second thing\n"
+             "        owner: coder\n\n")
+
+    INTAKE = ("# INTAKE.md\n\n---\n\n**Requests**\n\n"
+              "## A-R1 [request] — an entry that points somewhere\n"
+              "[ ]\n"
+              "from: GARRETT-REQUESTS.md R-1\n"
+              "owner: coder\n"
+              "task: {ref}\n\n")
+
+    def _root(self, td: str, tasks: str, ref: str) -> Path:
+        root = Path(td)
+        (root / "PROJECT-TASKS.md").write_text(tasks)
+        (root / "INTAKE.md").write_text(self.INTAKE.format(ref=ref))
+        return root
+
+    def test_a_pointer_at_a_task_that_exists_is_silent(self):
+        """The control. Without this the test below passes on a check that always warns."""
+        with tempfile.TemporaryDirectory() as td:
+            err = run_intake_stderr(self._root(td, self.TASKS, "#1 — first thing"))
+        self.assertNotIn("WARNING", err,
+                         "a pointer at a task that exists must not be reported — a check that "
+                         "warns on the healthy case gets muted and then catches nothing")
+
+    def test_a_pointer_at_a_task_in_neither_file_is_reported(self):
+        with tempfile.TemporaryDirectory() as td:
+            err = run_intake_stderr(self._root(td, self.TASKS, "#99 — never written"))
+        self.assertIn("A-R1", err, "the assignment carrying the dead pointer must be named")
+        self.assertIn("#99", err, "the number that does not resolve must be named")
+
+    def test_a_number_used_by_two_tasks_is_reported(self):
+        """Number reuse. The pointer resolves two ways, so following it is a coin toss."""
+        reused = self.TASKS + "◻ #1 — a second thing wearing the same number\n        owner: coder\n\n"
+        with tempfile.TemporaryDirectory() as td:
+            err = run_intake_stderr(self._root(td, reused, "#1 — first thing"))
+        self.assertIn("#1", err, "the duplicated number must be named")
+        self.assertIn("resolves 2 ways", err,
+                      "the assignment must be told its pointer is ambiguous, not merely that "
+                      "some task number somewhere is duplicated")
+
+    def test_a_closed_task_still_counts_as_resolved(self):
+        """An assignment whose task is finished is a normal state, not a barrier."""
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, self.TASKS, "#7 — done and filed")
+            (root / "review").mkdir()
+            (root / "review" / "CLOSED-TASKS.md").write_text(
+                "# closed\n\n◼ #7 — done and filed\n        owner: coder\n\n")
+            err = run_intake_stderr(root)
+        self.assertNotIn("#7", err,
+                         "a pointer at a CLOSED task is resolved — reporting it would push "
+                         "every finished assignment back onto the barrier list")

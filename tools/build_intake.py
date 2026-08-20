@@ -45,7 +45,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_progress import (  # noqa: E402  (path set above)
-    AUDIT_HEAD, TASK_REF, parse_audit, parse_questions, parse_requests,
+    AUDIT_HEAD, TASK_REF, TASK_ROW, parse_audit, parse_questions, parse_requests,
 )
 
 #: The title is optional so that ONE parser reads both files. `review/RETIRED-ASSIGNMENTS.md`
@@ -66,6 +66,10 @@ ANSWER_LINE = re.compile(r"^A:\s*(.*)$")
 #: runs and show up as churn in the run-twice diff.
 BRIEF_LINE = re.compile(r"^brief:\s*(.*)$")
 EDIT_LINE = re.compile(r"^edit:\s*(.*)$")
+#: `blocked:` — the specific thing stopping an entry becoming a task, for the page's
+#: "Why not a task yet" column. Preserved, not regenerated, for the same reason as the two
+#: above: it is a judgement somebody wrote, and a generated version of it would be a guess.
+BLOCKED_LINE = re.compile(r"^blocked:\s*(.*)$")
 # The `**Requests**` / `**Questions**` / `**Findings**` band between sections. Anchored to the
 # three kinds rather than to `**...**` generally, so a bold sentence someone writes in an
 # entry's prose is still prose.
@@ -132,7 +136,8 @@ def parse_existing(path: Path) -> dict:
         m = ENTRY_HEAD.match(line)
         if m:
             cur = {"box": False, "dropped": False, "task": "", "answer": "",
-                   "brief": "", "edit": "", "prose": [], "title": m.group(3) or ""}
+                   "brief": "", "edit": "", "blocked": "", "prose": [],
+                   "title": m.group(3) or ""}
             kept[m.group(1)] = cur
             continue
         if cur is None:
@@ -143,7 +148,8 @@ def parse_existing(path: Path) -> dict:
             cur["dropped"] = b.group(1) == "-"
             continue
         for rx, key in ((TASK_LINE, "task"), (ANSWER_LINE, "answer"),
-                        (BRIEF_LINE, "brief"), (EDIT_LINE, "edit")):
+                        (BRIEF_LINE, "brief"), (EDIT_LINE, "edit"),
+                        (BLOCKED_LINE, "blocked")):
             g = rx.match(line)
             if g:
                 cur[key] = g.group(1).strip()
@@ -342,6 +348,61 @@ def write_atomic(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+def check_task_pointers(root: Path, kept: dict) -> list[str]:
+    """Resolve every `task: #NN` against the task files. Returns human-readable problems.
+
+    This exists because `TASK_REF` only ever asked whether a task reference was *present*, not
+    whether it pointed at anything. That is the whole gap: `covered` in build_progress.py and
+    the barrier count in `render` above both treat "has a `task:` line" as "is being carried",
+    so a pointer at a task number that does not exist reads on the page as carried work. It is
+    a barrier wearing a task's clothes, and it is invisible precisely where the count claims to
+    be complete.
+
+    It was not hypothetical. `7fcc96d` numbered 58 assignments and reused #60, #61, #62 and #63,
+    which had already been spent on tasks archived in the same window -- so four numbers each
+    named two different pieces of work, and `A-R99` pointed at a #62 that resolves two ways.
+    Nothing reported it, because nothing looked.
+
+    Both task files are read: a pointer at a CLOSED task is resolved, not dangling. An
+    assignment whose task is finished is a normal state and must not be reported as a barrier.
+
+    WARN, not fail. `render_retired` and the INTAKE write are the load-bearing outputs and a
+    stale pointer must not stop them landing -- and #62's surviving pair is inside
+    `review/CLOSED-TASKS.md`, which is archived verbatim and is not ours to renumber. A check
+    that made the documented build sequence exit non-zero over a historical record would be
+    turned off, and then it would catch nothing at all.
+    """
+    seen: dict[str, list[str]] = {}
+    for name in ("PROJECT-TASKS.md", "review/CLOSED-TASKS.md"):
+        f = root / name
+        if not f.exists():
+            continue
+        for line in f.read_text().splitlines():
+            m = TASK_ROW.match(line)
+            if m and m.group(2).startswith("#"):
+                seen.setdefault(m.group(2), []).append(f"{name}: {m.group(3)}")
+
+    problems = []
+    for num, where in sorted(seen.items(), key=lambda kv: int(kv[0][1:])):
+        if len(where) > 1:
+            problems.append(f"task {num} is used by {len(where)} tasks: "
+                            + " | ".join(where))
+
+    for aid, k in sorted(kept.items()):
+        ref = k.get("task")
+        if not ref:
+            continue
+        m = TASK_REF.search(ref)
+        if not m:
+            continue
+        num = m.group(0)
+        if num not in seen:
+            problems.append(f"{aid} points at {num}, which is in neither task file")
+        elif len(seen[num]) > 1:
+            problems.append(f"{aid} points at {num}, which resolves {len(seen[num])} ways")
+    return problems
+
+
 def main() -> int:
     # --root for the same reason build_progress.py has one: the test suite points both
     # generators at a temp tree, and without it the held-entry tests would either have to
@@ -390,6 +451,11 @@ def main() -> int:
         if not archive.exists() or archive.read_text() != retired:
             write_atomic(archive, retired)
             print(f"wrote {archive}")
+
+    # Pointer integrity, reported after the writes so a warning can never cost a write. See
+    # check_task_pointers for why this warns rather than fails.
+    for problem in check_task_pointers(root, kept):
+        print(f"WARNING: {problem}", file=sys.stderr)
 
     # Idempotent: identical content is not rewritten, so this never fights an open editor over
     # mtime and never shows up in `git status` for having run.

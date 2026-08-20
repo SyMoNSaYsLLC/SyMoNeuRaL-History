@@ -197,10 +197,6 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         R-139, which closes the destination table.
         resolve: backend/apps/settlement -> backend/apps/gateway/settlement
 
-◻ #52 — Rename symoneuralstudio to studio
-        R-137, the authoritative destination table.
-        resolve: backend/apps/symoneuralstudio -> backend/apps/studio
-
 ◻ #53 — Fold rackpower, the live stack and the control board into controls
         R-138.
         resolve: backend/apps/rackpower -> backend/apps/controls
@@ -277,7 +273,7 @@ questionnaire, the closed-task move, the status percentage) are already in
         set where 100% genuinely means done. Where it cannot — "apply a naming system
         tastefully" has no predicate — say so in the task rather than inventing a number.
 
-◻ #60 — Build the full stack: debian backend and four frontends
+◻ #68 — Build the full stack: debian backend and four frontends
         owner: coder
         R-11, and it is the largest single item on this list. Garrett: *"build the FULL
         stack"* — a debian backend plus FOUR frontends: web, android/firestick, debian
@@ -292,7 +288,7 @@ questionnaire, the closed-task move, the status percentage) are already in
         this task is "three more frontends and the toolchains to build them", and the first
         deliverable is the matrix that says which of the three this box can build at all.
 
-◻ #61 — Multi-environment servers: prod, sandbox, development, testing, tuning
+◻ #69 — Multi-environment servers: prod, sandbox, development, testing, tuning
         owner: coder
         R-55, with easy promotion of an app between environments. One box and one GPU is the
         binding constraint — five live stacks cannot coexist in 15.92 GiB — so this is an
@@ -303,7 +299,7 @@ questionnaire, the closed-task move, the status percentage) are already in
         Do not start this before #34 and #35: promoting an app between environments is
         meaningless while four applications are dark and the deploy is manual.
 
-◻ #63 — Make the Studio row tell the truth about ComfyUI
+◻ #70 — Make the Studio row tell the truth about ComfyUI
         owner: coder
         R-102, audit item 27. The Studio row renders green while nothing on this box starts
         ComfyUI, so the row survives exactly one reboot before it is a lie. This is a direct
