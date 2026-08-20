@@ -136,12 +136,70 @@ function run(args, { stdin = '', tty = false, env = {}, bin = CLI } = {}) {
   record('/resume with no argument lists the recorded threads and marks the current one',
          /\/resume <id> to switch/.test(r.out));
 }
+// ---- the gate ------------------------------------------------------------------------
+// The assertion that stood here said `/permissions` must state that nothing is gated yet. That
+// was true when it was written and stopped being true when #78 item 3 landed, so it was red and
+// the client was right -- a test asserting the absence of a feature has to be deleted by the
+// commit that adds the feature, or it becomes a red that reads like a regression.
+//
+// Everything below is deterministic: no model, no API, no live tool call. A test that waits for
+// the model to choose a gated tool is a coin flip in a suite, and the frame it would exercise is
+// covered end to end in backend/apps/test_symoneural_cli.py, which drives the whole handshake
+// against a scripted stream. What is left for this file is the operator surface: the setting, how
+// it resolves, and where the gated list comes from.
+{
+  const r = run(['agent', '--permissions', 'bogus', 'hi']);
+  record("the gate: an unrecognised --permissions is an argparse error, not a quiet default",
+         r.code === 2 && /invalid choice/.test(r.err), `exit ${r.code}`);
+}
+{
+  const r = run(['agent', '--help']);
+  record("the gate: --dangerously-allow-all is in help and names what it turns off",
+         /--dangerously-allow-all/.test(r.out)
+           && /permissions allow/.test(r.out) && /delete_path/.test(r.out));
+}
 {
   const r = run(['repl'], { stdin: '/permissions\n/exit\n' });
-  // The gate is task #78 item 3. Until it exists this must SAY so: a client claiming to gate
-  // tools while the server runs them unasked is the decorative-status-light rule in a terminal.
-  record('/permissions states plainly that nothing is gated yet, rather than implying it is',
-         /not gated yet/.test(r.out) && /server-side/.test(r.out));
+  // The one that matters. `auto` with nobody at a terminal must fall to DENY. If it fell to
+  // allow, every scripted invocation on this box would run delete_path unasked, and the failure
+  // would be silent in exactly the direction that costs something. This is the client half of
+  // the same rule the loop enforces with PERMISSION_MODES: no failing open.
+  record("the gate: with no terminal to ask, auto resolves to deny and prints which",
+         /permissions: auto -> deny/.test(r.out),
+         (r.out.match(/permissions: [^\n]*/) || ['(no permissions line)'])[0]);
+  // Not a hardcoded list, and it says so out loud when it cannot reach the server. A client
+  // that printed its own copy of the gated set would drift from the registry that decides it,
+  // and the drift is invisible until something dangerous is missing from the copy.
+  record("the gate: the gated set is asked of the server, and says so when there is no server",
+         /gated: unknown \(no api\)/.test(r.out),
+         (r.out.match(/gated: [^\n]*/) || ['(no gated line)'])[0]);
+  record("the gate: nothing is exempt until somebody exempts it",
+         /exempt this session: nothing/.test(r.out));
+}
+{
+  const r = run(['repl'], {
+    stdin: '/permissions ask\n/permissions\n/permissions allow\n/permissions\n/exit\n' });
+  const seen = (r.out.match(/permissions: [^\n]*/g) || []);
+  record("the gate: the mode can be set mid-session and reads back as what was set",
+         seen.length === 4 && /ask$/.test(seen[0]) && /ask$/.test(seen[1])
+           && /allow$/.test(seen[2]) && /allow$/.test(seen[3]),
+         seen.join(' | '));
+}
+{
+  const r = run(['repl'], {
+    stdin: '/permissions +run_command\n/permissions\n/permissions -run_command\n'
+         + '/permissions\n/exit\n' });
+  const seen = (r.out.match(/exempt (?:for )?this session: [^\n]*/g) || []);
+  // An exemption is added and removed by name and never persisted -- `always` is per-invocation
+  // on purpose, because a written-down "always" is a decision made once and applied forever by
+  // a file nobody re-reads.
+  // Four lines, not three: the `+` and `-` each confirm the change and each `/permissions`
+  // reports it back, and the confirmation is worth asserting separately from the report -- a
+  // client that echoed the exemption without recording it would print the same first line.
+  record("the gate: an exemption is added and taken away by name, leaving nothing behind",
+         seen.length === 4 && /run_command$/.test(seen[0]) && /run_command$/.test(seen[1])
+           && /nothing$/.test(seen[2]) && /nothing$/.test(seen[3]),
+         seen.join(' | '));
 }
 
 // ---- @path and continuations ---------------------------------------------------------

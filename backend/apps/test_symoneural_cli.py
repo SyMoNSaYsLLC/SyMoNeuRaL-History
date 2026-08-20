@@ -69,6 +69,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1503,6 +1504,108 @@ class SubcommandTableTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "", "usage must go to stderr, not stdout")
 
 
+@unittest.skipUnless(shutil.which("script"), "util-linux `script` is what allocates the pty")
+class ApprovePromptTests(unittest.TestCase):
+    """`approve()` itself, driven through a real terminal.
+
+    `PermissionGateTests` patches this function away and says why: it tests what the client
+    DOES with a verdict. That left the half that produces the verdict with no coverage at all
+    -- the prompt text, the four keys, the re-ask, and what happens when the terminal goes
+    away -- in the one function where a wrong default is a command running that nobody agreed
+    to. It cannot be reached by patching stdin, because it deliberately opens `/dev/tty`
+    instead (in `agent "..."` stdin may be a pipe carrying the query, and in the repl it is
+    the transcript; neither is a human). So this class allocates an actual pty with
+    util-linux `script`, the same instrument the node suite uses for the isatty fork, and
+    feeds keystrokes to it.
+    """
+
+    DRIVER = (
+        "import json, sys, types\n"
+        "path = sys.argv[1]\n"
+        "m = types.ModuleType('cli'); m.__file__ = path\n"
+        "exec(compile(open(path).read(), path, 'exec'), m.__dict__)\n"
+        "print('VERDICT=' + m.approve(sys.argv[2], json.loads(sys.argv[3]), sys.argv[4]))\n"
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.driver = Path(self.tmp.name) / "drive_approve.py"
+        self.driver.write_text(self.DRIVER)
+
+    def ask(self, keys, *, name="run_command", arguments=None, reason="dangerous in the registry"):
+        """Returns `(verdict, screen)`. `keys` is typed at the pty; '' is the terminal closing."""
+        arguments = {"cmd": "rm -rf /tmp/x"} if arguments is None else arguments
+        inner = " ".join([sys.executable, str(self.driver), str(CLI_PATH), name,
+                          json.dumps(json.dumps(arguments)), json.dumps(reason)])
+        r = subprocess.run(["script", "-qec", inner, "/dev/null"], input=keys,
+                           capture_output=True, text=True, timeout=60)
+        # A pty turns colour back on, so it has to come off again before anything is matched.
+        screen = re.sub(r"\x1b\[[0-9;]*m", "", r.stdout + r.stderr)
+        found = re.search(r"VERDICT=(\w+)", screen)
+        return (found.group(1) if found else None), screen
+
+    def test_the_prompt_names_the_tool_the_reason_and_all_four_keys(self):
+        verdict, screen = self.ask("y\n")
+        self.assertEqual(verdict, "yes")
+        self.assertIn("permission required", screen)
+        self.assertIn("run_command", screen)
+        self.assertIn("dangerous in the registry", screen)
+        for key, word in (("[y]", "es once"), ("[n]", "o, tell the model"),
+                          ("[a]", "lways this session"), ("[q]", "uit the turn")):
+            self.assertIn(key, screen, f"the {key} key is not offered")
+            self.assertIn(word, screen)
+
+    def test_every_key_maps_to_the_verdict_it_prints(self):
+        """All four, typed as the letter and as the word, because APPROVE_KEYS accepts both and
+        a table with an entry nobody exercises is a table with a typo waiting in it."""
+        for keys, want in (("y\n", "yes"), ("yes\n", "yes"), ("n\n", "no"), ("no\n", "no"),
+                           ("a\n", "always"), ("always\n", "always"),
+                           ("q\n", "quit"), ("quit\n", "quit"),
+                           ("  Y  \n", "yes"), ("N\n", "no")):
+            with self.subTest(typed=keys.strip() or "<enter>"):
+                verdict, screen = self.ask(keys)
+                self.assertEqual(verdict, want, screen[-400:])
+
+    def test_a_bare_return_approves_once_which_is_the_documented_default(self):
+        """Pinned deliberately rather than left to the table. `APPROVE_KEYS` maps "" to yes, so
+        Enter approves this one call -- that is a real decision, it is what `[y]es once` being
+        listed first announces, and a future edit that flips it to a refusal or to a re-ask
+        should have to change this test and say so in the message."""
+        verdict, _ = self.ask("\n")
+        self.assertEqual(verdict, "yes")
+
+    def test_an_unrecognised_key_re_asks_instead_of_guessing_what_was_meant(self):
+        verdict, screen = self.ask("maybe\nn\n")
+        self.assertEqual(verdict, "no")
+        self.assertIn("y, n, a or q", screen)
+
+    def test_the_terminal_going_away_mid_question_refuses(self):
+        """The default when there is nobody left to ask. `readline()` returning nothing is a
+        closed terminal, and the only safe reading of a question that was never answered is
+        no -- an approval inferred from silence is the worst possible place for one."""
+        verdict, screen = self.ask("")
+        self.assertEqual(verdict, "no")
+        self.assertIn("no answer; refusing", screen)
+
+    def test_the_arguments_are_printed_in_full_and_never_elided(self):
+        """The layout rule, in the one place it is a safety property rather than a preference.
+        A truncated argument line means a human approved a command they had not read, so a
+        long value must wrap rather than end in an ellipsis."""
+        cmd = "rm -rf /tmp/" + "d" * 200
+        verdict, screen = self.ask("y\n", arguments={"cmd": cmd, "cwd": "/home/google/Symoneural"})
+        self.assertEqual(verdict, "yes")
+        self.assertNotIn("\u2026", screen)
+        self.assertNotIn("...", screen)
+        # The pty wraps at its width, so the comparison has to survive a line break landing
+        # anywhere in the value -- including inside `rm -rf`, which is why the whitespace comes
+        # out of BOTH sides rather than only out of the screen.
+        flat = re.sub(r"\s+", "", screen)
+        self.assertIn(re.sub(r"\s+", "", cmd), flat,
+                      "the command a human is approving was not shown in full")
+        self.assertIn("/home/google/Symoneural", screen)
+
+
 class PermissionGateTests(unittest.TestCase):
     """The gate, from the client's side. The rule being protected is one sentence: what runs
     is the argument object that was displayed, chosen by nobody after it was displayed."""
@@ -1534,9 +1637,18 @@ class PermissionGateTests(unittest.TestCase):
             return FakeSSE(segments[min(len(self.sent) - 1, len(segments) - 1)])
         self.cli.api_open = api_open
 
+        # `(status, body)`, because that is what the real `api_json` returns. This fake used to
+        # answer a bare dict, and the difference is not cosmetic: the code under test bound the
+        # call straight to `result` and shipped `[200, {...}]` to the model as the tool's output,
+        # with the status folded in as element 0 -- and every test here stayed green, because the
+        # fake agreed with the mistake. A stub that does not match the signature it stands in for
+        # tests the stub. The status is settable so the refused-by-the-router path has a way in.
+        self.tool_status = 200
+        self.tool_body: dict = {"ok": True, "stdout": ""}
+
         def api_json(path, *, base, method="GET", body=None, timeout=None, **kw):
             self.ran.append({"path": path, "body": copy.deepcopy(body)})
-            return {"ok": True, "stdout": ""}
+            return self.tool_status, dict(self.tool_body)
         self.cli.api_json = api_json
 
     def args(self, **kw):
@@ -1565,6 +1677,38 @@ class PermissionGateTests(unittest.TestCase):
         self.assertEqual([r["path"] for r in self.ran], ["/api/studio/tool/run_command"])
         self.assertEqual(self.ran[0]["body"], {"arguments": {"cmd": "rm -rf /tmp/x"}})
         self.assertIn("Removed.", out)
+
+    def test_the_approved_tool_reaches_the_model_as_its_own_body_not_as_a_status_pair(self):
+        """What the model is handed after a human approves. `api_json` answers `(status, body)`,
+        and the client bound that tuple straight to the result, so the transcript carried
+        `[200, {"ok": true, ...}]` -- an array where an object belongs, with the HTTP status as
+        element 0. Nothing caught it because the fake in this file returned a bare dict and so
+        agreed with the mistake. The assertion is on the JSON the model actually reads."""
+        self.answer("yes")
+        self.tool_body = {"ok": True, "stdout": "gone\n"}
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            rc, out, err = call(self.cli.cmd_agent, self.args())
+        self.assertEqual(rc, 0, err)
+        told = json.loads(self.sent[1]["resume"][1]["content"])
+        self.assertEqual(told, {"ok": True, "stdout": "gone\n"},
+                         "the model must read the tool's own body, not a [status, body] pair")
+        self.assertNotIsInstance(told, list, "a status pair leaked into the transcript")
+
+    def test_a_call_the_router_refuses_reaches_the_model_as_a_failure(self):
+        """A 4xx is a JSON body here, not an exception -- `denied` and `unknown_tool` come back
+        with an error status and an ordinary body. So the status is the only thing that says the
+        call failed, and dropping it handed the model a refusal shaped exactly like output. It
+        would then reason from a tool it believes ran."""
+        self.answer("yes")
+        self.tool_status, self.tool_body = 403, {"error": "denied",
+                                                 "detail": "run_command is not enabled"}
+        with env_patch(SYMONEURAL_STUDIO_TOKEN="t"):
+            rc, out, err = call(self.cli.cmd_agent, self.args())
+        self.assertEqual(rc, 0, err)
+        told = json.loads(self.sent[1]["resume"][1]["content"])
+        self.assertEqual(told["error"], "denied")
+        self.assertEqual(told["tool"], "run_command")
+        self.assertIn("not enabled", told["detail"])
 
     def test_the_resumed_request_carries_the_pending_messages_then_the_tool_result(self):
         """Order is the assertion. `resume` goes AFTER the user query, and inside it the

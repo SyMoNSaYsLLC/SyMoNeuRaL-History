@@ -544,7 +544,28 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep \d+(\.\d+)? MiB -- desktop/README.md
         check: grep def render_markdown -- bin/symoneural-cli
         check: grep def status_line -- bin/symoneural-cli
-        check: grep permission_required -- tests/code_cli.mjs
+        check: grep record\("the gate: -- tests/code_cli.mjs
+        note: 2026-08-20 coder — the check that stood here was `grep permission_required --
+        note: tests/code_cli.mjs`, which is the exact trap the note above records one file over:
+        note: `permission_required` is the natural word for prose ABOUT the gate, so a comment
+        note: saying there is no gate test yet turns it green. Measured, not assumed — a
+        note: comment-only line naming it made the check PASS on a file with no gate assertion
+        note: in it. It now names a test registration, `record("the gate: `, which is not a
+        note: sentence anybody writes. Honest limit: a comment containing that exact string
+        note: still satisfies it. grep on a source file cannot prove a test ran; the most it
+        note: can do is stop being satisfied by the explanation of its own absence.
+        note: 2026-08-20 coder — writing the gate tests found two live bugs, both one wrong
+        note: assumption about `api_json`, which answers `(status, body)`. `/permissions`
+        note: treated the call as a dict and traced back EVERY time, taking the session with
+        note: it. Worse, the post-approval execution path bound the tuple to `result`, so the
+        note: model was handed `[200, {...}]` where the tool's output belongs, and a 403
+        note: `denied` from the router reached it shaped exactly like success. Nothing caught
+        note: it because the fake in test_symoneural_cli.py returned a bare dict and so agreed
+        note: with the mistake — a stub that does not match the signature it stands in for
+        note: tests the stub. Also fixed a red this file's own suite was carrying: an assertion
+        note: that `/permissions` must say nothing is gated yet, true when written and stale
+        note: the moment item 3 landed. A test asserting the absence of a feature has to be
+        note: deleted by the commit that adds it.
         check: exists desktop/shell.py
         check: grep WebKit2 -- desktop/shell.py
         check: exists desktop/symoneural-code.desktop

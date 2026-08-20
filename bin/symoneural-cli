@@ -987,8 +987,22 @@ def cmd_agent(args) -> int:
             # again at temperature, so what ran could differ from what was read and approved.
             print(c(f"  running {name}", GREEN))
             try:
-                result = api_json(f"/api/studio/tool/{name}", base=args.url, method="POST",
-                                  body={"arguments": arguments}, timeout=args.timeout)
+                # `api_json` answers `(status, body)` and BOTH halves matter here. Binding the
+                # tuple to `result` sent the model `[200, {...}]` -- the status folded in as
+                # element 0 of an array where the tool's output belongs -- and, worse, a 4xx
+                # went to it looking exactly like a success, because the router answers
+                # `denied` and `unknown_tool` as ordinary JSON with an error status. A tool the
+                # server refused must reach the model as a failure or it reasons from output it
+                # never got.
+                status, obj = api_json(f"/api/studio/tool/{name}", base=args.url,
+                                       method="POST", body={"arguments": arguments},
+                                       timeout=args.timeout)
+                if 200 <= status < 300:
+                    result = obj
+                else:
+                    result = {"error": obj.get("error") or f"http_{status}", "tool": name,
+                              "detail": obj.get("detail")
+                                        or f"the API answered {status} for this call"}
             except Exception as exc:                       # noqa: BLE001
                 result = {"error": "tool_failed", "tool": name,
                           "detail": f"{type(exc).__name__}: {exc}"}
@@ -1445,7 +1459,13 @@ def cmd_repl(args) -> int:
                 # The gated set comes from the registry that decides it, over /state, rather
                 # than from a list typed into this client -- a copied list is a list that
                 # drifts, and the drift is silent in exactly the direction that matters.
-                gated = (api_json("/api/studio/state", base=args.url) or {}).get("gated")
+                # Same tuple. `api_json` returns `(status, body)`, so treating the call as a
+                # dict raised AttributeError and took the whole session down with it -- every
+                # time, not only when the API was absent. The CLI is what an operator reaches
+                # for when the box is broken; a traceback out of it is the one output it may
+                # not have.
+                _status, state = api_json("/api/studio/state", base=args.url)
+                gated = (state or {}).get("gated")
                 print(c(f"gated: {', '.join(gated) if gated else 'unknown (no api)'}", DIM))
                 print(c(f"exempt this session: "
                         f"{', '.join(args.allow_tool or []) or 'nothing'}", DIM))
