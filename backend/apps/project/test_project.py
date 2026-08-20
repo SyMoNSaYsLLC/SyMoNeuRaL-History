@@ -1036,6 +1036,39 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(store.unit_state(),
                              ("offline", "surface disabled on this installation"))
 
+    def test_a_store_that_cannot_be_created_returns_None_instead_of_raising(self):
+        """The call site is what makes this matter. `bootstrap()` runs inline in `api.py`'s
+        lifespan before `yield`; every other startup line there is an env read or an
+        `asyncio.create_task`, where an exception dies inside the task. An unguarded
+        `OSError` here propagates out of the lifespan, uvicorn never starts, and
+        `Restart=always` turns that into a crashloop across all thirteen units -- so the
+        function whose job is making one rack row honest would take down the rack.
+
+        The measurement that prompted this: with the `except` removed, `bootstrap()` raises
+        `PermissionError: [Errno 13] ... /locked/sub` on a parent with mode 0o500.
+
+        The assertion on `unit_state` is the substance. Swallowing the error is only
+        defensible because the honest reading for "no store" already exists and the rack
+        already prints it; a degraded start has to land there, not on a state invented for
+        the occasion.
+        """
+        locked = self.db.parent.parent
+        locked.mkdir(parents=True)
+        os.chmod(locked, 0o500)
+        self.addCleanup(os.chmod, locked, 0o700)
+        with self.env("1"):
+            with self.assertLogs("symoneural.project", level="ERROR") as caught:
+                # No assertRaises wrapper anywhere in this test: the call either returns or
+                # the test errors out, which is exactly the distinction being drawn.
+                self.assertIsNone(store.bootstrap())
+            self.assertFalse(self.db.exists())
+            # The `except` body has to actually run for this to pass, which also catches the
+            # first version of the guard: it called `log.exception` in a module that had no
+            # logger, so the `except` raised `NameError` and the lifespan died anyway.
+            self.assertIn("surface stays offline", caught.output[0])
+            self.assertEqual(store.unit_state(),
+                             ("offline", "no project store initialised"))
+
     def test_an_enabled_surface_gets_a_store_and_the_rack_then_reads_ready(self):
         """The whole point, asserted end to end rather than at the file's existence: the
         rack row is what Garrett looks at, so the test ends on `unit_state`."""

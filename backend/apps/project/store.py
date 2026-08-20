@@ -16,6 +16,7 @@ import datetime
 import fnmatch
 import hashlib
 import hmac
+import logging
 import os
 import pathlib
 import re
@@ -24,6 +25,8 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from typing import Callable
+
+log = logging.getLogger("symoneural.project")
 
 HERE = pathlib.Path(__file__).resolve().parent
 # backend/apps/project -> backend/apps -> backend -> the repo root. Derived from __file__
@@ -469,10 +472,29 @@ def bootstrap() -> pathlib.Path | None:
     125 KB module and start an event loop to reach them.
 
     This is not a rack poll, so it does not violate the rule `connect()` sets.
+
+    Failures are swallowed on purpose, and this is the only place in the module that does
+    that. The call site is `api.py`'s lifespan, inline and before `yield` -- every other
+    startup line there is either a pure env read or an `asyncio.create_task`, where an
+    exception dies inside the task. An `OSError` out of `mkdir` or an
+    `sqlite3.OperationalError` out of `executescript` would propagate out of the lifespan,
+    uvicorn would fail to start, and `Restart=always` would make that a crashloop taking
+    down all thirteen units -- for a function whose entire purpose is making one rack row
+    honest. Returning `None` instead costs nothing, because the true reading for "no store"
+    already exists and the rack already prints it: `probe()` answers
+    `offline / no project store initialised`. A degraded start lands on a state that is
+    true rather than on one that was manufactured, and no new state string is invented.
     """
     if not enabled():
         return None
-    return init_db()
+    try:
+        return init_db()
+    except (OSError, sqlite3.Error):
+        # The path is logged, not the exception's own text, which can carry the full
+        # filesystem path of a store an operator chose to put somewhere private.
+        log.exception("project store could not be created at %s; surface stays offline",
+                      db_path())
+        return None
 
 
 def probe() -> tuple[bool, str]:
