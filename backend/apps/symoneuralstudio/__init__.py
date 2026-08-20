@@ -33,10 +33,12 @@ sub-path deployment, not a trick.
 
 ## The gate
 
-Garrett's standing instruction is that the project carries no filters or safeguards: he sets
-those after testing what he wants to pass. So there is no content filter here, no path
-allow-list and no command blocklist -- `run_command` and `write_file` reach the whole host, as
-asked, and `generate_image` renders whatever it is given.
+As of 2026-08-20 no content filtering is implemented on this surface: no content filter, no
+path allow-list, no command blocklist -- `run_command` and `write_file` reach the whole host,
+and `generate_image` renders whatever it is given. **This is a deliberate pre-launch state,
+not a cleared posture.** The standing instruction this paragraph used to cite is held
+(request ledger R-98, 2026-08-20) and is being re-scoped per surface, so nothing here should
+be read as authority either to strip a control out or to leave one out.
 
 What *is* here is the structural switch this repo already puts on every write-capable surface
 (`apps/voice`, `apps/asicminer`): `SYMONEURAL_STUDIO_ENABLED=1` **and** `SYMONEURAL_STUDIO_TOKEN=<secret>`,
@@ -50,6 +52,8 @@ Garrett. With both set, it will happily `rm -rf` for him.
 from __future__ import annotations
 
 import os
+import socket
+import urllib.parse
 
 from .gate import enabled, token_ok  # noqa: F401
 
@@ -85,15 +89,40 @@ LABEL = "SyMoNeuRaL Studio"
 # saying `studio.enabled()`. See that module for why the split exists (import cycle, not taste).
 
 
+def comfy_probe() -> tuple[bool, str]:
+    """(listening, "host:port") -- one TCP connect to wherever `comfy.base_url()` points.
+
+    A listener is the floor of "confirmed running", not proof of health: the proxy still
+    503s a broken server as `comfyui_unreachable` per request. But it is a real reading,
+    which is what a rack LED owes (CLAUDE.md: no decorative status indicators), and it is
+    cheap -- loopback connection refusal returns in microseconds, so the 0.25 s timeout is
+    only ever paid to a hung listener. `comfy` is imported lazily because it imports httpx,
+    which the MCP venv does not carry -- the same constraint that keeps `routes` lazy above.
+    """
+    from . import comfy
+    parts = urllib.parse.urlsplit(comfy.base_url())
+    host = parts.hostname or "127.0.0.1"
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            return True, f"{host}:{port}"
+    except OSError:
+        return False, f"{host}:{port}"
+
+
 def status() -> dict:
     """The rack unit, keys matching `api.py`'s `Unit` model.
 
     Everything reported here is read at call time -- the workspace root from disk, the tool
-    count from the registry that actually loaded. `state` is `offline` when the switches are
-    unset, because that is what a visitor is looking at, and `ready` otherwise. It is never
-    `busy`: this row describes the orchestrator, and the work it orchestrates is already
-    reported by the surface that does it (`comfy`, `chat`). A second row lighting up for
-    somebody else's job is the decorative-indicator failure CLAUDE.md forbids.
+    count from the registry that actually loaded, the bench from a live TCP connect. `state`
+    is `offline` when the switches are unset, when no stack can be found, and when nothing
+    answers where `comfy.base_url()` points: `ready` is earned, never assumed. That last arm
+    is audit item 27, decided 2026-08-20 -- nothing starts ComfyUI at boot, so a green row
+    used to outlive the bench it advertises, and the live rack read `ready` that morning
+    while :8188 had nothing listening. It is never `busy`: this row describes the
+    orchestrator, and the work it orchestrates is already reported by the surface that does
+    it (`comfy`, `chat`). A second row lighting up for somebody else's job is the
+    decorative-indicator failure CLAUDE.md forbids.
     """
     from . import registry, workspace, tools_impl  # noqa: F401  (imported for registration)
 
@@ -114,8 +143,14 @@ def status() -> dict:
             detail = ("no stack found: set SYMONEURAL_STUDIO_ROOT to the checkout "
                       f"({len(registry.names())} tools registered, none can reach disk)")
         else:
-            detail = (f"{len(registry.names())} tools · workspace {workspace.ROOT} "
-                      f"(found by {workspace.found_by()})")
+            up, addr = comfy_probe()
+            if not up:
+                state = "offline"
+                detail = (f"ComfyUI is not answering at {addr} -- scripts/comfyui.sh start "
+                          "brings the bench back (nothing starts it at boot)")
+            else:
+                detail = (f"{len(registry.names())} tools · workspace {workspace.ROOT} "
+                          f"(found by {workspace.found_by()})")
     return {
         "id": "studio",
         "label": LABEL,
