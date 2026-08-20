@@ -319,13 +319,29 @@ node tests/frontend.mjs             # every page, against a running API on :8800
 node tests/tuner_failpaths.mjs      # tuner.html, self-contained -- starts its own fake provider
 node tests/tuner_watch.mjs          # tuner-watch.html, ditto -- no account, no real stream
 node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI up, and the GPU
-cd backend && python3 -m pytest apps/ -q --ignore=apps/reinforce/tests --ignore=apps/remix/tests
+cd backend && python3 -m pytest apps/ -q \
+    --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 ```
 
-**1229 pass at `d3a4040`, measured 2026-08-20 from `backend/` in 117.47 s, with `--collect-only`
-collecting the same 1229 in 0.92 s; the two `--ignore`s are not optional and not a failure you
-introduced.** The ladder behind it, each figure read on the tree it names: **1085 at
-`df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**. Do not
+**1376 pass, 3 fail and 12 skip at `0c0f969`, measured 2026-08-20 from `backend/` in
+114.79 s, with `--collect-only` collecting 1391 in 1.07 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1376 + 3 + 12 = 1391, which is the arithmetic that says
+nothing aborted. **The three failures are real, deliberate and not yours** — they are all
+`apps/test_rack_probes.py`, they say `api.py` probes `contrib/llama.cpp` and
+`contrib/stable-diffusion.cpp` which are not on disk, and they are correct: Garrett moved the
+engines to `references/`, and *"we cannot use code in references its for reference only we must
+rebrand if we want to use it"*. Repointing the probe at `references/` would turn all three
+green while breaking that rule, so they stay red until task #74 lands a rebranded engine tree.
+Red here means chat and image are offline; it is the honest signal and deleting it would be the
+bug.
+
+**Note the `--ignore` paths changed at `0c0f969` and the old ones matched nothing.** They were
+`apps/reinforce/tests` and `apps/remix/tests`; reinforce is now a studio plugin, so the first is
+`apps/studio/plugins/reinforce/tests`. A stale `--ignore` is silent — pytest does not warn that
+a path you excluded does not exist — so it stops excluding and you get a collection error
+instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
+`df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
+`0c0f969`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
@@ -343,8 +359,24 @@ imports `cupy` and `apps/remix/tests` imports `symon_capture`; neither is instal
 environments*). They are per-project suites that need their own environment, so they are
 excluded here rather than made to look green.
 
-**`frontend.mjs` is 49/49 at `d3a4040`, measured 2026-08-20 against `http://127.0.0.1:8879`;
-it was 43/43 at `e81ffa4`, and the rack red that stood here is fixed.**
+The 162 between `d3a4040` and `0c0f969` is **not 162 new tests**, and reading it that way is
+the mistake the paragraph above warns about. `d3a4040` was a healthy tree that genuinely
+collected and ran 1229. What happened between the two is the 104-file restructure, and for
+several commits in the middle the suite was **899 collected with 10 collection errors — zero
+tests run**, which is neither 1229 nor 1391 but no reading at all. `0c0f969` repaired the
+imports, and the 1391 is the same tests plus the ones that were never reachable from `apps/`
+before the move. So the ladder has a hole in it, on purpose: there is no honest figure for the
+trees in between, because a collection error is not a smaller number but no number.
+
+**`frontend.mjs` was 49/49 at `d3a4040`, measured 2026-08-20 against
+`http://127.0.0.1:8879`; it was 43/43 at `e81ffa4`, and the rack red that stood here is fixed.
+It has NOT been re-read since `0c0f969` and that figure is deliberately in the past tense.**
+`0c0f969` moved 104 files under `backend/apps`, and this suite asserts on what `/api/status`
+renders, so its tree is not the tree the 49/49 was read on. Two of its assertions are also
+known to be affected: the image assertion needs a working render engine, and chat and image are
+offline (see the three red probes above). Re-run it and stamp the reading rather than believing
+this one — that is the rule this file states everywhere else, and it applies to its own
+figures first.
 Always on a spare port, never the service — that is the only honest way to run it, see below.
 The rack red, for the record: `#rack` on
 `/livestack` overflowed its one-screen budget at 1855x745 — `scrollHeight` 599 against
@@ -362,8 +394,10 @@ binding viewport is **1301x740**, not 1855x745, because its rows are 26.6px. `.c
 lever deliberately left unspent. Do not close the next overflow by dropping a row or adding
 `text-overflow` — both are barred above. The other two suites are green on the same tree:
 `tuner_failpaths.mjs` **32/32** and `tuner_watch.mjs` **8/8**, measured 2026-08-19 at
-`e81ffa4` — the same tree as the two figures above, which is what "same tree" has to
-mean to be worth writing.
+`e81ffa4` — the same tree as the 43/43 above, which is what "same tree" has to mean to be
+worth writing. Both are also unread since, for the same reason, and both are being renamed:
+Garrett *"i said tuner and guide needed to be merged and migrated to streamer"*, so these
+become `streamer_failpaths.mjs` and `streamer_watch.mjs` under #73 item 2.
 
 System Chrome via Playwright, nothing to download. The two tuner suites need no API and no
 provider account: each starts `tests/tuner_fake_provider.py` and stops it again, so the whole
@@ -385,7 +419,7 @@ SYMONEURAL_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
 bash scripts/comfyui.sh stop                        # /free, THEN SIGTERM -- see below
 ```
 
-**16/16 passed, re-measured 2026-08-20 at `d3a4040`**, including a 1024x1024 FLUX-schnell
+**16/16 passed, re-measured 2026-08-20 at `d3a4040`, and unread since `0c0f969`**, including a 1024x1024 FLUX-schnell
 render decoding in the browser in 14.4 s (14.2 s server-side, card back in 4.2 s, lock
 released). The same 16/16 stood at `1537262` and, before that, at `d20e09b`; each was re-run
 rather than re-dated because `backend/api.py` had changed underneath it, and studio.mjs runs
