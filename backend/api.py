@@ -73,6 +73,19 @@ sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 # RavenCalc it is a thin shim over a subprocess: the rig protocols need 31 packages and live
 # in backend/apps/asicminer/.venv, which this interpreter must never import from.
 sys.path.insert(0, str(HERE / "apps"))
+
+# Before ANY app import, and that ordering is the whole point rather than tidiness. Every
+# environment variable in this repo was once spelled `SYM_*` and is now `SYMONEURAL_*`; the
+# env file on a running box (`/etc/symoneural/api.env`, root-owned and hand-edited) still
+# carries the old spelling, so this copies each legacy name onto its new one and logs a
+# deprecation notice. It has to run above the imports because
+# `apps/symoneuralstudio/inference.py` reads two variables at MODULE scope -- a promotion
+# after the app packages were imported would be too late for those two and for any that
+# join them. See `apps/symoneuralenv.py` for why this is promotion rather than a
+# read-both-spellings helper at 771 call sites.
+import symoneuralenv  # noqa: E402
+symoneuralenv.promote()
+
 import asicminer  # noqa: E402
 import cryptominer  # noqa: E402  -- the GPU miner. A DIFFERENT surface from asicminer:
                     # different hardware and the only tenant that yields to everything.
