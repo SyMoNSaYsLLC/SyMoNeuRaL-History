@@ -3418,3 +3418,40 @@ Verified 2026-08-17, all against `:8877` running this worktree's code:
 
 Both browser suites pass *with the lane active*, which is the evidence that throttling
 `/state` router-wide does not disturb a real page session.
+
+## 2026-08-20 — suite state at e47c8ec
+
+```
+cd backend && python3 -m pytest apps/ -q \
+  --ignore=apps/reinforce/tests --ignore=apps/remix/tests
+→ 1128 collected, 1128 passed in 113.36s
+node tests/frontend.mjs http://127.0.0.1:8877 → 43/43, 993 links clean
+python3 tools/check_links.py → clean
+```
+
+1122 → 1128 is the six new tests in `backend/apps/test_nim_models.py` being *counted*.
+Read the collected number, not just the passed number: a test that imports something
+missing aborts collection with `Interrupted`, which is not a smaller count, it is no
+count at all. The two `--ignore` flags are the pre-existing `reinforce`/`remix` venv
+suites, unchanged.
+
+**Editing `tools/build_pages.py` means rerunning every generator that imports SHELL.**
+Nine of them do: build_exp, build_studio, build_reinforce, build_sigils, build_project,
+build_training, build_rack, build_console, build_tabs — then `build_split.py`, then
+`build_cachebust.py` last. Adding the `.llc` span to the header and rerunning only
+build_masthead cost two failures in `test_the_built_page_is_the_generators_output_with_stamps_added`
+(symoneuralexp, symoneuralstudio). Those assertions are the safety net; do not treat them
+as flaky.
+
+**Never `pkill -f` a pattern that appears in your own command line.** `pkill -f "uvicorn
+api:app --port 8877"` matched the `bash -c` that invoked it and killed the shell mid-script
+(exit 144), losing an unrelated append in the same command. CLAUDE.md already says this;
+this is the second entry because it happened anyway. Kill by pid from `ss -ltnp`, or scope
+the pattern so it cannot match the launcher.
+
+**Qwen3-32B NIM is refused, and the refusal is reproducible.** See
+`docs/nim-on-one-card.md` and `NIM_MODEL=qwen3-32b ./scripts/nim-qwen36.sh preflight`.
+Three independent grounds: 16303 MiB measured against a 19000 MiB floor (which is the
+*27B's* number, deliberately not retuned upward); NGC marks `nvcr.io/nim/qwen/qwen3-32b:1.0.0`
+"End of Support"; and NVIDIA AI Enterprise licenses the container for use, not
+redistribution — so no .deb, no Yocto recipe and no backup archive may carry it.
