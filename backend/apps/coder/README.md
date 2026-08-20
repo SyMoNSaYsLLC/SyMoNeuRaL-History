@@ -222,9 +222,12 @@ What `run()` does guarantee:
   child leaves grandchildren holding the pipe and the reap hangs; there is a test that
   spawns a grandchild specifically to prove it.
 - **stdout and stderr captured** and returned with the exit code.
-- **A scrubbed environment.** `SYM_*` variables containing `TOKEN`, `SECRET` or `KEY` are
-  removed from the child, so a command cannot read this surface's own token out of its
-  environment and print it back over the wire.
+- **A scrubbed environment.** `SYMONEURAL_*` **and** `SYM_*` variables containing `TOKEN`,
+  `SECRET` or `KEY` are removed from the child, so a command cannot read this surface's own
+  token out of its environment and print it back over the wire. Both prefixes are listed
+  because the check is a prefix match rather than a list of names, so it would go quietly
+  dead against a box whose variables had been renamed — see `_SECRET_PREFIXES` in
+  `__init__.py` and the test that pins both spellings.
 
 ---
 

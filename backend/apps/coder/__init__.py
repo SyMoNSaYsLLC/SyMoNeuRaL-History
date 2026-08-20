@@ -795,15 +795,27 @@ def restore(path: str, version: str, *, token: str | None, peer: str | None) -> 
 # ------------------------------------------------------------------ command execution
 
 
+# Both spellings, and the second is not belt-and-braces. This scrubber matches by PREFIX
+# rather than against a list of known names, so renaming every `SYM_*` variable on this box
+# to `SYMONEURAL_*` turns the loop below into a no-op: `"SYMONEURAL_STUDIO_TOKEN".
+# startswith("SYM_")` is False. That failure is silent in every direction -- no exception, no
+# log line, and no failing test, because the test that covers this constructs its own
+# `SYM_CODER_TOKEN` and would keep passing while every real token on the box rode into every
+# child process this surface spawns. Both prefixes stay listed for as long as either spelling
+# can be set, which is for as long as the legacy env fallback exists.
+_SECRET_PREFIXES = ("SYMONEURAL_", "SYM_")
+_SECRET_WORDS = ("TOKEN", "SECRET", "KEY")
+
+
 def _scrubbed_env() -> dict:
     """The child's environment, with this box's secrets removed.
 
-    A command the agent runs has no business reading SYM_CODER_TOKEN or SYM_ASIC_TOKEN out
-    of its own environment and printing them back over the wire.
+    A command the agent runs has no business reading SYMONEURAL_CODER_TOKEN or
+    SYMONEURAL_ASIC_TOKEN out of its own environment and printing them back over the wire.
     """
     env = dict(os.environ)
     for k in list(env):
-        if k.startswith("SYM_") and ("TOKEN" in k or "SECRET" in k or "KEY" in k):
+        if k.startswith(_SECRET_PREFIXES) and any(w in k for w in _SECRET_WORDS):
             env.pop(k, None)
     return env
 

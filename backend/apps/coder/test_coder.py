@@ -33,6 +33,13 @@ TOKEN = "test-token-not-a-real-secret"
 LOCAL = "127.0.0.1"
 
 
+def _restore_env(name: str, value: str | None) -> None:
+    if value is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = value
+
+
 class Base(unittest.TestCase):
     """A temp workspace, a temp state dir, and the surface switched on."""
 
@@ -343,6 +350,47 @@ class TestRun(Base):
                        "import os; print(os.environ.get('SYM_CODER_TOKEN','ABSENT'))"],
                       **self.auth())
         self.assertEqual(r["stdout"].strip(), "ABSENT")
+
+    def test_both_env_prefixes_are_scrubbed_and_nothing_else_is(self):
+        """Renaming `SYM_*` to `SYMONEURAL_*` must not silently disarm the scrubber.
+
+        `_scrubbed_env` matches by prefix, and `"SYMONEURAL_STUDIO_TOKEN".
+        startswith("SYM_")` is False -- so a prefix check written for only the old spelling
+        stops removing anything the moment the names on this box become `SYMONEURAL_*`.
+        Nothing announces that state: no exception, no log line, and the test above keeps
+        passing because it constructs its own `SYM_CODER_TOKEN`, while every real token on
+        the box rides into every child process this surface spawns. So both spellings are
+        asserted here, and a variable carrying neither TOKEN, SECRET nor KEY is asserted to
+        SURVIVE -- a scrubber that empties the whole environment is a different bug, and one
+        that would make the absence assertions above pass for the wrong reason.
+        """
+        gone = {
+            "SYMONEURAL_STUDIO_TOKEN": "new-spelling-token",
+            "SYMONEURAL_SESSION_SECRET": "new-spelling-secret",
+            "SYMONEURAL_NGC_API_KEY": "new-spelling-key",
+            "SYM_ASIC_TOKEN": "legacy-spelling-token",
+        }
+        kept = {
+            "SYMONEURAL_NEWS_ENABLED": "1",
+            "SYM_GATEWAY_NETWORK": "testnet",
+        }
+        for k, v in {**gone, **kept}.items():
+            # Restore rather than pop: two of these names can legitimately be set in the
+            # shell that runs the suite, and popping them would leave later tests running
+            # in an environment this one edited.
+            self.addCleanup(_restore_env, k, os.environ.get(k))
+            os.environ[k] = v
+        names = list(gone) + list(kept)
+        r = coder.run([sys.executable, "-c",
+                       "import json, os, sys; "
+                       "print(json.dumps({k: os.environ.get(k) for k in sys.argv[1:]}))",
+                       *names], **self.auth())
+        self.assertEqual(r["exit"], 0, r)
+        seen = json.loads(r["stdout"])
+        for k in gone:
+            self.assertIsNone(seen[k], f"{k} reached the child environment")
+        for k, v in kept.items():
+            self.assertEqual(seen[k], v, f"{k} was scrubbed and carries no secret")
 
     def test_an_argument_naming_a_denied_path_is_refused(self):
         """A speed bump, and it is documented as one -- but it catches the honest mistake."""
