@@ -6,7 +6,7 @@
 // Self-contained: it starts its own scripted provider (tests/streamer_fake_provider.py)
 // and stops it again, so `node tests/streamer_failpaths.mjs` is the whole invocation and
 // it does not need the real API, a provider account, or a working stream.
-import { chromium } from '../contrib/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
+import { chromium } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

@@ -20,14 +20,7 @@
 // proved the endpoint answered, which was never in doubt. So this decodes the image in the page
 // and checks it came through `/api/studio/image` rather than from port 8188, which the browser
 // cannot reach.
-// Playwright lives in the llama.cpp web UI's node_modules, installed when that UI was built.
-// Resolved relative to this file so the repo can be cloned anywhere -- same as frontend.mjs.
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
-const { chromium } = createRequire(import.meta.url)(
-  join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright'));
+import { chromium } from './browser.mjs';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8875';
 const TOKEN = process.env.SYMONEURAL_STUDIO_TOKEN || 'devtest';

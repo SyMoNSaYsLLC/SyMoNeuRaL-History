@@ -1,0 +1,8 @@
+{
+  "name": "symoneural-browser-tests",
+  "private": true,
+  "description": "Browser-test harness only. Nothing here ships; see backend/DEPENDENCIES.md.",
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

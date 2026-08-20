@@ -16,19 +16,32 @@
 //     rather than inferred from the image loading.
 //   - a control offered for a capability the box does not have is the fake-activity-light
 //     failure `.claude/CLAUDE.md` forbids, so the gating is asserted against /state.
-import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium } from './browser.mjs';
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
-const { chromium } = createRequire(import.meta.url)(
-  join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright'));
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8800';
 const SHOTS = process.env.SHOT_DIR || '/tmp/symoneural-shots';
+// A few seconds of real speech. Absent by default and deliberately not faked with a tone:
+// see tests/fixtures/README.md. The audio assertions skip and say so rather than pass.
+const SPEECH = process.env.SYMONEURAL_SPEECH_FIXTURE
+  || join(dirname(fileURLToPath(import.meta.url)), 'fixtures/speech.wav');
+// One word the clip definitely contains. This was hardcoded to `country` -- the fixture was
+// a JFK speech, so the assertion was coupled to that recording's words and swapping the clip
+// would have turned a green transcript check red for no reason anyone could see.
+const SPEECH_WORD = (process.env.SYMONEURAL_SPEECH_WORD || '').toLowerCase();
 const results = [];
 const record = (name, ok, detail) => {
   results.push({ name, ok, detail });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  -- ' + detail : ''}`);
+};
+// A third verdict, because the two we had forced a missing input to be reported as one of
+// them: green would be a lie and red would send somebody hunting a bug in the surface.
+const skip = (name, why) => {
+  results.push({ name, ok: true, skipped: true, detail: why });
+  console.log(`SKIP  ${name}  -- ${why}`);
 };
 
 const browser = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] });
@@ -190,10 +203,14 @@ try {
     record('the recording indicator is dark before anything is recorded',
            !(await page.$eval('#sg-dot', e => e.classList.contains('sg-on'))), 'sg-dot off');
 
-    // Feed the real 11 s sample through the file picker rather than the microphone --
+    // Feed a real speech clip through the file picker rather than the microphone --
     // Chrome's fake device would test the harness, not the surface.
-    {
-      await page.setInputFiles('#sg-audfile', join(REPO, 'contrib/whisper.cpp/samples/jfk.wav'));
+    if (!existsSync(SPEECH)) {
+      skip('a spoken sticker decodes and has transparency', `no speech fixture at ${SPEECH}`);
+      skip('the transcript is shown verbatim with the sticker', 'see tests/fixtures/README.md');
+      skip('transcribe time is reported apart from render time', 'see tests/fixtures/README.md');
+    } else {
+      await page.setInputFiles('#sg-audfile', SPEECH);
       await page.waitForFunction(
         () => document.querySelector('#sg-heard').textContent.includes('KiB'),
         { timeout: 10000 });
@@ -212,8 +229,15 @@ try {
       const heard = await page.$eval(NEWEST + ' .sg-heard', e => e.textContent).catch(() => '');
       // The transcript is shown so a visitor can tell a mishearing from a bad render.
       // Those have different fixes, and without the transcript both look identical.
-      record('the transcript is shown verbatim with the sticker',
-             heard.toLowerCase().includes('country'), heard.slice(0, 90));
+      if (SPEECH_WORD) {
+        record('the transcript is shown verbatim with the sticker',
+               heard.toLowerCase().includes(SPEECH_WORD), heard.slice(0, 90));
+      } else {
+        // Without a known word all this can say is that something was transcribed. Weaker,
+        // and labelled weaker, rather than asserting a word the clip may not contain.
+        record('the transcript is shown with the sticker (no expected word set)',
+               heard.trim().length > 0, heard.slice(0, 90));
+      }
       const spokenKeys = await page.$$eval(NEWEST + ' dt', els =>
         els.map(e => e.textContent.trim()));
       record('transcribe time is reported apart from render time',
@@ -245,5 +269,9 @@ try {
 
 if (failed.length) console.log('\nfailed requests / js errors:\n  ' + failed.join('\n  '));
 const bad = results.filter(r => !r.ok).length;
-console.log(`\n${results.length - bad}/${results.length} passed`);
+const skipped = results.filter(r => r.skipped).length;
+// Skips are counted out of the pass total, not folded into it. `19/19 passed` when three of
+// them never ran is the figure-carrying failure this repo keeps writing rules about.
+const ran = results.length - skipped;
+console.log(`\n${ran - bad}/${ran} passed` + (skipped ? `, ${skipped} skipped` : ''));
 process.exit(bad ? 1 : 0);

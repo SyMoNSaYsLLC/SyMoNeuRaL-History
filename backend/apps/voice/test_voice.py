@@ -301,14 +301,33 @@ def _have_engine() -> tuple[bool, str]:
 class EngineTests(unittest.TestCase):
     """The real thing, against the real binary. Skipped as a unit on a fresh checkout.
 
-    Fixtures are cut here rather than committed: `contrib/whisper.cpp/samples/jfk.wav` is
-    gitignored along with the rest of `contrib/`, so a committed derivative would be a binary
-    blob in git whose provenance the next reader could not check.
+    Fixtures are cut here rather than committed: a committed derivative would be a binary
+    blob in git whose provenance the next reader could not check. The source clip is
+    `tests/fixtures/speech.wav` (or `$SYMONEURAL_SPEECH_FIXTURE`), which is deliberately
+    absent -- this read whisper.cpp's bundled sample until that moved under `references/`,
+    which nothing may read from. `tests/fixtures/README.md` says what is needed.
     """
+
+    def _assert_transcribed(self, text: str) -> None:
+        """Assert the ASR heard words, against the fixture rather than against one recording.
+
+        Set `SYMONEURAL_SPEECH_WORD` to a word the clip definitely contains and this checks for
+        it. Without one it can only check that something came back, so it checks that and does
+        not pretend to more -- a word asserted against a clip that may not contain it is a red
+        test with no bug behind it, which is how a suite stops being read.
+        """
+        got = (text or "").lower()
+        want = os.getenv("SYMONEURAL_SPEECH_WORD", "").lower()
+        if want:
+            self.assertIn(want, got)
+        else:
+            self.assertTrue(got.strip(), "ASR returned no text for a speech clip")
 
     @classmethod
     def setUpClass(cls):
-        sample = asr.ROOT / "contrib" / "whisper.cpp" / "samples" / "jfk.wav"
+        env = os.getenv("SYMONEURAL_SPEECH_FIXTURE")
+        sample = (pathlib.Path(env) if env
+                  else asr.ROOT / "tests" / "fixtures" / "speech.wav")
         if not sample.is_file():
             raise unittest.SkipTest(f"no sample audio at {sample}")
         if shutil.which("ffmpeg") is None:
@@ -348,7 +367,9 @@ class EngineTests(unittest.TestCase):
         r = self.transcribe(self.speech_webm)
         self.assertEqual(r.status_code, 200, r.text)
         body = r.json()
-        self.assertIn("fellow americans", body["text"].lower())
+        # Was `fellow americans` -- the old fixture's words. A new clip would have turned
+        # this red with nothing on screen to say the fixture, not the ASR, had changed.
+        self._assert_transcribed(body["text"])
         self.assertGreater(body["transcode_ms"], 0)
         self.assertEqual(body["windows"], 1)
         self.assertAlmostEqual(body["audio_s"], 11.0, delta=0.2)
@@ -391,7 +412,7 @@ class EngineTests(unittest.TestCase):
         sniffs the container. Opus announced as `.wav` must still transcribe."""
         r = self.transcribe(self.speech_webm, name="../../etc/passwd.wav")
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertIn("fellow americans", r.json()["text"].lower())
+        self._assert_transcribed(r.json()["text"])
 
     def test_every_stage_reports_its_own_milliseconds(self):
         body = self.transcribe(self.speech_wav).json()

@@ -23,20 +23,10 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = dirname(dirname(dirname(HERE)));
 
-// Playwright lives in the llama.cpp web UI's node_modules, installed when that UI was built.
-// In a git worktree `contrib/` may not be present, so the main checkout is a fallback -- this
-// test is meant to be runnable from a worktree without copying a node_modules tree into it.
-const CANDIDATES = [
-  process.env.PLAYWRIGHT_ROOT,
-  join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright'),
-  '/home/google/Symoneural/contrib/llama.cpp/tools/ui/node_modules/playwright',
-].filter(Boolean);
-const found = CANDIDATES.find((p) => existsSync(p));
-if (!found) {
-  console.error('playwright not found. Tried:\n  ' + CANDIDATES.join('\n  '));
-  process.exit(2);
-}
-const { chromium } = createRequire(import.meta.url)(found);
+// One resolution, shared with tests/. The three candidates that stood here were all
+// wrong: two named a path that moved under references/, and REPO above is
+// backend/apps, not the repo root, so `join(REPO, 'contrib/...')` never existed.
+import { chromium } from '../../../../../tests/browser.mjs';
 
 const results = [];
 const record = (name, ok, detail) => {

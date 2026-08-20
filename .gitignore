@@ -171,3 +171,8 @@ GARRETT-REQUESTS.md
 # there is no remote to make that recoverable by deleting it upstream.
 bin/claude
 bin/claude-desktop
+
+# Browser-test harness. `tests/package.json` is the tracked record of what is pinned and
+# `npm install` in tests/ reproduces it; 13 MB of node_modules in git is not provenance,
+# the version pin is. Playwright never ships -- see backend/DEPENDENCIES.md.
+tests/node_modules/

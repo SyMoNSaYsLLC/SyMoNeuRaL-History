@@ -15,27 +15,12 @@
 // Playwright lives in the llama.cpp web UI's node_modules, installed when that UI was
 // built. Resolved relative to this file so the repo can be cloned anywhere. That directory
 // is untracked, so it is absent from a git worktree even though it is present in the
-// checkout the worktree came from -- hence the fallback to ordinary resolution, and a
-// message that names the cause rather than a bare MODULE_NOT_FOUND stack.
-import { createRequire } from 'node:module';
+// checkout the worktree came from. `browser.mjs` owns that resolution and its failure
+// message names the cause, so there is no fallback ladder here to keep in step with it.
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium } from './browser.mjs';
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
-const require_ = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require_(join(REPO, 'contrib/llama.cpp/tools/ui/node_modules/playwright')));
-} catch (e) {
-  try {
-    ({ chromium } = require_('playwright'));
-  } catch (e2) {
-    console.error('playwright not found. It ships with the llama.cpp web UI at\n' +
-      '  contrib/llama.cpp/tools/ui/node_modules/playwright\n' +
-      'which is untracked, so it is missing inside a git worktree. Run this from the main\n' +
-      'checkout, or set NODE_PATH to that node_modules directory.');
-    process.exit(2);
-  }
-}
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8899';
 // Matches tests/project-harness.py. Not a secret, and not a production token.

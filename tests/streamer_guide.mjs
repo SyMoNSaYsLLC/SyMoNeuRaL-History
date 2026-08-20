@@ -5,7 +5,7 @@
 // Self-contained: it starts one throwaway API process carrying the guide router plus the
 // site as static files (one origin, exactly as api.py serves it), and a scripted playlist
 // endpoint so no provider account is needed.
-import { chromium } from '../contrib/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
+import { chromium } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';

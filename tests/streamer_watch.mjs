@@ -8,7 +8,7 @@
 //
 // Self-contained: it starts tests/streamer_fake_provider.py and stops it again, so
 // `node tests/streamer_watch.mjs` is the whole invocation. No account, no real stream, no API.
-import { chromium } from '../contrib/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
+import { chromium } from './browser.mjs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

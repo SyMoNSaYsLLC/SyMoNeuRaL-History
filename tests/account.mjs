@@ -5,7 +5,7 @@
 // Self-contained: it starts TWO throwaway API processes -- one with a session secret and
 // one without -- because "accounts are closed on this box" is a state the page must get
 // right and is the state production is actually in. Neither touches run/accounts.
-import { chromium } from '../contrib/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
+import { chromium } from './browser.mjs';
 import { spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
