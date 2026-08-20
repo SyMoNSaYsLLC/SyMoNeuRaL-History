@@ -435,3 +435,34 @@ def test_a_stale_cache_labels_itself(monkeypatch):
     # And the age of the newest item is served too, because that -- not the fetch time -- is
     # what makes the word "live" on the bar true or false.
     assert missed["newest_age_s"] == pytest.approx(1400.0)
+
+
+def test_the_request_budget_in_the_comments_matches_the_source_list():
+    """The two politeness figures are recomputed here, not trusted where they are written.
+
+    `__init__.py` states a per-pass request count and an hourly rate, and `collect.py` states
+    the ceiling `MAX_QUERIES` imposes. Both were written when `SOURCES` held eight publishers
+    and both were wrong -- 32 fetches over seven hosts -- from the moment it held ten. A figure
+    in a comment that nothing checks is a claim, and this file's whole argument is that the
+    numbers in this repo are checkable, so the comment is now pinned to the tuples that produce
+    it. If a source or a default query is added, this fails and names the new arithmetic.
+    """
+    from . import DEFAULT_INTERVAL_S
+
+    per_pass = len(feeds.SOURCES) + len(feeds.SEARCHES) * len(feeds.DEFAULT_QUERIES)
+    ceiling = len(feeds.SOURCES) + len(feeds.SEARCHES) * collect.MAX_QUERIES
+    hourly = round(per_pass * 3600 / DEFAULT_INTERVAL_S)
+    hosts = len(feeds._hosts())
+
+    init = (HERE / "__init__.py").read_text(encoding="utf-8")
+    coll = (HERE / "collect.py").read_text(encoding="utf-8")
+    assert f"a default pass is {per_pass} fetches" in init, \
+        f"__init__.py's per-pass figure is not {per_pass}"
+    assert f"~{hourly} requests an hour" in init, f"__init__.py's hourly figure is not {hourly}"
+    # The prose spells the host count as a word, so the word is what is checked. Eight is not
+    # a coincidence of ten sources: github.com carries five of them.
+    words = {7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+    assert f"{words[hosts]} hosts" in init, f"__init__.py does not say {words[hosts]} hosts"
+    assert f"The ceiling is {ceiling} a pass" in init, \
+        f"__init__.py's ceiling figure is not {ceiling}"
+    assert f"= {ceiling} fetches" in coll, f"collect.py's bound is not {ceiling}"

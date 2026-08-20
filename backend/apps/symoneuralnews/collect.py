@@ -23,7 +23,11 @@ from .parse import Item, parse_feed
 ENV_OFF = "SYMONEURAL_NEWS_OFF"          # comma-separated source names to skip
 ENV_QUERIES = "SYMONEURAL_NEWS_QUERIES"  # comma-separated query strings
 
-MAX_QUERIES = 8       # bounds a pass: 8 sources + 8 queries x 3 engines = 32 fetches
+MAX_QUERIES = 8       # bounds a pass: 10 sources + 8 queries x 3 engines = 34 fetches.
+                      # The 8 is the ceiling on an env-supplied query list, not the default
+                      # count -- DEFAULT_QUERIES is 6, so a default pass is 28. Both figures
+                      # are recomputed from the tuples by test_news.py rather than trusted
+                      # here; this comment said 32 over 8 sources after the list grew to 10.
 MAX_QUERY_LEN = 120   # a search phrase, not a payload
 
 

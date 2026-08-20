@@ -54,8 +54,12 @@ ENV_ENABLED = "SYMONEURAL_NEWS_ENABLED"
 ENV_INTERVAL = "SYMONEURAL_NEWS_INTERVAL_S"
 
 # 15 minutes. A news ticker does not need to be a second-by-second feed, and the interval is
-# also the politeness budget: 32 fetches every 15 minutes is ~128 requests an hour spread over
-# seven hosts, which is well inside what a public feed expects from one reader.
+# also the politeness budget: a default pass is 28 fetches -- 10 sources plus 6 queries across 3
+# search engines -- so ~112 requests an hour spread over eight hosts, which is well inside what
+# a public feed expects from one reader. The ceiling is 34 a pass, since `collect.MAX_QUERIES`
+# caps an env-supplied query list at 8. Both numbers are asserted against the tuples in
+# test_news.py; the version of this comment that said `32 ... seven hosts` was true of an
+# earlier source list and went stale the moment two more publishers landed.
 DEFAULT_INTERVAL_S = 900.0
 MIN_INTERVAL_S = 300.0     # floor, so a mistyped env var cannot turn this into a hammer
 MAX_INTERVAL_S = 21600.0   # ceiling, so a mistyped env var cannot turn it into a monument
