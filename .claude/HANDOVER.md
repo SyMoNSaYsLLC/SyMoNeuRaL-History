@@ -1,6 +1,6 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-19. Written for a fresh agent with zero prior context.**
+**Last updated 2026-08-20 at `f3a240e`. Written for a fresh agent with zero prior context.**
 
 > **If you read nothing else:** nothing is broken and nothing is blocked, but **the whole of
 > `site/` is now waiting on a deploy** — as of `26cb58e` that is `site/ui.js` and
