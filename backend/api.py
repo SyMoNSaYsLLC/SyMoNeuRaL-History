@@ -121,6 +121,12 @@ from apps import symoneuralexp as exp  # noqa: E402  -- the plugin runtime. Boun
 # request and `boot()` mounts the preset there, not here -- and the runtime modules under it
 # are stdlib-only, so this import cannot fail for a missing PyYAML or a missing FastAPI. It is
 # the layer the other apps will eventually mount into rather than a surface of its own.
+from apps import symoneuralnews as news  # noqa: E402  -- the ticker's collector. Bound
+# to an alias because a bare `enabled`/`status` from the package would shadow this module's
+# own, the same reason as `studio` and `exp`. Importing it is free and makes no outbound
+# request: `feeds.py` is a tuple of literals, and nothing fetches until `refresher()` is
+# started below, which only happens when SYMONEURAL_NEWS_ENABLED=1. Placed above `rackpower`
+# because that import claims the last word and should keep it.
 from apps import rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
 # so its bare `enabled`/`status_rows`/`apply` cannot shadow anything here. Importing it is
 # free and safe with the switch off: it reads no file until `enabled()` passes, spawns
@@ -1282,6 +1288,15 @@ async def lifespan(_: FastAPI):
     # 0.4-2.3 s from this box, and /api/status drives the rack websocket for every visitor.
     # A reading that slow cannot sit on the status path, so it is cached off it.
     gw = asyncio.create_task(gateway.refresher()) if gateway.enabled() else None
+    # Same pattern again, and the same reason: a pass over thirteen third-party feeds took
+    # 13.4-41.2 s measured on 2026-08-20, which cannot sit anywhere near a request. It is
+    # cached off the path entirely and `/api/news/ticker` only ever reads the cache. With the
+    # switch off no task is started, so the default state of this box makes no outbound
+    # request at all. Not called `ticker`: that name is the telemetry loop's, four lines up.
+    newsfeed = asyncio.create_task(news.refresher()) if news.enabled() else None
+    if newsfeed:
+        log.info("news surface enabled; %d sources, %d search engines, %.0fs interval",
+                 len(news.feeds.SOURCES), len(news.feeds.SEARCHES), news.interval_s())
     # The project store is created by `store.connect()`, which every write route goes
     # through -- but the rack poll uses `probe()`, read-only by design, so before this line
     # existed a fresh install reported "no project store initialised" until someone happened
@@ -1297,6 +1312,8 @@ async def lifespan(_: FastAPI):
         asic.cancel()
     if gw:
         gw.cancel()
+    if newsfeed:
+        newsfeed.cancel()
     # Without this a reload leaks one ffmpeg per live stream: the sessions outlive the
     # process that spawned them and nothing else knows their pids.
     tuner.sessions.MANAGER.shutdown()
@@ -2378,6 +2395,12 @@ app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=F
 # Touching `exp.router` here is what imports `apps/symoneuralexp/routes.py`, so a syntax error
 # in it still fails the boot loudly despite the PEP 562 lazy attribute on the package.
 app.include_router(exp.router, prefix="/api/exp", tags=["exp"])
+# Tokenless and read-only, like `/api/gateway/state` and for the same reason: everything it
+# returns is a headline eight publishers hand to anyone who asks. Unlike the gateway it
+# answers 200 with an empty list rather than 503 when the surface is off, because its caller
+# is `site/ui.js` on every page load and a 503 in the default state would put a red line in
+# every visitor's console -- see `apps/symoneuralnews/routes.py`.
+app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 
 
 # ---- the studio model list -------------------------------------------------

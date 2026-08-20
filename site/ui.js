@@ -147,3 +147,184 @@
     if (e.key === 'Escape' && box && box.classList.contains('on')) close();
   });
 })();
+
+/* Symon Say News -- the live headline bar along the bottom of every page.
+ *
+ * Garrett: "ESPN has a ticker on the bottom of their tv screens that everyone has always
+ * loved ... instead of sports live fed news; it will be news relevent to the the website."
+ * The headlines come from `backend/apps/symoneuralnews`, which fetches ten release feeds
+ * and three search engines on a 15-minute timer and serves the ranked result at
+ * /api/news/ticker. Nothing here fetches a publisher directly; the browser only ever talks
+ * to this box.
+ *
+ * Separate top-level IIFE, for the same reason the lightbox is one: the tabs block above
+ * returns early on every page that has no documentation tabs, which is most of them.
+ *
+ * Three properties worth stating, because each one is a decision and not an accident:
+ *
+ *   1. THE BAR IS BUILT IN JAVASCRIPT AND DOES NOT EXIST UNTIL THERE ARE HEADLINES. No
+ *      markup in any of the 23 pages, no placeholder, no "loading news..." row. With the
+ *      surface off (the default -- SYMONEURAL_NEWS_ENABLED is unset) the endpoint answers
+ *      200 with an empty list and this file appends nothing at all, so the page is exactly
+ *      what it was before. An empty ESPN ticker is a broken television.
+ *
+ *   2. IT LABELS ITS OWN AGE FROM THE SERVER'S READING. `newest_age_s` is the age of the
+ *      newest headline, not of the fetch, and that is what makes the word "live" true or
+ *      false. Fresh gets the pulsing lamp; anything over SIX HOURS says how old it is
+ *      instead. A lamp on a bar of yesterday's news is the decorative indicator CLAUDE.md
+ *      forbids.
+ *
+ *   3. EVERY STRING FROM A PUBLISHER GOES IN AS textContent. Headlines are third-party
+ *      text arriving over HTTP; `innerHTML` anywhere in this function would make thirteen
+ *      strangers' feeds an injection surface on symoneural.com. Link hrefs are re-checked
+ *      for https here as well -- the collector already guarantees it, and this costs one
+ *      comparison to keep guaranteeing it if that ever changes.
+ */
+(function () {
+  'use strict';
+
+  var ENDPOINT = '/api/news/ticker';
+  var POLL_MS = 300000;          // 5 min; the server refreshes every 15, so this is cheap
+  var PX_PER_SEC = 92;           // px/s of crawl -- see the note in render()
+  var OLD_S = 21600;             // 6h -- past this the bar stops claiming to be live
+  var DISMISS = 'symonsaynews:off';
+
+  var bar = null, run = null, brand = null, stamp = 0;
+
+  function stored(key) {
+    // Safari in private mode throws on sessionStorage access rather than returning null.
+    try { return window.sessionStorage.getItem(key); } catch (e) { return null; }
+  }
+
+  if (stored(DISMISS)) return;   // dismissed for this tab; stay gone until it is reopened
+
+  function chip(cls, text) {
+    var el = document.createElement('span');
+    el.className = cls;
+    el.textContent = text;
+    return el;
+  }
+
+  function lane(items, dupe) {
+    var box = document.createElement('div');
+    box.className = 'sn-lane';
+    // The second lane is the same headlines again, and it exists only so the crawl can
+    // wrap at -50% with nothing visibly restarting. A screen reader reading the page
+    // twice would be a bug, so the copy is hidden from the accessibility tree.
+    if (dupe) box.setAttribute('aria-hidden', 'true');
+    items.forEach(function (it) {
+      var a = document.createElement('a');
+      a.className = 'sn-item';
+      a.href = it.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      if (dupe) a.tabIndex = -1;               // the copy is not a second tab stop
+      a.appendChild(chip('sn-topic', it.topic || 'news'));
+      if (it.source) a.appendChild(chip('sn-src', it.source));
+      a.appendChild(chip('sn-head', it.title));
+      box.appendChild(a);
+    });
+    return box;
+  }
+
+  function build() {
+    bar = document.createElement('aside');
+    bar.id = 'symonsaynews';
+    bar.setAttribute('aria-label', 'Symon Say News: live headlines');
+
+    brand = document.createElement('span');
+    brand.className = 'sn-brand';
+    bar.appendChild(brand);
+
+    var win = document.createElement('div');
+    win.className = 'sn-window';
+    run = document.createElement('div');
+    run.className = 'sn-run';
+    win.appendChild(run);
+    bar.appendChild(win);
+
+    var x = document.createElement('button');
+    x.className = 'sn-x';
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Hide the news bar');
+    x.textContent = '×';
+    x.addEventListener('click', function () {
+      try { window.sessionStorage.setItem(DISMISS, '1'); } catch (e) { /* private mode */ }
+      document.documentElement.classList.remove('sn-on');
+      if (bar) { bar.remove(); bar = null; }
+    });
+    bar.appendChild(x);
+
+    document.body.appendChild(bar);
+    document.documentElement.classList.add('sn-on');
+  }
+
+  function label(data) {
+    var age = data.newest_age_s;
+    // No reading -> no claim. The lamp is only lit when the server told us how old the
+    // newest headline is AND that answer is under six hours.
+    if (typeof age !== 'number' || data.stale || age > OLD_S) {
+      brand.textContent = 'Symon Say News';
+      var said = typeof age === 'number'
+        ? (age < 172800 ? Math.round(age / 3600) + 'h' : Math.round(age / 86400) + 'd')
+        : null;
+      brand.appendChild(chip('sn-age', said ? said + ' old' : 'last known'));
+      bar.classList.add('sn-old');
+      return;
+    }
+    bar.classList.remove('sn-old');
+    var lamp = document.createElement('s');       // the same lamp the rack rows use
+    lamp.className = 'sn-lamp';
+    brand.textContent = '';
+    brand.appendChild(lamp);
+    brand.appendChild(document.createTextNode('Symon Say News'));
+  }
+
+  function render(data) {
+    var items = (data.items || []).filter(function (it) {
+      return it && it.title && typeof it.url === 'string' && it.url.indexOf('https://') === 0;
+    });
+    if (!items.length) {                          // off, or a pass that reached nothing
+      if (bar) { document.documentElement.classList.remove('sn-on'); bar.remove(); bar = null; }
+      return;
+    }
+    if (!bar) build();
+    run.textContent = '';
+    run.appendChild(lane(items, false));
+    run.appendChild(lane(items, true));
+    label(data);
+
+    // Constant speed, whatever the length. A fixed duration would crawl 12 headlines and
+    // sprint 36; the distance travelled per wrap is one lane's width, so the duration has
+    // to be measured from it. Set inline because only the browser knows how wide the text
+    // rendered -- and left unset if the measurement fails, which leaves the bar still and
+    // readable rather than animating at some guessed rate.
+    //
+    // 92 px/s is the second value tried and the reason is worth writing down, because the
+    // first one was chosen by feel and measured badly: at 58 px/s, 32 headlines render
+    // 16,420px of lane, so the last headline in the list arrives 283 SECONDS after the
+    // page loads. Nobody waits five minutes for a bar. 92 px/s puts a full pass at ~178s
+    // and still leaves a 500px headline sitting completely on a 1300px screen for about
+    // nine seconds, which is three times what reading it takes.
+    var w = run.firstChild.getBoundingClientRect().width;
+    run.style.animationDuration = w > 0 ? Math.round(w / PX_PER_SEC) + 's' : '';
+  }
+
+  function load() {
+    if (document.hidden) return;                  // a background tab does not need headlines
+    fetch(ENDPOINT, { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        // Only rebuild when the server actually measured something new. Re-rendering on
+        // every poll would restart the crawl from the left every five minutes, mid-sentence.
+        if (!d || (bar && d.at === stamp)) return;
+        stamp = d.at;
+        render(d);
+      })
+      .catch(function () { /* the bar keeps whatever it has; a failed poll is not news */ });
+  }
+
+  load();
+  window.setInterval(load, POLL_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) load(); });
+})();

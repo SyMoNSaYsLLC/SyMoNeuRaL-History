@@ -113,14 +113,95 @@ def test_the_depth_layer_tokens_are_defined(token):
     assert re.search(re.escape(token) + r"\s*:", _source()), f"{token} is not defined"
 
 
+def _reduced_motion_spans(src: str) -> list[tuple[int, int]]:
+    """The [start, end) character ranges of every prefers-reduced-motion:no-preference block.
+
+    Brace-matched rather than counted. The version of the guard below that this replaces
+    asked whether the string "prefers-reduced-motion:no-preference" appeared ANYWHERE
+    earlier in the file than the `animation:` declaration -- which two such blocks already
+    do, near line 2930. So the check passed for every animation added after them whether it
+    was guarded or not, and it would have passed for the news ticker's crawl, which is the
+    one animation on this site that runs forever and is therefore the one that most needs
+    the preference honoured. A test that cannot fail is not protecting anything.
+    """
+    spans, at = [], 0
+    needle = "@media (prefers-reduced-motion:no-preference)"
+    while True:
+        i = src.find(needle, at)
+        if i < 0:
+            return spans
+        open_brace = src.index("{", i)
+        depth, j = 0, open_brace
+        while j < len(src):
+            if src[j] == "{":
+                depth += 1
+            elif src[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        spans.append((i, j))
+        at = j
+
+
 def test_every_added_animation_has_a_reduced_motion_path():
     src = _source()
-    # `reveal` and `ring` are the two keyframes the depth layer added. Both are applied
-    # only inside a prefers-reduced-motion:no-preference block, so a reader who has asked
-    # for less motion gets the finished state and no animation at all.
-    for name in ("reveal", "ring"):
+    # `reveal` and `ring` are the two keyframes the depth layer added; `symonticker` is the
+    # news bar's crawl. All three must be applied only from INSIDE a
+    # prefers-reduced-motion:no-preference block, so a reader who has asked for less motion
+    # gets the finished state and no animation at all. `symonticker` is the one that matters
+    # most: a headline bar that slides text sideways forever is precisely what that
+    # preference is set to stop, and the reduce branch turns the window into a scrollable
+    # strip so no headline is lost along with the motion.
+    spans = _reduced_motion_spans(src)
+    assert spans, "no prefers-reduced-motion:no-preference block in the file at all"
+    for name in ("reveal", "ring", "symonticker"):
         assert f"@keyframes {name}" in src, f"@keyframes {name} went missing"
-        for use in re.findall(r"animation\s*:[^;}]*\b" + name + r"\b[^;}]*", src):
-            before = src[: src.index(use)]
-            opened = before.count("prefers-reduced-motion:no-preference")
-            assert opened >= 1, f"`{use}` is not behind a reduced-motion guard"
+        uses = list(re.finditer(r"animation\s*:[^;}]*\b" + name + r"\b[^;}]*", src))
+        assert uses, f"@keyframes {name} is defined but never applied"
+        for use in uses:
+            inside = any(a < use.start() < b for a, b in spans)
+            assert inside, f"`{use.group(0).strip()}` is not inside a reduced-motion guard"
+
+
+def test_the_news_bar_is_namespaced_under_its_own_id():
+    """Every `.sn-*` rule is scoped to `#symonsaynews`, and its two tokens exist.
+
+    Not ceremony. This file has lost a bare class name to a later redefinition five times
+    (`.bar` collapsed the site header to 7px, `.live` was a nav badge, `#console .sub`,
+    `.cards .card`), and a news ticker brings in exactly the names most likely to collide:
+    a lane, a run, an item, a head. So the invariant is structural rather than a review
+    habit -- every selector in the ticker block either names the id or starts at `html`
+    (the two layout-mode switches, which are on the root element by definition).
+
+    The token check is the same argument as the depth-layer one above: an undefined custom
+    property silently drops the declaration that uses it, so `--sn-h` going missing would
+    give the bar a content height, let it cover the footer, and produce no build error.
+    """
+    # `_source()` strips comments, so the block is found by its first RULE rather than by
+    # its banner -- the banner is a comment and is not in the string being scanned.
+    src = _source()
+    block = src[src.index("#symonsaynews"):]
+    for token in ("--sn-h", "--sn-gap"):
+        # Against the whole file: the tokens are declared on `:root` with the rest of the
+        # site's tokens, which is ABOVE the first ticker rule and so outside `block`.
+        assert re.search(re.escape(token) + r"\s*:", src), f"{token} is not defined"
+    # Selectors are the text before each `{` that is not a declaration block or an at-rule.
+    for sel in re.findall(r"(?m)^\s*([^@{}/\s][^{}]*?)\s*\{", block):
+        sel = " ".join(sel.split())
+        if ".sn-" not in sel:
+            continue
+        assert "#symonsaynews" in sel or sel.startswith("html"), \
+            f"`{sel}` uses a bare sn- class outside the #symonsaynews namespace"
+
+
+def test_the_news_bar_never_truncates_a_headline():
+    """No `text-overflow` in the ticker block.
+
+    CLAUDE.md: "Never use `text-overflow: ellipsis`... A truncated claim is a broken claim."
+    A crawl has no excuse for it either -- the bar has infinite horizontal room by
+    construction, so a long headline costs seconds, not pixels.
+    """
+    src = _source()
+    block = src[src.index("#symonsaynews"):]
+    assert "text-overflow" not in block

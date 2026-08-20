@@ -119,11 +119,15 @@ class RouteIsReachable(unittest.TestCase):
         Then 11 -> 12 for `apps/symoneuralexp` at `/api/exp` -- the plugin runtime. One
         router, and the page it serves is a generated file behind a plain `@app.get("/exp")`
         rather than a second router, so this moved by one and not by two.
+
+        Then 12 -> 13 for `apps/symoneuralnews` at `/api/news` -- the live ticker's collector.
+        One router carrying one read-only endpoint, and the bar itself is drawn by
+        `site/ui.js` rather than by a page of its own, so again this moved by one.
         """
         calls = [n for n in ast.walk(TREE)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "include_router"]
-        self.assertEqual(len(calls), 12)
+        self.assertEqual(len(calls), 13)
 
 
 class ValidatorRejectsJunk(unittest.TestCase):

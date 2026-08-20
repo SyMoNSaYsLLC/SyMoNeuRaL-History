@@ -43,7 +43,10 @@ import logging
 import os
 import time
 
-from . import collect, rank
+from . import collect, feeds, rank
+from . import routes  # noqa: F401  -- imported for the side effect of existing: `api.py`
+# reaches it as `news.routes.router`, and without this line that attribute lookup fails at
+# import time rather than at request time, which is a startup crash instead of a 500.
 
 log = logging.getLogger("symoneural.news")
 

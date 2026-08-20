@@ -880,6 +880,160 @@ try {
            `, body h-scroll ${fleet.bodyScrolls}`);
   await page.setViewportSize({ width: 1440, height: 1000 });
 
+  // ---- Symon Say News: the bar along the bottom ----------------------------
+  // The ticker is built entirely in JavaScript -- no markup for it exists in any of the 23
+  // HTML files -- so this suite is the only place it can be tested at all. Three properties,
+  // and the first one is what makes the other two meaningful on any box:
+  //
+  // THE ASSERTION IS AGAINST THE SERVER'S OWN ANSWER, not against a hard-coded expectation.
+  // The news surface is off by default (SYMONEURAL_NEWS_ENABLED unset), and with it off the
+  // correct rendering is NOTHING AT ALL -- no bar, no placeholder, no empty strip. So the
+  // endpoint is asked first and the expected DOM follows from it. Written the other way this
+  // check would fail on every box where the switch is off, which is most of them, and it
+  // would fail for the one reason that is not a defect.
+  const newsState = await page.evaluate(async () => {
+    try {
+      const r = await fetch('/api/news/ticker', { cache: 'no-store' });
+      if (!r.ok) return { reachable: false, status: r.status };
+      const d = await r.json();
+      return { reachable: true, enabled: !!d.enabled, count: d.count,
+               stale: !!d.stale, newest: d.newest_age_s,
+               allHttps: (d.items || []).every(i => String(i.url).startsWith('https://')) };
+    } catch (e) { return { reachable: false, status: 0 }; }
+  });
+  const wantBar = newsState.reachable && newsState.enabled && newsState.count > 0;
+  {
+    // 1300x900 is out of the fold gate, so this is the fixed-position branch: the bar sits
+    // on the viewport while the document scrolls behind it. Scrolled to the very end, the
+    // footer must still be ABOVE the bar -- the body padding-bottom is what buys that, and
+    // without it the site's own credit line would spend its life underneath the ticker.
+    const probe = await ctx.newPage();
+    await probe.setViewportSize({ width: 1300, height: 900 });
+    await probe.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(900);
+    await probe.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await probe.waitForTimeout(300);
+    const m = await probe.evaluate(() => {
+      const bar = document.getElementById('symonsaynews');
+      if (!bar) return { bar: false, snon: document.documentElement.classList.contains('sn-on') };
+      const r = bar.getBoundingClientRect();
+      const f = document.querySelector('footer').getBoundingClientRect();
+      const run = bar.querySelector('.sn-run');
+      const items = [...bar.querySelectorAll('.sn-lane:not([aria-hidden]) .sn-item')];
+      return {
+        bar: true, snon: document.documentElement.classList.contains('sn-on'),
+        pos: getComputedStyle(bar).position, items: items.length,
+        https: items.every(a => a.href.startsWith('https://')),
+        blank: items.some(a => !a.querySelector('.sn-head').textContent.trim()),
+        // A lane duplicated for the seamless wrap, and only for that: two lanes, the second
+        // hidden from the accessibility tree and out of the tab order.
+        lanes: bar.querySelectorAll('.sn-lane').length,
+        dupeHidden: bar.querySelectorAll('.sn-lane[aria-hidden="true"]').length === 1,
+        // A measured duration, not the initial 0s: an unmeasured crawl is a still bar.
+        secs: parseFloat(getComputedStyle(run).animationDuration) || 0,
+        lamp: !!bar.querySelector('.sn-lamp'), old: bar.classList.contains('sn-old'),
+        clear: Math.round(r.top - f.bottom), pad: getComputedStyle(document.body).paddingBottom,
+      };
+    });
+    await probe.close();
+    record('the news bar renders exactly when the news surface has headlines',
+           wantBar
+             ? (m.bar && m.snon && m.items === newsState.count && m.https && !m.blank
+                && m.lanes === 2 && m.dupeHidden && m.secs > 0 && newsState.allHttps)
+             : (!m.bar && !m.snon),
+           wantBar ? `${m.items}/${newsState.count} headlines, ${m.secs}s crawl, ${m.pos}`
+                   : `surface ${newsState.reachable ? (newsState.enabled ? 'on but empty' : 'off')
+                                                    : 'unreachable(' + newsState.status + ')'}`
+                     + ` -> no bar (${!m.bar})`);
+    // The lamp is a claim: it says these headlines are current. It may only be lit when the
+    // server said the newest one is under six hours old. CLAUDE.md's rule about decorative
+    // indicators applies to a pulsing green dot over yesterday's news exactly as it does to
+    // a fake GPU reading.
+    const fresh = wantBar && !newsState.stale && typeof newsState.newest === 'number'
+                  && newsState.newest <= 21600;
+    record('the news bar claims to be live only when its newest headline is',
+           !wantBar || (m.lamp === fresh && m.old === !fresh),
+           !wantBar ? 'no bar to check'
+                    : `newest=${newsState.newest}s stale=${newsState.stale}`
+                      + ` -> lamp=${m.lamp} sn-old=${m.old}`);
+    record('the news bar leaves the footer readable at the end of a scroll',
+           !wantBar || (m.pos === 'fixed' && m.clear >= 0),
+           !wantBar ? 'no bar to check' : `${m.pos}, body pad ${m.pad}, ${m.clear}px clear`);
+  }
+  {
+    // Both age branches, driven by a FABRICATED payload rather than by whatever the feeds
+    // happen to be carrying today. The three checks above assert the real integration, and
+    // they are the ones that would catch a broken endpoint -- but they can only ever exercise
+    // one branch of the label, because the live bar is nearly always fresh. Mutation-testing
+    // showed exactly that: gutting the age check in ui.js so the lamp is ALWAYS lit left all
+    // 47 assertions passing, because "always lit" and "correctly lit" agree on fresh data.
+    //
+    // So the endpoint is intercepted and answered with two synthetic ages. Nothing here
+    // reaches a publisher, and the numbers are chosen to sit on either side of ui.js's
+    // six-hour line.
+    const ITEMS = [
+      { title: 'A synthetic headline, served by tests/frontend.mjs', url: 'https://example.com/a',
+        source: 'Test', topic: 'releases', at: 1, score: 1 },
+      { title: 'A second synthetic headline', url: 'https://example.com/b',
+        source: 'Test', topic: 'models', at: 1, score: 0.9 },
+    ];
+    for (const [name, newest, stale, wantLamp, wantSays] of
+         [['fresh (15 min old)', 900, false, true, ''],
+          ['stale (5 days old)', 5 * 86400, true, false, '5d old']]) {
+      const probe = await ctx.newPage();
+      await probe.route('**/api/news/ticker', r => r.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ enabled: true, items: ITEMS, count: ITEMS.length, at: 1,
+                               age_s: 30, stale, newest_at: 1, newest_age_s: newest,
+                               interval_s: 900, sources: [], error: null }),
+      }));
+      await probe.setViewportSize({ width: 1300, height: 900 });
+      await probe.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
+      await probe.waitForTimeout(700);
+      const m = await probe.evaluate(() => {
+        const bar = document.getElementById('symonsaynews');
+        if (!bar) return { bar: false };
+        return { bar: true, lamp: !!bar.querySelector('.sn-lamp'),
+                 old: bar.classList.contains('sn-old'),
+                 brand: bar.querySelector('.sn-brand').textContent.trim(),
+                 age: (bar.querySelector('.sn-age') || {}).textContent || '',
+                 items: bar.querySelectorAll('.sn-lane:not([aria-hidden]) .sn-item').length };
+      });
+      await probe.close();
+      record(`the news bar labels a bar of ${name} correctly`,
+             m.bar && m.items === ITEMS.length && m.lamp === wantLamp && m.old === !wantLamp
+             && m.age.trim() === wantSays && m.brand.indexOf('Symon Say News') >= 0,
+             m.bar ? `brand="${m.brand}" lamp=${m.lamp} sn-old=${m.old}` : 'no bar rendered');
+    }
+  }
+  {
+    // Reduced motion: the crawl stops and the duplicate lane goes, but every headline must
+    // still be REACHABLE -- the window becomes a scrollable strip. Removing the motion is
+    // the request; removing the news with it would not be.
+    const rm = await browser.newContext({ viewport: { width: 1300, height: 900 },
+                                          reducedMotion: 'reduce' });
+    const probe = await rm.newPage();
+    await probe.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
+    await probe.waitForTimeout(900);
+    const m = await probe.evaluate(() => {
+      const bar = document.getElementById('symonsaynews');
+      if (!bar) return { bar: false };
+      const win = bar.querySelector('.sn-window');
+      return { bar: true,
+               name: getComputedStyle(bar.querySelector('.sn-run')).animationName,
+               shown: [...bar.querySelectorAll('.sn-lane')]
+                        .filter(l => getComputedStyle(l).display !== 'none').length,
+               reachable: win.scrollWidth > win.clientWidth,
+               scrollable: getComputedStyle(win).overflowX };
+    });
+    await rm.close();
+    record('the news bar stops for reduced motion without losing a headline',
+           !wantBar || (m.bar && m.name === 'none' && m.shown === 1
+                        && m.reachable && m.scrollable === 'auto'),
+           !wantBar ? 'no bar to check'
+                    : `animation=${m.name}, ${m.shown} lane shown, overflow-x=${m.scrollable}`);
+  }
+
   // ---- calc ----------------------------------------------------------------
   await page.goto(BASE + '/ravencalc.html', { waitUntil: 'networkidle' });
   const calcBox = await page.$('input[type=text], textarea');

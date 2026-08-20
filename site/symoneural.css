@@ -1883,9 +1883,11 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      positioned at top:-40% with height:640px, so it reaches past the bottom edge once the
      masthead is shorter than 640/1.4 = 457px. Above it was merely clipped by the base
      `overflow:hidden`; here it would be a real scrollbar on a decorative gradient. In-gate
-     the panel is at least 740 - 156 = 584px tall, which clears it by 127px. THAT MARGIN IS
-     WHAT THE min-height FLOOR BUYS -- drop the gate below ~615px tall and the glow starts
-     scrolling the hero.
+     the panel is at least 740 - 156 - 17 = 567px tall, which clears it by 110px. THAT
+     MARGIN IS WHAT THE min-height FLOOR BUYS -- drop the gate below ~615px tall and the
+     glow starts scrolling the hero. (The 17px is the news bar's net cost in this layout:
+     27px of bar less the 10px the footer gives back. It is 584px on a page where the bar
+     is absent, which is every page while the news surface is off.)
 
      `safe` is not decoration. Centring a flex child that overflows its scroll container
      puts the child's top ABOVE the container's top, where no amount of scrolling reaches
@@ -3055,4 +3057,192 @@ body{
   .cards .card:hover{transform:none}
   .cta:hover{transform:none; box-shadow:none}
   .cta:active{transform:translateY(1px)}
+}
+
+/* ==========================================================================
+   SYMON SAY NEWS -- the live headline bar along the bottom of every page
+   ==========================================================================
+   Garrett: "ESPN has a ticker on the bottom of their tv screens that everyone has always
+   loved and its really made their business thrive. I want a live ticker like this on the
+   symoneural website but instead of sports live fed news."
+
+   The markup does not exist in any HTML file. `site/ui.js` builds `#symonsaynews` at the
+   end of <body> only once /api/news/ticker has answered with at least one headline, so
+   with the surface off there is no element and none of this applies. Every selector below
+   is namespaced under that id for the reason written at line 1229: `.bar`, `.live` and
+   `.sub` have each been silently eaten in this file by a second definition of a bare
+   class name, five times, and a ticker introduces exactly the kind of generic names
+   (`.item`, `.head`, `.run`, `.lane`) that would make it six.
+
+   THE LAYOUT SPLITS ON `html.ns`, and that is the load-bearing decision here:
+
+     - Normal, scrolling pages: `position:fixed` at the bottom of the VIEWPORT, ESPN's
+       actual behaviour -- the crawl stays put while the page moves behind it. Document
+       height grows by the bar's height, via a padding-bottom on <body>, so the footer
+       credit is still reachable at the end of a scroll instead of living underneath it.
+
+     - The folded front page and the four section pages (`html.ns`: `height:100%`,
+       `overflow:hidden`, <body> a flex column): `position:static`, so the bar becomes the
+       last flex item and the open panel yields the height rather than being covered. A
+       fixed bar there would sit on top of a panel that cannot be scrolled out from under
+       it, and tests/frontend.mjs asserts those panels FIT -- covering content is not the
+       same as fitting it, and the fixed version would have passed while hiding a row.
+       The footer's vertical padding halves in that mode to pay most of the bar back; the
+       rack at 1301x740 has the tightest height budget on the site and it is measured, not
+       assumed -- see `each section has its own URL, carrying only itself, fitting one
+       screen` in tests/frontend.mjs.
+
+   Every font-size is a scale token (--t6/--t7), and the crawl is applied only inside
+   `prefers-reduced-motion:no-preference`; under `reduce` the window becomes horizontally
+   scrollable and the duplicate lane is dropped, so the headlines are all still reachable
+   by hand. Motion is removed, information is not. */
+:root{
+  --sn-h: 27px;      /* the bar's height, and the body padding that pays for it */
+  --sn-gap: 34px;    /* space between headlines -- ESPN's crawl is airy, not a word wall */
+}
+#symonsaynews{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  display:flex; align-items:stretch; height:var(--sn-h);
+  background:rgba(14,16,15,.92); border-top:1px solid var(--sfline);
+  box-shadow:var(--el1);
+  -webkit-backdrop-filter:blur(var(--glass-blur));
+  backdrop-filter:blur(var(--glass-blur));
+  /* `contain` here is not decoration: an animated 2x-width flex row inside a
+     full-viewport-wide fixed element is the one thing on this site that repaints on every
+     frame, and without it the browser has to consider the rest of the page for layout on
+     each tick. */
+  contain:layout paint;
+}
+html.sn-on:not(.ns) body{padding-bottom:var(--sn-h)}
+
+/* ---- the badge on the left ----
+   Fixed, never scrolling, and the only place the word "live" is allowed to appear -- and
+   only when the server said the newest headline is under six hours old. `sn-old` is what
+   ui.js sets otherwise, and it swaps the lamp for the actual age. */
+#symonsaynews .sn-brand{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  padding:0 10px 0 clamp(12px,2vw,26px);
+  font-size:var(--t7); font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--accent-ink); background:var(--accent);
+  white-space:nowrap;
+}
+#symonsaynews .sn-lamp{
+  width:6px; height:6px; border-radius:50%; background:var(--accent-ink);
+  text-decoration:none; display:block; flex:0 0 auto;
+}
+#symonsaynews.sn-old .sn-brand{color:var(--bg); background:var(--amber)}
+#symonsaynews .sn-age{
+  font-size:var(--t7); font-weight:600; letter-spacing:.04em; text-transform:none;
+  opacity:.72;
+}
+
+/* ---- the crawl ---- */
+#symonsaynews .sn-window{flex:1 1 auto; overflow:hidden; position:relative}
+#symonsaynews .sn-run{display:flex; width:max-content; height:100%; will-change:transform}
+#symonsaynews .sn-lane{display:flex; align-items:center; height:100%}
+#symonsaynews .sn-item{
+  display:inline-flex; align-items:center; gap:7px; flex:0 0 auto;
+  padding:0 calc(var(--sn-gap) / 2); height:100%;
+  text-decoration:none; color:var(--dim); white-space:nowrap;
+  transition:color var(--dur1) var(--ease), background var(--dur1) var(--ease);
+}
+#symonsaynews .sn-item:hover{color:var(--fg); background:var(--sf3)}
+#symonsaynews .sn-item:focus-visible{outline:2px solid var(--accent); outline-offset:-3px}
+#symonsaynews .sn-topic{
+  font-size:var(--t7); font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--accent); border:1px solid rgba(46,224,138,.28); border-radius:var(--r-sm);
+  padding:1px 5px; background:rgba(46,224,138,.07);
+}
+#symonsaynews .sn-src{
+  font-size:var(--t7); font-weight:600; color:var(--faint); letter-spacing:.02em;
+}
+/* No text-overflow:ellipsis anywhere here, per CLAUDE.md -- a headline is either shown
+   whole or it is not shown, and the crawl means length costs seconds rather than pixels. */
+#symonsaynews .sn-head{font-size:var(--t6); color:inherit}
+
+/* ---- dismiss ---- */
+#symonsaynews .sn-x{
+  flex:0 0 auto; width:26px; border:0; border-left:1px solid var(--sfline);
+  background:transparent; color:var(--faint); cursor:pointer;
+  font-size:var(--t4); line-height:1; padding:0;
+  transition:color var(--dur1) var(--ease), background var(--dur1) var(--ease);
+}
+#symonsaynews .sn-x:hover{color:var(--fg); background:var(--sf2)}
+#symonsaynews .sn-x:focus-visible{outline:2px solid var(--accent); outline-offset:-3px}
+
+/* -50% and not -100%: `.sn-run` holds the headlines TWICE, so half its width is one
+   full pass of the list. At -50% the second lane is sitting exactly where the first
+   started, and the jump back to 0 is invisible. -100% would blank the bar for a
+   whole screen width before wrapping. */
+@keyframes symonticker{from{transform:translateX(0)} to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:no-preference){
+  /* No duration here on purpose. ui.js measures the rendered width of one lane and sets
+     `animation-duration` inline so the crawl moves at a constant px/s whether there are
+     twelve headlines or thirty-six -- and if that measurement comes back 0 it sets
+     nothing, leaving the duration at its initial 0s, i.e. a still and readable bar rather
+     than one scrolling at a guessed rate. */
+  #symonsaynews .sn-run{animation:symonticker linear infinite}
+  /* Hovering stops the crawl. A headline you have to chase is a headline you do not read,
+     and this is the one interaction ESPN's bar is missing because a television has no
+     pointer. Focus stops it too, or a keyboard user tabbing into the bar is tabbing into
+     a moving target. */
+  #symonsaynews:hover .sn-run,
+  #symonsaynews:focus-within .sn-run{animation-play-state:paused}
+}
+@media (prefers-reduced-motion:reduce){
+  /* The information stays; only the motion goes. The second lane exists solely to make
+     the wrap seamless, so with no wrap it is duplicate content in the tab order. */
+  #symonsaynews .sn-window{overflow-x:auto}
+  #symonsaynews .sn-lane[aria-hidden="true"]{display:none}
+}
+
+/* ---- the folded layout: in flow, not on top ---- */
+html.ns #symonsaynews{position:static; flex:0 0 auto; box-shadow:none}
+
+/* WHERE THE 27px COMES FROM, since in this layout it has to come from somewhere.
+   A one-screen layout has no spare vertical pixels by construction -- measured at
+   1855x745 with no bar, all four panels report content == panel EXACTLY, zero slack. So
+   adding a bar without paying for it does not make a bar, it makes an overflow.
+
+   The footer pays 10px (its ns padding halves, 10px -> 5px) and the masthead pays the
+   rest. The other three panels pay nothing: the rack, the board and the receipts grid are
+   elastic and re-fit whatever height they are given -- measured, 567/567 at 1855x745 with
+   the bar in place, unchanged from 584/584 without it. The masthead is the one panel with
+   an incompressible floor: its `.mh-pitch` column is 543px of text and renders, so at
+   1855x745 it reported 579px of content in a 567px panel, a 12px overflow, and it was the
+   ONE failure of tests/frontend.mjs's `each section has its own URL... fitting one screen`
+   when the bar first went in.
+
+   18px -> 8px of block padding is 20px of headroom, and the measured result is 567/567 --
+   content exactly filling the panel, which is the same zero-slack state the other three
+   panels sit in and the same state the masthead itself was in before the bar existed
+   (584/584). It does not come back as visible slack because the masthead is elastic once
+   it fits: the two gutter renders take the room. It is spent on the panel that has room to
+   spend it -- the masthead centres itself with
+   `justify-content:safe center`, so the padding is breathing room around a centred block
+   rather than structure, and at every viewport where the panel is taller than the content
+   the centring puts the space back anyway.
+
+   Only when the bar is actually present. `sn-on` is set by ui.js after the endpoint
+   returns headlines, so with the news surface off -- the default -- the masthead keeps its
+   full 18px and this rule never applies. */
+html.ns.sn-on footer{padding:5px 0}
+html.ns.sn-on #hero:not([hidden]){padding-top:8px; padding-bottom:8px}
+
+@media (hover:none) and (pointer:coarse){
+  /* A phone has less width and a more expensive compositor. The gap between headlines
+     tightens, the badge gives back its outer margin, and the dismiss button grows to
+     something a thumb can actually hit -- 34px is still under the 44px touch target
+     Apple asks for, and it is as much as a 27px bar can give.
+
+     The two hover rules are removed rather than tuned, for the reason written at the top
+     of the touch block above: `:hover` on a touch screen fires on tap and STAYS applied
+     until the next tap elsewhere, so a tapped headline would keep its highlight while the
+     new page loaded. The crawl's pause-on-hover goes the same way; a phone pauses the bar
+     by tapping the headline, which navigates. */
+  :root{--sn-gap:22px}
+  #symonsaynews .sn-brand{padding:0 9px 0 12px}
+  #symonsaynews .sn-x{width:34px}
+  #symonsaynews .sn-item:hover{color:var(--dim); background:none}
+  #symonsaynews:hover .sn-run{animation-play-state:running}
 }
