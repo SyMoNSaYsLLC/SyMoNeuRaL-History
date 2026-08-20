@@ -99,7 +99,7 @@ ADD_PARSER = re.compile(r'add_parser\(\s*"([a-z_-]+)"')
 STUDIO_PARSER = re.compile(r'\bstudio\(\s*"([a-z]+)"')
 
 KNOWN_SUBCOMMANDS = {"status", "residency", "upgrade", "chat", "image", "ravencalc",
-                     "agent", "tools", "tool", "state", "mcp", "_stop-chat"}
+                     "agent", "tools", "tool", "state", "repl", "mcp", "_stop-chat"}
 
 _MISSING = object()
 
@@ -1449,8 +1449,7 @@ class SubcommandTableTests(unittest.TestCase):
         subcommands, because a top-level `--json` would parse and then do nothing --
         ravencalc has its own and never speaks HTTP. The comment in main() says so; this
         makes it a failure to regress rather than a comment to ignore."""
-        for argv in (["symoneural-cli"],
-                     ["symoneural-cli", "bogus"],
+        for argv in (["symoneural-cli", "bogus"],
                      ["symoneural-cli", "--json", "state"],
                      ["symoneural-cli", "ravencalc", "transmogrify", "x"]):
             with self.subTest(argv=" ".join(argv[1:]) or "(none)"):
@@ -1460,6 +1459,28 @@ class SubcommandTableTests(unittest.TestCase):
                     with self.assertRaises(SystemExit) as cm:
                         self.cli.main()
                 self.assertEqual(cm.exception.code, 2)
+
+    def test_a_bare_invocation_with_no_terminal_is_still_exit_two_with_usage(self):
+        """This case used to be argparse's, via `required=True`, and it raised SystemExit.
+        It is now `main()`'s own, because a bare invocation WITH a terminal opens a session
+        -- so it returns 2 rather than raising, and `sys.exit(main())` at the bottom of the
+        file makes the process exit code identical either way.
+
+        The mechanism changing is not the point; the point is that the behaviour must not.
+        A script running `symoneural-cli "$CMD"` with CMD unset depended on exit 2 and
+        usage, and if it got a client reading stdin instead it would block forever, in
+        cron, with no output. Under pytest stdin is not a terminal, which is exactly the
+        condition being asserted -- so this test would also catch the guard being keyed to
+        the wrong stream.
+        """
+        sys.argv = ["symoneural-cli"]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = self.cli.main()
+        self.assertEqual(code, 2)
+        self.assertIn("usage:", err.getvalue())
+        self.assertIn("not a terminal", err.getvalue())
+        self.assertEqual(out.getvalue(), "", "usage must go to stderr, not stdout")
 
 
 class StructuralRuleTests(unittest.TestCase):
@@ -1531,10 +1552,29 @@ class StructuralRuleTests(unittest.TestCase):
         src = inspect.getsource(self.cli.cmd_upgrade)
         self.assertLess(src.index("if args.check:"), src.index("os.geteuid()"))
 
-    def test_declared_subcommands_are_exactly_the_known_twelve(self):
-        """Pinned in both directions, like the enable-surfaces seven: a thirteenth
+    def test_the_bare_invocation_guard_reads_stdin_and_not_the_colour_helper(self):
+        """`_tty()` reads stdout and decides about colour. The session guard has to ask
+        about stdin. The two are one keystroke apart, both are called `tty`, and swapping
+        them is silent: `symoneural-cli > file` in a cron job would then open a prompt on
+        a stdin nobody is holding, which is a hang and not an error.
+
+        Comments stripped first, for the same reason the deploy-wording rule above does it:
+        `main()` explains this rule by naming the helper it bans, so a raw-source match
+        indicts the explanation. This test went red on its own first run for exactly that.
+        """
+        src = inspect.getsource(self.cli.main)
+        code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
+        self.assertIn("sys.stdin.isatty()", code)
+        self.assertNotIn("_tty()", code)
+
+    def test_declared_subcommands_are_exactly_the_known_thirteen(self):
+        """Pinned in both directions, like the enable-surfaces seven: a fourteenth
         subcommand must arrive with tests (this fails until it is added here), and one
-        quietly vanishing is a removal someone has to mean."""
+        quietly vanishing is a removal someone has to mean.
+
+        `repl` is the thirteenth and it did exactly what this test is for: it went red on
+        the addition and stayed red until the behaviour was described here.
+        """
         declared = set(ADD_PARSER.findall(SRC)) | set(STUDIO_PARSER.findall(SRC))
         self.assertEqual(declared, KNOWN_SUBCOMMANDS)
 
@@ -1552,7 +1592,7 @@ class StructuralRuleTests(unittest.TestCase):
         self.assertEqual(len(ADD_PARSER.findall(SRC)), 8,
                          "direct add_parser() count moved; update KNOWN_SUBCOMMANDS "
                          "and the dispatch TABLE together")
-        self.assertEqual(len(STUDIO_PARSER.findall(SRC)), 4,
+        self.assertEqual(len(STUDIO_PARSER.findall(SRC)), 5,
                          "studio() subcommand count moved; same instruction")
         for fn in (self.cli.cmd_status, self.cli.cmd_upgrade, self.cli.cmd_chat,
                    self.cli.cmd_ravencalc):
