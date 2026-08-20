@@ -189,21 +189,48 @@ class InvocableDocsTests(unittest.TestCase):
                                 f"CLAUDE.md tells you to run {rel}, which does not exist; a "
                                 "command that cannot run reads as a broken suite")
 
+    #: The two suites this test knowingly does not hold, and why. Both are red for reasons
+    #: that belong to task #74's acceptance work, not to the docs: `account.mjs` requests
+    #: `http://127.0.0.1:NaN/account.html`, and `stickers.mjs` is 15/16 on a `waitForFunction`
+    #: timeout. Naming them here rather than dropping them from the set is the point -- an
+    #: exemption with no stated reason is indistinguishable from an oversight, which is how
+    #: the next `streamer_guide.mjs` would hide inside this very test.
+    KNOWN_RED = {"account.mjs", "stickers.mjs"}
+
+    def _browser_suites(self):
+        """The `.mjs` files that actually drive a browser, read off their imports.
+
+        Derived rather than listed, because a hand-kept list is the thing this class exists
+        to stop. `code_cli.mjs` is the case that forces it: it is a `tests/*.mjs` file and it
+        is not a browser suite at all -- it drives a *process* through `node:child_process`,
+        and its own header says why (Playwright drives browsers; the terminal client is the
+        desktop half of #78). Excluding it by name would have read as an unexplained
+        exemption; excluding it by "does it import the shared chromium resolution" is a fact
+        about the file. `browser.mjs` itself is dropped for the same reason it always was:
+        it *is* that resolution, and has no assertions of its own.
+        """
+        suites = set()
+        for path in (pathlib.Path(__file__).resolve().parents[2] / "tests").glob("*.mjs"):
+            if path.name == "browser.mjs":
+                continue
+            if "from './browser.mjs'" in path.read_text():
+                suites.add(path.name)
+        return suites
+
     def test_the_browser_suites_are_all_named_there(self):
         """A suite nobody is told to run is a suite that rots unnoticed.
 
         `streamer_guide.mjs` sat dead for a fortnight -- its generated `app.py` still
         importing `from guide import routes` -- and the reason nobody caught it is that
-        CLAUDE.md listed four suites and it was the fifth. `browser.mjs` is excluded: it
-        is the shared chromium resolution, not a suite, and has no assertions of its own.
+        CLAUDE.md listed four suites and it was the fifth. `project.mjs` then proved the
+        same point a second time from a different direction: it was 15/16, and the red was
+        `/api/news/ticker` 404ing because its harness mounts only the project router while
+        `site/ui.js` fetches the ticker on every page. Nothing about the streamer rename
+        broke it and nothing about it was hard to fix; it simply went unrun.
         """
-        root = pathlib.Path(__file__).resolve().parents[2]
-        on_disk = {p.name for p in (root / "tests").glob("*.mjs")} - {"browser.mjs"}
+        on_disk = self._browser_suites()
         named = {rel.split("/")[-1] for rel in self._commanded_paths(".claude/CLAUDE.md")}
-        # account.mjs and stickers.mjs are knowingly red and belong to #74's acceptance
-        # work; they are named here so this test says which suites it is not holding.
-        unnamed = on_disk - named - {"account.mjs", "stickers.mjs", "code_cli.mjs",
-                                     "project.mjs"}
+        unnamed = on_disk - named - self.KNOWN_RED
         self.assertEqual(set(), unnamed,
                          f"browser suites exist that CLAUDE.md never tells anyone to run: "
                          f"{sorted(unnamed)}")

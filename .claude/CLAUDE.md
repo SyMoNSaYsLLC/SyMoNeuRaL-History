@@ -394,15 +394,19 @@ binding viewport is **1301x740**, not 1855x745, because its rows are 26.6px. `.c
 §0 has the full table, the retraction of the two-column option it used to recommend, and the one
 lever deliberately left unspent. Do not close the next overflow by dropping a row or adding
 `text-overflow` — both are barred above. The other two suites are green on the same tree:
-`streamer_failpaths.mjs` **32/32** and `streamer_watch.mjs` **8/8**, measured 2026-08-19 at
-`e81ffa4` — the same tree as the 43/43 above, which is what "same tree" has to mean to be
-worth writing. Both are also unread since, for the same reason. **The rename has landed** — #73
-item 2, Garrett *"i said tuner and guide needed to be merged and migrated to streamer"* — so
-these two readings were taken while the files were still called `tuner_failpaths.mjs` and
-`tuner_watch.mjs`. The figures keep the SHA they were measured at and are not re-dated to the
-rename; the paths above are the ones that exist. This paragraph named the old files for a while
-after they were gone, which is worse than a stale count: a stale count can be checked, and
-`node tests/tuner_watch.mjs` cannot run at all.
+`streamer_failpaths.mjs` **32/32** and `streamer_watch.mjs` **8/8**, **re-measured
+2026-08-20 at `f6ed7d3` under the names above, which are the names that exist** — so unlike the
+49/49 these two are not in the past tense and you can rely on them. They had also read
+**32/32 and 8/8 at `e81ffa4`**, the same tree as the 43/43 above, which is what "same tree" has
+to mean to be worth writing; that earlier pair was measured while the files were still called
+`tuner_failpaths.mjs` and `tuner_watch.mjs`, and it keeps the SHA it was read on rather than
+being re-dated to the rename (#73 item 2, Garrett *"i said tuner and guide needed to be merged
+and migrated to streamer"*). Both readings are written out rather than one replacing the other
+because a rename is exactly the change that can move a file without moving what it references —
+so two identical readings, each stamped on the tree it was taken from, is the evidence that
+nothing came loose. This paragraph named the old files for a while after they were gone, which
+is worse than a stale count: a stale count can be checked, and `node tests/tuner_watch.mjs`
+cannot run at all.
 
 System Chrome via Playwright, nothing to download. The failpaths and watch suites need no API
 and no provider account: each starts `tests/streamer_fake_provider.py` and stops it again, so the
@@ -460,6 +464,30 @@ infrastructure fault and is not one — it is this repo's own restructure, unpro
 been importing `from guide import routes` against a directory that is now
 `backend/apps/streamer/guide/`, and mounting at `/api/guide` while the page fetches
 `/api/streamer/guide/filter`. Two faults, the second hidden behind the first.
+
+**`tests/project.mjs` is the sixth suite, it needs no GPU and no provider account, and it
+was red for a fortnight for a reason that had nothing to do with the page it tests.** The
+surface is off unless `SYMONEURAL_PROJECT_ENABLED` and `SYMONEURAL_PROJECT_TOKEN` are set, so
+it brings its own harness with a throwaway store and a token that is deliberately not a secret:
+
+```bash
+python3 tests/project-harness.py &      # 127.0.0.1:8899, fresh temp store every start
+node tests/project.mjs                  # or pass a base URL
+kill %1
+```
+
+**16/16 passed, measured 2026-08-20 at `fdb21b0`.** It was **15/16** immediately before that,
+and the red is the part worth reading, because it is the failure mode of every single-app
+harness in this repo: `site/ui.js` fetches `/api/news/ticker` on **every** page load — the
+ticker is shared page chrome, not a news-page feature — and the harness mounted only the
+project router, so the browser logged a 404 and the *"no uncaught JavaScript errors"* assertion
+went red for something this page does not own. `apps/news/routes.py` is explicit that the
+endpoint is safe to expose in exactly that situation: it never triggers a fetch (the background
+refresher owns the rate), it carries no token because everything it returns is already public,
+and it answers 200 with an empty bar rather than 503 when the surface is off — and its stated
+reason for that last one is *this same* red-line-in-the-console argument, aimed at a visitor
+instead of a test. So the harness mounts it now, which reproduces the production shape rather
+than papering over a gap. **If you write a harness, mount news in it.**
 
 **The Studio agent loop does not stream tokens, so do not quote a first-token latency for
 it.** `inference.Backend.chat` sends `"stream": False` and is the loop's only call site;

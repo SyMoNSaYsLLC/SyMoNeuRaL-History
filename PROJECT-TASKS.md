@@ -322,6 +322,50 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: process, not of the disk) and the voice/adapter work, which has no single
         note: artefact. Do not invent a check for them; the percentage is allowed to top out
         note: below the work.
+        note: 2026-08-20 coder — item 2 verification, and a suite that had rotted for a
+        note: reason no rename check would have caught. Advised to prove the two renamed
+        note: suites still START rather than trust `exists`, since a check that passes on a
+        note: file that dies at startup is precisely the "can pass without the work being
+        note: finished" trap. Both are clean: no stale `tuner` string in either, and re-read
+        note: 32/32 and 8/8 at f6ed7d3 — the third tree to give that pair and the first
+        note: after the rename, which is what makes it evidence rather than repetition.
+        note: Those two figures are now current in `.claude/CLAUDE.md` instead of
+        note: past-tense, and `e81ffa4` and `c129d81` keep their own stamps beside them.
+        note: 2026-08-20 coder — the exemption list inside my own guard was the weak point.
+        note: `InvocableDocsTests` exempted four suites and stated a reason for two. An
+        note: exemption with no reason is indistinguishable from an oversight, which is how
+        note: the next dead suite hides inside the test written to catch dead suites. Fixed
+        note: structurally, not by adding two more names: the browser-suite set is now read
+        note: off the files' own imports (does it import `./browser.mjs`), so `code_cli.mjs`
+        note: falls out as a fact about the file — it drives a PROCESS through
+        note: node:child_process, not a browser — rather than as a name somebody typed.
+        note: `account.mjs` and `stickers.mjs` stay by name in KNOWN_RED with the reason and
+        note: their failure modes written down; they are #74's acceptance work.
+        note: 2026-08-20 coder — `project.mjs` was the fourth exemption and it was NOT
+        note: knowingly red, so I measured it: 15/16, and the red had nothing to do with the
+        note: page. `site/ui.js` fetches /api/news/ticker on EVERY page load — the ticker is
+        note: shared page chrome, not a news-page feature — while `tests/project-harness.py`
+        note: mounts only the project router, on purpose, because importing backend/api.py
+        note: would pull in the governor and could contend for run/gpu.lock.d. Both correct;
+        note: together they mean any single-app harness logs a console error on a page it
+        note: renders perfectly. apps/news/routes.py already argues this exact case for a
+        note: VISITOR (never triggers a fetch, no token, 200 with an empty bar when off,
+        note: expressly so an unconfigured box does not put a red line in every console), so
+        note: the harness mounts it now and matches production. 16/16 at fdb21b0. It is the
+        note: sixth suite in CLAUDE.md and no longer exempt, so the guard holds it.
+        note: 2026-08-20 coder — two more stale playwright paths, and this class keeps
+        note: recurring because the note is always half-right. `tests/project.mjs`'s header
+        note: and `.claude/HANDOVER.md`'s browser-test paragraph both stated as present fact
+        note: that Playwright lives in contrib/llama.cpp/tools/ui/node_modules. The HANDOVER
+        note: one even recorded correcting that path once before, which makes it read as
+        note: freshly checked. That tree is under `references/` now, which #74 bars, so an
+        note: agent whose suites would not start could have followed either note to a fix
+        note: that went green BY BREAKING THE RULE. Both corrected with the old text quoted
+        note: rather than deleted; it is `tests/node_modules`, playwright pinned 1.56.1 in
+        note: tests/package.json, resolved only in tests/browser.mjs, which all eight
+        note: browser suites import chromium from. Verified both figures before publishing.
+        note: 2026-08-20 coder — nothing here changed a task percentage: this is all test
+        note: and doc surface. The three remaining #73 FAILs belong to items 3, 4 and 6.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder
