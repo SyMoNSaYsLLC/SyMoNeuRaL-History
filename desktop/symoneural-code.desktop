@@ -1,0 +1,38 @@
+[Desktop Entry]
+# SyMoNeuRaL Code -- the desktop entry for desktop/shell.py.
+#
+# `Exec` is an absolute path into this checkout, and that is deliberate rather than lazy: a
+# .desktop file is read by a launcher with no notion of a working directory or a repo, so the
+# path has to be absolute somewhere. It lives here, once, and an install step rewrites this
+# one line -- which is the shape Garrett asked packaging to take: *"i didnt mean binaries i
+# meant debian packages"*. A .deb would ship this file with `Exec=/usr/bin/symoneural-code-desktop`
+# and the runtime already comes from apt (python3-gi, gir1.2-vte-2.91), so there is no bundle
+# to build.
+#
+# To use it from this checkout without packaging anything:
+#
+#     cp desktop/symoneural-code.desktop ~/.local/share/applications/
+#     update-desktop-database ~/.local/share/applications 2>/dev/null || true
+#
+# `--cwd` is passed because a launcher starts a process in $HOME or in /, and a coding session
+# whose working directory is / is a session where every @path is wrong. The client finds the
+# workspace itself, but it finds it by walking up from where it started.
+Type=Application
+Version=1.0
+Name=SyMoNeuRaL Code
+GenericName=Coding agent
+Comment=An agent session on this workstation's own engine, in a real terminal
+Exec=/usr/bin/python3 /home/google/Symoneural/desktop/shell.py --cwd /home/google/Symoneural
+Path=/home/google/Symoneural
+Icon=utilities-terminal
+Terminal=false
+StartupNotify=true
+# GTK sets WM_CLASS from the program name, which for a python3 process is `shell.py`. Naming
+# it here is what lets a taskbar group the window under this entry instead of showing it as an
+# unnamed orphan beside it.
+StartupWMClass=shell.py
+# Development alone. `TerminalEmulator` was here and was withdrawn: it is not one, and
+# claiming it would put this in the menu as a terminal a user could open a shell in.
+# It renders IN a terminal; the thing it is, is a coding agent.
+Categories=Development;
+Keywords=agent;code;llm;symoneural;
