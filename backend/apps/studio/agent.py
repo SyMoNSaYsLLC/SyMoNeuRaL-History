@@ -47,9 +47,16 @@ from typing import Any, AsyncIterator
 
 from . import inference, registry
 
-__all__ = ["system_prompt", "run", "MAX_STEPS"]
+__all__ = ["system_prompt", "run", "MAX_STEPS", "PERMISSION_MODES"]
 
 MAX_STEPS = int(os.environ.get("SYMONEURAL_STUDIO_MAX_STEPS", "8"))
+
+# The permission modes, spelled once. `routes.py` validates against this tuple and `run()`
+# refuses anything outside it, so the two cannot disagree about what a valid mode is -- and
+# the gate below tests `permissions in ("ask", "deny")`, which means any string this tuple
+# does not contain would behave exactly like "allow". A permission system is not allowed to
+# fail open on a typo, so an unknown mode has to be rejected rather than interpreted.
+PERMISSION_MODES = ("allow", "deny", "ask")
 
 IDENTITY = """\
 You are SyMoNeuRaL Studio, the local orchestration agent for the SyMoNeuRaL stack.
@@ -269,6 +276,13 @@ async def run(query: str, history: list[dict] | None = None, *,
                  what it was refused, instead of a client pretending to have asked somebody.
         "ask"    do not run it; yield `permission_required` and END THE TURN.
 
+    Any other string is refused outright -- a `bad_permissions` error event and a turn that
+    runs nothing, before a backend is even picked. That is not defensive noise: the gate is
+    written as `permissions in ("ask", "deny")`, so an unrecognised mode would fall through
+    it and behave exactly like "allow". `routes.py` already 400s a bad mode, which makes this
+    the backstop for the next in-process caller rather than the check the HTTP surface relies
+    on -- and a permission system may not fail open on a typo at either layer.
+
     "ask" ends the turn rather than waiting because this transport is one-directional: SSE
     cannot carry the answer back. The frame therefore carries everything the caller needs to
     resume -- the exact `arguments`, and `pending`, the messages already appended during this
@@ -291,6 +305,12 @@ async def run(query: str, history: list[dict] | None = None, *,
     `tools_used` on `done` are therefore per-segment, and a caller that wants the whole turn
     adds them up -- which is what the terminal client's status line does.
     """
+    if permissions not in PERMISSION_MODES:
+        yield {"event": "error", "code": "bad_permissions",
+               "detail": "permissions must be one of: " + ", ".join(PERMISSION_MODES),
+               "got": permissions}
+        return
+
     started = time.monotonic()
     steps = max_steps if max_steps is not None else MAX_STEPS
 

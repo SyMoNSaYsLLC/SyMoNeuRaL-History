@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from . import agent, registry, routes  # noqa: F401  routes populates the registry
@@ -213,12 +214,19 @@ class AgentGateTests(unittest.TestCase):
 
 
 class ModeValidationTests(unittest.TestCase):
-    """The endpoint's half. `run()` takes a string; only `routes` can refuse a bad one, and
-    it must, because an unrecognised mode falls through every `in ("ask", "deny")` test in
-    the loop and behaves exactly like `allow`. Failing open on a typo is the one outcome a
-    permission system may not have."""
+    """Both layers refuse an unrecognised mode, and they have to, because the gate is written
+    as `permissions in ("ask", "deny")` -- so a string neither layer recognises would fall
+    through it and run exactly like `allow`. Failing open on a typo is the one outcome a
+    permission system may not have, so it is checked at the loop AND at the endpoint rather
+    than at whichever one happens to be in front."""
 
-    def test_the_loop_treats_an_unknown_mode_as_allow_which_is_why_routes_validates(self):
+    def test_the_loop_refuses_an_unknown_mode_instead_of_reading_it_as_allow(self):
+        """`run()` used to take the string on trust, which left the endpoint's 400 as the only
+        thing between a typo and an ungated run. It is a backstop now, not the whole check:
+        `routes` is the only production caller today, and this is what keeps the next one
+        honest. Note what is asserted -- not merely that the gated tool did not run, but that
+        nothing ran and no backend was even picked, because a refusal that still burns a turn
+        has not refused it."""
         executed: list[str] = []
 
         async def fake_call(name, args):
@@ -236,11 +244,33 @@ class ModeValidationTests(unittest.TestCase):
                 inf.InferenceError = RuntimeError
                 return [f async for f in agent.run("do it", permissions="asK")]
 
-        asyncio.run(go())
-        self.assertEqual(executed, [GATED],
-                         "if this ever stops being true, delete the 400 in routes.py; "
-                         "while it is true, that 400 is the only thing standing between a "
-                         "typo and an ungated run")
+        frames = asyncio.run(go())
+        self.assertEqual(executed, [], "an unrecognised mode ran a dangerous tool")
+        self.assertEqual([f["event"] for f in frames], ["error"],
+                         "the turn should stop on the mode, before a backend is picked")
+        self.assertEqual(frames[0]["code"], "bad_permissions")
+        self.assertEqual(frames[0]["got"], "asK",
+                         "the rejected spelling has to come back, or a caller cannot tell "
+                         "which of its arguments was wrong")
+        self.assertEqual(backend.seen, [], "the model was asked despite the bad mode")
+
+    def test_every_mode_the_loop_accepts_is_a_mode_the_endpoint_accepts(self):
+        """The two layers read one tuple. This is the assertion that makes that true rather
+        than merely intended: add a fourth mode to `PERMISSION_MODES` and the case list in
+        the test below stops covering it, which fails here instead of shipping a mode nobody
+        exercised."""
+        self.assertEqual(set(agent.PERMISSION_MODES), {"allow", "deny", "ask"},
+                         "PERMISSION_MODES changed -- add the new spelling to the case list "
+                         "in test_the_endpoint_refuses_an_unrecognised_mode_with_a_400")
+        # Comments stripped first. The sentence in `routes.py` explaining that it reads this
+        # tuple names the tuple, so a plain substring search over the raw text is satisfied by
+        # the prose alone: this assertion passed with the literal tuple reinstated until the
+        # strip went in. Second rule in this repo to be satisfied by its own explanation.
+        src = (Path(__file__).parent / "routes.py").read_text()
+        code = "\n".join(line.split("#")[0] for line in src.splitlines())
+        self.assertIn("agent.PERMISSION_MODES", code,
+                      "routes.py must validate against the loop's tuple, not a second copy "
+                      "of it that can drift out of agreement with the gate")
 
     def test_the_endpoint_refuses_an_unrecognised_mode_with_a_400(self):
         """The other half, driven rather than grepped: `run_agent` must reject the typo

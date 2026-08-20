@@ -539,4 +539,14 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep symoneural-cli -- bin/symoneural-code
         check: grep a bare invocation with no stdin tty -- tests/code_cli.mjs
         check: grep events, not tokens -- docs/specs/code-client-spec.md
-        check: grep MiB -- desktop/README.md
+        check: grep permission_required -- docs/specs/code-client-spec.md
+        check: grep measured on this machine -- desktop/README.md
+        check: grep \d+(\.\d+)? MiB -- desktop/README.md
+        note: 2026-08-20 coder — tightened the last two checks before writing the documents
+        note: they gate. `grep MiB` was satisfiable by the word MiB in a sentence, and just as
+        note: satisfiable by a projected figure as by a measured one, which is the failure the
+        note: honesty rule names outright. It is now a real number AND the label, and the spec
+        note: check now also wants a frame name from the implementation, so a paragraph *about*
+        note: the protocol cannot pass for the protocol. No grep can tell a measurement from an
+        note: invention; these only make the cheap fabrications fail, and the label is what puts
+        note: the claim on the record for whoever writes it.

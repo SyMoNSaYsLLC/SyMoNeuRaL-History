@@ -501,10 +501,14 @@ async def run_agent(request: Request) -> Response:
     # a silently permissive run. `"allow"` is the default because it is what this endpoint did
     # before the mode existed: the /studio page cannot answer a `permission_required` frame,
     # so defaulting to "ask" would have gated the browser surface by accident.
+    # The valid set comes from `agent.PERMISSION_MODES` rather than being spelled again here:
+    # a mode this file accepted and the loop did not recognise would fall through the gate's
+    # `in ("ask", "deny")` test and run as "allow".
     permissions = str(body.get("permissions") or "allow")
-    if permissions not in ("allow", "deny", "ask"):
+    if permissions not in agent.PERMISSION_MODES:
         return JSONResponse({"error": "bad_permissions",
-                             "detail": 'permissions must be "allow", "deny" or "ask"',
+                             "detail": "permissions must be one of: "
+                                       + ", ".join(agent.PERMISSION_MODES),
                              "got": permissions}, status_code=400)
     allow = [str(x) for x in body.get("allow") or [] if isinstance(x, (str, int))]
     # Messages that belong AFTER the user query: an approved tool call and its result, handed
