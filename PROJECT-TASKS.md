@@ -542,6 +542,30 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep permission_required -- docs/specs/code-client-spec.md
         check: grep measured on this machine -- desktop/README.md
         check: grep \d+(\.\d+)? MiB -- desktop/README.md
+        check: grep def render_markdown -- bin/symoneural-cli
+        check: grep def status_line -- bin/symoneural-cli
+        check: grep permission_required -- tests/code_cli.mjs
+        check: exists desktop/shell.py
+        check: grep WebKit2 -- desktop/shell.py
+        check: exists desktop/symoneural-code.desktop
+        note: 2026-08-20 coder — UNARCHIVED, and the reason is the whole point of this note.
+        note: The two documents above went in, every one of the twelve declared checks passed,
+        note: and symoneural-progress.timer -- a USER-level systemd timer, two-minute cadence,
+        note: which is why `systemctl list-timers` without --user shows nothing -- ran
+        note: archive_tasks.py at 18:09:13 and filed this task as finished. It is not. There is
+        note: no desktop client, no markdown rendering (item 6), no status line (item 7), and
+        note: not one gate assertion in tests/code_cli.mjs. Twelve checks, all genuinely true,
+        note: none of them measuring four of the items. That is exactly what CLAUDE.md means by
+        note: *"a check that can pass without the work being finished is worse than no check,
+        note: since it will archive the task"* -- and it did, thirty seconds after the last one
+        note: went green, with nobody watching. The six checks above name symbols and files
+        note: that cannot exist unless the work does, so the reading is 12/18. Restored
+        note: verbatim, the ARCHIVED stamp dropped because it was not true.
+        note: Two things to carry: the archiver is on a timer, so a check going green while
+        note: you are still working is not a note-to-self for later -- the task is gone within
+        note: two minutes. And a block coming BACK from review/CLOSED-TASKS.md is a legitimate
+        note: move, not a rules violation: nothing is deleted, and the open list is supposed to
+        note: be a reading of what is left.
         note: 2026-08-20 coder — tightened the last two checks before writing the documents
         note: they gate. `grep MiB` was satisfiable by the word MiB in a sentence, and just as
         note: satisfiable by a projected figure as by a measured one, which is the failure the
@@ -550,3 +574,4 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: the protocol cannot pass for the protocol. No grep can tell a measurement from an
         note: invention; these only make the cheap fabrications fail, and the label is what puts
         note: the claim on the record for whoever writes it.
+
