@@ -4,7 +4,7 @@
 //
 // **A separate file from `tests/frontend.mjs` on purpose.** That file is maintained by
 // whoever owns the site generators and two agents editing one test file clobber each
-// other; `tests/tuner_failpaths.mjs` set the precedent. Same harness, same system Chrome,
+// other; `tests/streamer_failpaths.mjs` set the precedent. Same harness, same system Chrome,
 // no browser download.
 //
 // Every assertion here exists because of something that either went wrong or could go

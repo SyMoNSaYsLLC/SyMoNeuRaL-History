@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Tests for the Tuner. Standard library only, no network, no IPTV provider.
+"""Tests for the Streamer. Standard library only, no network, no IPTV provider.
 
-    python3 backend/apps/streamer/test_tuner.py           # from the repo root
-    python3 -m apps.streamer.test_tuner                   # from backend/
+    python3 backend/apps/streamer/test_streamer.py           # from the repo root
+    python3 -m apps.streamer.test_streamer                   # from backend/
 
 Three things are actually being defended here and the rest is parsing:
 
@@ -38,7 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from apps.streamer import m3u, routes, safefetch, sessions, xtream          # noqa: E402
 from apps.streamer.safefetch import BlockedURL, Policy, Scrubber            # noqa: E402
 
-SENTINEL_USER = "zz-tuner-test-user-zz"
+SENTINEL_USER = "zz-streamer-test-user-zz"
 SENTINEL_PASS = "Hunter2-CorrectHorseBatteryStaple-9times"
 
 
@@ -243,8 +243,8 @@ class TestValidateUrl(unittest.TestCase):
         import os
         import subprocess
         env = {**os.environ,
-               "SYMONEURAL_TUNER_ALLOW_PRIVATE": "1", "ALLOW_PRIVATE": "1",
-               "SYMONEURAL_TUNER_POLICY_ALLOW_PRIVATE": "true", "allow_private": "1"}
+               "SYMONEURAL_STREAMER_ALLOW_PRIVATE": "1", "ALLOW_PRIVATE": "1",
+               "SYMONEURAL_STREAMER_POLICY_ALLOW_PRIVATE": "true", "allow_private": "1"}
         out = subprocess.run(
             [sys.executable, "-c",
              "import sys; sys.path.insert(0, %r)\n"
@@ -601,7 +601,7 @@ class TestNoCredentialLeak(unittest.TestCase):
     def test_session_start_on_a_blocked_url_does_not_leak(self):
         url = f"http://127.0.0.1:8800/live/{SENTINEL_USER}/{SENTINEL_PASS}/1.ts"
         mgr = sessions.SessionManager()
-        with self.assertRaises(sessions.TunerError) as cm:
+        with self.assertRaises(sessions.StreamerError) as cm:
             mgr.start(url, "Test Channel", Policy(),
                       Scrubber([SENTINEL_USER, SENTINEL_PASS]))
         self.assertClean(str(cm.exception), repr(cm.exception))
@@ -650,23 +650,23 @@ class TestNoCredentialLeak(unittest.TestCase):
         except Exception as exc:                                  # pragma: no cover
             self.skipTest(f"TestClient unavailable: {exc}")
         app = FastAPI()
-        app.include_router(routes.router, prefix="/api/tuner")
+        app.include_router(routes.router, prefix="/api/streamer")
         client = TestClient(app, raise_server_exceptions=False)
         bodies = []
         cred = {"server": "http://127.0.0.1:8800", "username": SENTINEL_USER,
                 "password": SENTINEL_PASS}
         for path, payload in [
-            ("/api/tuner/xtream/info", cred),
-            ("/api/tuner/xtream/channels", cred),
-            ("/api/tuner/xtream/info", {"username": SENTINEL_USER,
+            ("/api/streamer/xtream/info", cred),
+            ("/api/streamer/xtream/channels", cred),
+            ("/api/streamer/xtream/info", {"username": SENTINEL_USER,
                                         "password": SENTINEL_PASS}),      # no server
-            ("/api/tuner/xtream/info", {**cred, "kinds": 12345}),          # 422 path
-            ("/api/tuner/xtream/info", {**cred, "server": "http://169.254.169.254"}),
-            ("/api/tuner/tune", {"url": f"http://127.0.0.1:8800/live/{SENTINEL_USER}/"
+            ("/api/streamer/xtream/info", {**cred, "kinds": 12345}),          # 422 path
+            ("/api/streamer/xtream/info", {**cred, "server": "http://169.254.169.254"}),
+            ("/api/streamer/tune", {"url": f"http://127.0.0.1:8800/live/{SENTINEL_USER}/"
                                         f"{SENTINEL_PASS}/1.ts",
                                  "label": "Test", "username": SENTINEL_USER,
                                  "password": SENTINEL_PASS}),
-            ("/api/tuner/playlist", {"url": f"http://127.0.0.1:8800/x.m3u"}),
+            ("/api/streamer/playlist", {"url": f"http://127.0.0.1:8800/x.m3u"}),
         ]:
             r = client.post(path, json=payload)
             bodies.append(r.text)
@@ -704,7 +704,7 @@ class TestCapsAndPaths(unittest.TestCase):
              "import sys; sys.path.insert(0, %r)\n"
              "import threading\n"
              "import apps.streamer\n"
-             "print([t.name for t in threading.enumerate() if t.name.startswith('tuner-')])"
+             "print([t.name for t in threading.enumerate() if t.name.startswith('streamer-')])"
              % str(pathlib.Path(__file__).resolve().parents[2])],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(out.returncode, 0, out.stderr)
@@ -768,7 +768,7 @@ needs_ffmpeg = unittest.skipUnless(FFMPEG_BIN, "ffmpeg is not installed")
 
 #: A User-Agent that is neither VLC nor anything a provider recognises -- what this module used
 #: to send, and what a gated provider refuses.
-STRANGER_UA = "SyMoNeuRaL-Tuner/1"
+STRANGER_UA = "SyMoNeuRaL-Streamer/1"
 
 OFFLINE_PAGE = (
     b"<!DOCTYPE html><html><head><title>Stream unavailable</title>"
@@ -786,7 +786,7 @@ def media() -> pathlib.Path:
     Deliberately tiny -- 160x120 at 10 fps -- because these are the only slow tests in the file
     and the shapes being asserted on do not depend on the picture.
     """
-    d = pathlib.Path(tempfile.mkdtemp(prefix="tuner-fixtures-"))
+    d = pathlib.Path(tempfile.mkdtemp(prefix="streamer-fixtures-"))
 
     def ff(*args):
         subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-loglevel", "error", *args],
@@ -956,7 +956,7 @@ def run_session(url: str, timeout: float = 30.0, policy: Policy | None = None,
     `ended` while ffmpeg is still muxing the first segment. Breaking there would report every
     working stream as having produced nothing. `ended` counts only once ffmpeg has also exited.
     """
-    mgr = sessions.SessionManager(root=pathlib.Path(tempfile.mkdtemp(prefix="tuner-run-")))
+    mgr = sessions.SessionManager(root=pathlib.Path(tempfile.mkdtemp(prefix="streamer-run-")))
     s = mgr.start(url, label, policy or LOCAL)
     deadline = time.monotonic() + timeout
     try:
@@ -1003,7 +1003,7 @@ class TestUserAgent(unittest.TestCase):
     def test_the_agent_is_overridable_from_the_environment(self):
         """Read once at import, so this has to be a fresh interpreter."""
         import os
-        env = {**os.environ, "SYMONEURAL_TUNER_USER_AGENT": "TiviMate/4.7.0 (Harness)"}
+        env = {**os.environ, "SYMONEURAL_STREAMER_USER_AGENT": "TiviMate/4.7.0 (Harness)"}
         out = subprocess.run(
             [sys.executable, "-c",
              "import sys; sys.path.insert(0, %r)\n"
@@ -1017,19 +1017,19 @@ class TestUserAgent(unittest.TestCase):
     def test_an_override_cannot_smuggle_headers(self):
         """A CRLF in the agent would inject headers into every upstream request."""
         import os
-        prev = os.environ.get("SYMONEURAL_TUNER_USER_AGENT")
+        prev = os.environ.get("SYMONEURAL_STREAMER_USER_AGENT")
         try:
-            os.environ["SYMONEURAL_TUNER_USER_AGENT"] = "VLC/3.0\r\nX-Evil: 1"
+            os.environ["SYMONEURAL_STREAMER_USER_AGENT"] = "VLC/3.0\r\nX-Evil: 1"
             ua = safefetch._default_user_agent()
             self.assertNotIn("\r", ua)
             self.assertNotIn("\n", ua)
-            os.environ["SYMONEURAL_TUNER_USER_AGENT"] = "   "
+            os.environ["SYMONEURAL_STREAMER_USER_AGENT"] = "   "
             self.assertIn("VLC", safefetch._default_user_agent())
         finally:
             if prev is None:
-                os.environ.pop("SYMONEURAL_TUNER_USER_AGENT", None)
+                os.environ.pop("SYMONEURAL_STREAMER_USER_AGENT", None)
             else:
-                os.environ["SYMONEURAL_TUNER_USER_AGENT"] = prev
+                os.environ["SYMONEURAL_STREAMER_USER_AGENT"] = prev
 
 
 # ============================================ defect 2: what the provider actually said
@@ -1166,7 +1166,7 @@ class TestUpstreamErrorBody(unittest.TestCase):
                 403, "text/html",
                 f"<html><body>Forbidden for {h.path}</body></html>".encode())}) as p:
             app = FastAPI()
-            app.include_router(routes.router, prefix="/api/tuner")
+            app.include_router(routes.router, prefix="/api/streamer")
             client = TestClient(app, raise_server_exceptions=False)
             # The route builds its own `Policy()`, which forbids loopback -- so this asserts on
             # the excerpt path through `safefetch` directly, with the route's own scrubbing
@@ -1177,7 +1177,7 @@ class TestUpstreamErrorBody(unittest.TestCase):
             self.assertNotIn(SENTINEL_PASS, detail)
             self.assertNotIn(SENTINEL_USER, detail)
             self.assertIn("Forbidden", detail)
-            r = client.post("/api/tuner/playlist", json={"url": p.url(path)})
+            r = client.post("/api/streamer/playlist", json={"url": p.url(path)})
             self.assertNotIn(SENTINEL_PASS, r.text)
             self.assertNotIn(SENTINEL_USER, r.text)
 
@@ -1281,7 +1281,7 @@ class TestAesRefusals(unittest.TestCase):
 
     def refuse(self, playlist: str) -> str:
         mgr = sessions.SessionManager()
-        with self.assertRaises(sessions.TunerError) as cm:
+        with self.assertRaises(sessions.StreamerError) as cm:
             mgr._reject_unsupported_encryption(m3u.parse_hls(playlist))
         return str(cm.exception)
 
@@ -1459,7 +1459,7 @@ class TestAesPrimitives(unittest.TestCase):
         self.assertEqual(sessions._decrypt_segment(blob, key, iv), plain)
 
     def test_a_partial_block_is_refused_not_guessed_at(self):
-        with self.assertRaises(sessions.TunerError):
+        with self.assertRaises(sessions.StreamerError):
             sessions._decrypt_segment(b"\x00" * 33, bytes(16), bytes(16))
 
 
@@ -1652,7 +1652,7 @@ class TestTuneDeadline(unittest.TestCase):
         every poll (`routes.py:357`), which resets the `last_seen` the reaper reads
         (`sessions.py:974`), so the wait is *designed* to outlive the idle timeout. Coupling the
         two constants was also wrong on its own terms, because `IDLE_TIMEOUT` is env-tunable from
-        5 to 600: `SYMONEURAL_TUNER_IDLE_TIMEOUT=5` would have failed this test with no bug
+        5 to 600: `SYMONEURAL_STREAMER_IDLE_TIMEOUT=5` would have failed this test with no bug
         present. The residual hazard -- a session that really did die during a long wait -- is
         covered by the next test, which is where that coverage belongs.
         """
@@ -1709,14 +1709,14 @@ class TestTuneDeadline(unittest.TestCase):
             self.skipTest(f"TestClient unavailable: {exc}")
 
         app = FastAPI()
-        app.include_router(routes.router, prefix="/api/tuner")
+        app.include_router(routes.router, prefix="/api/streamer")
         client = TestClient(app, raise_server_exceptions=False)
         mgr = Waiting()
         real_mgr, real_wait = routes.MANAGER, routes.TUNE_WAIT_SECONDS
         try:
             routes.MANAGER = mgr
             routes.TUNE_WAIT_SECONDS = 1.0      # ~4 iterations at the loop's 0.25 s sleep
-            r = client.post("/api/tuner/tune", json={"url": "http://p.example/1.ts"})
+            r = client.post("/api/streamer/tune", json={"url": "http://p.example/1.ts"})
         finally:
             routes.MANAGER, routes.TUNE_WAIT_SECONDS = real_mgr, real_wait
         self.assertEqual(r.status_code, 200)
@@ -1730,7 +1730,7 @@ class TestTuneDeadline(unittest.TestCase):
 
         The reaper drops a session the moment its ffmpeg exits, so a 25 s wait can outlive the
         thing it is waiting for. Returning `{"note": "poll the session"}` for an id whose
-        `GET /session/{sid}` answers 404 makes a dead stream look like a broken tuner -- the
+        `GET /session/{sid}` answers 404 makes a dead stream look like a broken streamer -- the
         exact confusion this module exists to remove. It must be a 502 with a reason instead.
         """
         try:
@@ -1767,13 +1767,13 @@ class TestTuneDeadline(unittest.TestCase):
                 return 0
 
         app = FastAPI()
-        app.include_router(routes.router, prefix="/api/tuner")
+        app.include_router(routes.router, prefix="/api/streamer")
         client = TestClient(app, raise_server_exceptions=False)
         real_mgr, real_wait = routes.MANAGER, routes.TUNE_WAIT_SECONDS
         try:
             routes.MANAGER = Vanishing()
             routes.TUNE_WAIT_SECONDS = 0.5
-            r = client.post("/api/tuner/tune", json={"url": "http://p.example/1.ts"})
+            r = client.post("/api/streamer/tune", json={"url": "http://p.example/1.ts"})
         finally:
             routes.MANAGER, routes.TUNE_WAIT_SECONDS = real_mgr, real_wait
         self.assertEqual(r.status_code, 502)
@@ -1816,7 +1816,7 @@ class TestNewFieldsCarryNoCredential(unittest.TestCase):
                 403, "text/html",
                 f"<html><body>Forbidden: {h.path}</body></html>".encode())}) as p:
             mgr = sessions.SessionManager(
-                root=pathlib.Path(tempfile.mkdtemp(prefix="tuner-run-")))
+                root=pathlib.Path(tempfile.mkdtemp(prefix="streamer-run-")))
             try:
                 s = mgr.start(p.url(path), "Test", LOCAL)     # no scrubber passed, as in a paste
                 deadline = time.monotonic() + 20
@@ -2043,10 +2043,10 @@ class TestRepairIsAnnounced(unittest.TestCase):
         self.assertEqual(s.public()["repair"], "soundtrack re-encoded from ac3 to aac")
 
     def test_the_kill_switch_exists(self):
-        """A new re-encode path in a working tuner needs an off switch that is not an edit."""
+        """A new re-encode path in a working streamer needs an off switch that is not an edit."""
         self.assertIn(sessions.REPAIR_MODE, ("auto", "cpu", "off"))
         src = pathlib.Path(sessions.__file__).read_text()
-        self.assertIn("SYMONEURAL_TUNER_REPAIR", src)
+        self.assertIn("SYMONEURAL_STREAMER_REPAIR", src)
 
     def test_the_spawn_comment_no_longer_promises_what_the_code_does_not_do(self):
         """House rule, and the reason it is a test: the old comment read "it never quietly
@@ -2072,7 +2072,7 @@ def continuous(body: bytes, repeats: int = 8, chunk: int = 32768, gap: float = 0
     The repair tests need this and the reason is worth stating, because a fixed body looked like it
     would do and did not. A repair is decided by the thread reading ffmpeg's stderr but applied by
     the pump thread, because only the pump may touch `proc.stdin` -- so the swap happens on the
-    **next write**. Hand the tuner a 576 KB file and ffmpeg drains all of it before it has finished
+    **next write**. Hand the streamer a 576 KB file and ffmpeg drains all of it before it has finished
     announcing its codecs: the plan is made with no writes left to apply it, and the session ends
     having never repaired. Measured exactly that way here, with `bytes_in` equal to the file size
     at the moment the plan appeared.
@@ -2095,7 +2095,7 @@ def continuous(body: bytes, repeats: int = 8, chunk: int = 32768, gap: float = 0
                     h.wfile.flush()
                     time.sleep(gap)
         except (BrokenPipeError, ConnectionResetError, OSError):
-            pass            # the tuner stopped watching. That is how every one of these ends.
+            pass            # the streamer stopped watching. That is how every one of these ends.
     return route
 
 
@@ -2118,7 +2118,7 @@ class TestRepairEndToEnd(unittest.TestCase):
         body = (media() / name).read_bytes()
         with Provider({"/s.ts": continuous(body)}) as p:
             mgr = sessions.SessionManager(
-                root=pathlib.Path(tempfile.mkdtemp(prefix="tuner-repair-")))
+                root=pathlib.Path(tempfile.mkdtemp(prefix="streamer-repair-")))
             s = mgr.start(p.url("/s.ts"), "Harness", LOCAL)
             try:
                 deadline = time.monotonic() + timeout

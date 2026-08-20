@@ -1,8 +1,8 @@
-"""A scripted tuner API, so the page's failure paths can be driven without a provider.
+"""A scripted streamer API, so the page's failure paths can be driven without a provider.
 
 The point of this harness is that we have no credentials and no known-good stream, so
 every claim about "the page now explains why a stream did not play" would otherwise be
-unfalsifiable. This serves site/ unchanged and answers /api/tuner/* with whatever the
+unfalsifiable. This serves site/ unchanged and answers /api/streamer/* with whatever the
 case under test needs, including the exact shape that produced the blank screen:
 HTTP 200 with state:"starting" and a playlist path that does not exist.
 """
@@ -46,10 +46,10 @@ class H(SimpleHTTPRequestHandler):
             CASE["name"] = self.path.split("=", 1)[1]
             POLLS["n"] = 0
             return self._json(200, {"case": CASE["name"]})
-        if self.path.startswith("/api/tuner/session/"):
+        if self.path.startswith("/api/streamer/session/"):
             POLLS["n"] += 1
             return self._json(200, self._session())
-        if self.path.startswith("/api/tuner/state"):
+        if self.path.startswith("/api/streamer/state"):
             return self._json(200, {"ffmpeg": True, "max_sessions": 2, "active": 0,
                                     "sessions": [], "channels_stored": 0})
         return super().do_GET()
@@ -57,10 +57,10 @@ class H(SimpleHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         self.rfile.read(n)
-        if self.path.startswith("/api/tuner/playlist"):
+        if self.path.startswith("/api/streamer/playlist"):
             # `truncated` is the parser saying it stopped at MAX_CHANNELS. The page read it
             # nowhere, so an over-cap playlist silently lost its tail -- see the "cut off"
-            # case in tuner_failpaths.mjs.
+            # case in streamer_failpaths.mjs.
             return self._json(200, {
                 "source": "pasted", "count": 2,
                 "truncated": CASE["name"] == "truncated", "limit": 20000,
@@ -71,7 +71,7 @@ class H(SimpleHTTPRequestHandler):
                     {"name": "Test Film Two", "group": "Movies", "kind": "vod",
                      "url": "http://example.invalid/movie/a/b/2.mp4", "logo": ""},
                 ]})
-        if self.path.startswith("/api/tuner/xtream/channels"):
+        if self.path.startswith("/api/streamer/xtream/channels"):
             # A panel whose movie catalogue was over this box's byte ceiling: live and series
             # arrive, movies do not, and the only thing standing between the visitor and
             # "movies are broken" is that note.
@@ -86,7 +86,7 @@ class H(SimpleHTTPRequestHandler):
                     {"name": "A Show", "group": "SERIES | Drama", "kind": "series",
                      "url": "", "logo": ""},
                 ]})
-        if self.path.startswith("/api/tuner/tune"):
+        if self.path.startswith("/api/streamer/tune"):
             c = CASE["name"]
             if c == "refused":
                 # What a provider actually does when a channel is off air: an HTTP

@@ -1,10 +1,10 @@
-// Drive site/tuner.html against the scripted provider in real Chrome and assert on
+// Drive site/streamer.html against the scripted provider in real Chrome and assert on
 // what the page SHOWS. The bug being tested is a blank screen, so every assertion here
 // is about visible text -- reading state out of JS would pass while the visitor still
 // stared at a black rectangle.
 //
-// Self-contained: it starts its own scripted provider (tests/tuner_fake_provider.py)
-// and stops it again, so `node tests/tuner_failpaths.mjs` is the whole invocation and
+// Self-contained: it starts its own scripted provider (tests/streamer_fake_provider.py)
+// and stops it again, so `node tests/streamer_failpaths.mjs` is the whole invocation and
 // it does not need the real API, a provider account, or a working stream.
 import { chromium } from '../contrib/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -15,7 +15,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.argv[2] || '8944';
 const BASE = `http://127.0.0.1:${PORT}`;
 
-const server = spawn('python3', [path.join(HERE, 'tuner_fake_provider.py'), PORT],
+const server = spawn('python3', [path.join(HERE, 'streamer_fake_provider.py'), PORT],
                      { stdio: ['ignore', 'pipe', 'inherit'] });
 process.on('exit', () => server.kill());
 await new Promise((res, rej) => {
@@ -34,7 +34,7 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 
 async function loadChannels() {
-  await page.goto(`${BASE}/tuner.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/streamer.html`, { waitUntil: 'domcontentloaded' });
   await page.fill('#tn-url', 'http://example.invalid/playlist.m3u');
   await page.click('#tn-go');
   await page.waitForSelector('li.playable', { timeout: 10000 });
@@ -197,7 +197,7 @@ ok('an untruncated playlist does not cry truncation', !/cut off|Only the first/i
 // ---- case 6: the panel had movies and this box declined to load them ------------------
 // The reported bug: Live TV and Series populate, Movies never do. The backend now says why
 // in `notes`; this asserts the sentence actually reaches the visitor's screen.
-await page.goto(`${BASE}/tuner.html`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${BASE}/streamer.html`, { waitUntil: 'domcontentloaded' });
 await page.click('.tn-tab[data-mode="xtream"]');
 await page.fill('#tn-host', 'http://panel.invalid:80');
 await page.fill('#tn-user', 'u');

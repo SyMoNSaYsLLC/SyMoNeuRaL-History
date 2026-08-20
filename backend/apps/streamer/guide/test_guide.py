@@ -140,7 +140,7 @@ class KindVocabulary(unittest.TestCase):
         self.assertEqual(guide.normalise_kind("Movies"), "vod")
         self.assertEqual(guide.normalise_kind("film"), "vod")
         # And as a vocabulary argument: a caller still saying "movie" must not filter to
-        # nothing, which is the live bug in the Tuner's frontend.
+        # nothing, which is the live bug in the Streamer's frontend.
         r = guide.filter_from_question("movies", ["live", "movie", "series"], GROUPS,
                                        names=NAMES)
         self.assertEqual(r["kind"], "vod")

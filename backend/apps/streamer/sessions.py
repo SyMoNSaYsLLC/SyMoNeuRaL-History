@@ -37,7 +37,7 @@ Here there is a hard concurrent-session cap, an idle timeout keyed on the player
 asking for segments, a hard maximum lifetime, and a reaper that runs whether or not the client
 was polite enough to disconnect.
 
-## Telling "the channel is dead" apart from "the tuner is broken"
+## Telling "the channel is dead" apart from "the streamer is broken"
 
 The owner's diagnosis, and the reason for three of the behaviours below: *"if it's not active
 you will come to a page from the server saying it's down, not just a blank screen."* A provider
@@ -79,9 +79,9 @@ from . import safefetch
 from .m3u import HlsKey, HlsPlaylist, HlsSegment, parse_hls
 from .safefetch import BlockedURL, FetchError, Policy, Scrubber
 
-log = logging.getLogger("symoneural.tuner")
+log = logging.getLogger("symoneural.streamer")
 
-__all__ = ["Session", "SessionManager", "MANAGER", "TunerBusy", "TunerError",
+__all__ = ["Session", "SessionManager", "MANAGER", "StreamerBusy", "StreamerError",
            "PLAYLIST_NAME", "SEGMENT_RE", "VIDEO_CODECS", "ts_sync_offset"]
 
 
@@ -94,24 +94,24 @@ def _env_int(name: str, default: int, lo: int, hi: int) -> int:
 
 #: Concurrent ffmpeg processes. Two, because this is one box that is also serving a 7B model and
 #: an image pipeline, and because the honest ceiling is low rather than because the number is
-#: tidy. Raise it with `SYMONEURAL_TUNER_MAX_SESSIONS` if the box ever grows.
-MAX_SESSIONS = _env_int("SYMONEURAL_TUNER_MAX_SESSIONS", 2, 1, 8)
+#: tidy. Raise it with `SYMONEURAL_STREAMER_MAX_SESSIONS` if the box ever grows.
+MAX_SESSIONS = _env_int("SYMONEURAL_STREAMER_MAX_SESSIONS", 2, 1, 8)
 #: No segment or playlist request for this long and the session is dead, whatever the client
 #: thinks. This is the cap that survives a browser tab being closed without a goodbye.
 #:
 #: **12 s, not 45.** With `MAX_SESSIONS = 2` against an account whose own `max_connections` is
 #: also 2, a slot held by a visitor who has already walked away is the whole capacity of the
 #: surface. 45 s plus a 5 s reaper tick meant a closed tab kept a channel unavailable for the
-#: best part of a minute, which reads as "the tuner is broken", not "the tuner is busy". The
+#: best part of a minute, which reads as "the streamer is broken", not "the streamer is busy". The
 #: page heartbeats every 5 s and every segment fetch also counts, so 12 s tolerates two missed
 #: beats before it gives up on a client. The real fix is the client saying goodbye -- see
 #: `POST /session/{sid}/stop` -- and this is what covers the cases where it cannot: a crash, a
 #: killed browser, a lost network.
-IDLE_TIMEOUT = _env_int("SYMONEURAL_TUNER_IDLE_TIMEOUT", 12, 5, 600)
+IDLE_TIMEOUT = _env_int("SYMONEURAL_STREAMER_IDLE_TIMEOUT", 12, 5, 600)
 #: Nothing streams forever on a shared demo box, however attentive the client is.
-MAX_LIFETIME = _env_int("SYMONEURAL_TUNER_MAX_LIFETIME", 1800, 60, 21600)
+MAX_LIFETIME = _env_int("SYMONEURAL_STREAMER_MAX_LIFETIME", 1800, 60, 21600)
 #: A pump that has read this much has had its turn. Bounds egress independently of time.
-MAX_SESSION_BYTES = _env_int("SYMONEURAL_TUNER_MAX_BYTES", 4096, 64, 65536) * 1024 * 1024
+MAX_SESSION_BYTES = _env_int("SYMONEURAL_STREAMER_MAX_BYTES", 4096, 64, 65536) * 1024 * 1024
 #: Rolling window: 6 segments x ~2 s. Per session that is ~12 s of video on disk; at a heavy
 #: 8 Mb/s that is about 12 MB, and the cap above bounds the total.
 HLS_SEGMENT_SECONDS = 2
@@ -213,7 +213,7 @@ _VIDEO_RE = re.compile(r"Stream #\d+:\d+.*?:\s*Video:\s*([A-Za-z0-9_]+)")
 #: channel announces its picture before its soundtrack. Deciding on the video line alone yields
 #: "re-encode the picture, copy the audio" -- and since a session is only ever repaired once, the
 #: AC-3 would then survive into the repaired stream and the channel would still be silent, or
-#: black, with the tuner reporting that it had fixed it. Both codecs are known by the time this
+#: black, with the streamer reporting that it had fixed it. Both codecs are known by the time this
 #: marker appears, so the decision waits for it.
 _DUMP_DONE_RE = re.compile(r"Stream mapping:|Output #\d")
 
@@ -235,7 +235,7 @@ def match_video_codec(line: str) -> str:
 #: Same rules as `VIDEO_CODECS`, for the audio side, and published by `public()` -- see the note
 #: there. AC-3 and E-AC-3 are not merely the "video plays, no sound" complaint: an MSE build that
 #: refuses the audio codec appends nothing at all, so the picture stops too, and the reading that
-#: separates that from a broken tuner is this one.
+#: separates that from a broken streamer is this one.
 AUDIO_CODECS = frozenset({
     "aac", "ac3", "eac3", "mp2", "mp3", "opus", "vorbis", "flac", "pcm_s16le", "dts", "truehd",
 })
@@ -264,23 +264,30 @@ def _match_audio_codec(line: str) -> str:
 # Both sets are MEASURED, not reasoned about, via `MediaSource.isTypeSupported()` on the Chrome in
 # this repo's test path (Chrome 151) against `video/mp2t` and fMP4 -- the box serves TS and hls.js
 # remuxes, so both containers have to be asked. Accepted: h264, aac, mp2, mp3. Refused: hevc,
-# mpeg2video, vc1, av1, vp9, ac3, eac3, dts, truehd. `tests/tuner_codecs.mjs` re-asks the browser
-# and fails if these two sets have drifted from what it answers, so this cannot rot into a claim.
+# mpeg2video, vc1, av1, vp9, ac3, eac3, dts, truehd.
+#
+# THIS COMMENT USED TO CLAIM A GUARD THAT DOES NOT EXIST. It said `tests/tuner_codecs.mjs`
+# re-asks the browser and fails if these two sets have drifted, "so this cannot rot into a
+# claim". There is no such file and there never was -- the suites in `tests/` are
+# streamer_failpaths, streamer_watch, streamer_guide and streamer_fake_provider. So the
+# claim rotted in precisely the way it promised it could not, and the sets below are a
+# 2026-08-19 reading of Chrome 151 that nothing re-measures. Treat them as dated, not
+# enforced, until that suite is actually written.
 PLAYABLE_VIDEO = frozenset({"h264"})
 #: mp2 and mp3 are HERE, in the playable set, and that is the whole lesson of the reverted commit.
 PLAYABLE_AUDIO = frozenset({"aac", "mp2", "mp3"})
 
 #: `auto` repairs what needs repairing, preferring the video engine and falling back to CPU.
 #: `cpu` never touches the GPU. `off` restores the old behaviour exactly -- stream copy or fail --
-#: and exists because a new re-encode path in the middle of a working tuner deserves a kill switch
+#: and exists because a new re-encode path in the middle of a working streamer deserves a kill switch
 #: that does not require an edit to turn.
-REPAIR_MODE = (os.environ.get("SYMONEURAL_TUNER_REPAIR") or "auto").strip().lower()
+REPAIR_MODE = (os.environ.get("SYMONEURAL_STREAMER_REPAIR") or "auto").strip().lower()
 
 #: A repaired stream needs about 515 MiB of VRAM (measured, flat across 1-4 concurrent streams).
 #: Below this much free, the video engine is declined and CPU takes it: `libx264 veryfast` was
 #: measured at 13.4x realtime on real 720p, so the fallback is comfortable rather than a
 #: degradation, and stealing the last of the card from a model that is mid-answer is not.
-VRAM_FLOOR_MIB = _env_int("SYMONEURAL_TUNER_VRAM_FLOOR", 1024, 0, 16000)
+VRAM_FLOOR_MIB = _env_int("SYMONEURAL_STREAMER_VRAM_FLOOR", 1024, 0, 16000)
 
 
 @dataclass(frozen=True)
@@ -381,11 +388,11 @@ def _may_use_video_engine() -> bool:
     sampled while the `image` surface held the lock with compute at 67%, the encoder and decoder
     both read 0%, and sampled during a transcode, compute read 2% while the encoder read 50%.
     A transcode does not contend for what the governor arbitrates. Second, and this is the part
-    that makes a lease actively harmful, a tuner session lives for as long as somebody watches --
+    that makes a lease actively harmful, a streamer session lives for as long as somebody watches --
     so a lease here would be held for a process lifetime, which is the one thing the governor's
     own rules forbid, and it would lock the CLI and every model out until the acquire timeout.
 
-    What a transcode does contend for is VRAM, so that is what is checked, and the tuner yields
+    What a transcode does contend for is VRAM, so that is what is checked, and the streamer yields
     rather than competing: below `VRAM_FLOOR_MIB` free it takes the CPU path.
     """
     if REPAIR_MODE == "cpu" or not _nvenc_available():
@@ -411,7 +418,7 @@ def _aes_cbc_decrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
     try:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     except Exception:                                     # pragma: no cover - packaging
-        raise TunerError("this stream is AES-128 encrypted and the AES library is not "
+        raise StreamerError("this stream is AES-128 encrypted and the AES library is not "
                          "installed on this machine") from None
     dec = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
     return dec.update(data) + dec.finalize()
@@ -439,7 +446,7 @@ def _decrypt_segment(blob: bytes, key: bytes, iv: bytes) -> bytes:
     if len(blob) % 16:
         # Not a judgement call: AES-CBC ciphertext is a whole number of blocks. A segment that
         # is not says the transfer was truncated or the segment was never encrypted.
-        raise TunerError("an encrypted HLS segment was not a whole number of AES blocks")
+        raise StreamerError("an encrypted HLS segment was not a whole number of AES blocks")
     return _strip_pkcs7(_aes_cbc_decrypt(key, iv, blob))
 
 
@@ -458,9 +465,9 @@ def _segment_iv(seg: HlsSegment) -> bytes:
     try:
         iv = bytes.fromhex(raw)
     except ValueError:
-        raise TunerError("the HLS key IV is not hexadecimal") from None
+        raise StreamerError("the HLS key IV is not hexadecimal") from None
     if len(iv) != 16:
-        raise TunerError(f"the HLS key IV is {len(iv)} bytes; AES-128-CBC needs 16")
+        raise StreamerError(f"the HLS key IV is {len(iv)} bytes; AES-128-CBC needs 16")
     return iv
 
 
@@ -477,12 +484,12 @@ def _safe_token(text: str) -> str:
     return _TOKEN_OK.sub("", (text or ""))[:40] or "(unnamed)"
 
 
-class TunerError(Exception):
+class StreamerError(Exception):
     """A session could not start or has failed. Messages are scrubbed before they get here."""
 
 
-class TunerBusy(TunerError):
-    """Every slot is taken. Distinct from TunerError so the router can answer 503, not 400."""
+class StreamerBusy(StreamerError):
+    """Every slot is taken. Distinct from StreamerError so the router can answer 503, not 400."""
 
 
 @dataclass
@@ -665,13 +672,13 @@ class SessionManager:
 
         On most systems `/tmp` is tmpfs, so segments cost RAM rather than disk. That is bounded
         deliberately: `hls_list_size` x `hls_time` per session, times `MAX_SESSIONS`. Point
-        `SYMONEURAL_TUNER_DIR` at real disk if that trade is wrong for the box.
+        `SYMONEURAL_STREAMER_DIR` at real disk if that trade is wrong for the box.
         """
         if self._root is None:
             with self._lock:
                 if self._root is None:
-                    self._root = Path(os.environ.get("SYMONEURAL_TUNER_DIR")
-                                      or tempfile.mkdtemp(prefix="symoneural-tuner-"))
+                    self._root = Path(os.environ.get("SYMONEURAL_STREAMER_DIR")
+                                      or tempfile.mkdtemp(prefix="symoneural-streamer-"))
         self._root.mkdir(parents=True, exist_ok=True)
         return self._root
 
@@ -685,7 +692,7 @@ class SessionManager:
         while it fails.
         """
         if not FFMPEG:
-            raise TunerError("ffmpeg is not installed on this machine")
+            raise StreamerError("ffmpeg is not installed on this machine")
         policy = policy or Policy()
         # Whatever the caller registered, plus everything the URL itself hides. The caller
         # only has credentials to register on the Xtream path; a pasted M3U carries them in
@@ -695,13 +702,13 @@ class SessionManager:
         try:
             safefetch.validate_url(url, policy)
         except BlockedURL as exc:
-            raise TunerError(scrub(str(exc))) from None
+            raise StreamerError(scrub(str(exc))) from None
 
         self.reap()
         with self._lock:
             if len(self._sessions) >= MAX_SESSIONS:
-                raise TunerBusy(
-                    f"all {MAX_SESSIONS} tuner slots are in use; try again shortly")
+                raise StreamerBusy(
+                    f"all {MAX_SESSIONS} streamer slots are in use; try again shortly")
             sid = secrets.token_urlsafe(12)
             sdir = self.root / sid
             sdir.mkdir(parents=True, exist_ok=False)
@@ -714,15 +721,15 @@ class SessionManager:
             s.proc = self._spawn(s)
         except Exception as exc:
             self._drop(sid)
-            raise TunerError(f"could not start the transcoder: {type(exc).__name__}") from None
+            raise StreamerError(f"could not start the transcoder: {type(exc).__name__}") from None
 
         s.thread = threading.Thread(target=self._pump, args=(s,),
-                                    name=f"tuner-pump-{sid}", daemon=True)
+                                    name=f"streamer-pump-{sid}", daemon=True)
         s.thread.start()
         self._ensure_reaper()
         # The label is safe (it came from a playlist display name, not a URL) but it is visitor
         # data, so it is scrubbed and truncated before it is allowed into a log line.
-        log.info("tuner: session %s started (%s)", sid, safefetch.redact(s.label)[:60])
+        log.info("streamer: session %s started (%s)", sid, safefetch.redact(s.label)[:60])
         return s
 
     def _spawn(self, s: Session, plan: RepairPlan | None = None) -> subprocess.Popen:
@@ -784,7 +791,7 @@ class SessionManager:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.PIPE, start_new_session=True)
         threading.Thread(target=self._drain_stderr, args=(s, proc), daemon=True,
-                         name=f"tuner-err-{s.id}").start()
+                         name=f"streamer-err-{s.id}").start()
         return proc
 
     def _drain_stderr(self, s: Session, proc: subprocess.Popen) -> None:
@@ -854,7 +861,7 @@ class SessionManager:
             s.state, s.error = "failed", s.scrub(str(exc))
         except FetchError as exc:
             s.state, s.error = "failed", s.scrub(str(exc))
-        except TunerError as exc:
+        except StreamerError as exc:
             s.state, s.error = "failed", s.scrub(str(exc))
         except BrokenPipeError:
             # ffmpeg went away. Its stderr says why and stays internal; the client gets a
@@ -881,7 +888,7 @@ class SessionManager:
         """
         s.bytes_in += n
         if s.bytes_in > MAX_SESSION_BYTES:
-            raise TunerError("session reached its data cap")
+            raise StreamerError("session reached its data cap")
 
     def _apply_repair(self, s: Session) -> bool:
         """Swap ffmpeg for one that re-encodes. Called on the pump thread only. True if it swapped.
@@ -934,9 +941,9 @@ class SessionManager:
         s.repair = plan.reason
         s.state = "starting"
         threading.Thread(target=self._drain_stderr, args=(s, s.proc), daemon=True,
-                         name=f"tuner-err-{s.id}-repair").start()
+                         name=f"streamer-err-{s.id}-repair").start()
         # The label is visitor data and is scrubbed; the reason is this module's own vocabulary.
-        log.info("tuner: session %s repairing -- %s (%s)", s.id, plan.reason,
+        log.info("streamer: session %s repairing -- %s (%s)", s.id, plan.reason,
                  "video engine" if plan.uses_gpu else "cpu")
         return True
 
@@ -1002,7 +1009,7 @@ class SessionManager:
             # message about our transcoder, which is the wrong bug reported to the wrong person.
             if looks_like_error_page(ctype, head):
                 said = safefetch.text_excerpt(head + self._read_a_little(resp), s.scrub)
-                raise TunerError(
+                raise StreamerError(
                     f"the provider answered with a page, not a stream: {said}" if said
                     else "the provider answered with a web page, not a stream")
 
@@ -1042,12 +1049,12 @@ class SessionManager:
             # their outage.
             if looks_like_error_page(ct, body[:4096]):
                 said = safefetch.text_excerpt(body[:safefetch.ERROR_BODY_BYTES], s.scrub)
-                raise TunerError(
+                raise StreamerError(
                     f"the provider answered with a page, not a playlist: {said}" if said
                     else "the provider answered with a web page, not a playlist")
             pl = parse_hls(body.decode("utf-8", "replace"))
         if not pl.segments:
-            raise TunerError("upstream playlist contained no segments")
+            raise StreamerError("upstream playlist contained no segments")
         # Refuse unsupported encryption **before** committing to playback, not on reaching the
         # first segment we cannot handle -- a session that plays for two seconds and then dies
         # is harder to diagnose than one that never starts and says why.
@@ -1101,7 +1108,7 @@ class SessionManager:
                     if looks_like_error_page(seg_ctype, first):
                         said = safefetch.text_excerpt(
                             first + self._read_a_little(resp), s.scrub)
-                        raise TunerError(
+                        raise StreamerError(
                             f"the provider answered a segment with a page: {said}" if said
                             else "the provider answered a segment with a web page")
                     if key is None:
@@ -1124,7 +1131,7 @@ class SessionManager:
                             self._account(s, len(chunk))
                             blob += chunk
                             if len(blob) > MAX_SEGMENT_BYTES:
-                                raise TunerError("an HLS segment was implausibly large")
+                                raise StreamerError("an HLS segment was implausibly large")
                         plain = _decrypt_segment(bytes(blob), key, _segment_iv(seg))
                         if seg.key.uri not in checked:
                             # A wrong key does not fail -- AES-CBC turns it into 16-byte blocks
@@ -1133,7 +1140,7 @@ class SessionManager:
                             # source. Check the first segment of each key, so a key mismatch is
                             # reported as a key mismatch.
                             if ts_sync_offset(plain[:4096]) < 0:
-                                raise TunerError(
+                                raise StreamerError(
                                     "the segment did not decrypt to a transport stream; the "
                                     "HLS key does not fit this stream")
                             checked.add(seg.key.uri)
@@ -1178,16 +1185,16 @@ class SessionManager:
         for key in pl.keys:
             fmt = (key.keyformat or "identity").strip('"')
             if fmt.lower() != "identity":
-                raise TunerError(
-                    "this stream is DRM-protected (" + _safe_token(fmt) + "); the tuner "
+                raise StreamerError(
+                    "this stream is DRM-protected (" + _safe_token(fmt) + "); the streamer "
                     "decrypts plain AES-128 HLS only and will not pretend otherwise")
             if key.method != "AES-128":
-                raise TunerError(
-                    f"this stream is encrypted with {_safe_token(key.method)}, which the tuner "
+                raise StreamerError(
+                    f"this stream is encrypted with {_safe_token(key.method)}, which the streamer "
                     f"does not implement; it decrypts AES-128 only, because decrypting the "
                     f"others as if they were AES-128 produces corruption rather than an error")
             if not key.uri:
-                raise TunerError("this stream is AES-128 encrypted but names no key URI")
+                raise StreamerError("this stream is AES-128 encrypted but names no key URI")
 
     def _segment_key(self, s: Session, playlist_url: str, key: HlsKey,
                      cache: dict[str, bytes]) -> bytes:
@@ -1203,7 +1210,7 @@ class SessionManager:
         key_url = safefetch.validate_url(playlist_url, s.policy).join(key.uri)
         body, _ct, _t = safefetch.fetch(key_url, s.policy)
         if len(body) != 16:
-            raise TunerError(f"the HLS key is {len(body)} bytes; AES-128 needs exactly 16")
+            raise StreamerError(f"the HLS key is {len(body)} bytes; AES-128 needs exactly 16")
         cache[key.uri] = body
         return body
 
@@ -1253,7 +1260,7 @@ class SessionManager:
         except Exception:
             pass
         shutil.rmtree(s.dir, ignore_errors=True)
-        log.info("tuner: session %s reaped (%s, %.1f MB in)",
+        log.info("streamer: session %s reaped (%s, %.1f MB in)",
                  sid, s.state, s.bytes_in / 1048576)
 
     def reap(self) -> int:
@@ -1290,7 +1297,7 @@ class SessionManager:
         with self._lock:
             if self._reaper and self._reaper.is_alive():
                 return
-            self._reaper = threading.Thread(target=self._reap_loop, name="tuner-reaper",
+            self._reaper = threading.Thread(target=self._reap_loop, name="streamer-reaper",
                                             daemon=True)
             self._reaper.start()
 
@@ -1305,7 +1312,7 @@ class SessionManager:
                     return          # nothing to watch; `_ensure_reaper` restarts us on demand
                 self.reap()
             except Exception:       # pragma: no cover - a reaper that dies leaks processes
-                log.exception("tuner: reaper iteration failed")
+                log.exception("streamer: reaper iteration failed")
 
     def shutdown(self) -> None:
         for sid in list(self._sessions):

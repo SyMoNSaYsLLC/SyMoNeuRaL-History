@@ -1,6 +1,6 @@
 # SyMoNeuRaL Guide
 
-A question in, a channel filter out, for the Tuner. **It owns no model weights and it is not
+A question in, a channel filter out, for the Streamer. **It owns no model weights and it is not
 wired into `backend/api.py` yet** — this directory is the module and its tests; the wiring
 snippet is at the bottom for whoever owns `api.py`.
 
@@ -9,7 +9,7 @@ Garrett's words, which set the scope:
 > *"we need the symoneural chat to have a floating prompt for setting up the guide with
 > selected subcategories. I want the agent to streamline a very quick filtering of all the
 > channels and categories. We could bring a symoneural guide in as an agent if it should be
-> separate of chat or tuner."*
+> separate of chat or streamer."*
 
 ---
 
@@ -179,7 +179,7 @@ silently widened filter.
 Reported by Garrett, 2026-08-17. **Nothing in this repo blocks it.** There is no denylist in
 this module (asserted by `test_this_module_carries_no_denylist`), and `denied()` in
 `backend/api.py` guards `/api/image` only, on the single narrow intersection that is illegal to
-produce — it is not on `/api/chat` and not on the Tuner at all.
+produce — it is not on `/api/chat` and not on the Streamer at all.
 
 What looked like blocking was three ordinary bugs stacked, each now fixed and tested:
 
@@ -201,7 +201,7 @@ What looked like blocking was three ordinary bugs stacked, each now fixed and te
 
 ## 5c. "Still missing movies" — the frontend chip is only half of it
 
-The known half: the Tuner's frontend tests for `"movie"`, which `_classify()` never emits.
+The known half: the Streamer's frontend tests for `"movie"`, which `_classify()` never emits.
 Another agent owns that fix, and this module speaks the backend's vocabulary (§5).
 
 **The other half is upstream and nobody has filed it.** `m3u.py::_classify()` guesses kind from
@@ -226,7 +226,7 @@ answers *"this playlist has no vod entries"*. It looks at the group titles first
 is the most confusing possible way to be right.
 
 **This is a real bug in `backend/apps/streamer/m3u.py`, not just a Guide concern.** Guide works
-around it for anything routed through Guide; the Tuner's own kind chips are still counted from
+around it for anything routed through Guide; the Streamer's own kind chips are still counted from
 the raw field and will still under-report movies until `_classify()` consults `group-title`.
 Whoever owns that file should decide — one line in `_classify()`, or leave it and let the
 group hint live here.
@@ -375,13 +375,13 @@ Four notes for that wiring, each one a real trap:
 
 1. **Three-valued `source`** — §4. The brief said two; three is what can be told honestly.
 1b. **`_classify()` in `backend/apps/streamer/m3u.py` under-reports movies** — §5c. Guide works
-   around it; the Tuner's own kind chips do not. One line in a file this agent does not own.
-2. **Is Guide its own rack unit, or a capability of the Tuner?** Built as its own module so it
+   around it; the Streamer's own kind chips do not. One line in a file this agent does not own.
+2. **Is Guide its own rack unit, or a capability of the Streamer?** Built as its own module so it
    can be either. As a ninth unit it is honest (`ready`, no weights) but it is the first unit
    on the rack that owns no hardware *and* no weights, and the rack's whole argument is that
-   each unit is a real thing on a real machine. As a Tuner capability it disappears from the
-   rack and the floating prompt is just part of the Tuner page. **Recommend: a capability of
-   the Tuner**, listed on the Tuner's own page rather than as a ninth chassis line — but this
+   each unit is a real thing on a real machine. As a Streamer capability it disappears from the
+   rack and the floating prompt is just part of the Streamer page. **Recommend: a capability of
+   the Streamer**, listed on the Streamer's own page rather than as a ninth chassis line — but this
    is a product call, not an engineering one.
 3. **Should the model pass be allowed to run at all when chat is busy?** It queues behind chat
    and image like Remix does. For a filter box the visitor is typing into, a 20-second queue is

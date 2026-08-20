@@ -1,4 +1,4 @@
-"""Electronic programme guide for the Tuner. Two sources, one shape out.
+"""Electronic programme guide for the Streamer. Two sources, one shape out.
 
 A provider exposes its guide twice, and the two are not interchangeable:
 

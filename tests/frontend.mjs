@@ -95,15 +95,15 @@ try {
   }
 
   // ---- one unit per surface ------------------------------------------------
-  // Garrett: "you need to migrate tuner and guide to be 1". Tuner and Guide were two units
-  // with the SAME href, /tuner.html, so the rack showed one page twice and disagreed with
+  // Garrett: "you need to migrate streamer and guide to be 1". Streamer and Guide were two units
+  // with the SAME href, /streamer.html, so the rack showed one page twice and disagreed with
   // itself about how many things this box runs. They are now one unit.
   //
   // The assertion is on the INVARIANT rather than on a count. `units.length === 11` would go
   // red every time a genuine surface is added, which is the kind of assertion people delete
   // instead of reading. What was actually broken is narrower and survives the rack growing:
   // no two tiles may claim the same page AND the same bus, because then they are one thing
-  // shown twice. Tuner and Guide were exactly that -- both `cpu`, both /tuner.html.
+  // shown twice. Streamer and Guide were exactly that -- both `cpu`, both /streamer.html.
   //
   // Sharing a page is fine on its own, which is why this is not the blunter check: Coder and
   // Project both link to /documentation.html because neither has a page yet and that beats
@@ -122,9 +122,9 @@ try {
   const dupes = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   record('no two rack units are the same page on the same bus', dupes.length === 0,
          dupes.length ? `duplicated: ${dupes.join(', ')}` : `${keys.length} distinct`);
-  record('the tuner unit carries the guide too',
-         units.some(u => /Tuner/.test(u.name || '') && /Guide/.test(u.name || '')),
-         units.map(u => u.name).filter(n => /Tuner|Guide/.test(n)).join(' | ') || 'no tuner unit');
+  record('the streamer unit carries the guide too',
+         units.some(u => /Streamer/.test(u.name || '') && /Guide/.test(u.name || '')),
+         units.map(u => u.name).filter(n => /Streamer|Guide/.test(n)).join(' | ') || 'no streamer unit');
 
   // the rack must lead the page now
   const order = await page.evaluate(() => {
@@ -451,20 +451,20 @@ try {
 
   // ---- no page throws a script error ------------------------------------
   // This exists because a generator shipped BROKEN JAVASCRIPT to production and the suite
-  // passed 22/22 anyway. tuner.html's script had an unterminated string literal -- a `\\n`
+  // passed 22/22 anyway. streamer.html's script had an unterminated string literal -- a `\\n`
   // written into a non-raw Python string in build_pages.py became a real newline inside a
   // JS literal -- so the entire page's behaviour was dead while every assertion about its
   // markup, CSS and endpoints still passed. Counting passes is not the same as the page
   // working, and only a parse check catches that.
   const broken = [];
   for (const pg of ['', 'chat.html', 'image.html', 'ravencalc.html', 'remix.html',
-                    'miner.html', 'gateway.html', 'tuner.html', 'build.html',
+                    'miner.html', 'gateway.html', 'streamer.html', 'build.html',
                     'documentation.html', 'training.html', 'account.html',
                     // The watch page is ~700 lines of inline JS and the most recent thing here,
                     // so it is the likeliest to arrive broken. This visits it COLD -- no handoff
                     // in localStorage -- which is the branch a visitor who types the URL gets,
                     // and the one no other test covers.
-                    'tuner-watch.html']) {
+                    'streamer-watch.html']) {
     const probe = await ctx.newPage();
     const errs = [];
     probe.on('pageerror', e => errs.push(`${pg || '/'}: ${e.message}`));
@@ -675,17 +675,17 @@ try {
   record('the GPU panel beside a prompt shows a real reading', gpanel.ok, gpanel.why);
   await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
 
-  // ---- the tuner form is styled, and posts to routes that exist ----------
+  // ---- the streamer form is styled, and posts to routes that exist ----------
   // Two bugs shipped together on this page. The `tn-` CSS was never written, so the form
-  // rendered as raw unstyled HTML; and the JS posted to /api/tuner/channels, which no
+  // rendered as raw unstyled HTML; and the JS posted to /api/streamer/channels, which no
   // router serves, so it fell through to the static mount at "/" and came back 405 Method
   // Not Allowed -- a confusing way to be told the URL is wrong. This asserts the styling
   // exists AND that every endpoint the page names is really served.
-  await page.goto(new URL('/tuner.html', BASE).href, { waitUntil: 'networkidle' });
-  const tuner = await page.evaluate(async () => {
+  await page.goto(new URL('/streamer.html', BASE).href, { waitUntil: 'networkidle' });
+  const streamer = await page.evaluate(async () => {
     const tab = document.querySelector('.tn-tab');
     const inp = document.querySelector('.tn-fields input');
-    if (!tab || !inp) return { ok: false, why: 'tuner form markup missing' };
+    if (!tab || !inp) return { ok: false, why: 'streamer form markup missing' };
     const styled = parseFloat(getComputedStyle(tab).borderRadius) > 0
                 && parseFloat(getComputedStyle(inp).paddingLeft) > 0;
     // The endpoints are READ OUT OF THE PAGE'S OWN SCRIPT, not hardcoded here. An earlier
@@ -694,8 +694,8 @@ try {
     // so it did not catch the bug it was written for. What matters is that whatever the
     // page actually calls is routed.
     const src = [...document.querySelectorAll('script')].map(s => s.textContent).join('\n');
-    const paths = [...new Set([...src.matchAll(/['"](\/api\/tuner\/[a-z\/]+)['"]/g)].map(m => m[1]))];
-    if (!paths.length) return { ok: false, why: 'the page names no /api/tuner endpoint' };
+    const paths = [...new Set([...src.matchAll(/['"](\/api\/streamer\/[a-z\/]+)['"]/g)].map(m => m[1]))];
+    if (!paths.length) return { ok: false, why: 'the page names no /api/streamer endpoint' };
     const codes = {};
     let routed = true;
     for (const name of paths) {
@@ -722,9 +722,9 @@ try {
     }
     return { ok: styled && routed,
              why: `styled=${styled}, ` + Object.entries(codes)
-                   .map(([k, v]) => `${k.replace('/api/tuner', '')}=${v}`).join(' ') };
+                   .map(([k, v]) => `${k.replace('/api/streamer', '')}=${v}`).join(' ') };
   });
-  record('the tuner form is styled and its endpoints are routed', tuner.ok, tuner.why);
+  record('the streamer form is styled and its endpoints are routed', streamer.ok, streamer.why);
   await page.goto(BASE + '/index.html', { waitUntil: 'networkidle' });
 
   // ---- .card is not redefined out from under the rest of the site ---------

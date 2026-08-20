@@ -1,4 +1,4 @@
-"""The HTTP surface. Mounted at `/api/tuner` by `api.py`; nothing here assumes that prefix.
+"""The HTTP surface. Mounted at `/api/streamer` by `api.py`; nothing here assumes that prefix.
 
 **Every credential arrives in a POST body and never in a URL.** That is not fussiness: uvicorn's
 access log records the full request line, so a password in a query string or a path segment is a
@@ -24,12 +24,12 @@ from . import epg, safefetch, xtream
 from .m3u import MAX_CHANNELS, parse_m3u
 from .safefetch import BlockedURL, FetchError, Policy, Scrubber
 from .sessions import (MANAGER, MAX_SESSIONS, PLAYLIST_NAME, SEGMENT_RE, FFMPEG,
-                       TunerBusy, TunerError)
+                       StreamerBusy, StreamerError)
 from .xtream import XtreamCreds, XtreamError
 
-log = logging.getLogger("symoneural.tuner")
+log = logging.getLogger("symoneural.streamer")
 
-router = APIRouter(tags=["tuner"])
+router = APIRouter(tags=["streamer"])
 
 #: A pasted playlist. `0` means no limit, and `0` is the default at the owner's instruction
 #: (2026-08-17) — provider exports genuinely are tens of megabytes and every ceiling picked here
@@ -338,9 +338,9 @@ async def tune(body: TuneBody) -> dict:
     try:
         session = await asyncio.to_thread(
             MANAGER.start, url, body.label[:120], Policy(), scrub)
-    except TunerBusy as exc:
+    except StreamerBusy as exc:
         raise HTTPException(503, str(exc)) from None
-    except TunerError as exc:
+    except StreamerError as exc:
         raise HTTPException(400, str(exc)) from None
 
     deadline = time.monotonic() + TUNE_WAIT_SECONDS
@@ -362,7 +362,7 @@ async def tune(body: TuneBody) -> dict:
         #
         # Unless it is already gone: the reaper drops a session the moment its ffmpeg exits, so
         # a long wait can outlive the thing it is waiting for. Handing back an id whose
-        # `GET /session/{sid}` answers 404 makes a dead stream look like a broken tuner, which
+        # `GET /session/{sid}` answers 404 makes a dead stream look like a broken streamer, which
         # is the exact confusion this whole module is trying to remove.
         if MANAGER.get(session.id) is None:
             raise HTTPException(502, session.error
@@ -394,7 +394,7 @@ async def session_release(sid: str) -> dict:
     This exists because of what a closed tab used to cost. `DELETE` cannot be sent from an
     unload handler with any reliability -- `fetch` is cancelled as the document goes away -- so
     the only signal a leaving visitor could give was silence, and silence took `IDLE_TIMEOUT`
-    plus a reaper tick to interpret. On a two-slot surface that is the whole tuner unavailable
+    plus a reaper tick to interpret. On a two-slot surface that is the whole streamer unavailable
     for the best part of a minute after everybody has already left.
 
     A missing session is **not** an error here. A beacon can arrive after the reaper has already
@@ -435,7 +435,7 @@ async def stream_file(sid: str, name: str) -> Response:
 
 # ---------------------------------------------------------------- state
 
-@router.get("/state", summary="Tuner capacity and live sessions")
+@router.get("/state", summary="Streamer capacity and live sessions")
 async def state() -> dict:
     """Real readings only: how many slots exist, how many are in use, what they are doing.
 
@@ -461,10 +461,11 @@ def status() -> dict:
 
     Deliberately **not** built from `api.py`'s `Unit` model: importing it would put this module
     inside `api.py`'s import graph and outside the scope this module was built in. The keys
-    match `Unit`'s fields so the wiring engineer can splat it into `Unit(**tuner.status())`.
+    match `Unit`'s fields so the wiring engineer can splat it into `Unit(**streamer.status())`.
 
-    **This unit is the Tuner and the Guide together.** Garrett: "symon guide and symon tuner
-    should be migrated together", then "you need to migrate tuner and guide to be 1". The rack
+    **This unit is the Streamer: the old Tuner and Guide together.** Garrett: "symon guide
+    and symon tuner should be migrated together", then "you need to migrate tuner and guide to
+    be 1", and then that the pair migrates to `streamer`. The rack
     carried two units whose `href` was the same page, which is a rack disagreeing with itself.
     Guide's own author had argued for exactly this fold on architecture -- it owns no weights
     and no hardware -- and was overruled only because Garrett had named it separately; he has
@@ -473,7 +474,7 @@ def status() -> dict:
     Nothing about the guide half is dropped in the fold, because both halves make a real and
     different claim about the hardware, and the detail line has to carry both:
 
-      * the tuner half is I/O -- ffmpeg copying bytes, a bounded number of slots;
+      * the streaming half is I/O -- ffmpeg copying bytes, a bounded number of slots;
       * the guide half is **stdlib matching on the CPU that never takes the GPU lock**, which
         is why it answers while chat holds the card. That is the same claim RavenCalc makes and
         it is worth as much here.
@@ -505,12 +506,12 @@ def status() -> dict:
         detail = (f"0/{MAX_SESSIONS} slots in use · {guide_note} · "
                   f"visitor supplies the playlist; none is stored here")
     return {
-        "id": "tuner",
-        "label": "SyMoNeuRaL Tuner & Guide",
+        "id": "streamer",
+        "label": "SyMoNeuRaL Streamer",
         "slot": "1U",
         "state": state_,
         "bus": "cpu",
-        "href": "/tuner.html",
+        "href": "/streamer.html",
         "spec": "ffmpeg stream copy → HLS · question → channel filter",
         "detail": detail,
     }

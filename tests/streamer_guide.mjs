@@ -40,7 +40,7 @@ CHANNELS = ${JSON.stringify(CHANNELS)}
 app = FastAPI()
 app.include_router(guide_routes.router, prefix="/api/guide")
 
-@app.post("/api/tuner/playlist")
+@app.post("/api/streamer/playlist")
 async def playlist(body: dict | None = None):
     groups = []
     for c in CHANNELS:
@@ -71,7 +71,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 
-await page.goto(`http://127.0.0.1:${PORT}/tuner.html`, { waitUntil: 'domcontentloaded' });
+await page.goto(`http://127.0.0.1:${PORT}/streamer.html`, { waitUntil: 'domcontentloaded' });
 await page.fill('#tn-url', 'http://x.invalid/p.m3u');
 await page.click('#tn-go');
 await page.waitForSelector('li.playable', { timeout: 10000 });
@@ -131,7 +131,7 @@ ok('and it says plainly that nothing was removed from the playlist',
 // ---- saving is local only -------------------------------------------------------------
 await page.click('#tnfgsave');
 await page.waitForTimeout(200);
-const store = await page.evaluate(() => localStorage.getItem('symoneural.tuner.guide'));
+const store = await page.evaluate(() => localStorage.getItem('symoneural.streamer.guide'));
 ok('the saved guide is written to this browser only', store && store.includes('ADULT'), store);
 
 // ---- house rules ----------------------------------------------------------------------

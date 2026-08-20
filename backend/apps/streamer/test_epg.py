@@ -1,6 +1,6 @@
 """Tests for the programme guide. No network, no panel, no credentials.
 
-A local HTTP server plays the panel, exactly as `test_tuner.py` does, because the thing under
+A local HTTP server plays the panel, exactly as `test_streamer.py` does, because the thing under
 test is a protocol client and mocking `safefetch.fetch` would test the mock. `Policy(
 allow_private=True)` is the only reason a loopback fetch is permitted, and it is a constructor
 argument by design -- see `safefetch.Policy`.

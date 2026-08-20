@@ -3,17 +3,17 @@
 Guide turns a sentence into a filter over a channel list. The module beside this one does
 all of that; this file is only the boundary.
 
-**Why this is a unit and not a hidden helper inside the Tuner.** The module's author
-recommended folding it into the Tuner, and on architecture grounds that is defensible --
+**Why this is a unit and not a hidden helper inside the Streamer.** The module's author
+recommended folding it into the Streamer, and on architecture grounds that is defensible --
 it owns no weights and no hardware. It is a unit anyway, for a reason that is about
-honesty rather than structure: the Tuner page runs a local pass in the visitor's browser
+honesty rather than structure: the Streamer page runs a local pass in the visitor's browser
 and only sometimes reaches for the model, and a visitor watching a filter resolve
 instantly has no way to know whether anything on this box was involved. A named unit on
 the rack, reporting what it actually did, is how that stays legible. `source` and
 `model_used` come back on every answer for the same reason.
 
 **Nothing here is stored.** The channel list arrives in the request body, is used, and is
-dropped. Same contract as the Tuner: the playlist belongs to the visitor's browser.
+dropped. Same contract as the Streamer: the playlist belongs to the visitor's browser.
 
 **No content filtering, and there is no denylist in this package.** Guide narrows a list
 to what somebody asked for; it never removes anything they did not ask to remove. If a
@@ -34,7 +34,7 @@ log = logging.getLogger("symoneural.guide")
 
 router = APIRouter(tags=["guide"])
 
-#: The same generous ceiling the Tuner uses for a pasted playlist, for the same reason: a
+#: The same generous ceiling the Streamer uses for a pasted playlist, for the same reason: a
 #: provider export genuinely is tens of thousands of entries, and an unbounded request body
 #: is a memory bug with a friendly name.
 MAX_CHANNELS = 40_000
@@ -223,7 +223,7 @@ def status() -> dict:
     state_, detail = unit_state()
     return {
         "id": "guide", "label": "SyMoNeuRaL Guide", "slot": "1U",
-        "state": state_, "bus": "cpu", "href": "/tuner.html",
+        "state": state_, "bus": "cpu", "href": "/streamer.html",
         "spec": "question → channel filter · CPU",
         "detail": detail,
     }

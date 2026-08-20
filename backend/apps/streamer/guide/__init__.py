@@ -1,4 +1,4 @@
-"""SyMoNeuRaL Guide -- turns a question into a channel filter for the Tuner.
+"""SyMoNeuRaL Guide -- turns a question into a channel filter for the Streamer.
 
 Garrett's words: *"we need the symoneural chat to have a floating prompt for setting up the
 guide with selected subcategories. I want the agent to streamline a very quick filtering of
@@ -97,7 +97,7 @@ __all__ = [
 #: The only kind strings that exist. `m3u.py::_classify()` emits these three and nothing else.
 KINDS = ("live", "series", "vod")
 
-#: Accepted on input, never emitted. `movie` is here because the Tuner's frontend has been
+#: Accepted on input, never emitted. `movie` is here because the Streamer's frontend has been
 #: testing for it -- taking it as an alias means a caller that still says `movie` gets `vod`
 #: instead of silently filtering to nothing.
 KIND_ALIASES = {

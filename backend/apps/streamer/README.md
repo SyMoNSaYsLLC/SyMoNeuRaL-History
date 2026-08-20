@@ -1,4 +1,4 @@
-# SyMoNeuRaL Tuner
+# SyMoNeuRaL Streamer
 
 An IPTV surface. The visitor brings their own subscription; this box brings a validated fetch,
 a stream-copy transcode and a bounded number of slots. **No playlist, credential or channel is
@@ -18,7 +18,7 @@ backend/apps/streamer/
   epg.py          the programme guide: get_short_epg and XMLTV, on one clock
   routes.py       the APIRouter and the rack `status()`
   test_epg.py     34 tests against a scripted panel, offline
-  test_tuner.py   108 tests, offline, no provider needed. Includes a local repro
+  test_streamer.py   108 tests, offline, no provider needed. Includes a local repro
                   harness: ffmpeg synthesises the failure modes (HTML at 200, a 403
                   page, a User-Agent gate, AES-128 HLS, HEVC) so every fix is falsifiable
                   without a provider account.
@@ -30,15 +30,15 @@ backend/apps/streamer/
 
 ```python
 # backend/api.py — the whole of it
-from apps.streamer import router as tuner_router, status as tuner_status
+from apps.streamer import router as router, status as status
 
-app.include_router(tuner_router, prefix="/api/tuner")
+app.include_router(router, prefix="/api/streamer")
 ```
 
 and in `build_status()`:
 
 ```python
-Unit(**tuner_status()),
+Unit(**status()),
 ```
 
 Points that matter:
@@ -47,14 +47,14 @@ Points that matter:
   implicit namespace package, so `import apps.streamer` works with no `__init__.py` in `apps/`.
   This module is *not* added to `sys.path` the way `ravencalc` is — it is a package, imported
   as one.
-- **The prefix is assumed to be `/api/tuner` but not hardcoded.** The router declares relative
+- **The prefix is assumed to be `/api/streamer` but not hardcoded.** The router declares relative
   paths only. The one place the prefix leaks is `Session.public()["playlist"]`, which is the
   **relative** string `stream/<id>/live.m3u8`; the page must resolve it against the tune
   endpoint's own URL. It is relative precisely so this module never has to know its mount point.
 - **`status()` is synchronous, cheap and safe to call on every rack poll.** It reads a dict of
   live sessions and touches no filesystem and takes no lock.
 - **`status()` returns a plain dict, not a `Unit`.** Its keys match `api.py`'s `Unit` fields so
-  `Unit(**tuner_status())` works. It deliberately does not import `Unit` — that would put this
+  `Unit(**status())` works. It deliberately does not import `Unit` — that would put this
   module inside `api.py`'s import graph, which is outside the scope this was built in. If you
   prefer the import, the change is yours to make.
 - **Shutdown hook:** call `apps.streamer.sessions.MANAGER.shutdown()` from the API's lifespan
@@ -68,21 +68,21 @@ Points that matter:
 
 ### The GPU governor is deliberately not involved
 
-The Tuner never takes the GPU lock. It is `-c copy` — a demux and a remux, no decoding, no
+The Streamer never takes the GPU lock. It is `-c copy` — a demux and a remux, no decoding, no
 encoding, no CUDA — so it is a CPU surface like RavenCalc, and the rack unit reports
 `bus: "cpu"`. Making it queue behind chat or image would be a lie about what it uses.
 
-### The rack unit is the Tuner AND the Guide
+### The rack unit is the Streamer AND the Guide
 
-Garrett: *"symon guide and symon tuner should be migrated together"*, then *"you need to migrate
-tuner and guide to be 1"*. The rack used to carry two units whose `href` was the same page,
+Garrett: *"symon guide and symon streamer should be migrated together"*, then *"you need to migrate
+streamer and guide to be 1"*. The rack used to carry two units whose `href` was the same page,
 which is a rack disagreeing with itself about how many things this box runs. `status()` now
-returns one unit, labelled *SyMoNeuRaL Tuner & Guide*, and `api.py` no longer builds a `guide`
+returns one unit, labelled *SyMoNeuRaL Streamer & Guide*, and `api.py` no longer builds a `guide`
 unit.
 
 **Nothing was deleted to achieve it.** `backend/apps/streamer/guide/` is untouched and `/api/guide/*`
 still serves the page's filter — the fold is in what the rack claims, not in what runs. The
-guide half's own claim is carried in the tuner unit's detail line in every state, because it is
+guide half's own claim is carried in the streamer unit's detail line in every state, because it is
 the thing a visitor cannot check by looking: *guide filtering on the CPU, never takes the GPU
 lock*. That is the same claim RavenCalc makes and it is worth as much here.
 
@@ -94,16 +94,16 @@ implying the whole surface is dead.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SYMONEURAL_TUNER_MAX_SESSIONS` | `2` | Concurrent ffmpeg processes (clamped 1–8) |
-| `SYMONEURAL_TUNER_IDLE_TIMEOUT` | `45` s | No player request for this long → reaped |
-| `SYMONEURAL_TUNER_MAX_LIFETIME` | `1800` s | Hard ceiling on a session |
-| `SYMONEURAL_TUNER_MAX_BYTES` | `4096` MB | Per-session upstream data cap |
-| `SYMONEURAL_TUNER_DIR` | a fresh `mkdtemp` | Where HLS segments are written |
-| `SYMONEURAL_TUNER_USER_AGENT` | `VLC/3.0.20 LibVLC/3.0.20` | What upstream requests identify as |
+| `SYMONEURAL_STREAMER_MAX_SESSIONS` | `2` | Concurrent ffmpeg processes (clamped 1–8) |
+| `SYMONEURAL_STREAMER_IDLE_TIMEOUT` | `45` s | No player request for this long → reaped |
+| `SYMONEURAL_STREAMER_MAX_LIFETIME` | `1800` s | Hard ceiling on a session |
+| `SYMONEURAL_STREAMER_MAX_BYTES` | `4096` MB | Per-session upstream data cap |
+| `SYMONEURAL_STREAMER_DIR` | a fresh `mkdtemp` | Where HLS segments are written |
+| `SYMONEURAL_STREAMER_USER_AGENT` | `VLC/3.0.20 LibVLC/3.0.20` | What upstream requests identify as |
 
 There is deliberately **no variable that relaxes the SSRF policy.** The user-agent override is
 the *only* environment variable `safefetch.py` reads, a test enforces that line by line, and a
-second test starts a fresh interpreter with `SYMONEURAL_TUNER_ALLOW_PRIVATE=1` and friends set
+second test starts a fresh interpreter with `SYMONEURAL_STREAMER_ALLOW_PRIVATE=1` and friends set
 and asserts `Policy().allow_private` is still `False`.
 
 ### Why the default agent is VLC and not our own name
@@ -113,7 +113,7 @@ the paying customer runs VLC, Kodi, TiviMate or a set-top box, so an unknown age
 be a scraper or a reseller. A large share of providers refuse one — and often **not** with an
 honest 403, but with HTTP 200 and an HTML "player not supported" page, which used to arrive at
 the pump as the stream body. That is the blank-screen-with-everything-green failure. The old
-default, `SyMoNeuRaL-Tuner/1`, was the polite and correct thing for a bot to send and was
+default, `SyMoNeuRaL-Streamer/1`, was the polite and correct thing for a bot to send and was
 costing streams. This is not defeating a security control: the credential is the visitor's own
 and the request is the one their own player would make.
 
@@ -166,7 +166,7 @@ dressed as a fix.
 ## The programme guide — `epg.py`
 
 Garrett: *"you need to pull epg do you know how to do it?"*, and then, of the tick-grid that
-was the only way to look at live TV: *"update the damn tuner guide with epg and not that
+was the only way to look at live TV: *"update the damn streamer guide with epg and not that
 terrible tiny select and deselect shit."*
 
 Two sources, and they are not alternatives — they answer different questions:
@@ -340,7 +340,7 @@ Nothing else in `public()` changed, and it still has no field that can hold a cr
 - **Include `hls.js`.** Safari plays `.m3u8` natively; Chrome and Firefox need MSE. This module
   cannot supply it and does not pretend to. Note the site's CSP/no-external-asset habit: it will
   need to be vendored locally, not pulled from a CDN.
-- Resolve `session.playlist` (relative) against the tuner API base.
+- Resolve `session.playlist` (relative) against the streamer API base.
 - Keep requesting segments — that is the session heartbeat. Stop, and the slot is reclaimed in
   `IDLE_TIMEOUT` seconds. Call `DELETE /session/{sid}` on unload to be polite.
 - **With nothing loaded, show empty and offline.** No mock channel list, no sample EPG, no
@@ -411,7 +411,7 @@ Nothing else in `public()` changed, and it still has no field that can hold a cr
 
 ## What is NOT implemented — the honest gap list
 
-1. **No frontend.** No `site/tuner.html`, no player, no CSS. Out of scope by instruction, and
+1. **No frontend.** No `site/streamer.html`, no player, no CSS. Out of scope by instruction, and
    the module is untested against a real browser.
 2. **No EPG.** `xmltv.php` exists on Xtream panels and is not fetched. `tvg-id` is parsed and
    passed through so a future EPG can join on it, and that is all.
@@ -442,18 +442,18 @@ Nothing else in `public()` changed, and it still has no field that can hold a cr
 8. **`-c copy` only.** A source whose codecs cannot enter an MPEG-TS segment unchanged fails
    with ffmpeg's error rather than being re-encoded. Deliberate: the GPU is reserved for
    inference and re-encoding on the CPU would compete with serving the site.
-9. **Bandwidth.** Session and byte caps bound it, but a public tuner is still a box fetching
+9. **Bandwidth.** Session and byte caps bound it, but a public streamer is still a box fetching
    third-party video on request. Whether that is acceptable egress is a product decision nobody
    has made yet.
 10. **Segments default to `/tmp`, which is usually tmpfs**, so they cost RAM. Bounded at
     roughly `hls_list_size × hls_time × bitrate × MAX_SESSIONS` — about 25 MB at 8 Mb/s with
-    the defaults. Point `SYMONEURAL_TUNER_DIR` at real disk if that trade is wrong.
+    the defaults. Point `SYMONEURAL_STREAMER_DIR` at real disk if that trade is wrong.
 
 ## Open questions for the user
 
 - **Legality and framing.** This box will proxy whatever stream a visitor points it at. The
   module takes no view; the page's copy should. Worth a decision before it is public.
-- **Should the Tuner appear on the rack at all when it has no content of its own?** It reports
+- **Should the Streamer appear on the rack at all when it has no content of its own?** It reports
   `ready` when ffmpeg is present and no session is running, with a detail line saying plainly
   that no channels are stored here. The alternative reading — always `offline` until a visitor
   loads something — is defensible too, but the server genuinely cannot know what is in someone's

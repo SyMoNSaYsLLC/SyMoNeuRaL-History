@@ -141,7 +141,7 @@
 
      and across that whole band the wordmark is squeezed from 138px to 108px, because flex
      shrinks `.logo` before it gives up on the nav. It reproduces on chat, image, ravencalc,
-     remix, tuner, miner, gateway and sigils -- every page with the six-link nav -- and not on
+     remix, streamer, miner, gateway and sigils -- every page with the six-link nav -- and not on
      overview/livestack/controlboard/receipts, which have five.
 
      Tightening the gap is the fix rather than hiding a link: six gaps at 24px are 144px of
@@ -1510,7 +1510,7 @@
    surface; it is a real consequence, not a decoration. */
 .mg-btn.warn{border-color:var(--amber); color:var(--amber)}
 
-/* ---- SyMoNeuRaL Tuner ------------------------------------------------------
+/* ---- SyMoNeuRaL Streamer ------------------------------------------------------
    `tn-` prefixed, all grepped against both stylesheets first: zero prior definitions.
    These were missing entirely when the page shipped, so the form rendered as raw
    unstyled HTML -- inputs and buttons on one run-together line. */
@@ -1560,7 +1560,7 @@
   font:var(--t6)/1.5 ui-monospace,Menlo,Consolas,monospace; overflow-wrap:anywhere;
 }
 
-/* ---- Tuner: player, browsing, model-assisted filter -------------------------
+/* ---- Streamer: player, browsing, model-assisted filter -------------------------
    `tn-` prefixed, grepped against both stylesheets first. */
 .tn-player{margin:18px 0 0}
 .tn-player video{
@@ -1573,7 +1573,7 @@
 }
 
 .tn-browse{margin-top:18px}
-/* `.tn-kinds`, `.tn-groups` and the `.tn-chip` they held are GONE. The tuner's
+/* `.tn-kinds`, `.tn-groups` and the `.tn-chip` they held are GONE. The streamer's
    kind/group chip rows were removed from the page; the rules outlived them and
    nothing in site/ or tools/ emitted those class names any more (grepped both
    trees before deleting, which is the check that separates a reap from a
@@ -2029,7 +2029,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      (27 + 2px border + 18px padding = 47px), which is why an earlier padding-only trim
      moved nothing. Both come down together, and only in this layout.
      19px glyph in 5px of padding, not 21 in 7: the rack has to hold TWELVE units now
-     (chat, image, remix, ravencalc, reinforce, miner, gpuminer, tuner, gateway, coder,
+     (chat, image, remix, ravencalc, reinforce, miner, gpuminer, streamer, gateway, coder,
      guide, sigils) and at 1440x900 twelve rows at 37px measured exactly 747px of content
      in a 747px panel -- zero spare. 4px off each row is 48px back across twelve. The
      13px icon inside the glyph is unchanged, so the button still reads as a button. */
@@ -2203,18 +2203,18 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
 }
 
 /* ==================================================================================
-   THE TUNER: let it use the window it is given
+   THE STREAMER: let it use the window it is given
    ==================================================================================
    Added 2026-08-17. Garrett: "for symoneural tuner i love the picture and picture but we
    are not padding to the window size well."
 
-   Measured on tuner.html at 1990x970 before this rule: `.wrap` is max-width:1120px, so the
+   Measured on streamer.html at 1990x970 before this rule: `.wrap` is max-width:1120px, so the
    whole surface sat in a 1120px column with 435px of empty page on EACH side. At 1440x900
    it is 160px each side. That 1120px is the site's readable prose measure and it is
    correct for prose -- a 1990px line of text is unreadable. It is wrong for a video
    player and a channel browser, which are not prose and want the room.
 
-   So this is scoped to the tuner alone via `body:has(#tnvideo)` rather than touching
+   So this is scoped to the streamer alone via `body:has(#tnvideo)` rather than touching
    `.wrap`, which every page on the site uses. Changing `.wrap` globally to fix one page
    is exactly the shared-rule collision that has cost this project five rounds already
    (`.bar`, `.live`, `.card`, `#console .sub`, and `.gart` before it was capped).
@@ -2267,7 +2267,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      the glyph is the floor, so the two only ever move together -- an earlier
      padding-only trim here moved nothing at all for exactly that reason.
      TWELVE UNITS, not ten: chat, image, remix, ravencalc, reinforce, miner, gpuminer,
-     tuner, gateway, coder, guide, sigils. At 1301x740 twelve rows at the previous 29px
+     streamer, gateway, coder, guide, sigils. At 1301x740 twelve rows at the previous 29px
      measured 619px of content in a 587px panel -- OVER 32. A 17px glyph in 2px of
      padding is a 27px row, 2px back on each of twelve, and the 13px icon inside it is
      unchanged so the button still reads as a button. */
@@ -2395,7 +2395,7 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
    container cannot produce a 2000px line of text -- that is why widening is safe here
    and would not be on `documentation.html`.
 
-   The scoping mechanism is `body:has(#hero)` and friends, following the tuner rule
+   The scoping mechanism is `body:has(#hero)` and friends, following the streamer rule
    above rather than inventing a second convention. Verified those four ids appear on
    exactly five pages -- overview, livestack, controlboard, receipts and index (which
    carries all four) -- and on no prose page, so nothing else can be caught by them.
@@ -2408,8 +2408,8 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
 
 @media (min-width:1601px){
   body:has(#hero), body:has(#rack), body:has(#console), body:has(#more){
-    /* Content follows the tuner's ceiling. 1800px is not arbitrary: it is the number
-       already chosen and measured for the tuner surface, and using a second one here
+    /* Content follows the streamer's ceiling. 1800px is not arbitrary: it is the number
+       already chosen and measured for the streamer surface, and using a second one here
        would mean two "wide" widths on one site. */
     --max: min(1800px, calc(100vw - 96px));
   }
@@ -2438,7 +2438,7 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
      /controlboard 69%               71%               86%
 
    So the emptiest pages on the site were the masthead and the constellation, and
-   `documentation`, `training`, `chat`, `build`, `tuner` and `account` were outside the
+   `documentation`, `training`, `chat`, `build`, `streamer` and `account` were outside the
    selector entirely -- they rendered 12.5px body text at 2560px wide, at every width, the
    exact complaint the first pass was written to fix. Four pages got the treatment; twelve
    did not. Hence: the clamps move to `:root`.

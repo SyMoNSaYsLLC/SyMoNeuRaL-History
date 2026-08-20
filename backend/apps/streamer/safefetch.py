@@ -1,6 +1,6 @@
 """The one door out. Every outbound byte caused by a visitor-supplied URL goes through here.
 
-The Tuner's whole hazard is that a visitor hands us a URL and this box fetches it. Without a
+The Streamer's whole hazard is that a visitor hands us a URL and this box fetches it. Without a
 control, `http://127.0.0.1:8800/` reaches the API itself, `http://192.168.x.x/` reaches the
 LAN, and `http://169.254.169.254/` reaches a cloud metadata endpoint. So there is exactly one
 function that decides whether a URL may be fetched -- `validate_url` -- and exactly one way to
@@ -64,7 +64,7 @@ __all__ = [
 
 # ---------------------------------------------------------------- the User-Agent question
 #
-# Why this is not "SyMoNeuRaL-Tuner/1", which is what it used to be, and which is the polite,
+# Why this is not "SyMoNeuRaL-Streamer/1", which is what it used to be, and which is the polite,
 # honest, correct thing for a bot to send:
 #
 # An IPTV provider's edge is not a web server serving documents to crawlers. It is a paywall
@@ -83,7 +83,7 @@ __all__ = [
 # own, and the request is the one their own player would make. It is stating the client the
 # protocol expects. If a provider genuinely wants to identify this box, the override below is
 # how an operator gives it a name.
-_UA_ENV = "SYMONEURAL_TUNER_USER_AGENT"
+_UA_ENV = "SYMONEURAL_STREAMER_USER_AGENT"
 _UA_FALLBACK = "VLC/3.0.20 LibVLC/3.0.20"
 
 
@@ -94,7 +94,7 @@ def _default_user_agent() -> str:
     touch anything but the agent string -- see `Policy`'s docstring for why `allow_private` in
     particular has no such switch. A CR or LF here would be request smuggling into every
     upstream connection, so control characters are dropped rather than the value refused: an
-    operator typo must not take the tuner offline.
+    operator typo must not take the streamer offline.
     """
     raw = os.environ.get(_UA_ENV, "") or ""
     cleaned = "".join(c for c in raw if c.isprintable() and c not in "\r\n").strip()
@@ -159,7 +159,7 @@ class Policy:
     #: Wall clock for a whole `fetch`. `read_timeout` only bounds the gap between packets, which
     #: a slow-drip server satisfies indefinitely.
     total_timeout: float = 60.0
-    #: See the note above this class. Overridable per-Policy, and by `SYMONEURAL_TUNER_USER_AGENT`
+    #: See the note above this class. Overridable per-Policy, and by `SYMONEURAL_STREAMER_USER_AGENT`
     #: at import; nothing a visitor sends can reach it.
     user_agent: str = DEFAULT_USER_AGENT
 
@@ -405,7 +405,7 @@ def _connect(target: Target, policy: Policy) -> http.client.HTTPConnection:
 # ---------------------------------------------------------------- what the provider said
 #
 # The user's diagnostic, in their words: "if it's not active you will come to a page from the
-# server saying it's down, not just a blank screen." A dead channel and a broken tuner are two
+# server saying it's down, not just a blank screen." A dead channel and a broken streamer are two
 # different bugs, and the only thing that tells them apart is the provider's own message --
 # "account expired", "maximum connections reached", "stream not found". This module used to
 # throw all of that away (`resp.read(0)`) and report `upstream returned HTTP 403`, which

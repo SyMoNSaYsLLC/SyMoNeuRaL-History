@@ -95,9 +95,11 @@ import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gate
 import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
 from apps import streamer  # noqa: E402  -- the IPTV surface AND the Guide that filters
 # it, merged into one package on Garrett's instruction ("you need to migrate tuner and
-# guide to be 1"). It exports `tuner_router` and `guide_router` separately, so a line here
-# says which of the two surfaces it wires; `status()` is the tuner's, because the merged
-# pair is ONE rack row and always was -- the two used to share an href and disagree.
+# guide to be 1", then that the pair migrates to `streamer`). It exports one `router` and
+# the guide's, which is mounted NESTED at /api/streamer/guide -- both declare `/state`, so
+# a shared flat prefix would shadow the second registration. `status()` is the streamer's,
+# because the merged pair is ONE rack row and always was -- the two used to share an href
+# and disagree.
 from apps import project  # noqa: E402  -- the shared workspace surface. Brings its
 # own APIRouter. Note it never invokes coder and imports no subprocess/socket/urllib;
 # a test in that package enforces it, and making Coder poll Project for work would
@@ -1716,7 +1718,7 @@ def build_status() -> Status:
                  state=gateway_state, bus="net", href="/gateway.html",
                  spec="TRON TVM · USDT (TRC-20) licensing",
                  detail=gateway_detail),
-            # GUIDE IS NOT A UNIT ANY MORE -- it is folded into the Tuner above, and this
+            # GUIDE IS NOT A UNIT ANY MORE -- it is folded into the Streamer above, and this
             # comment is the record of why rather than a leftover.
             #
             # Garrett: "symon guide and symon tuner should be migrated together", then "you
@@ -1729,13 +1731,14 @@ def build_status() -> Status:
             # overruled only because Garrett had named it separately in the live stack. He
             # has now decided the other way, so the code and the intent finally agree.
             #
-            # Nothing is dropped. `apps.streamer.guide` is untouched, `/api/guide/*` still serves the
-            # page's filter, and the claim that made Guide worth showing -- that it answers
-            # on the CPU while the card is busy, never taking the GPU lock -- is now in the
-            # Tuner unit's own detail line. See `apps/streamer/routes.py::status()`.
+            # Nothing is dropped. `apps.streamer.guide` is untouched, `/api/streamer/guide/*`
+            # still serves the page's filter, and the claim that made Guide worth showing --
+            # that it answers on the CPU while the card is busy, never taking the GPU lock --
+            # is now in the Streamer unit's own detail line. See
+            # `apps/streamer/routes.py::status()`.
             #
             # The rack is therefore THIRTEEN units, in the order they are built below:
-            # chat, image, remix, ravencalc, train, miner, tuner, coder, gateway, project,
+            # chat, image, remix, ravencalc, train, miner, streamer, coder, gateway, project,
             # sigils, studio, exp. Eleven before `studio` and `exp` landed alongside their
             # pages -- and this comment said TWELVE for the change that added both, because a
             # number kept only in prose drifts. `apps/test_status_rack.py` now counts the
@@ -2343,15 +2346,16 @@ async def gpuminer_control(request: Request, body: MinerBody) -> dict:
     return await cryptominer.start()
 
 
-# The tuner brings its own router rather than having its routes written here. It must be
+# The streamer brings its own router rather than having its routes written here. It must be
 # included BEFORE the static mount below, for the same reason every other API route is
 # declared before it: StaticFiles at "/" matches everything, so anything mounted after it
 # is unreachable. Prefix matches the Backstage shape the backend is heading towards
 # (§5 item 13) -- a surface answers at /api/<id>.
-app.include_router(streamer.tuner_router, prefix="/api/tuner", tags=["tuner"])
+app.include_router(streamer.router, prefix="/api/streamer", tags=["streamer"])
 app.include_router(accounts_routes.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(gateway.router, prefix="/api/gateway", tags=["gateway"])
-app.include_router(streamer.guide_router, prefix="/api/guide", tags=["guide"])
+app.include_router(streamer.guide_router, prefix="/api/streamer/guide",
+                   tags=["streamer-guide"])
 app.include_router(project.router, prefix="/api/project", tags=["project"])
 # The per-unit power switch. Mounting it is not enabling it: with SYMONEURAL_RACK_ENABLED unset
 # every route answers 404 -- absent rather than forbidden, because the rack is public and a
@@ -2828,6 +2832,32 @@ async def root() -> RedirectResponse:
     stop being generated.
     """
     return RedirectResponse("/overview", status_code=302)
+
+# ---------------------------------------------------------------- retired page names
+# The Tuner and the Guide merged into the Streamer and the pages were regenerated under new
+# names (Garrett: "i said tuner and guide needed to be merged and migrated to streamer").
+# A bookmark or an inbound link to the old name would 404, and unlike a stale cached page it
+# does NOT resolve itself on a reload -- it stays broken for as long as somebody keeps the
+# link. That is the distinction that decides what gets a redirect here and what does not:
+#
+#   * these two page names get one, because a bookmark is permanent;
+#   * `/api/tuner/*` deliberately gets NOTHING. The only callers were our own pages, and a
+#     visitor holding a cached copy of the old page is fixed by their next reload. Keeping
+#     an API alias would leave the retired namespace answering forever, which is not a
+#     migration -- it is two namespaces, and the second one would never be removed.
+#
+# 302, not 301, for the reason given on `root()` above: a permanent redirect is cached
+# indefinitely by browsers and is painful to walk back.
+_RETIRED_PAGES = {"/tuner.html": "/streamer.html",
+                  "/tuner-watch.html": "/streamer-watch.html"}
+
+
+@app.get("/tuner.html", include_in_schema=False)
+@app.get("/tuner-watch.html", include_in_schema=False)
+async def retired_streamer_pages(request: Request) -> RedirectResponse:
+    """Send a retired page name to the one that replaced it."""
+    return RedirectResponse(_RETIRED_PAGES[request.url.path], status_code=302)
+
 
 if SITE.is_dir():
     app.mount("/", StaticFiles(directory=str(SITE), html=True), name="site")

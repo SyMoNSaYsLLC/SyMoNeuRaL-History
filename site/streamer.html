@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SyMoNeuRaL Tuner — your playlist, your credentials</title>
+<title>SyMoNeuRaL Streamer — your playlist, your credentials</title>
 <meta name="description" content="IPTV over ffmpeg stream copy. Credentials stay in your browser.">
-<link rel="stylesheet" href="/symoneural.css?v=a768f561c3">
+<link rel="stylesheet" href="/symoneural.css?v=10c70ad0c0">
 <link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -47,7 +47,7 @@
 <section style="border-top:0;padding-top:0">
   <div class="wrap">
     <style>
-    /* ---- Tuner browsing, 2026-08-17 -------------------------------------------
+    /* ---- Streamer browsing, 2026-08-17 -------------------------------------------
        Six top-level categories, a full-width subcategory grid, and a filter that
        answers locally before the model is asked. All selectors are scoped to
        #tnbody. Grepped against site/symoneural.css and site/rack-detail.css first:
@@ -63,7 +63,7 @@
        playlist within its deadline, and the page used to hand that not-yet-existent
        manifest straight to hls.js -- which failed its manifest load and left a black
        <video> with a line of library jargon underneath. The visitor could not tell
-       "the provider says this channel is off air" from "our tuner is broken", and
+       "the provider says this channel is off air" from "our streamer is broken", and
        those need completely different responses.
 
        So: the server is asked why, and its sentence is what gets shown. The hls.js
@@ -354,7 +354,7 @@
        nothing -- the list is still there behind a toggle, because a list is the
        right shape for 31,888 films and a grid is the right shape for live TV.
 
-       Every cell is drawn from `POST /api/tuner/epg`, which is the provider's own
+       Every cell is drawn from `POST /api/streamer/epg`, which is the provider's own
        `get_short_epg`. A channel the provider publishes no guide for says so in
        words; there is no placeholder programme and no "No Information" filler,
        because a made-up cell in a grid is indistinguishable from a real one.
@@ -474,7 +474,7 @@
 
     <div class="pgwrap">
       <div class="stage">
-        <div class="head" id="tnhead"><s></s>SyMoNeuRaL Tuner
+        <div class="head" id="tnhead"><s></s>SyMoNeuRaL Streamer
           <span class="grow" id="tnstate">idle</span></div>
         <div class="body" id="tnbody">
 
@@ -509,7 +509,7 @@
             <video id="tnvideo" controls playsinline></video>
             <p class="tn-now" id="tnnow"></p>
 
-            <!-- Full-width playback on its own page, /tuner-watch.html. The handoff is a
+            <!-- Full-width playback on its own page, /streamer-watch.html. The handoff is a
                  localStorage entry plus a navigation and NOTHING is put in the URL: a stream
                  URL carries the visitor's own provider credentials and uvicorn logs a request
                  line. It carries the live session id too, so the other page rejoins this
@@ -716,7 +716,7 @@
                actually busy -- "something else is running" answered by looking, rather
                than inferred from one field. Styled compact for a sidebar. -->
           <div class="units gpu-stack" id="units"></div>
-          <p class="gpu-why"><b>Tuner does not use the GPU.</b> This is the card the rest of the stack shares, shown here so you can see what it is doing; nothing on this page waits for it.</p>
+          <p class="gpu-why"><b>Streamer does not use the GPU.</b> This is the card the rest of the stack shares, shown here so you can see what it is doing; nothing on this page waits for it.</p>
         </div>
         
         <div class="callout">
@@ -849,11 +849,34 @@ async function api(path, payload) {
 <script>
 (function () {
   'use strict';
-  var K = 'symoneural.tuner';
+
+  // ---- Carry the visitor's own data across the rename. ----------------------------
+  // These keys were `symoneural.streamer*` until the Streamer and the Guide were merged into
+  // the Streamer. The whole promise of this surface is that the playlist, the favourites
+  // and the credentials live in THIS browser and are never stored on the box -- which
+  // means there is nowhere to restore them from. Renaming the namespace without carrying
+  // the data would silently empty everything the visitor typed, and look like data loss
+  // because it would be.
+  //
+  // Prefix-generic on purpose: a seventh key added later is carried without anyone
+  // remembering to add it here. Idempotent on purpose: it never overwrites a value that
+  // already exists under the new name, so a second visit cannot roll a visitor back to
+  // what they had before the rename.
+  try {
+    var _OLD = 'symoneural.tuner', _NEW = 'symoneural.streamer';   // NOTE: _OLD is the RETIRED prefix and must stay spelled that way
+    for (var _i = localStorage.length - 1; _i >= 0; _i--) {
+      var _k = localStorage.key(_i);
+      if (!_k || (_k !== _OLD && _k.indexOf(_OLD + '.') !== 0)) continue;
+      var _nk = _NEW + _k.slice(_OLD.length);
+      if (localStorage.getItem(_nk) === null) localStorage.setItem(_nk, localStorage.getItem(_k));
+      localStorage.removeItem(_k);
+    }
+  } catch (_e) { /* private mode, or storage full: the page still works without history */ }
+  var K = 'symoneural.streamer';
   // Favourites are the visitor's, and they stay here. They are never posted to this box:
   // the whole promise of this surface is that the playlist and the credentials live in the
   // browser, and a list of what someone likes to watch is exactly the same kind of fact.
-  var FK = 'symoneural.tuner.favourites';
+  var FK = 'symoneural.streamer.favourites';
 
   var form = document.getElementById('tnform'), list = document.getElementById('tnlist');
   var note = document.getElementById('tnnote'), st = document.getElementById('tnstate');
@@ -869,7 +892,7 @@ async function api(path, payload) {
 
   var mode = 'm3u', all = [], hay = [], view = [], hls = null;
   // Which player got the stream, recorded when the choice is made rather than inferred from
-  // `hls` being non-null -- see the same variable on tuner-watch.html for the measurement.
+  // `hls` being non-null -- see the same variable on streamer-watch.html for the measurement.
   // Inferring it means the panel starts claiming "the browser's own HLS" the moment the
   // instance is destroyed, which is exactly when somebody is reading the panel to find out
   // why the picture stopped.
@@ -933,7 +956,7 @@ async function api(path, payload) {
     st.textContent = 'loading'; list.innerHTML = ''; browse.hidden = true;
     emptyEl.hidden = true; moreBtn.hidden = true;
     note.textContent = 'Fetching\u2026';
-    var url  = c.mode === 'm3u' ? '/api/tuner/playlist' : '/api/tuner/xtream/channels';
+    var url  = c.mode === 'm3u' ? '/api/streamer/playlist' : '/api/streamer/xtream/channels';
     var body = c.mode === 'm3u' ? {url: c.url}
              : {server: c.host, username: c.user, password: c.pass,
                 kinds: ['live', 'vod', 'series']};
@@ -1274,7 +1297,7 @@ async function api(path, payload) {
   var fgSave = document.getElementById('tnfgsave'), fgSaved = document.getElementById('tnfgsaved');
   var fgModel = document.getElementById('tnfgmodel');
   var fgLast = null;                       // the last answer, or null
-  var GK = 'symoneural.tuner.guide';
+  var GK = 'symoneural.streamer.guide';
 
   function fgTicked() {
     var out = [];
@@ -1337,7 +1360,7 @@ async function api(path, payload) {
     fgWhy.hidden = false;
     fgWhy.textContent = 'asking…';
     fgApplyRow.hidden = true; fgSaved.hidden = true;
-    fetch('/api/guide/filter', {
+    fetch('/api/streamer/guide/filter', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({question: q, channels: chans,
                             use_model: fgModel.checked, apply: true})
@@ -1407,7 +1430,7 @@ async function api(path, payload) {
   // playlist's group vocabulary and bridges the ones it knows ("films" -> the MOVIES
   // groups), so rewording them here would be this page guessing on the module's behalf and
   // getting the credit or the blame for it.
-  var QK = 'symoneural.tuner.guideq';
+  var QK = 'symoneural.streamer.guideq';
   var FG_KEEP = ['sports', 'films', 'news', 'kids', 'documentaries', 'music', 'entertainment'];
   var FG_DROP = ['shopping', 'religion', 'adult', 'radio'];
   var fgAskEl = document.getElementById('tnfgask'), fgLoc = document.getElementById('tnfgloc');
@@ -1631,7 +1654,7 @@ async function api(path, payload) {
   // A stream that does not play must SAY why. The rule of thumb the owner uses to
   // triage his own provider is exactly right and is what this code is built around:
   // a page from the provider saying the channel is down means the channel is down;
-  // a blank screen means the tuner is broken. A player that renders both as a black
+  // a blank screen means the streamer is broken. A player that renders both as a black
   // rectangle destroys the only diagnostic signal there is.
   //
   // Two mechanisms produced that blank screen and both are handled here.
@@ -1650,7 +1673,7 @@ async function api(path, payload) {
   var sid = null, waitT = null, watchT = null, hiddenT = null;
 
   // ---- give the slot back ----------------------------------------------------------
-  // A slot held by somebody who has already left is, on a two-slot box, the entire tuner.
+  // A slot held by somebody who has already left is, on a two-slot box, the entire streamer.
   // Silence used to be the only signal a departing visitor gave, and silence takes the
   // server IDLE_TIMEOUT plus a reaper tick to read. So say goodbye out loud.
   //
@@ -1659,13 +1682,13 @@ async function api(path, payload) {
   // which is why the server has a POST route beside the DELETE one.
   function release(id) {
     if (!id) return;
-    var u = '/api/tuner/session/' + encodeURIComponent(id) + '/stop';
+    var u = '/api/streamer/session/' + encodeURIComponent(id) + '/stop';
     if (navigator.sendBeacon) { navigator.sendBeacon(u, ''); return; }
     // No beacon (older Safari): keepalive is the documented fallback and survives unload.
     try { fetch(u, {method: 'POST', keepalive: true}); } catch (e) {}
   }
 
-  // Set for exactly one navigation: the handoff to /tuner-watch.html. The slot is deliberately
+  // Set for exactly one navigation: the handoff to /streamer-watch.html. The slot is deliberately
   // NOT released then, because that page ADOPTS the running session -- which is what makes the
   // handoff instant rather than a fresh upstream connect and several seconds of black screen.
   // The exposure is bounded and collecting it is the reaper's ordinary job: if that page never
@@ -1702,8 +1725,8 @@ async function api(path, payload) {
         video.pause();
         nowEl.textContent = name + '  \u00b7  released';
         showFail('The stream was closed while this tab was in the background.',
-                 'This box has a small number of tuner slots and holding one for a tab '
-                 + 'nobody is watching makes the tuner unavailable to everyone, '
+                 'This box has a small number of streamer slots and holding one for a tab '
+                 + 'nobody is watching makes the streamer unavailable to everyone, '
                  + 'including you in another window. Press the channel again to reopen '
                  + 'it \u2014 nothing has failed.', null, null);
       }, HIDDEN_GRACE_MS);
@@ -1763,7 +1786,7 @@ async function api(path, payload) {
 
   function session() {
     if (!sid) return Promise.resolve(null);
-    return fetch('/api/tuner/session/' + encodeURIComponent(sid))
+    return fetch('/api/streamer/session/' + encodeURIComponent(sid))
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
   }
@@ -1848,7 +1871,7 @@ async function api(path, payload) {
     nowEl.textContent = 'opening ' + (c.name || '') + '\u2026';
     player.hidden = false;
     var creds_ = creds();
-    fetch('/api/tuner/tune', {
+    fetch('/api/streamer/tune', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({url: c.url, label: c.name || '', release: leaving || '',
                             username: creds_.user || '', password: creds_.pass || ''})
@@ -1860,11 +1883,11 @@ async function api(path, payload) {
         if (!res.ok) {
           var why = j.detail || j.error || 'no reason given';
           // 503 with the word "slots" is this box, not the provider. Saying "your provider
-          // refused it" for our own capacity limit is the reason a full tuner reads as a
+          // refused it" for our own capacity limit is the reason a full streamer reads as a
           // blocked channel -- and it is the page telling the visitor something untrue.
           if (res.status === 503 && /slot/i.test(String(why))) {
-            nowEl.textContent = (c.name || '') + '  \u00b7  no free tuner slot';
-            showFail('Every tuner slot on this box is in use.',
+            nowEl.textContent = (c.name || '') + '  \u00b7  no free streamer slot';
+            showFail('Every streamer slot on this box is in use.',
                      'This is a limit here, not your provider and nothing to do with '
                      + 'this channel. A slot frees the moment another stream is closed, '
                      + 'and an abandoned one is collected within seconds. Try again.',
@@ -1888,7 +1911,7 @@ async function api(path, payload) {
         if (j.state === 'live' && !j.note && (j.segments || 0) > 0) {
           nowEl.textContent = (c.name || '') + '  \u00b7  live';
           if (warn) codecFail(j, warn);
-          play('/api/tuner/' + j.playlist, c, j);
+          play('/api/streamer/' + j.playlist, c, j);
           return;
         }
         // Still starting. Wait on the session rather than handing hls.js a manifest
@@ -1897,7 +1920,7 @@ async function api(path, payload) {
       })
       .catch(function (e) {
         nowEl.textContent = (c.name || '') + '  \u00b7  could not reach the box';
-        showFail('The tuner could not be reached.',
+        showFail('The streamer could not be reached.',
                  'The request to this machine failed before your provider was ever '
                  + 'contacted, so this says nothing about the channel.',
                  null, String(e && e.message ? e.message : e));
@@ -1933,7 +1956,7 @@ async function api(path, payload) {
           nowEl.textContent = (c.name || '') + '  \u00b7  live';
           var warn = codecWarning(j);
           if (warn) codecFail(j, warn);
-          play('/api/tuner/' + j.playlist, c, j);
+          play('/api/streamer/' + j.playlist, c, j);
           return;
         }
         if (waited > FIRST_VIDEO_MS) {
@@ -2256,7 +2279,7 @@ async function api(path, payload) {
   // choose what the guide covers, and 10,072 channels need choosing from -- but it is no
   // longer the only way to look at live TV.
   //
-  // The data is the provider's own `get_short_epg`, via `POST /api/tuner/epg`, which returns
+  // The data is the provider's own `get_short_epg`, via `POST /api/streamer/epg`, which returns
   // epoch seconds. The window is 3 hours wide and starts on a half hour so the ruler lands on
   // round numbers.
   //
@@ -2458,7 +2481,7 @@ async function api(path, payload) {
     gBusy = true;
     gNote.textContent = 'asking your provider for ' + want.length + ' channel'
       + (want.length === 1 ? '' : 's') + ' of guide\u2026';
-    fetch('/api/tuner/epg', {
+    fetch('/api/streamer/epg', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({server: c.host, username: c.user, password: c.pass,
                             stream_ids: want, limit: 8})
@@ -2650,7 +2673,7 @@ async function api(path, payload) {
   });
 
   // =====================================================================================
-  // HANDING THE STREAM TO /tuner-watch.html
+  // HANDING THE STREAM TO /streamer-watch.html
   // =====================================================================================
   //
   // Garrett: "You can make the stream move to its own symoneural.com/tuner/watch or something
@@ -2665,7 +2688,7 @@ async function api(path, payload) {
   // credentials already live, and never off this browser.
   var prow = document.getElementById('tnprow'), watchBtn = document.getElementById('tnwatch');
   var watchWhy = document.getElementById('tnwatchwhy');
-  var WK = 'symoneural.tuner.watch';
+  var WK = 'symoneural.streamer.watch';
   var watchable = null;
 
   function offerWatch(c) {
@@ -2690,7 +2713,7 @@ async function api(path, payload) {
     }
     // The session is handed over alive, not released: the watch page adopts it. See `letGo`.
     handingOff = true;
-    location.href = '/tuner-watch.html';
+    location.href = '/streamer-watch.html';
   });
 
   // `play()` is where a stream actually becomes a picture, so that is where the panel

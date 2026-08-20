@@ -1,13 +1,13 @@
-// Drive site/tuner-watch.html against the scripted provider in real Chrome.
+// Drive site/streamer-watch.html against the scripted provider in real Chrome.
 //
-// WHY THIS FILE EXISTS SEPARATELY FROM tuner_failpaths.mjs: the watch page carries its OWN
+// WHY THIS FILE EXISTS SEPARATELY FROM streamer_failpaths.mjs: the watch page carries its OWN
 // copy of play(), its own statistics panel and its own `#ps-eng`, deliberately duplicated
-// from TUNER_JS and marked as such in the generator. Duplicated code needs duplicated
+// from STREAMER_JS and marked as such in the generator. Duplicated code needs duplicated
 // assertions, or the identical bug can be reintroduced on the copy with every existing test
-// still green -- which is exactly how the `canPlayType` dead-code bug survived on tuner.html.
+// still green -- which is exactly how the `canPlayType` dead-code bug survived on streamer.html.
 //
-// Self-contained: it starts tests/tuner_fake_provider.py and stops it again, so
-// `node tests/tuner_watch.mjs` is the whole invocation. No account, no real stream, no API.
+// Self-contained: it starts tests/streamer_fake_provider.py and stops it again, so
+// `node tests/streamer_watch.mjs` is the whole invocation. No account, no real stream, no API.
 import { chromium } from '../contrib/llama.cpp/tools/ui/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -16,9 +16,9 @@ import path from 'node:path';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.argv[2] || '8946';
 const BASE = `http://127.0.0.1:${PORT}`;
-const WK = 'symoneural.tuner.watch';
+const WK = 'symoneural.streamer.watch';
 
-const server = spawn('python3', [path.join(HERE, 'tuner_fake_provider.py'), PORT],
+const server = spawn('python3', [path.join(HERE, 'streamer_fake_provider.py'), PORT],
                      { stdio: ['ignore', 'pipe', 'inherit'] });
 process.on('exit', () => server.kill());
 await new Promise((res, rej) => {
@@ -37,19 +37,19 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 
-// Seed the handoff exactly as tuner.html writes it when the visitor clicks "watch full screen",
+// Seed the handoff exactly as streamer.html writes it when the visitor clicks "watch full screen",
 // WITHOUT a session id -- the cold half of the handoff, where the watch page must tune for
 // itself. Setting localStorage requires being on the origin first, hence the initial goto.
-await page.goto(`${BASE}/tuner.html`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${BASE}/streamer.html`, { waitUntil: 'domcontentloaded' });
 await page.evaluate(() => fetch('/_case?name=aac').then(r => r.json()));
 await page.evaluate(k => {
-  localStorage.setItem('symoneural.tuner.cfg',
+  localStorage.setItem('symoneural.streamer.cfg',
     JSON.stringify({ kind: 'm3u', url: 'http://example.invalid/playlist.m3u' }));
   localStorage.setItem(k, JSON.stringify({ name: 'Fixture One', url: 'http://example.invalid/one',
                                            stream_id: '1', group: 'x', sid: '' }));
 }, WK);
 
-await page.goto(`${BASE}/tuner-watch.html`, { waitUntil: 'domcontentloaded' });
+await page.goto(`${BASE}/streamer-watch.html`, { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(3000);
 
 // ---- the handoff record must carry a LIVE session id ---------------------------------
@@ -68,7 +68,7 @@ ok('and it still carries the channel it was opened on',
    rec.url === 'http://example.invalid/one', rec.url);
 
 // ---- which player got the stream ------------------------------------------------------
-// The watch page duplicates tuner.html's branch, so it can regress independently. On Chrome
+// The watch page duplicates streamer.html's branch, so it can regress independently. On Chrome
 // `video.canPlayType('application/vnd.apple.mpegurl')` returns the truthy string 'maybe', so
 // asking the <video> first wins every time and the hls.js block below becomes dead code --
 // Chrome's native HLS then declines mpeg-ts silently, which is the black rectangle. `#ps-eng`
@@ -77,7 +77,7 @@ const eng = await page.$eval('#ps-eng', el => el.textContent.trim()).catch(() =>
 ok('the stream is handed to hls.js, not to the browser’s own HLS',
    /hls\.js/.test(eng), eng || '(#ps-eng absent -- play() never started the panel)');
 
-// The status line is `#tnnow`, the same id the tuner page uses, because the two pages share
+// The status line is `#tnnow`, the same id the streamer page uses, because the two pages share
 // the code that writes it. The assertion is that it reaches a DEFINITE state, not specifically
 // "live": this fixture serves a manifest and no segment data, so "stopped" is a true report of
 // what happened and asserting it away would be asserting that the page lies. What must never
@@ -92,7 +92,7 @@ ok('the page reaches a definite state rather than sitting on "opening"',
 const cold = await browser.newPage();
 const coldErrors = [];
 cold.on('pageerror', e => coldErrors.push(String(e)));
-await cold.goto(`${BASE}/tuner-watch.html`, { waitUntil: 'domcontentloaded' });
+await cold.goto(`${BASE}/streamer-watch.html`, { waitUntil: 'domcontentloaded' });
 await cold.waitForTimeout(1200);
 const coldText = (await cold.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
 ok('a cold visit says nothing is playing instead of showing a black rectangle',
