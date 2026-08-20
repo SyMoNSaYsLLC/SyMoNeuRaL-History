@@ -4,16 +4,27 @@ the generated static site, the GPU governor and the shell tooling. Model weights
 llama.cpp / stable-diffusion.cpp binaries are not here -- those are fetched and built on \
 the target, against its own driver."
 HOMEPAGE = "https://symoneural.com"
-LICENSE = "CLOSED"
+LICENSE = "LicenseRef-symoneural-stack-CLOSED"
+LIC_FILES_CHKSUM = "file://LICENSES.md;md5=016512c94fb7b74a60da5fb6e40337be"
+NO_GENERIC_LICENSE[LicenseRef-symoneural-stack-CLOSED] = "LICENSES.md"
 SECTION = "science"
 
-# CLOSED is the accurate value and is chosen deliberately rather than for convenience.
+# Closed is the accurate status and is stated deliberately rather than for convenience.
 # LICENSES.md section 7 puts api.py, the generators, the CLI, ravencalc.py, the shell
 # tooling, backend/apps/reinforce and backend/apps/remix under "all rights reserved,
 # covered by no licence in that file". Declaring MIT here to make the QA warning go away
 # would be a licence grant made by a build file, which is not a thing a build file may do.
 # The third-party components this depends on carry their own licences and are packaged by
 # their own recipes, where those licences are declared.
+#
+# The bare string LICENSE = "CLOSED" used to say the same thing and warned as deprecated
+# on every parse; this is the license-ref spelling of the same fact, which is the exact
+# form the warning asks for. NO_GENERIC_LICENSE points the ref at the file in this tree
+# that actually states the terms (there is deliberately no such file in common-licenses),
+# and LIC_FILES_CHKSUM carries that file's real md5 so the build stops if the terms
+# change. No LICENSE_FLAGS gate is added: this distro sets no LICENSE_FLAGS_ACCEPTED, so
+# a gate would turn a parse warning into a build failure, and gating was never what the
+# warning asked for.
 
 SRC_URI = "${SYMONEURAL_GIT_URI}"
 SRCREV = "${SYMONEURAL_SRCREV}"

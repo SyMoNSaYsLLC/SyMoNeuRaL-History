@@ -21,7 +21,9 @@ running the surface, and their results are in `README.md` with the numbers that 
 
 Two tests do spawn a real `/bin/sh` -- `RunCommandTests`, which is about a timeout killing a
 process group and cannot be faked into telling the truth about that. They cost about 2 s of the
-file's runtime and clean up after themselves; the second one asserts the cleanup with `pgrep`.
+file's runtime and clean up after themselves; the timeout test
+(`test_a_backgrounded_child_does_not_outlive_the_timeout`) is the one that asserts the cleanup
+with `pgrep`.
 """
 from __future__ import annotations
 

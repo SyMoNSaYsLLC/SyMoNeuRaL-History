@@ -6,9 +6,18 @@ inherit core-image
 
 IMAGE_FEATURES += "ssh-server-openssh package-management"
 # package-management is in the list on purpose and is the point of the whole exercise:
-# with it, and with the flat apt repository scripts/build-apt-repo.sh publishes, a target
-# built from this image upgrades with `apt update && apt upgrade` exactly as the reference
-# workstation does. Without it, every update is a reflash.
+# it puts apt on the target, which makes the target *capable* of `apt update && apt
+# upgrade` the moment a repository it can actually reach is configured. That reachable
+# repository is the missing half and is not in this tree: the flat repository
+# scripts/build-apt-repo.sh publishes is `deb [trusted=yes] file:///home/google/symoneural-apt ./`,
+# a build-host path no target can see, and the script's own closing paragraph says the
+# trusted=yes argument does not survive the repository being served over a network --
+# reaching a target takes both serving that directory over the network and `--sign`,
+# and no script here does either yet. An earlier version of this comment promised
+# upgrades "exactly as the reference workstation does"; that is true only on the
+# workstation, the one machine where that file:// path exists. So today every update of
+# a deployed target is a reflash. Without package-management it would be a reflash with
+# no other path ever possible.
 
 IMAGE_INSTALL:append = " \
     packagegroup-symoneural-serving \
