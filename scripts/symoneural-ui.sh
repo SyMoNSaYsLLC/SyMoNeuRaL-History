@@ -105,14 +105,18 @@ case "${1:-status}" in
     rm -f "$PIDFILE"
     # The process exiting is not the memory coming back: SIGTERM returns the process before the
     # driver returns the device allocation, and the next tenant OOMs at step 0. The loop above
-    # waited for the pid; this waits for the card, against the governor's own floor
-    # (DRAIN_FLOOR_MIB=1500 for DRAIN_TIMEOUT_S=60, gpu-governor.sh:41-42) so there is one
-    # definition of "drained" in this repo rather than two. `drain` takes no argument and
-    # returns 1 on timeout, so its exit status is the whole check.
-    if "$ROOT/scripts/gpu-governor.sh" drain; then
+    # waited for the pid; this waits for the memory, against the governor's own floor so there
+    # is one definition of "drained" in this repo rather than two.
+    #
+    # Scoped to this process, and that argument is load-bearing. The bare form asks whether the
+    # whole card is clear of CUDA contexts, which is the right question for an eviction handoff
+    # and the wrong one here: chat is often legitimately warm at ~8.1 GiB, and stopping the
+    # render UI would then report `drain FAILED` about a card behaving exactly as intended.
+    # What this needs to know is narrower -- did OUR server's ~12 GB come back.
+    if "$ROOT/scripts/gpu-governor.sh" drain "$COMFY/main.py"; then
       echo "symoneural-ui stopped"
     else
-      echo "symoneural-ui stopped, but the card did not drain -- see gpu-governor.sh status" >&2
+      echo "symoneural-ui stopped, but its VRAM did not come back -- see gpu-governor.sh status" >&2
       exit 1
     fi
     ;;

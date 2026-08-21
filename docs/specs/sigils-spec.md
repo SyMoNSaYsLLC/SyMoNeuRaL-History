@@ -209,7 +209,9 @@ tenant sharing the card mid-render is exactly the failure the governor exists to
 its floor is a *drain* check between tenants, not an allocator.
 
 **Sequential, after `sd-cli` exits — rejected on wall-clock.** It means a second governor
-acquire: `scripts/gpu-governor.sh` polls at 1 s intervals for VRAM below `DRAIN_FLOOR_MIB=1500`
+acquire: `scripts/gpu-governor.sh` polls at 1 s intervals for compute-context VRAM below
+`DRAIN_FLOOR_MIB=1024` (it was 1500 against a whole-card reading until R-171; see
+`.claude/HANDOVER.md` §0a-sexies)
 with `DRAIN_TIMEOUT_S=60` and `ACQUIRE_TIMEOUT_S=300`. So the sticker path would add a second
 drain wait — measured in seconds, bounded at 60 — to an 11.2 s render, to accelerate a step
 whose CPU version is projected at ~1 s. That is a straight loss, and it makes the surface a

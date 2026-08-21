@@ -26,9 +26,10 @@ lying to every client that actually works.
 
 ## Offline means "admit nothing new". It never means "kill the holder"
 
-`.claude/CLAUDE.md` again: *"The governor waits for VRAM to drain below a 1.5 GB floor
-between tenants. Killing a process returns the lock before CUDA has torn down, and the next
-tenant OOMs at step 0."* And: *"`train` is never evicted to serve a page view."*
+`.claude/CLAUDE.md` again: *"Killing a process returns the lock before CUDA has torn down, and
+the next tenant OOMs at step 0."* (The same paragraph used to say "a 1.5 GB floor" and was
+quoted here as such; the floor is now 1024 MiB against a compute-only reading, R-171. The
+sentence this module depends on is the one about killing, which is unchanged.) And: *"`train` is never evicted to serve a page view."*
 
 So a job already running finishes. A fine-tune mid-epoch is not interrupted by an operator
 tidying the rack, and nothing here sends a signal to anything or touches `gpu.lock.d`. The

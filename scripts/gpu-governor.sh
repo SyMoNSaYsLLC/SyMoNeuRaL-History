@@ -19,6 +19,7 @@
 #   gpu-governor.sh release                       give it back, wait for drain
 #   gpu-governor.sh status                        who holds it, how much is free
 #   gpu-governor.sh with <surface> -- cmd...      acquire, run, always release
+#   gpu-governor.sh drain [proc-substring]        wait for device memory to come back
 set -uo pipefail
 
 # Repo root is one level up now that this lives in scripts/. This calculation has
@@ -41,18 +42,86 @@ HERE="$ROOT"
 RUN="$ROOT/run"
 LOCKDIR="$RUN/gpu.lock.d"
 HOLDER="$LOCKDIR/holder"
-LOG="$RUN/governor.log"
+# Overridable only so a test can run this script for real without writing fake readings
+# into the runtime log. R-171 was diagnosed out of this file, and a synthetic
+# "drain FAILED: still 9772 MiB" line sitting in it would be a trap laid for the next
+# diagnosis. Nothing in service sets it.
+LOG="${SYMONEURAL_GOVERNOR_LOG:-$RUN/governor.log}"
 
-# Idle on this box measures ~988 MiB. Under this floor means the previous
-# tenant has genuinely let go rather than merely exited.
-DRAIN_FLOOR_MIB=1500
-DRAIN_TIMEOUT_S=60
+# What "drained" means, and why it is not a reading of the whole card.
+#
+# This floor was 1500 MiB against `--query-gpu=memory.used`, and that reading counts
+# EVERY context on the device, graphics included. This box runs its KDE session on the
+# same card -- Xorg ~530, kwin ~200, plasmashell ~115, Chrome, OBS, a dozen KDE services;
+# 1336-1432 MiB measured with nothing of ours resident. So the floor left 68-164 MiB of
+# headroom for the question it was actually asking, and 222 MiB of merely-*resident*
+# ComfyUI spent it: drain failed for 60 s, `acquire chat` lost, and /api/chat answered 500
+# to every visitor including a real one from 96.37.45.61 at 14:58 on 2026-08-21. Raising
+# the number only moves the coin flip -- the reading was measuring the wrong thing.
+# R-171; .claude/HANDOVER.md §0a-sexies has the trace.
+#
+# `--query-compute-apps` reports only CUDA contexts, which is exactly the set of things
+# that can hold weights: our llama.cpp, sd.cpp and torch tenants are all C processes, and
+# every desktop process is G and so invisible to it -- including OBS, which appears as a
+# 49 MiB graphics context while its NVENC session runs. Measured here: compute 8340 MiB
+# (llama-server alone) against 9772 card-wide, so the graphics baseline is 1432 MiB and
+# none of it is ours to wait for.
+#
+# The floor is therefore small, and deliberately not zero: a CUDA context with no weights in
+# it is not a tenant, and three of those are measured on this box. It is set from the largest
+# of them plus headroom, not from a round number:
+#
+#   666 MiB   ComfyUI resident with its weights unloaded -- the state `POST /free` produces,
+#             and the reading `apps/studio/comfy.py` waits for. .claude/HANDOVER.md §1559 has
+#             the curve: 666 idle -> 13,114 peak -> 666 again, with 238 MiB being the card
+#             after the *process* exits. A floor under this would call a correctly-freed
+#             render engine an un-drained tenant, which is the old bug in a new unit.
+#   375 MiB   OBS's NVENC session while streaming (backend/apps/live/SMOKE.md).
+#   222 MiB   Garrett's own ComfyUI out of references/, holding a context and nothing else.
+#
+# 1024 MiB clears the largest single one with room, clears the two likeliest pairs, and is an
+# order of magnitude below the smallest real tenant (~5 GB, chat). It does NOT clear all three
+# at once (1263 MiB), which is deliberate: a card carrying three live CUDA contexts is a card
+# where waiting is the right answer.
+DRAIN_FLOOR_MIB=1024
+# Used ONLY when the compute query cannot be read -- see drain(). Keeping the old value
+# here rather than deleting it is the point: the whole-card reading needs a whole-card
+# floor, and the two numbers are not interchangeable.
+DRAIN_FLOOR_CARDWIDE_MIB=1500
+# Overridable for the same reason as LOG: the failure path polls for the whole timeout, and
+# two of those in a test suite is two minutes. Nothing in service sets it.
+DRAIN_TIMEOUT_S="${SYMONEURAL_DRAIN_TIMEOUT_S:-60}"
 ACQUIRE_TIMEOUT_S=300
 
 mkdir -p "$RUN"
 
 vram_used() { nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' '; }
 vram_free() { nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' '; }
+
+# Device memory held by CUDA contexts, summed across them.
+#
+# Prints a number and returns 0 on success; prints nothing and returns 1 when the query
+# cannot be read. That distinction is the whole reason this is a function: an *empty*
+# result is a legitimate reading -- it is what "nothing holds a context" looks like -- and
+# must read as 0, while a query that failed must NOT, or an unreadable card silently reads
+# as an empty one and gets handed to the next tenant on no evidence.
+#
+# Summed, not `head -1`: two contexts of 400 and 12000 MiB would otherwise read as 400.
+#
+# With an argument, sums only contexts whose process path contains that substring. That is
+# a different question -- "has THIS process let go" rather than "is the card clear of
+# compute" -- and both are asked here; see drain().
+vram_compute_used() {
+  local pat="${1:-}" out sum
+  out="$(nvidia-smi --query-compute-apps=process_name,used_memory --format=csv,noheader,nounits 2>/dev/null)" || return 1
+  sum="$(awk -v pat="$pat" -F',' '
+        {line=$0; gsub(/[ \t\r]/,"",$NF)
+         if (line=="") next
+         if (pat != "" && index(line, pat) == 0) next
+         if ($NF !~ /^[0-9]+$/){bad=1} else {t+=$NF}}
+        END{if(bad) exit 1; print t+0}' <<<"$out")" || return 1
+  printf '%s\n' "$sum"
+}
 log() { printf '%s  %-8s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" | tee -a "$LOG" >&2; }
 
 held_surface() { cut -d' ' -f1 "$HOLDER" 2>/dev/null || true; }
@@ -71,16 +140,42 @@ break_if_stale() {
 }
 
 # Wait for the driver to actually give device memory back.
+#
+# Both figures go in the log, labelled, on every outcome. A single number here is what made
+# R-171 cost an afternoon: `drain FAILED: still 1558 MiB` is indistinguishable from a tenant
+# that will not let go unless you already know the desktop is on this card.
+# With a process-path substring, waits only on THAT process's contexts. The two forms
+# answer different questions and both are needed:
+#
+#   drain              is the card clear of compute -- the eviction handoff, where the
+#                      incoming tenant is about to allocate 5-13 GB and a foreign context
+#                      (Garrett's desktop ComfyUI, anything out of references/) would OOM
+#                      it. Nothing is ignored, because nothing here is safe to ignore.
+#   drain <substring>  has this process let go -- what `symoneural-ui.sh stop` asks after
+#                      SIGTERM. Aggregate is the wrong reading there: with chat legitimately
+#                      warm at 8.1 GiB it logs `drain FAILED` about a card that is doing
+#                      exactly what it should, which is the misleading-log failure this
+#                      whole change is about.
 drain() {
-  local waited=0 used
+  local pat="${1:-}" waited=0 used compute floor scope said_fallback=0
   while :; do
     used="$(vram_used)"; used="${used:-0}"
-    if [ "$used" -lt "$DRAIN_FLOOR_MIB" ]; then
-      log drain "settled at ${used} MiB after ${waited}s (floor ${DRAIN_FLOOR_MIB} MiB)"
+    if compute="$(vram_compute_used "$pat")"; then
+      scope="compute${pat:+ for '$pat'}"; floor="$DRAIN_FLOOR_MIB"
+    else
+      # Fail open, and say so. Failing closed would wedge the card on a driver hiccup;
+      # failing open in silence would hand it over having measured nothing.
+      [ "$said_fallback" -eq 0 ] && log drain \
+        "compute query unreadable -- falling back to the card-wide reading and its ${DRAIN_FLOOR_CARDWIDE_MIB} MiB floor"
+      said_fallback=1
+      compute="$used"; scope="card-wide"; floor="$DRAIN_FLOOR_CARDWIDE_MIB"
+    fi
+    if [ "$compute" -lt "$floor" ]; then
+      log drain "settled at ${compute} MiB ${scope} after ${waited}s (floor ${floor} MiB; card ${used} MiB incl. desktop)"
       return 0
     fi
     if [ "$waited" -ge "$DRAIN_TIMEOUT_S" ]; then
-      log drain "FAILED: still ${used} MiB after ${waited}s -- refusing to hand over"
+      log drain "FAILED: still ${compute} MiB ${scope} after ${waited}s (card ${used} MiB) -- refusing to hand over"
       return 1
     fi
     sleep 1; waited=$((waited + 1))
@@ -210,7 +305,7 @@ cmd_release() {
 }
 
 cmd_status() {
-  local surface; surface="$(held_surface)"
+  local surface compute; surface="$(held_surface)"
   echo "resident surface   $(cat "$RUN/resident" 2>/dev/null || echo none)"
   # Not a ${x:+..}${x:-..} pair: when x is set, the second form expands to x rather than
   # to the default, so a held lock printed "HELD by train (pid N)train".
@@ -219,7 +314,16 @@ cmd_status() {
   else
     echo "lock               free"
   fi
-  echo "vram used          $(vram_used) MiB"
+  echo "vram used          $(vram_used) MiB  (whole card, desktop included)"
+  # The split, because it is the reading `drain` acts on and because seeing the two numbers
+  # side by side is what turned R-171 from a mystery into a one-line diagnosis. A card
+  # reading 1558 MiB with 222 MiB of compute is an idle card; the same 1558 with 1400 of
+  # compute is a tenant that has not let go.
+  if compute="$(vram_compute_used)"; then
+    echo "  of which compute $compute MiB  (CUDA contexts -- what drain waits on, floor ${DRAIN_FLOOR_MIB} MiB)"
+  else
+    echo "  of which compute unreadable  (drain falls back to the card-wide ${DRAIN_FLOOR_CARDWIDE_MIB} MiB floor)"
+  fi
   echo "vram free          $(vram_free) MiB"
 }
 
@@ -242,6 +346,6 @@ case "${1:-status}" in
   release) shift; cmd_release "$@" ;;
   status)  shift; cmd_status  "$@" ;;
   with)    shift; cmd_with    "$@" ;;
-  drain)   drain ;;
-  *) echo "usage: $(basename "$0") {acquire|release|status|with|drain}" >&2; exit 2 ;;
+  drain)   shift; drain "$@" ;;
+  *) echo "usage: $(basename "$0") {acquire|release|status|with|drain [proc-substring]}" >&2; exit 2 ;;
 esac

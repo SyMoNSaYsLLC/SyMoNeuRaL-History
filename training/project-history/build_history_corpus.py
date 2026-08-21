@@ -359,7 +359,7 @@ q("governor",
 
 q("governor",
   "Why does the governor wait between tenants?",
-  "It waits for VRAM to drain below a 1.5 GB floor. Killing a process returns the lock before "
+  "It waits for CUDA-context VRAM to drain below a 1 GB floor. Killing a process returns the lock before "
   "CUDA has torn down, and the next tenant then OOMs at step 0.")
 
 q("governor",

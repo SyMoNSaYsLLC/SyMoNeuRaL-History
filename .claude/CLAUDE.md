@@ -209,7 +209,13 @@ One RTX 5070 Ti, 15.92 GiB. Chat (~5 GB), image (~7 GB) and a QLoRA run (~12 GB)
   idle locks every other process out — including the CLI — until the acquire timeout.
 - **Never call a bare `release`.** Name the surface (`release chat`). An unscoped release once
   destroyed a running fine-tune's lock from the API's shutdown hook.
-- The governor waits for VRAM to drain below a 1.5 GB floor between tenants. Killing a process
+- The governor waits between tenants for **compute** memory to drain below a 1 GB floor —
+  `--query-compute-apps`, not `--query-gpu=memory.used`. The whole-card reading counts this
+  box's KDE session (1336–1432 MiB, all of it `G` contexts), so a card-wide floor measured the
+  desktop and `/api/chat` answered 500 to every visitor for an afternoon; R-171. `drain` takes
+  an optional process substring — bare asks *is the card clear* (the eviction handoff, where a
+  foreign context would OOM the incoming tenant), scoped asks *did this process let go*.
+  `gpu-governor.sh status` prints both figures. Killing a process
   returns the lock before CUDA has torn down, and the next tenant OOMs at step 0.
 - `train` is never evicted to serve a page view.
 - RavenCalc (SymPy, CPU) deliberately never takes the lock. That is what lets it speculatively
@@ -584,8 +590,11 @@ verified by a real CUDA probe, 223 packages), and the suite had simply never bee
 **Stop the render UI with `scripts/symoneural-ui.sh stop`, never by killing the pid.** The script POSTs
 `/free` and then waits on `gpu-governor.sh drain` — the process exiting is not the memory coming
 back, and the next tenant OOMs at step 0. Measured here: a render peaks at **13,114 MiB of
-16,303** and returns to 666 MiB in **4.1 s**, against the governor's 60 s timeout and 1500 MiB
-floor. `symoneural-ui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
+16,303** and returns to 666 MiB in **4.1 s**, against the governor's 60 s timeout. That 666 MiB
+is a live ComfyUI holding no weights, and it is the reason `DRAIN_FLOOR_MIB` is 1024 and not
+lower: the floor has to sit above a correctly-freed engine's own idle context.
+
+`symoneural-ui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
 is taken per render and released after the drain, which is the rule above applied.
 
 **`tests/streamer_guide.mjs` is the fifth suite, and it was dead for a fortnight because

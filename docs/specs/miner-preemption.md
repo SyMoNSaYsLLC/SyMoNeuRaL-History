@@ -71,7 +71,7 @@ of them is worse than no yield protocol, because each one exists because of an i
    otherwise.
 2. **Nothing kills a tenant to take the card.** Killing returns the lock before the CUDA
    context has torn down, and the next tenant OOMs at step 0. That is what `drain()` and its
-   `DRAIN_FLOOR_MIB=1500` floor exist for. A yield ends with the holder **exiting on its own**
+   `DRAIN_FLOOR_MIB` floor exist for. A yield ends with the holder **exiting on its own**
    and the drain wait doing its job unchanged.
 3. **A release names its surface.** `cmd_release` refuses a mismatched claimant against a live
    holder, because an unscoped release once destroyed a running fine-tune's lock from the
@@ -161,7 +161,7 @@ design.
 **It does not work here, and the reason is VRAM rather than politeness.** A paused miner is
 still a resident process with its DAG allocated — measured during run 3 on 2026-08-17,
 `nvidia-smi --query-compute-apps` reported the kawpowminer process holding **1808 MiB** while
-hashing. The governor's `drain()` waits for total usage to fall below **1500 MiB** before
+hashing. The governor's `drain()` waits for CUDA-context usage to fall below **1024 MiB** before
 handing the card over, precisely so the next tenant does not allocate on top of a
 half-released context. A paused miner never gets under that floor, so either the arriving
 surface waits forever or somebody lowers the floor — and the floor is what stops the

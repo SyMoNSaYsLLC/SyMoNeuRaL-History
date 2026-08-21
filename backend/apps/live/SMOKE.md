@@ -71,8 +71,19 @@ ever deletes a recording.
     whole card          1685-1817 MiB of 16,303 used, desktop included
 
 `scripts/gpu-governor.sh` read `lock free` throughout. That is the documented blind spot, now
-observed rather than predicted: OBS holds its own NVENC session, the governor cannot see it,
-cannot evict it, and does not count those ~375 MiB against its 1500 MiB drain floor.
+observed rather than predicted: OBS holds its own NVENC session, the governor cannot see it and
+cannot evict it.
+
+**Correction, 2026-08-21.** The sentence above ended *"and does not count those ~375 MiB against
+its 1500 MiB drain floor"*, and that half was wrong when it was written. The floor was compared
+against `--query-gpu=memory.used`, which counts **every** context on the device including
+graphics — so those MiB were counted, and were part of what took `/api/chat` down for an
+afternoon (R-171, `.claude/HANDOVER.md` §0a-sexies). It is true now, and structurally rather
+than by luck: `drain` sums `--query-compute-apps`, and the process table on this box shows OBS
+as a `G` context at 49 MiB with no row in that query at all. The two readings in this record are
+therefore of different things and both are kept: 372–378 MiB was read from the full process
+table during the stream, and 49 MiB is what a compute-only query would have seen. Even taking
+the larger figure, the floor is 1024 MiB and clears it.
 
 ## NOT measured — do not publish a figure for either
 

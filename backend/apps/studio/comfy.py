@@ -79,9 +79,11 @@ DEFAULT_PORT = 8188
 # execution_success hangs forever on a graph that raised.
 TERMINAL = frozenset({"execution_success", "execution_error", "execution_interrupted"})
 
-# The governor's own floor, from scripts/gpu-governor.sh. Duplicated as a fallback only --
-# `_drain_floor()` reads the script so the two cannot drift silently.
-FALLBACK_DRAIN_FLOOR_MIB = 1500
+# Which process this waits on when it asks whether the card came back. A substring of the
+# path ComfyUI actually runs from, passed to `gpu-governor.sh drain <substring>`, so the
+# question is "has OUR server let go" and not "is the whole card empty" -- chat is often
+# legitimately warm at ~8.1 GiB and the second question would answer no about a healthy box.
+COMFY_PROC = "engines/symoneural-ui/main.py"
 
 
 def base_url() -> str:
@@ -129,15 +131,13 @@ def _governor() -> str:
     return str(g)
 
 
-def _drain_floor() -> int:
-    """Read DRAIN_FLOOR_MIB out of the governor rather than hard-coding a second copy."""
-    try:
-        for line in open(_governor(), encoding="utf-8"):
-            if line.startswith("DRAIN_FLOOR_MIB="):
-                return int(line.split("=", 1)[1].split()[0])
-    except (OSError, ValueError, GovernorError):
-        pass
-    return FALLBACK_DRAIN_FLOOR_MIB
+# `_drain_floor()` used to live here: it read `DRAIN_FLOOR_MIB` out of the shell script and
+# this module ran its own poll of `nvidia-smi --query-gpu=memory.used` against it. Reading the
+# number across was the right instinct and the wrong unit of sharing -- the *reading* is the
+# part that was wrong, not the threshold, and copying the threshold copied the bug with it.
+# `drain` counted the KDE desktop as a tenant (R-171), so this poll did too, and the same fix
+# had to land in two places or `drained: false` would appear in a record on a card that had
+# come back. The governor is now called instead, so there is one implementation and one floor.
 
 
 async def _run(*argv: str, timeout: float = 330) -> tuple[int, str, str]:
@@ -181,9 +181,10 @@ async def lease(surface: str = "comfy", *, timeout: int = 300, free_after: bool 
         acquire comfy -> run the job -> POST /free -> wait for the driver -> release comfy
 
     **`/free` sets a queue flag, it does not free synchronously.** So the wait below is a
-    real poll of `nvidia-smi` against the governor's own `DRAIN_FLOOR_MIB`, and if the card
-    has not come back in time this yields `drained: False` in the record rather than
-    pretending. The caller decides whether to escalate to stopping the process; this does not
+    real one -- `gpu-governor.sh drain`, scoped to ComfyUI's own process, so there is one
+    definition of "drained" in this repo and not a second copy here that has to be fixed
+    twice. If the memory has not come back in time this yields `drained: False` in the record
+    rather than pretending. The caller decides whether to escalate to stopping the process; this does not
     kill anything it did not start.
     """
     gov = _governor()
@@ -209,19 +210,22 @@ async def lease(surface: str = "comfy", *, timeout: int = 300, free_after: bool 
                 record["freed"] = False
                 record["free_error"] = f"{type(e).__name__}: {e}"
 
-            floor = _drain_floor()
+            # The governor owns the definition of "drained". Its exit status is the verdict
+            # and its own log line carries the reading it acted on; the figure recorded here
+            # is the whole card, which is the honest thing to report to a caller and is NOT
+            # what the verdict was reached on -- most of it is the KDE session.
             started = time.monotonic()
-            deadline = started + 60
-            while time.monotonic() < deadline:
-                used = await _vram_used_mib()
-                record["vram_after_mib"] = used
-                if used is None or used < floor:
-                    record["drained"] = True
-                    break
-                await asyncio.sleep(1)
-            else:
+            try:
+                rc, out, err = await _run("bash", _governor(), "drain", COMFY_PROC,
+                                          timeout=90)
+                record["drained"] = rc == 0
+                if rc != 0:
+                    record["drain_error"] = (err or out).strip()[-400:]
+            except (GovernorError, OSError) as e:
                 record["drained"] = False
+                record["drain_error"] = f"{type(e).__name__}: {e}"
             record["drain_wait_s"] = round(time.monotonic() - started, 1)
+            record["vram_after_mib"] = await _vram_used_mib()
 
         rc, out, err = await _run("bash", gov, "release", surface, timeout=90)
         record["released"] = rc == 0
