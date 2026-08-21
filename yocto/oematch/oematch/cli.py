@@ -66,30 +66,33 @@ def cmd_upstream(a):
         else [(None, u) for u in a.urls]
 
     if a.json:
-        print(json.dumps([{"url": u, "expected_group": g,
-                           "matches": upstream.resolve(con, u, a.top)}
+        print(json.dumps([dict(url=u, expected_group=g, **upstream.resolve(con, u, a.top))
                           for g, u in rows], indent=2))
         return
 
     ok = wrong = none = 0
     for expect, url in rows:
         res = upstream.resolve(con, url, a.top)
+        hits, appends = res["matches"], res["appends"]
         print(f"\n# {url}" + (f"   [expected: {expect}]" if expect else ""))
-        if not res:
+        for r in hits:
+            mark = "*" if r["exact_pn"] else " "
+            print(f"  {mark} {r['pn']:26s} {r['pv']:14s} {r['layer']:22s} "
+                  f"{r['recipe_license'] or '-':20s} {r['why']}")
+        for ap in appends:
+            print(f"  + {ap['pn']:26s} {'(append)':14s} {ap['layer']:22s} "
+                  f"{'':20s} {ap['filepath']}")
+        if not hits and not appends:
             print("    no layer carries this project")
             none += 1
             continue
-        for r in res:
-            mark = "*" if r["exact_pn"] else " "
-            print(f"  {mark} {r['pn']:26s} {r['pv'][:10]:10s} {r['layer']:22s} "
-                  f"{r['recipe_license'] or '-':18s} {r['why']}")
         if expect is not None:
             want = upstream.GROUP_LAYERS.get(expect, {expect})
-            if any(r["layer"] in want for r in res):
+            if any(r["layer"] in want for r in hits) or any(a2["layer"] in want for a2 in appends):
                 ok += 1
             else:
                 wrong += 1
-                print(f"    ^ expected a recipe in {expect}, none of the above is")
+                print(f"    ^ expected {expect}, and nothing above is in it")
     if rows and rows[0][0] is not None:
         print(f"\n{ok} in the expected group, {wrong} resolved elsewhere, "
               f"{none} unresolved, of {len(rows)}")

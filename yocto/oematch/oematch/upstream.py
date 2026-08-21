@@ -21,8 +21,18 @@ the RELEASE address, not the development mirror.
 Not one of those mentions github.com, so no amount of URL comparison finds them from a
 github.com URL. What survives across both addresses is the PROJECT NAME, which is why
 this module derives candidate names from the URL and matches those against PN and
-PROVIDES. The URL comparison is kept and ranked ABOVE the name match, because when a
-recipe does cite the same address that is the stronger evidence.
+PROVIDES.
+
+## Why an exact name beats a URL cite
+
+The URL comparison is kept, but it is ranked BELOW an exact PN match, which is the
+reverse of what it looks like it should be. The three wrong answers above are all URL
+cites and they have one shape in common: each names a DIFFERENT recipe built from the
+same repository. `lemon` is SQLite's parser generator and its SRC_URI is genuinely
+`github.com/sqlite/sqlite`; `libcurl-vendor` is a ROS layer vendoring curl;
+`omxplayer` bundles FFmpeg. Every one of those citations is honest, and none of them is
+the project asked about. A recipe whose PN *is* the project name cannot make that
+mistake, so exact-PN outranks a URL cite and a row carrying both is ranked above either.
 """
 import re
 from urllib.parse import urlparse
@@ -45,6 +55,8 @@ PROJECT_ALIASES = {
     "sdl": ("libsdl2", "libsdl"),               # OE prefixes the library, upstream does not
     "webkit": ("webkitgtk", "webkitgtk3"),      # OE ships the GTK port, not the umbrella
     "mongo": ("mongodb",),
+    "sqlite": ("sqlite3",),                     # OE carries the major version in the PN
+    "log4j2": ("log4j1.2", "log4j"),            # the corpus carries log4j1.2 in meta-java
     "postgres": ("postgresql",),
     "node": ("nodejs",),
     "linux": ("linux-yocto",),                  # there is no recipe called plain `linux`
@@ -104,7 +116,11 @@ def project_names(url):
 
 
 def resolve(con, url, limit=8):
-    """Rank recipes that plausibly carry `url`. Returns a list of dicts, best first.
+    """Rank recipes that plausibly carry `url`.
+
+    Returns {"matches": [...], "appends": [...]} -- the second is layers that APPEND to
+    the recipe rather than provide it, which is a different answer and is reported as
+    one instead of being folded in or dropped.
 
     Evidence is ranked, not summed, because these are alternative identifications of one
     project rather than accumulating signals about a binary: a recipe citing the same
@@ -115,38 +131,79 @@ def resolve(con, url, limit=8):
         "SELECT id, name, license FROM layers")}
     names = project_names(url)
     primary = names[0] if names else None
+    nameset = {n: i for i, n in enumerate(names)}
 
-    ranked = {}
+    # Evidence is collected per recipe and ranked afterwards, rather than each finder
+    # asserting a score as it goes. A recipe that BOTH cites the URL and is named after
+    # the project is the least ambiguous answer there is, and only a collector can see
+    # that both fired.
+    ev = {}
 
-    def offer(rid, rank, why):
-        if rid not in ranked or ranked[rid][0] < rank:
-            ranked[rid] = (rank, why)
+    def offer(rid, why):
+        ev.setdefault(rid, []).append(why)
 
     for rid in m._by_homepage(url):
-        offer(rid, 10, f"url:{url}")
-    for i, n in enumerate(names):
+        offer(rid, "url")
+    for n in names:
         for rid in m._by_pn(n):
-            offer(rid, 8 if n == primary else 6, f"name:{n}" + ("" if n == primary else " (variant)"))
+            offer(rid, f"name:{n}")
 
-    if not ranked:
-        return []
+    # Appends are a separate answer, not a weaker one. meta-clang carries no recipes at
+    # all -- it adds clang support to recipes other layers provide -- so the only true
+    # answer for it is "this layer appends that recipe", and a tool that only looks at
+    # .bb files can never give it.
+    appends = []
+    if names:
+        q = ",".join("?" * len(names))
+        for r in con.execute(
+                f"SELECT pn, layer_id, filepath FROM recipes WHERE kind='bbappend' "
+                f"AND lower(pn) IN ({q})", [n.lower() for n in names]):
+            appends.append({"pn": r["pn"], "layer": layers.get(r["layer_id"], ("?", ""))[0],
+                            "filepath": r["filepath"]})
 
-    ids = list(ranked)
+    if not ev:
+        return {"matches": [], "appends": appends}
+
+    ids = list(ev)
     rows = con.execute(
-        f"SELECT id, pn, pv, license, layer_id FROM recipes WHERE id IN ({','.join('?' * len(ids))})",
-        ids).fetchall()
+        f"SELECT id, pn, pv, license, layer_id, filepath FROM recipes "
+        f"WHERE id IN ({','.join('?' * len(ids))})", ids).fetchall()
     out = []
     for r in rows:
-        rank, why = ranked[r["id"]]
+        pn = r["pn"].lower()
         lname, llic = layers.get(r["layer_id"], ("?", ""))
-        # An exact PN match is the answer people mean; surface it above a recipe that
-        # merely PROVIDES the name or wraps it (`libcurl-vendor`, `rpidistro-ffmpeg`).
-        exact = r["pn"].lower() == primary
+        why = list(ev[r["id"]])
+        cited = "url" in why
+        # Exact against ANY candidate, not just the primary. `sqlite3` is the OE name for
+        # `sqlite` and is exactly as much the project as a primary hit would be; scoring
+        # it as a variant is what let `lemon` -- a real URL cite -- outrank it.
+        idx = nameset.get(pn)
+        if idx is None:
+            rank = 10 if cited else 8          # provides/FTS, or a URL cite by another name
+        elif idx == 0:
+            rank = 14 if cited else 12
+        else:
+            rank = 13 if cited else 11
+        exact = idx is not None
+        if cited:
+            why = ["url:" + url] + [w for w in why if w != "url"]
+        elif exact and idx:
+            why = [w + " (OE name)" if w == f"name:{pn}" else w for w in why]
         out.append({"pn": r["pn"], "pv": r["pv"], "recipe_license": r["license"],
                     "layer": lname, "layer_license": llic,
-                    "rank": rank + (2 if exact else 0), "why": why, "exact_pn": exact})
-    out.sort(key=lambda d: (-d["rank"], d["layer"] != "openembedded-core", d["pn"]))
-    return out[:limit]
+                    "rank": rank, "why": ", ".join(why), "exact_pn": exact})
+
+    # One row per (pn, layer). Without this, a layer carrying several versions of one
+    # recipe fills the whole result: meta-igep has linux 3.2, 3.10 and 3.17, and three
+    # rows for one recipe pushed `linux-yocto` out of the top of the list entirely.
+    best = {}
+    for d in out:
+        k = (d["pn"].lower(), d["layer"])
+        if k not in best or d["rank"] > best[k]["rank"]:
+            best[k] = d
+    out = sorted(best.values(),
+                 key=lambda d: (-d["rank"], d["layer"] != "openembedded-core", d["pn"]))
+    return {"matches": out[:limit], "appends": appends[:limit]}
 
 
 # ---------------------------------------------------------------------------------------

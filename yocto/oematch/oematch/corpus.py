@@ -299,12 +299,23 @@ def index_layer(con, name, layer_dir: Path, vcs_url="", branch="", subdir="", de
     lid = db.upsert_layer(con, name, vcs_url, branch, subdir, lic, description, str(layer_dir))
     db.clear_layer_recipes(con, lid)
     n = 0
-    for bb in layer_dir.rglob("*.bb"):
+    # `.bbappend` too. Indexing only `.bb` made meta-clang -- which carries 0 recipes and
+    # 20 appends -- index as an empty layer, so the tool could never answer "which layer
+    # adds clang support to ffmpeg", which is the entire reason that layer exists. They
+    # are stored with kind='bbappend' and never mixed into recipe lookups: an append does
+    # not PROVIDE ffmpeg, it modifies the recipe that does.
+    for bb in sorted(layer_dir.rglob("*.bb")) + sorted(layer_dir.rglob("*.bbappend")):
         try:
             r = parse_bb(bb, layer_dir)
         except Exception as e:  # noqa
             print(f"  ! {bb}: {e}", file=sys.stderr)
             continue
+        r["kind"] = "bbappend" if bb.suffix == ".bbappend" else "bb"
+        if r["kind"] == "bbappend":
+            # `ffmpeg_%.bbappend` -> pn ffmpeg, and the `%` is a version WILDCARD, not a
+            # version. Recording it as a PV would put a literal `%` in the output.
+            if "%" in r["pv"] or "${" in r["pv"]:
+                r["pv"] = ""
         r["filepath"] = str(bb.relative_to(layer_dir))
         db.insert_recipe(con, lid, r)
         n += 1

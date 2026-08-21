@@ -85,7 +85,7 @@ class Matcher:
         self.evidence[recipe_id].append(why)
 
     def _by_pn(self, name):
-        rows = self.con.execute("SELECT id FROM recipes WHERE pn=? COLLATE NOCASE", (name,)).fetchall()
+        rows = self.con.execute("SELECT id FROM recipes WHERE kind='bb' AND pn=? COLLATE NOCASE", (name,)).fetchall()
         if not rows and len(name) >= FTS_MIN_TERM:
             # The fallback is here to catch a name that is a PROVIDES/RPROVIDES rather than
             # a PN -- `virtual/egl` is provided by mesa, not named it. It is a TOKEN match,
@@ -95,7 +95,8 @@ class Matcher:
             # than down-weighted: there is no length at which `c` legitimately identifies
             # `aws-c-auth`, so this is a wrong answer being removed, not a ranking tweak.
             rows = self.con.execute(
-                "SELECT rowid AS id FROM recipes_fts WHERE provides MATCH ? OR rprovides MATCH ?",
+                "SELECT id FROM recipes WHERE kind='bb' AND id IN ("
+                "  SELECT rowid FROM recipes_fts WHERE provides MATCH ? OR rprovides MATCH ?)",
                 (_fts_escape(name), _fts_escape(name))).fetchall()
         return [r["id"] for r in rows]
 
@@ -104,7 +105,7 @@ class Matcher:
         if not u.netloc:
             return []
         key = (u.netloc + u.path).lower().rstrip("/")
-        rows = self.con.execute("SELECT id, homepage, src_uri FROM recipes WHERE homepage != '' OR src_uri != ''").fetchall()
+        rows = self.con.execute("SELECT id, homepage, src_uri FROM recipes WHERE kind='bb' AND (homepage != '' OR src_uri != '')").fetchall()
         out = []
         for r in rows:
             for cand in (r["homepage"], r["src_uri"]):
@@ -124,12 +125,15 @@ class Matcher:
         return out
 
     def _fts(self, terms, cap=3):
-        terms = [t for t in terms if len(t) >= 3][:50]
+        terms = [t for t in terms if len(t) >= FTS_MIN_TERM][:50]
         if not terms:
             return
         q = " OR ".join(_fts_escape(t) for t in terms)
         for r in self.con.execute(
-                "SELECT rowid AS id, bm25(recipes_fts) AS rank FROM recipes_fts WHERE recipes_fts MATCH ? ORDER BY rank LIMIT 200",
+                "SELECT rowid AS id, bm25(recipes_fts) AS rank FROM recipes_fts "
+                "WHERE recipes_fts MATCH ? "
+                "  AND rowid IN (SELECT id FROM recipes WHERE kind='bb') "
+                "ORDER BY rank LIMIT 200",
                 (q,)):
             self._hit(r["id"], min(cap, 1.0), "fts")
 
