@@ -1306,9 +1306,11 @@ export function apply(ctx: Context): void {
           type: 'boolean',
           description:
             'Refuse to submit when the local check finds problems, instead of submitting and ' +
-            'letting the server decide. Default false. Use it to avoid queueing GPU work on a ' +
-            'graph you already believe is broken, accepting that the local check is the ' +
-            'stricter of the two and can refuse a graph ComfyUI would have run.',
+            'letting the server decide. Default false, and leaving it false does NOT risk GPU ' +
+            'work on a broken graph: ComfyUI validates before it queues, so an invalid graph ' +
+            'costs one rejected HTTP round trip and nothing else. Set it true only if you want ' +
+            'the local verdict to be final, accepting that it is the stricter of the two and ' +
+            'can refuse a graph ComfyUI would have run.',
         },
         wait: {
           type: 'boolean',
@@ -1354,6 +1356,14 @@ export function apply(ctx: Context): void {
         // whose permitted values are read off disk — checkpoints, LoRAs, samplers — can be
         // stale against an engine that has just had a file dropped into `models/`. The graph is
         // fine, the cache is old, and the refusal would be ours.
+        //
+        // And submitting a suspect graph is cheap, which is what settles the default against
+        // this repo's "the GPU is a single, contended resource" rule.
+        // `references/ComfyUI/server.py:1124-1136` branches on `valid[0]` *before* it queues:
+        // the accepted arm calls `self.prompt_queue.put(...)` at `:1131`, the rejected arm
+        // returns `status=400` at `:1136` and never reaches the queue. So a graph the server
+        // dislikes costs one refused round trip, not a render — there is no GPU work to save by
+        // refusing locally, only a round trip, and that is not worth the false positives above.
         //
         // So: run it, attach it, submit anyway. Blocking is opt-in.
         let precheck: GraphVerdict | { unavailable: string } | undefined
@@ -1541,9 +1551,17 @@ export function apply(ctx: Context): void {
                 waiters.delete(wake)
               }
             })
-          } catch {
-            // Cancelled. Fall through and report whatever the buffer holds; the registry reads
-            // `exec.signal` itself and marks the call aborted.
+          } catch (error) {
+            // Cancelled. Rethrow rather than falling through with a partial buffer.
+            //
+            // The version of this comment that stood here said the registry reads `exec.signal`
+            // itself and marks the call aborted, so returning frames anyway was harmless. That
+            // is an assumption about the caller, and it is the same assumption that made the
+            // aborted-edit bug in `comfy_mutate_node` — a tool that answers a cancelled call
+            // hands back a result nobody waited for, and a poller reading `next_seq` out of it
+            // would advance its cursor past frames it never saw. Being read-only makes the
+            // damage smaller, not the answer honest.
+            throw error
           }
           batch = framesSince(since, limit, args.prompt_id)
         }
@@ -1569,6 +1587,12 @@ export function apply(ctx: Context): void {
           try {
             result['queue'] = await ctx.comfyui.http.queueState(exec.signal)
           } catch (error) {
+            // Cancellation first, for the same reason as everywhere else in this file: a catch
+            // that turns a failure into a *field* is a catch that answers a cancelled call.
+            // `queue_unavailable` means "the engine did not answer"; an abort means "you told
+            // me to stop", and reporting the second as the first would have a caller diagnosing
+            // an engine that was fine.
+            if (exec.signal.aborted) throw error
             // Reported as its own field rather than thrown: the buffered frames are still
             // valid and useful, and losing them because a second request failed would be a
             // worse answer than an annotated partial one.
