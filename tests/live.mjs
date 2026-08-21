@@ -170,6 +170,45 @@ const clipped = await p.evaluate(() => Array.from(document.querySelectorAll('*')
   .filter(el => getComputedStyle(el).textOverflow === 'ellipsis').length);
 rec('no element on this page clips its text with an ellipsis', clipped === 0, `${clipped} found`);
 
+// ---- the video is the first thing on the page, not the fourth -------------------------
+//
+// This page led with an eyebrow, a two-line h1 and a five-line lede until 2026-08-21, which
+// put the <video> at 552px on a 390x844 phone -- below the fold, so a visitor arriving at a
+// live stream had to scroll to discover it was live. Garrett: "you see how the video is down?
+// I want the video to be in 100% on loading".
+//
+// Asserted as a fraction of the element rather than as "top < innerHeight", because a video
+// whose first pixel row is on screen and whose remaining 200px are not satisfies that and is
+// not what was asked for. Measured after a RELOAD at that viewport, not after the layout loop
+// above resized into it: the ask is about what a phone shows on load, and a page that only
+// composes correctly once something has been scrolled or resized would pass the weaker form.
+await p.setViewportSize({ width: 390, height: 844 });
+await p.goto(`${BASE}/livestack/live`, { waitUntil: 'networkidle' });
+await p.waitForSelector('#lv-player:not([hidden])', { timeout: 15000 });
+await p.waitForTimeout(400);
+const fold = await p.evaluate(() => {
+  const r = document.getElementById('lv-video').getBoundingClientRect();
+  const shown = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+  return { top: Math.round(r.top), h: Math.round(r.height),
+           shown: Math.round(shown), scrolled: scrollY };
+});
+rec('the whole video is on screen on load at 390x844, with no scrolling',
+    fold.shown >= fold.h && fold.scrolled === 0,
+    `top ${fold.top}px, ${fold.shown}/${fold.h}px visible, scrollY ${fold.scrolled}`);
+
+// The full-bleed rule below 640px is what makes it worth looking at: inside the wrap the
+// video is 292px wide, which is a 164px-tall picture of a 1920x1080 desktop. This asserts
+// the rule is doing its job AND that it is not the source of a horizontal overflow, which
+// is the way `width:100vw` usually goes wrong.
+const bleed = await p.evaluate(() => {
+  const r = document.getElementById('lv-video').getBoundingClientRect();
+  return { w: Math.round(r.width), vw: innerWidth,
+           over: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+});
+rec('the player reaches both edges on a phone without overflowing the page',
+    bleed.w >= bleed.vw && bleed.over <= 0,
+    `video ${bleed.w}px in a ${bleed.vw}px viewport, overflow ${bleed.over}px`);
+
 rec('no uncaught JavaScript errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 await b.close();

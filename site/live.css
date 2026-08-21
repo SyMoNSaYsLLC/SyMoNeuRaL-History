@@ -183,3 +183,32 @@
   .lv-grid { grid-template-columns: repeat(2, 1fr) }
   .lv-vod { gap: 7px }
 }
+
+/* ---- full-bleed player on a phone --------------------------------------------------- */
+
+/* On a 390px viewport the wrap padding, the stage border and the mod body inset together
+ * take the video down to 292px wide -- a 164px-tall picture of a 1920x1080 desktop, which
+ * is legible only as "something is moving". Letting it reach both edges buys back 34% of
+ * its area at no cost to anything else on the page.
+ *
+ * `width:100vw` with `margin-left:calc(50% - 50vw)` rather than negative padding-sized
+ * margins: the padding it has to escape is set in three different rules (.wrap, .stage,
+ * .mod .body) and hard-coding their sum here would be a fourth copy of a number that moves.
+ * This form needs to know none of them.
+ *
+ * Gated at 640px BECAUSE 100vw includes the scrollbar gutter on a desktop and a phone has
+ * no persistent scrollbar. Above this width the same rule would push the page 8-17px wider
+ * than its own viewport, which is the horizontal overflow that tests/live.mjs asserts
+ * against at three viewports -- so it is deliberately not applied there.
+ *
+ * The border and radius go with it: a rounded corner against the screen edge reads as a
+ * rendering fault, not as a frame. */
+@media (max-width: 640px) {
+  .lv-player video {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+}

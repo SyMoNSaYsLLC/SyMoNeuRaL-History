@@ -33,15 +33,8 @@
   </div>
 </header>
 
-<div class="hero" style="padding:56px 0 26px">
-  <div class="wrap">
-    <p class="eyebrow">Live surface</p>
-    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">The stream, off the box that makes it.</h1>
-    <p class="lede" style="font-size:16.5px">OBS encodes on the RTX 5070 Ti described on the home page and writes HLS straight to this machine&rsquo;s disk. There is no media server in between and no re-encode: what you are watching is the file the encoder is still writing. When the stream ends, that same file is the recording.</p>
-  </div>
-</div>
 
-<section style="border-top:0;padding-top:0">
+<section style="border-top:0;padding-top:22px">
   <div class="wrap">
     <div class="pgwrap">
       <div class="stage">
@@ -125,6 +118,28 @@
     </div>
   </div>
 </section>
+
+<!-- The player leads the page, and the pitch follows it.
+
+     It was the other way round until 2026-08-21, when the page was read on a phone: the
+     eyebrow, a two-line h1 and a five-line lede came first, so the <video> started BELOW
+     the fold on a 390px viewport and a visitor arriving at a live stream had to scroll to
+     find out it was live. Garrett, on that screenshot: "you see how the video is down? I
+     want the video to be in 100% on loading".
+
+     Moved, not trimmed. `.claude/CLAUDE.md` bars closing a layout problem by dropping
+     content, and the same words are still on the page in the same markup -- they read
+     better after the thing they describe than before it. The one thing that must NOT be
+     done here is hiding the lede behind a <details>: it carries the honesty claim (no
+     media server, no re-encode, the file the encoder is still writing) and that argument
+     is the point of the surface, not decoration around it. -->
+<div class="hero" style="padding:56px 0 26px">
+  <div class="wrap">
+    <p class="eyebrow">Live surface</p>
+    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">The stream, off the box that makes it.</h1>
+    <p class="lede" style="font-size:16.5px">OBS encodes on the RTX 5070 Ti described on the home page and writes HLS straight to this machine&rsquo;s disk. There is no media server in between and no re-encode: what you are watching is the file the encoder is still writing. When the stream ends, that same file is the recording.</p>
+  </div>
+</div>
 
 <footer>
   <div class="wrap foot">
