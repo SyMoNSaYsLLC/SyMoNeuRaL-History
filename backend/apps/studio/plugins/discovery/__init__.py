@@ -14,8 +14,9 @@ its venv and its requirements file all keep the hyphenated house spelling
 
 ## Three exports, and they are the whole contract with `api.py`
 
-    from apps import symoneuraldiscovery
-    Unit(**symoneuraldiscovery.status())   # the rack row -- see the warning below
+    from apps.studio.plugins import discovery    # `from apps import symoneuraldiscovery`
+                                                # until the restructure; that import is gone
+    Unit(**discovery.status())             # the rack row -- see the warning below
     "discovery": (60, 900)                 # a key in api.py's _RATE_SUGGESTED
 
 **There is deliberately no `router` here yet, and no rack row mounted.** `status()` is present

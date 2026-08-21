@@ -154,7 +154,8 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists backend/apps/ROSTER.md
         check: grep ROSTER -- tools/build_rack.py
         check: grep RosterMatchesApiTests -- backend/apps/test_roster.py
-        check: exists backend/apps/studio/plugins/__init__.py
+        check: grep OPTIONAL_PRESENT -- backend/apps/studio/plugins/__init__.py
+        check: grep StatusRowTests -- backend/apps/studio/test_plugin_contract.py
         check: exists backend/apps/studio/plugins/exp/__init__.py
         check: exists backend/apps/studio/plugins/reinforce/__init__.py
         check: exists backend/apps/studio/plugins/discovery/__init__.py
@@ -454,6 +455,70 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: unit active and no root it exits 1 saying `sudo systemctl stop ...` rather than
         note: reaching its own kill path, so "refuses loudly" and "verifies nothing is left" are
         note: now two separate tests, because a kill switch owes both.
+        note: 2026-08-20 coder — item 3, the plugin interface, is written and asserted:
+        note: `backend/apps/studio/plugins/__init__.py` plus `apps/studio/test_plugin_contract.py`
+        note: (10 tests). What the disk actually said, which is not what the packages claimed:
+        note: exp's docstring opens "Two exports, and they are the whole contract with api.py",
+        note: reinforce's opens "Two exports" and discovery's opens "Three exports" — two, two
+        note: and three, naming four different sets between them, and nothing checked any of it.
+        note: Measured, only `enabled()` and `status()` are present on all three, so those two
+        note: are the whole of REQUIRED. `router`, `token_ok` and `LABEL` are RECOGNISED but not
+        note: required, because discovery deliberately has no router (its href has no page yet —
+        note: apps/voice is the precedent) and reinforce has no module-level token_ok. Requiring
+        note: them would have been a contract two of its three subjects fail on the day it was
+        note: written, which is CLAUDE.md's "a check that cannot be true is worse than no check".
+        note: The gaps are instead pinned in an OPTIONAL_PRESENT map, so gaining or losing one is
+        note: a red test rather than silent drift — the tripwire idiom of test_status_rack.py.
+        note: 2026-08-20 coder — item 3 is deliberately NOT a loader, and this is the same call
+        note: as item 2's abandoned composition refactor. api.py mounts all thirteen surfaces in
+        note: one table, each with its own prefix= and tags=, and those tags are the OpenAPI
+        note: groups the rebranded Swagger UI renders; a loop either flattens them — changing a
+        note: visitor-facing page to make an internal check green — or carries a per-plugin table
+        note: of prefix and tags anyway, which is api.py's table with a layer in front of it. A
+        note: second reason is written beside each import in api.py: all three are bound to the
+        note: PACKAGE name because their bare `enabled`/`status`/`installed` would shadow api.py's
+        note: own functions of those names. So the three hand-written imports and three explicit
+        note: mounts stay, and what the new file adds is the answer to "what must a fourth package
+        note: here provide", plus a test that says whether the three that exist provide it.
+        note: 2026-08-20 coder — the row keys are NOT restated in the contract. status() must
+        note: return something api.py's Unit model accepts, and copying that field list — plus
+        note: its four legal `state` values and four legal `bus` values — into the plugins package
+        note: would be a second source of truth with the new file as the stale copy. The test
+        note: reads `class Unit` out of api.py as SOURCE via ast, never importing it, the same
+        note: discipline as test_status_rack.py and test_studio_models.py, because importing the
+        note: serving module builds every rate limiter, resolves the GPU governor and mounts
+        note: site/. That assertion earns its place: `state` is a Literal, so a plugin returning a
+        note: fifth value is not a nicer label but a pydantic error inside build_status() that
+        note: takes the WHOLE rack off the front page. exp and discovery each warn about this in
+        note: their own docstring; nothing asserted it for all three at once until now.
+        note: 2026-08-20 coder — `check: exists backend/apps/studio/plugins/__init__.py` has been
+        note: REPLACED, not supplemented, by `grep OPTIONAL_PRESENT` and `grep StatusRowTests`.
+        note: `exists` passes on `touch`, which is exactly the check CLAUDE.md warns can archive a
+        note: task before the work is done — and leaving it beside the narrowed greps would still
+        note: have added a free pass to the denominator. Same reasoning as item 1's real gate
+        note: (`grep RosterMatchesApiTests`) and item 2's three narrowed greps.
+        note: 2026-08-20 coder — break-proofs, run before the file was trusted: setting
+        note: discovery's bus to "network" and adding a stray key turned exactly two tests red
+        note: (the Literal test and the extra-field test) and nothing else; dropping "discovery"
+        note: from PLUGINS turned the directory tripwire and the OPTIONAL_PRESENT map red. Both
+        note: reverted, 10/10 green. There is also a deliberate vacuity guard —
+        note: test_the_unit_model_was_read_at_all — because if the ast walk found nothing, every
+        note: row assertion below it would pass on an empty set.
+        note: 2026-08-20 coder — one side effect, measured rather than assumed:
+        note: apps/studio/plugins/ was the only PEP 420 gap in a chain that has
+        note: apps/studio/__init__.py above it and an __init__.py in each plugin below it. Adding
+        note: this file makes it a regular package, which changes the module name pytest derives
+        note: for the (--ignored, own-venv) suite under plugins/reinforce/tests/, so the whole
+        note: suite was re-run across the commit rather than carried forward. The contract imports
+        note: NO plugin at import time: api.py imports this package's children during startup, and
+        note: a parent that eagerly imported all three siblings would drag discovery — which
+        note: api.py neither imports nor mounts — into the serving process for free.
+        note: 2026-08-20 coder — fixed in the same commit, both stale since the restructure and
+        note: both inside the files item 3 makes you read: exp/__init__.py said `from apps import
+        note: symoneuralexp as exp` and discovery/__init__.py said `from apps import
+        note: symoneuraldiscovery`. Neither import exists; api.py:137 is `from apps.studio.plugins
+        note: import exp`. Same class of defect as the ExecStart path that took the public API
+        note: down — a path that does not move with the code it names.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder

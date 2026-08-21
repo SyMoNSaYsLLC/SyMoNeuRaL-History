@@ -1,8 +1,12 @@
 """SyMoNeuRaL Exp -- the plugin runtime this stack's next layer is built on.
 
-Two exports, and they are the whole contract with `api.py`:
+Two exports, and they are the whole contract with `api.py`. The contract that binds all
+three plugins here -- and what each one is and is not required to provide -- is stated once in
+`apps/studio/plugins/__init__.py` and asserted by `apps/studio/test_plugin_contract.py`; this
+package is the only one of the three that provides every recognised export:
 
-    from apps import symoneuralexp as exp
+    from apps.studio.plugins import exp      # `from apps import symoneuralexp as exp` until
+                                             # the restructure; that import no longer exists
     app.include_router(exp.router, prefix="/api/exp", tags=["exp"])     # before the static mount
     Unit(**exp.status())        # the rack row -- page first, same rule as voice and studio
 
