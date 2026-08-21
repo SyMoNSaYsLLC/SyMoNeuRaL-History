@@ -121,9 +121,28 @@ class TheWatchdogIsWiredTests(unittest.TestCase):
         self.assertIn("guard.add_done_callback(_WATCHDOGS.discard)", self.src)
 
     def test_the_release_is_idempotent(self):
-        """Watchdog and generator both call it, and on a clean close both get there."""
-        self.assertIn("async def drop_lease():", self.src)
-        self.assertIn("if released.is_set():", self.src)
+        """Watchdog and generator both call it, and on a clean close both get there.
+
+        Asserted as an *ordering*, not as the presence of two lines. Setting the flag
+        after the await is the whole race: the watchdog enters `drop_lease`, suspends
+        on `__aexit__`, the generator's `finally` calls in behind it, finds the flag
+        still clear, and the card is released twice -- a second `release chat` against
+        a lease that no longer exists, which is how one surface hands another's lock
+        away. A substring test for `if released.is_set():` stays green straight
+        through that reordering, and this file has already been bitten once by an
+        assertion that passed on the broken tree (see the test below).
+        """
+        block = re.search(
+            r"async def drop_lease\(\):\n"
+            r"(?:[ \t]*(?:#.*|\"\"\".*)?\n)*"
+            r"[ \t]*if released\.is_set\(\):\n"
+            r"[ \t]*return\n"
+            r"[ \t]*released\.set\(\)\n"
+            r"[ \t]*await lease\.__aexit__\(", self.src)
+        self.assertIsNotNone(
+            block,
+            "drop_lease must set the flag BEFORE awaiting __aexit__, so a second "
+            "caller arriving during that await finds it set and returns")
 
     def test_the_orphaned_anticipate_task_is_cancelled_when_the_lease_is_refused(self):
         """R-173's own defect: `anticipate()` starts before `__aenter__`, so a 503 from

@@ -160,3 +160,34 @@ branch (`api.py` at `95e02c5`, line 2335), so the loose form passed over the bug
 to catch. It now matches the `except BaseException:` block around `__aenter__` specifically.
 A check that can pass without the work being finished is worse than no check, because it
 archives the task.
+
+**A second one was loose in the same way, found by review after the above was written, and it
+is the more interesting of the two because the *live* test does not cover it.**
+`test_the_release_is_idempotent` asserted that `async def drop_lease():` and
+`if released.is_set():` appear in the source. Both are substrings of prose I wrote, and they
+survive the one reordering that actually breaks idempotence — moving `released.set()` to
+*after* `await lease.__aexit__(...)`. That opens a real window: the watchdog enters
+`drop_lease`, suspends on the await with the flag still clear, the generator's `finally` calls
+in behind it and passes the guard, and the card is released twice — a second `release chat`
+against a lease that no longer exists, which is how one surface hands another's lock away.
+
+Measured on this tree, 2026-08-21, by making exactly that edit to `api.py` and running the file:
+
+```
+reordered: await lease.__aexit__(None, None, None)   <- first
+           released.set()                            <- second
+
+.....F...
+FAILED apps/test_chat_lease.py::TheWatchdogIsWiredTests::test_the_release_is_idempotent
+1 failed, 8 passed in 5.40s
+```
+
+**Eight passed — including both live tests.** The abandoned-socket run still logged exactly
+`["acquire chat", "release chat"]`, because whether the two callers actually collide is a
+timing question and on this box they did not. So the live half, which is the strongest thing
+in this file, is silent on this defect by construction: a race that does not happen this run
+is indistinguishable from one that cannot. That is the argument for asserting the *ordering*
+in source rather than only the *outcome* at runtime — the outcome test is better evidence when
+it is red and no evidence at all when the race loses. `api.py` was restored from a copy and
+verified byte-identical to HEAD (`git status --porcelain -- backend/api.py`, empty) before the
+suite was re-run: **9 passed in 5.65 s**.
