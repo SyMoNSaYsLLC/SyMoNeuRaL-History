@@ -107,9 +107,6 @@ export const inject = ['comfyui', 'tools']
  */
 const FRAME_BUFFER_SIZE = 512
 
-/** How many graph snapshots the undo stack keeps per workspace. */
-const UNDO_DEPTH = 32
-
 /** Default page size for `comfy_list_nodes`. `/object_info` carries thousands of classes. */
 const DEFAULT_NODE_PAGE = 40
 
@@ -123,16 +120,6 @@ const MAX_WAIT_MS = 120_000
 const MAX_FOLLOW_MS = 900_000
 
 /* ------------------------------------------------------------------ workspace */
-
-/** One snapshot on the undo stack: a whole graph, plus what was about to be done to it. */
-interface GraphSnapshot {
-  /** Workspace revision this graph was current at. */
-  revision: number
-  /** What the mutation was going to do. Shown when a rollback reports what it undid. */
-  label: string
-  /** A deep copy. Never a reference into the live graph — see {@link cloneGraph}. */
-  graph: ComfyGraph
-}
 
 /**
  * The mutable graph one agent is working on.
@@ -150,13 +137,11 @@ interface ComfyWorkspace {
   origin: string
   /** Increments on every accepted mutation. Quoted in results so a caller can detect drift. */
   revision: number
-  /** Bounded undo stack, newest last. */
-  undo: GraphSnapshot[]
 }
 
 /** A fresh, empty workspace. */
 function emptyWorkspace(): ComfyWorkspace {
-  return { graph: undefined, origin: '', revision: 0, undo: [] }
+  return { graph: undefined, origin: '', revision: 0 }
 }
 
 /* ------------------------------------------------------------------ json helpers */
@@ -817,7 +802,7 @@ export function apply(ctx: Context): void {
   }
 
   // `ctx.on` registrations are owned by this fiber and removed when it unloads, the same way
-  // `plugin.ts:389` registers its debug listener. There is no manual disposer to hold.
+  // `./plugin.ts:394` registers its debug listener. There is no manual disposer to hold.
   ctx.on('comfyui/telemetry', (frame: ComfyTelemetryFrame) => {
     push('frame', frame.type, frame.data)
   })
@@ -993,7 +978,7 @@ export function apply(ctx: Context): void {
       name: 'comfy_load_workflow',
       description:
         'Load an API-format ComfyUI graph into this session as the working graph, replacing ' +
-        'whatever was loaded before and clearing the undo history. The graph must be the API ' +
+        'whatever was loaded before. The graph must be the API ' +
         'format (a JSON object of node id → {class_type, inputs}), not the editor save format ' +
         'with top-level "nodes" and "links". It is validated against the live /object_info and ' +
         'the findings are returned, but a graph with findings is still loaded so it can be ' +
@@ -1034,10 +1019,6 @@ export function apply(ctx: Context): void {
         workspace.graph = cloneGraph(parsed.graph)
         workspace.origin = args.origin ?? 'inline'
         workspace.revision = 1
-        // Cleared, not appended to. The undo stack describes edits to *this* graph; keeping
-        // snapshots of a previous one would let a rollback restore a workflow the caller
-        // deliberately replaced.
-        workspace.undo = []
 
         const summary = summarise(workspace.graph)
         if (args.validate === false) {
@@ -1054,6 +1035,11 @@ export function apply(ctx: Context): void {
         try {
           verdict = validateGraph(workspace.graph, await objectInfo(exec.signal))
         } catch (error) {
+          // Cancellation is not an unreachable engine; report it as itself rather than as a
+          // successful load with an advisory note. The graph is already in the workspace by
+          // this point — a load is not undone by cancelling its validation — but the caller
+          // gets the abort it asked for instead of a result it did not wait for.
+          if (exec.signal.aborted) throw error
           // Unreachable engine is not a bad graph, and reporting it as one would send a caller
           // rewriting a workflow that is fine. The graph stays loaded either way.
           verdict = { unavailable: renderThrown(error) }
@@ -1158,16 +1144,9 @@ export function apply(ctx: Context): void {
 
         // Snapshot BEFORE anything is touched, and snapshot a deep copy. This is the whole
         // rollback mechanism; see `cloneGraph` for why a shallow copy would make it a no-op
-        // that reports success.
-        const label =
-          args.input !== undefined
-            ? `set ${args.node_id}.${args.input}`
-            : `retitle ${args.node_id}`
-        const snapshot: GraphSnapshot = {
-          revision: workspace.revision,
-          label,
-          graph: cloneGraph(graph),
-        }
+        // that reports success. It lives for this call only — there is no undo stack, because
+        // a stack nothing pops is 32 cloned graphs held per agent in exchange for nothing.
+        const snapshot = cloneGraph(graph)
 
         const applied: Record<string, unknown> = {}
         if (args.input !== undefined && args.value_kind !== undefined) {
@@ -1211,8 +1190,17 @@ export function apply(ctx: Context): void {
         try {
           verdict = validateGraph(graph, await objectInfo(exec.signal))
         } catch (error) {
+          // Cancellation lands here too, and it is not an unreachable engine. Forwarding
+          // `exec.signal` into `objectInfo` is not the same as honouring it: without this
+          // branch an abort mid-fetch would leave the edit applied, bump the revision and
+          // return `applied: true` for a call the registry has already marked cancelled — and
+          // the next `comfy_queue_prompt` would submit the graph nobody agreed to. Restore and
+          // rethrow, so a cancelled edit leaves no trace.
+          if (exec.signal.aborted) {
+            workspace.graph = snapshot
+            throw error
+          }
           workspace.revision += 1
-          pushUndo(workspace, snapshot)
           return toJson({
             applied: true,
             rolled_back: false,
@@ -1231,7 +1219,7 @@ export function apply(ctx: Context): void {
         const nodeFailed = nodeVerdict !== undefined && nodeVerdict.errors.length > 0
 
         if (nodeFailed && args.rollback !== false) {
-          workspace.graph = snapshot.graph
+          workspace.graph = snapshot
           return toJson({
             applied: false,
             rolled_back: true,
@@ -1248,7 +1236,6 @@ export function apply(ctx: Context): void {
         }
 
         workspace.revision += 1
-        pushUndo(workspace, snapshot)
         return toJson({
           applied: true,
           rolled_back: false,
@@ -1278,8 +1265,11 @@ export function apply(ctx: Context): void {
         'they are not interchangeable: "accepted" (queued, nothing complained about), ' +
         '"accepted_with_dropped_outputs" (queued and running, but some nodes failed ' +
         'validation and the outputs that depended on them will never be produced), or ' +
-        '"rejected" (nothing was queued). Read node_errors on the middle outcome; a partial ' +
-        'run looks like a success in every other respect. This queues work on a single ' +
+        '"rejected" (the server refused it and nothing was queued). Read node_errors on the ' +
+        'middle outcome; a partial run looks like a success in every other respect. A local ' +
+        'pre-check runs first and travels back as local_precheck, but it is advisory and does ' +
+        'not stop a submission unless refuse_if_local_invalid is set, in which case the ' +
+        'outcome is "not_submitted". This queues work on a single ' +
         'contended GPU shared with every other surface on this machine, so it is not free and ' +
         'should not be called speculatively. Follow progress with comfy_stream_status.',
       parameters: {
@@ -1308,8 +1298,17 @@ export function apply(ctx: Context): void {
         validate_first: {
           type: 'boolean',
           description:
-            'Run the local /object_info check before submitting and refuse to queue if it ' +
-            'fails. Default true. Set false to let the server be the only judge.',
+            'Run the local /object_info check before submitting and report its findings ' +
+            'alongside the result. Default true. It is advisory: the graph is submitted ' +
+            'either way and the server is the judge. Set false to skip the check entirely.',
+        },
+        refuse_if_local_invalid: {
+          type: 'boolean',
+          description:
+            'Refuse to submit when the local check finds problems, instead of submitting and ' +
+            'letting the server decide. Default false. Use it to avoid queueing GPU work on a ' +
+            'graph you already believe is broken, accepting that the local check is the ' +
+            'stricter of the two and can refuse a graph ComfyUI would have run.',
         },
         wait: {
           type: 'boolean',
@@ -1341,15 +1340,41 @@ export function apply(ctx: Context): void {
           graph = requireGraph(workspace)
         }
 
+        // The local check is advisory by default, and the asymmetry is the reason.
+        //
+        // A clean local verdict means "nothing this side can see is wrong", never "this will
+        // run" — that principle is written into `validateGraph` and it has a converse this code
+        // used to ignore: a dirty local verdict does not mean "this will not run" either. The
+        // two directions cost differently. A local false negative just falls through to the
+        // server, which is the real judge and answers with the same vocabulary. A local false
+        // positive refuses work ComfyUI would have executed, and the caller cannot tell it was
+        // this validator and not the engine that said no.
+        //
+        // That is not a hypothetical: `objectInfo` is cached for 60 s, and every combo input
+        // whose permitted values are read off disk — checkpoints, LoRAs, samplers — can be
+        // stale against an engine that has just had a file dropped into `models/`. The graph is
+        // fine, the cache is old, and the refusal would be ours.
+        //
+        // So: run it, attach it, submit anyway. Blocking is opt-in.
+        let precheck: GraphVerdict | { unavailable: string } | undefined
         if (args.validate_first !== false) {
-          const verdict = validateGraph(graph, await objectInfo(exec.signal))
-          if (!verdict.ok) {
+          try {
+            precheck = validateGraph(graph, await objectInfo(exec.signal))
+          } catch (error) {
+            if (exec.signal.aborted) throw error
+            // An unreadable `/object_info` is not grounds to refuse a submission — the queue
+            // endpoint may well answer even when this one did not.
+            precheck = { unavailable: renderThrown(error) }
+          }
+          if ('ok' in precheck && !precheck.ok && args.refuse_if_local_invalid === true) {
             return toJson({
               status: 'not_submitted',
+              submitted: false,
               reason:
-                'the local /object_info check found problems and validate_first was not set ' +
-                'false, so nothing was queued',
-              validation: verdict,
+                'the local /object_info check found problems and refuse_if_local_invalid was ' +
+                'set, so nothing was queued. This is a local verdict, not the server\'s: ' +
+                'submitting anyway may still succeed.',
+              validation: precheck,
             })
           }
         }
@@ -1381,6 +1406,7 @@ export function apply(ctx: Context): void {
                 graph_errors: [],
                 node_errors: error.detail.node_errors,
               },
+              ...(precheck === undefined ? {} : { local_precheck: precheck }),
             })
           }
           // Everything else — transport failure, an unexpected status, a body that is not the
@@ -1411,6 +1437,11 @@ export function apply(ctx: Context): void {
             failing.length === 0
               ? { ok: true, origin: 'server', graph_errors: [], node_errors: {} }
               : { ok: false, origin: 'server', graph_errors: [], node_errors: response.node_errors },
+          // Carried as its own field, never merged into `validation`. The two are different
+          // claims from different authorities and a caller comparing them is the point: a
+          // precheck that complained about a graph the server then accepted is this
+          // validator's bug, and folding them together would hide it.
+          ...(precheck === undefined ? {} : { local_precheck: precheck }),
         }
 
         if (args.wait !== true) return toJson(base)
@@ -1558,12 +1589,6 @@ export function apply(ctx: Context): void {
 }
 
 /* ------------------------------------------------------------------ small helpers */
-
-/** Push a snapshot onto the bounded undo stack, dropping the oldest when it is full. */
-function pushUndo(workspace: ComfyWorkspace, snapshot: GraphSnapshot): void {
-  workspace.undo.push(snapshot)
-  while (workspace.undo.length > UNDO_DEPTH) workspace.undo.shift()
-}
 
 /** First line of a description, for a list projection. Never truncated mid-word with an ellipsis. */
 function firstLine(text: string): string {
