@@ -1,0 +1,67 @@
+SyMoNeuRaL Desktop Client
+Copyright (c) 2026 SyMoNeuRaL. All rights reserved.
+
+TERMS
+
+This program and its source are SyMoNeuRaL's own work. No permission is granted to copy,
+distribute, modify or create derivative works from it, and no licence is granted by
+implication or estoppel. It is published here only in the sense that it lives in this
+repository; the repository has no git remote and its history has never left the machine it
+was written on.
+
+If that changes, read "What is SyMoNeuRaL's, and must never be published" in
+.claude/CLAUDE.md before anything is pushed.
+
+PROVENANCE -- WHY THIS FILE CAN SAY "ALL RIGHTS RESERVED" AT ALL
+
+A proprietary notice on a file containing somebody else's code is a false statement, so the
+claim above is only worth making if it is checked. Every line of desktop-client/ was written
+for this repository. Nothing was copied in from an upstream project, a template, a scaffold
+generator or a tutorial: the Tauri scaffold here is hand-written, which is also why there is
+no package.json, no lockfile from a generator, no node_modules and no bundler. `references/`
+was not drawn on -- that directory is reference-only, and using code from it would require a
+rebrand first.
+
+THIRD-PARTY DEPENDENCIES
+
+The program links against third-party code that it does not include and does not relicense.
+Two groups, with different obligations, and they are worth keeping apart.
+
+1. Rust crates, compiled in.
+   433 packages in the dependency graph, licences read from `cargo metadata` on 2026-08-21
+   rather than assumed:
+
+       203  MIT OR Apache-2.0            17  Zlib OR Apache-2.0 OR MIT
+        99  MIT                           9  Unlicense OR MIT
+        32  Apache-2.0 OR MIT             5  MPL-2.0
+        19  MIT/Apache-2.0                4  BSD-3-Clause (2 dual with MIT/Apache-2.0)
+        18  Unicode-3.0                   remainder dual-licensed permissive
+
+   There is no GPL-licensed crate in the graph. Five are MPL-2.0 -- cssparser,
+   cssparser-macros, dtoa-short, option-ext and selectors -- which is file-level copyleft:
+   the obligation attaches to those files, they are used unmodified, and their source is the
+   published upstream. Two crates (r-efi) offer LGPL-2.1-or-later as one option among three;
+   the MIT/Apache-2.0 options are taken.
+
+   Their copyright notices are the upstream projects' and are not ours to remove. This notice
+   does not claim their work.
+
+2. System libraries, linked dynamically, not redistributed.
+   Tauri renders through the WebKitGTK already installed on the machine rather than bundling
+   a browser engine -- webkit2gtk-4.1 2.52.5, javascriptcoregtk-4.1 2.52.5, libsoup-3.0
+   3.6.5, gtk+-3.0 3.24.49, glib-2.0 2.84.4 on this box. These are LGPL and BSD libraries
+   supplied by the operating system. They are not copied into this repository and are not
+   shipped by it, so nothing here redistributes them.
+
+   That is the substantive reason for choosing Tauri over Electron, quite apart from size: an
+   Electron build would bundle and therefore redistribute a Chromium, which brings a much
+   larger third-party corpus into the artefact this notice covers.
+
+WHAT THIS PROGRAM IS NOT
+
+It contains no model weights, no training data and no part of the method that produces them.
+It does not read training/corpus.jsonl or training/build_dataset.py, and it must not be made
+to: those are the protected artefacts, and they are protected only by not being public.
+
+The client talks to the API and renders what the API returns. Publish the numbers, keep the
+methods.

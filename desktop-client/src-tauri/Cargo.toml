@@ -1,0 +1,33 @@
+[package]
+name = "symoneural-desktop"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+description = "A native window over the local SyMoNeuRaL API"
+authors = ["SyMoNeuRaL"]
+license-file = "../LICENSE"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = "0.3"
+base64 = "0.22"
+
+# default-features = false drops the TLS backends on purpose. This client speaks plain
+# HTTP to 127.0.0.1 and nothing else, so a TLS stack would be dead weight -- and leaving
+# it out means the binary structurally cannot open an https connection to a remote host,
+# which is a stronger guarantee than a constant nobody re-reads.
+[dependencies.reqwest]
+version = "0.12"
+default-features = false
+features = ["json", "stream"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -161,6 +161,17 @@ backend/apps/studio/plugins/discovery/symoneural-discovery.env
 # Rust build output for the gateway. 7,620 files were staged in one `git add -A` on
 # 2026-08-20 because this was never ignored; cargo regenerates all of it from Cargo.toml.
 backend/apps/gateway/target/
+# The desktop client's Rust build output -- 2.4 GB on a debug profile, and every
+# byte of it regenerable by `cargo build`. Listed explicitly like the other two
+# target/ directories rather than as a bare `target/`, which would also swallow any
+# directory a future app happens to call that.
+desktop-client/src-tauri/target/
+# tauri-build regenerates these four schema files on every compile from the permissions of
+# whatever crates are in the dependency tree. 4,600 lines that describe the toolchain rather
+# than this program, and they would churn on any Tauri version bump. The one hand-written
+# file in that tree, capabilities/default.json, is NOT here and is tracked -- it is a grant,
+# and a grant that changed without a diff would be the thing you most wanted to see.
+desktop-client/src-tauri/gen/
 
 # Mode 600 and private, and they must stay untracked. Both were staged by a `git add -A` on
 # 2026-08-20 and caught before the commit; an ignore rule is the durable version of catching it.

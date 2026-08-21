@@ -1,0 +1,258 @@
+/* SyMoNeuRaL Desktop Client.
+ *
+ * Two standing rules from .claude/CLAUDE.md are load-bearing in this file and are the reason
+ * some of it looks the way it does:
+ *
+ *   "Layout changes must not drop data. Fold long content into <details>; do not trim it.
+ *    This includes CSS." An ellipsis rule on a detail line is data loss with extra steps.
+ *
+ * So there is no truncation rule anywhere here, no `white-space: nowrap` on anything
+ * that carries a reading, and no fixed height on a box whose content is a measurement. Long
+ * content wraps. A model name, an attribution line or a 900-character answer is allowed to
+ * make the window scroll; it is not allowed to be cut. `backend/apps/test_desktop_client.py`
+ * asserts this rather than trusting the comment.
+ *
+ *   "No decorative status indicators. Every LED and gauge on the site reflects a real
+ *    reading."
+ *
+ * `.dot` is therefore keyed off a data-state that only a completed /api/status read can set,
+ * and its unread state is grey rather than any colour that could be mistaken for a verdict.
+ */
+
+:root {
+  --bg: #0b0d10;
+  --panel: #14181d;
+  --line: #262c34;
+  --ink: #dfe5ec;
+  --dim: #8d99a6;
+  --live: #3ac8a0;
+  --warn: #d8b24a;
+  --bad: #d8654a;
+  --mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 system-ui, "DejaVu Sans", sans-serif;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------- header */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.top h1 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 12px;
+  /* wraps rather than truncating when the status text is long */
+  flex-wrap: wrap;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  /* The unread state is deliberately the border-only form: no fill, so it cannot read as
+     "connected" before anything has been read. */
+  border: 1px solid var(--dim);
+  background: transparent;
+}
+.dot[data-state="up"]      { background: var(--live); border-color: var(--live); }
+.dot[data-state="partial"] { background: var(--warn); border-color: var(--warn); }
+.dot[data-state="down"]    { background: var(--bad);  border-color: var(--bad); }
+
+/* ---------------------------------------------------------------- tabs */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  padding: 9px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tabs button[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--live);
+}
+
+/* ---------------------------------------------------------------- panels */
+
+main { flex: 1; display: flex; }
+
+.panel { display: none; flex: 1; flex-direction: column; padding: 14px 16px; gap: 12px; min-width: 0; }
+.panel[data-open] { display: flex; }
+
+.composer { display: flex; flex-direction: column; gap: 8px; }
+
+textarea, input, select {
+  background: #0e1216;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 9px;
+  font: inherit;
+  min-width: 0;
+}
+
+textarea { resize: vertical; font-family: var(--mono); }
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  min-width: 0;
+}
+
+.row label.grow { flex: 1; }
+.row input[type="number"] { width: 8.5em; }
+
+button[type="submit"] {
+  margin-left: auto;
+  background: var(--live);
+  color: #06120e;
+  border: none;
+  border-radius: 4px;
+  padding: 9px 20px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button[type="submit"][disabled] { opacity: 0.45; cursor: default; }
+
+.top button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--dim);
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- output */
+
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 160px;
+}
+
+.turn { border-left: 2px solid var(--line); padding-left: 11px; }
+.turn.you { border-left-color: var(--dim); }
+.turn.them { border-left-color: var(--live); }
+
+.who {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 3px;
+}
+
+/* pre-wrap, never nowrap: model output keeps its own line breaks and still wraps at the
+   window edge. `overflow-wrap: anywhere` handles a single unbroken 400-character token
+   without introducing a horizontal scrollbar or, worse, an ellipsis. */
+.body, .out pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  margin: 0;
+}
+
+.meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--dim);
+  /* wraps: this line carries the measured figures and the model name, and every one of
+     them has to stay readable */
+  overflow-wrap: anywhere;
+}
+
+.assist {
+  margin: 4px 0 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.out { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.out img { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+
+.field { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.field .k { color: var(--dim); min-width: 6.5em; }
+.field .v { font-family: var(--mono); overflow-wrap: anywhere; min-width: 0; }
+
+/* The three-valued check. `unconfirmed` is styled as its own thing rather than borrowing
+   either of the other two, because null means the engine could not confirm the result and
+   that is neither a pass nor a failure. */
+.check.passed      { color: var(--live); }
+.check.failed      { color: var(--bad); }
+.check.unconfirmed { color: var(--warn); }
+
+.err {
+  border: 1px solid var(--bad);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 8px 11px;
+  color: var(--bad);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+details summary { cursor: pointer; color: var(--dim); font-size: 12px; }
+details[open] summary { margin-bottom: 6px; }
