@@ -186,67 +186,34 @@ drain() {
 evict() {
   local prev="${1:-}"
   [ -z "$prev" ] && return 0
-  log evict "stopping '$prev' to make room -- the weight sets do not co-fit"
+
+  local active=0
+
   case "$prev" in
-    chat)  "$HERE/bin/symoneural-cli" _stop-chat >/dev/null 2>&1 || pkill -f 'bin/symoneural-llm' 2>/dev/null || true ;;
-    image) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
-    # Stickers. Same engine as image, so the same kill -- but the name has to be here
-    # anyway, because without a case of its own it falls to *) below, and *) pkills
-    # the LLM engine too and takes chat down as collateral. Registering a surface name
-    # and adding its case are one change, not two: the miner) arm exists because the
-    # *) arm was once found logging a successful eviction while the tenant kept the card.
-    #
-    # Known and deliberate: `pkill -f 'bin/symoneural-diffuse'` cannot tell a sigil render from an image
-    # render, so evicting either kills both. The global lock serialises them and the
-    # engine is not resident between jobs, so the window is small -- but it is written down
-    # here rather than discovered by whoever next sees an image render die unexplained.
-    sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
-    # The render UI. It is a long-lived HTTP server that holds ~12 GB of weights while
-    # resident, so it MUST have its own arm: the '*)' arm below pkills the LLM and
-    # diffusion engines, neither of which is this, and would log a successful eviction while
-    # the card stayed full -- the exact failure the miner) comment records.
-    #
-    # The stop is deliberately graceful and staged. `scripts/symoneural-ui.sh stop` asks the
-    # server to unload (POST /free) and then signals its pidfile, because SIGKILLing a
-    # process mid-CUDA-teardown returns the lock before the driver has taken the memory
-    # back and the next tenant OOMs at step 0 -- which is what `drain` below exists to
-    # catch. The pkill is the fallback for a server started outside the script.
-    #
-    # The fallback pattern must name the path the process ACTUALLY runs from, which is now
-    # engines/symoneural-ui. It used to name the upstream tree's main.py at the repo root,
-    # a path that no longer exists under any spelling; a pkill that matches nothing does not
-    # fail -- it succeeds having killed nothing, so the governor logs an
-    # eviction, the card stays full, and the next tenant OOMs at step 0. That is the same
-    # silent-failure shape as the two broken `$HERE` paths this arm was already fixed for.
-    comfy) "$HERE/scripts/symoneural-ui.sh" stop >/dev/null 2>&1 || pkill -f 'engines/symoneural-ui/main.py' 2>/dev/null || true ;;
-    # A training run holds ~10-13 GB for hours. It is never killed to make room for a demo
-    # request -- a half-finished fine-tune is not worth a page view. Serving surfaces queue
-    # behind it instead, which is what the acquire timeout is for.
+    chat)  "$HERE/bin/symoneural-cli" _stop-chat >/dev/null 2>&1 && active=1 || { pkill -f 'bin/symoneural-llm' 2>/dev/null && active=1; } || true ;;
+    image) pkill -f 'bin/symoneural-diffuse' 2>/dev/null && active=1 || true ;;
+    sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null && active=1 || true ;;
+    comfy) "$HERE/scripts/symoneural-ui.sh" stop >/dev/null 2>&1 && active=1 || { pkill -f 'engines/symoneural-ui/main.py' 2>/dev/null && active=1; } || true ;;
     train)
       if pgrep -f '[t]rain_lora.py' >/dev/null 2>&1; then
         log evict "REFUSING to evict a training run -- wait for it or stop it deliberately"
         return 1
       fi
-      # `resident` outlives the process that wrote it. A finished fine-tune is a historical
-      # record, not a tenant, and treating it as one wedged the card indefinitely.
-      log evict "'train' recorded but no run is active -- treating as stale"
       ;;
-    # The exact opposite of 'train': a miner yields to everything, because no hashrate is
-    # worth making a visitor wait. It is stopped through its own module so the pidfile and
-    # the process group are handled in one place -- signalling the recorded pid alone
-    # leaves the actual miner orphaned and still resident, which reads as a clean stop and
-    # is not one.
-    #
-    # This case is inert until SYMONEURAL_MINER_CMD names a real binary: nothing writes 'miner'
-    # into run/resident before then. Without it, a miner tenant would fall through to the
-    # '*)' arm below and be "evicted" by pkilling the LLM engine -- which would leave the
-    # miner holding the card while the governor logged a successful eviction.
     miner)
-      python3 -c 'import sys; sys.path.insert(0, "'"$ROOT"'/backend/apps"); import cryptominer; cryptominer.stop()' \
-        >/dev/null 2>&1 || pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null || true
+      python3 -c 'import sys; sys.path.insert(0, """/backend/apps"); import cryptominer; cryptominer.stop()' \
+        >/dev/null 2>&1 && active=1 || { pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null && active=1; } || true
       ;;
-    *)     pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse' 2>/dev/null || true ;;
+    *)     pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse' 2>/dev/null && active=1 || true ;;
   esac
+
+  if [ "$active" -eq 1 ]; then
+    log evict "stopping '$prev' to make room -- the weight sets do not co-fit"
+  else
+    log evict "'$prev' recorded but no run is active -- treating as stale"
+  fi
+
+  rm -f "$RUN/resident"
   drain
 }
 

@@ -2321,24 +2321,21 @@ async def chat(body: ChatRequest,
     `{"done": true, "tokens": N, "seconds": S, "tok_per_s": R, "model": "...", "adapter": bool}`.
     The rate in that final event is measured, not claimed.
     """
-    async def stream():
-        # Kick RavenCalc off first, then take the card. The calculator runs on the CPU, so
-        # it does its work inside the time the GPU surface spends loading -- by the time the
-        # model can speak, the exact answer is already sitting here waiting for it.
-        thinking = asyncio.create_task(anticipate(body.prompt))
+    # Kick RavenCalc off first, then take the card.
+    thinking = asyncio.create_task(anticipate(body.prompt))
 
-        async with gpu.hold("chat"):
+    # Acquire the lease in the route handler.
+    # If the queue is full, this raises a 503 *before* the 200 OK headers are sent.
+    lease = gpu.hold("chat")
+    await lease.__aenter__()
+
+    async def stream(active_lease):
+        try:
             if not await start_llama():
                 thinking.cancel()
                 yield f"data: {json.dumps({'error': 'Chat surface is not available.'})}\n\n"
                 return
 
-            # The caller's own system prompt wins outright when supplied. Previously the
-            # persona was unconditional and a client could not replace it, because
-            # Turn.role is Literal["user","assistant"] -- that Literal is still there and
-            # still does its job (it stops a system turn being smuggled in mid-transcript
-            # where it would be invisible), but overriding is now an explicit parameter
-            # rather than something to work around.
             system = SYSTEM_PROMPT if body.system is None else body.system
             try:
                 exact = await asyncio.wait_for(thinking, timeout=5)
@@ -2370,11 +2367,13 @@ async def chat(body: ChatRequest,
                 "tok_per_s": round(tokens / elapsed, 1) if elapsed else None,
                 "model": CHAT_MODEL.stem, "adapter": CHAT_ADAPTER.exists(),
             }) + "\n\n"
+        finally:
+            # Guarantee the lease drops when the stream finishes or disconnects
+            await active_lease.__aexit__(None, None, None)
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
+    # Pass the held lease into the generator
+    return StreamingResponse(stream(lease), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-
 @app.post("/api/image", response_model=ImageResult, tags=["surfaces"])
 async def image(body: ImageRequest,
                 _: Annotated[None, Depends(throttled_for("image"))]) -> ImageResult:
