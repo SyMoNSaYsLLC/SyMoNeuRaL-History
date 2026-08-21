@@ -64,6 +64,12 @@ PY_MAP = {"pyyaml": "python3-pyyaml", "pillow": "python3-pillow", "attrs": "pyth
           "typing-extensions": "python3-typing-extensions", "opencv-python": "opencv"}
 
 
+# Shortest term allowed to reach the FTS fallback in `_by_pn`. Three, because the
+# tokenizer splits hyphens: at one or two characters a term matches recipe-name segments
+# (`c` in `aws-c-auth`, `io` in `aws-c-io`) rather than recipes.
+FTS_MIN_TERM = 3
+
+
 def _fts_escape(term):
     return '"' + term.replace('"', '""') + '"'
 
@@ -80,7 +86,14 @@ class Matcher:
 
     def _by_pn(self, name):
         rows = self.con.execute("SELECT id FROM recipes WHERE pn=? COLLATE NOCASE", (name,)).fetchall()
-        if not rows:
+        if not rows and len(name) >= FTS_MIN_TERM:
+            # The fallback is here to catch a name that is a PROVIDES/RPROVIDES rather than
+            # a PN -- `virtual/egl` is provided by mesa, not named it. It is a TOKEN match,
+            # though, and SQLite's FTS tokenizer splits on hyphens, so a one- or two-
+            # character term matches every hyphenated recipe containing it as a segment and
+            # scores them all as if the name had been exact. Short terms are barred rather
+            # than down-weighted: there is no length at which `c` legitimately identifies
+            # `aws-c-auth`, so this is a wrong answer being removed, not a ranking tweak.
             rows = self.con.execute(
                 "SELECT rowid AS id FROM recipes_fts WHERE provides MATCH ? OR rprovides MATCH ?",
                 (_fts_escape(name), _fts_escape(name))).fetchall()
@@ -125,6 +138,12 @@ class Matcher:
             if target:
                 for rid in self._by_pn(target):
                     self._hit(rid, 7, f"soname:{so}→{target}")
+                # The map is an answer, not a hint, so stop here. Falling through to the
+                # guess below is what put twelve `aws-c-*` recipes at 7.0 -- above `gcc`
+                # at 6.0 -- in every match against a binary linked to libc: stem `c` is
+                # not a recipe, so `_by_pn` fell back to FTS, and FTS tokenizes hyphens,
+                # so `provides MATCH 'c'` matched the token `c` inside `aws-c-auth`.
+                continue
             for rid in self._by_pn(stem) or self._by_pn("lib" + stem):
                 self._hit(rid, 7, f"soname:{so}")
         for dep in sig.pkg_deps:
