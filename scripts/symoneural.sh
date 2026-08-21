@@ -27,15 +27,59 @@ RUN="$ROOT/run"; mkdir -p "$RUN"
 PIDFILE="$RUN/api.pid"
 PORT="${SYMONEURAL_PORT:-8800}"
 
-running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+UNIT=symoneural-api.service
+
+# There are TWO ways the API can be up and this script only knew about one of them.
+#
+# `install-service.sh` installs $UNIT with `Type=exec` and no `PIDFile=`, so a systemd-managed
+# API writes nothing to $PIDFILE. Every function here keyed off that file, and the consequences
+# were both worse than they look:
+#
+#   * `status` printed "api        down" while the API had been serving for hours -- and then
+#     printed a full, correct /api/status JSON underneath it, which is a readout contradicting
+#     itself. A status line that says down about something that is up is the decorative-
+#     indicator failure this repo bars, in the operator tool rather than on a page.
+#   * `off` -- documented in .claude/CLAUDE.md as THE KILL SWITCH -- found no pidfile, killed
+#     nothing, and printed "surfaces off. static pages unaffected; the card is free." A kill
+#     switch reporting success without killing is the most expensive lie in the repo. And even
+#     had it found a pid, the unit is `Restart=always` / `RestartSec=3`, so the API would be
+#     back in three seconds.
+#
+# So ownership is resolved first and every action is VERIFIED afterwards rather than announced.
+# `port_up` is the ground truth: it asks the thing itself instead of asking a file about it.
+unit_active() { systemctl is-active --quiet "$UNIT" 2>/dev/null; }
+unit_known()  { systemctl cat "$UNIT" >/dev/null 2>&1; }
+pid_alive()   { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+port_up()     { curl -sf --max-time 3 -o /dev/null "http://127.0.0.1:$PORT/api/status"; }
+running()     { pid_alive || unit_active; }
+
+# systemctl on a system unit needs root. Escalate only non-interactively -- a script that
+# blocks on a password prompt inside `off` is a kill switch that hangs -- and when that is not
+# available, say the exact command instead of failing in a way that reads as "already off".
+sysctl_do() {
+  if [ "$(id -u)" -eq 0 ]; then systemctl "$@"; return; fi
+  sudo -n systemctl "$@" 2>/dev/null && return
+  echo "needs root: sudo systemctl $*" >&2
+  return 1
+}
 
 case "${1:-status}" in
   on)
-    if running; then echo "already up (pid $(cat "$PIDFILE"))"; exit 0; fi
+    if unit_active; then echo "already up, owned by $UNIT"; exit 0; fi
+    if pid_alive; then echo "already up (pid $(cat "$PIDFILE"))"; exit 0; fi
+    # Prefer the unit when one is installed. Starting a second copy by hand would race the
+    # one systemd is about to restart, and both would fight for :$PORT.
+    if unit_known; then
+      sysctl_do start "$UNIT" || exit 1
+      sleep 2
+      if port_up; then echo "symoneural api up on 127.0.0.1:$PORT via $UNIT"; exit 0; fi
+      echo "$UNIT started but nothing answers on :$PORT -- journalctl -u $UNIT -n 50" >&2
+      exit 1
+    fi
     setsid python3 "$ROOT/backend/api.py" >>"$RUN/api.out" 2>&1 &
     echo $! > "$PIDFILE"
     sleep 2
-    if running; then
+    if pid_alive; then
       echo "symoneural api up on 127.0.0.1:$PORT (pid $(cat "$PIDFILE"))"
       echo "remember: 'symoneural.sh off' ends it whenever you like."
     else
@@ -44,7 +88,10 @@ case "${1:-status}" in
     ;;
 
   off)
-    if running; then kill "$(cat "$PIDFILE")" 2>/dev/null; sleep 1; fi
+    # The unit first, and `stop` not `kill`: Restart=always means killing the process is a
+    # three-second pause, not an off switch.
+    if unit_active; then sysctl_do stop "$UNIT" || exit 1; fi
+    if pid_alive; then kill "$(cat "$PIDFILE")" 2>/dev/null; sleep 1; fi
     rm -f "$PIDFILE"
     # Whatever the API left holding the card goes too, then the lock is cleared so the
     # next tenant is not left waiting behind a process that no longer exists.
@@ -53,11 +100,21 @@ case "${1:-status}" in
     # Only our own surfaces -- a fine-tune holding the card is not ours to end.
     "$ROOT/scripts/gpu-governor.sh" release chat >/dev/null 2>&1
     "$ROOT/scripts/gpu-governor.sh" release image >/dev/null 2>&1
+    # Verified, not announced. This line used to print unconditionally, which is how a kill
+    # switch that killed nothing still read as a success.
+    if port_up; then
+      echo "STILL UP: something is answering on 127.0.0.1:$PORT -- the surfaces are NOT off" >&2
+      unit_active && echo "  $UNIT is still active; try: sudo systemctl stop $UNIT" >&2
+      exit 1
+    fi
     echo "surfaces off. static pages unaffected; the card is free."
     ;;
 
   status)
-    if running; then echo "api        up (pid $(cat "$PIDFILE")) on 127.0.0.1:$PORT"
+    # Says who owns it as well as whether it is up, because the two answers used to disagree.
+    if unit_active; then echo "api        up on 127.0.0.1:$PORT via $UNIT (systemd-managed)"
+    elif pid_alive; then echo "api        up (pid $(cat "$PIDFILE")) on 127.0.0.1:$PORT"
+    elif port_up; then echo "api        up on 127.0.0.1:$PORT, owner UNKNOWN -- no pidfile and $UNIT inactive"
     else echo "api        down"; fi
     curl -s --max-time 3 "http://127.0.0.1:$PORT/api/status" | python3 -m json.tool 2>/dev/null \
       || "$ROOT/scripts/gpu-governor.sh" status

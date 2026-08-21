@@ -172,6 +172,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep 8188 -- backend/apps/studio/registry.py
         check: exists ops/symoneural-deploy.service
         check: grep GatewayUnitPathTests -- backend/apps/test_gateway_unit.py
+        check: grep FakeRootTests -- backend/apps/test_service_control.py
         note: `grep tuner_router` used to stand here, and it has been REMOVED rather than kept.
         note: It was a good check for the file merge — the loose `grep tuner` passed on guide's
         note: docstring while tuner's exports were still missing — but it became an anti-check the
@@ -424,6 +425,35 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: reason to be careful reading that suite's green — it does not check the thing.
         note: Left alone deliberately: adding a console-error assertion there is item 4's
         note: acceptance work, not this pass's, and it would change what that suite measures.
+        note: 2026-08-20 coder — ITEM 6, and the worse half of the same defect. Chasing the
+        note: 502 turned up that `scripts/symoneural.sh` keyed every function off `run/api.pid`
+        note: while `symoneural-api.service` is `Type=exec` with no `PIDFile=`, so a
+        note: systemd-managed API writes none. `status` printed `api        down` and then
+        note: printed a correct /api/status JSON underneath it — a readout contradicting itself,
+        note: observed while the API had been up 2h38m. Worse: `off` is documented in CLAUDE.md
+        note: as THE KILL SWITCH, and it found no pidfile, killed nothing, and printed
+        note: "surfaces off. static pages unaffected; the card is free." unconditionally. Even
+        note: with a pid it would have lost — the unit is Restart=always / RestartSec=3, so a
+        note: kill is a three-second pause. A kill switch reporting success without killing is
+        note: the most expensive lie available in this repo, so this was FIXED and not FILED:
+        note: ownership is resolved first (unit, then pidfile, then a bare port probe), `off`
+        note: uses `systemctl stop` and escalates only with `sudo -n` — a kill switch that
+        note: blocks on a password prompt is a kill switch that hangs — and the success line is
+        note: now printed only after `port_up` says nothing answers. `status` also gained an
+        note: `owner UNKNOWN` reading for a listener with no pidfile and an inactive unit,
+        note: because `down` is false there and silently calling it a managed start would hide
+        note: a second copy fighting for :8800.
+        note: 2026-08-20 coder — `backend/apps/test_service_control.py`, 9 tests, hermetic. It
+        note: copies the script into a FAKE repo root with its own `backend/api.py` marker and a
+        note: stub `gpu-governor.sh`, and stubs curl/systemctl/pkill/sudo on PATH. That fixture
+        note: is not fastidiousness: the first draft ran the script in place, which would have
+        note: called the real `gpu-governor.sh release chat` on this machine. A test for a kill
+        note: switch must not be able to touch the thing it tests. Proven by breaking — with the
+        note: old unconditional success line and pidfile-only status restored, 3 of the 9 fail.
+        note: The first draft also asserted the wrong branch and the script was right: with the
+        note: unit active and no root it exits 1 saying `sudo systemctl stop ...` rather than
+        note: reaching its own kill path, so "refuses loudly" and "verifies nothing is left" are
+        note: now two separate tests, because a kill switch owes both.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder
