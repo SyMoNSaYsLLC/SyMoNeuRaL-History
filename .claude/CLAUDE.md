@@ -322,12 +322,20 @@ node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI u
 node tests/streamer_guide.mjs       # the guide grid on streamer.html -- own API, no GPU, no provider
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
+cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1526 pass, 0 fail and 14 skip at `c847b64`, measured 2026-08-20 from `backend/` in
-126.78 s, with `--collect-only` collecting 1540 in 1.18 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1526 + 14 = 1540, which is the arithmetic that says nothing
+**1555 pass, 0 fail and 14 skip at `2f97a3b`, measured 2026-08-21 from `backend/` in
+126.41 s, with `--collect-only` collecting 1569 in 1.22 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1555 + 14 = 1569, which is the arithmetic that says nothing
 aborted.
+
+The reading before it was **1526 pass, 0 fail, 14 skip at `c847b64`** in 126.78 s, and for once
+the whole jump is accounted for rather than estimated: 21 are `apps/capture/test_capture.py`
+(`1ec7cbe`), 4 are `apps/test_caddy_delegation.py` (`e5ca567`) and 4 are
+`apps/test_deploy_routes.py` (`180cb60`) — 29 exactly, which is 1555 − 1526. That is unusual and
+you should not expect it; the paragraphs below exist because most deltas span many commits and
+cannot be attributed this way.
 
 **The suite is green, and the three deliberate failures that stood here are gone for the right
 reason.** This paragraph said for two days that `apps/test_rack_probes.py` fails three times
@@ -353,7 +361,7 @@ everywhere else in this file: a count moves when tests land, not when a task clo
 a path you excluded does not exist — so it stops excluding and you get a collection error
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
-`0c0f969`**, **1540 at `c847b64`**. Do not
+`0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
@@ -365,11 +373,33 @@ the commit it sat beside: the tree it named collects 1084, so the figure was car
 from an earlier one. A number with no SHA cannot be checked, only believed. `--collect-only`
 should report the same figure; that comparison is what catches a collection abort, which is not
 a smaller number but no number at all. Without them pytest stops at *collection* — `Interrupted:
-2 errors`, zero tests run, which reads exactly like you broke the suite. `apps/reinforce/tests`
-imports `cupy` and `apps/remix/tests` imports `symon_capture`; neither is installed on the
-**system** interpreter and neither may be, since that is the serving path (see *Python
-environments*). They are per-project suites that need their own environment, so they are
-excluded here rather than made to look green.
+2 errors`, zero tests run, which reads exactly like you broke the suite.
+
+`apps/studio/plugins/reinforce/tests` imports `cupy`, which is not installed on the **system**
+interpreter and may not be, since that is the serving path (see *Python environments*). That one
+is a genuine per-project suite with a genuine environment problem, and it stays excluded.
+
+**`apps/remix/tests` is excluded for an entirely different reason, and the reason this file gave
+until 2026-08-21 was wrong.** It said the suite imports `symon_capture` and that the module is
+not installed. There is no such module anywhere on disk any more: `apps/remix/symoneural_dj/app.py:30`
+imports `from apps.capture import CaptureStore`, which resolves perfectly well from `backend/`.
+What actually breaks is **configuration, not environment**. `apps/remix/pyproject.toml:44` sets
+`pythonpath = [".", "../.."]`, and pytest applies a `[tool.pytest.ini_options]` block only from
+the directory it selects as **rootdir**. Run `pytest apps/` and rootdir is not `apps/remix`, so
+that `pythonpath` is never added, `symoneural_dj` is unimportable, and you get one collection
+error and zero tests. The `--ignore` is therefore still required for the `apps/` invocation — but
+the suite is not dead, needs no venv, and runs on the system interpreter:
+
+```bash
+cd backend/apps/remix && python3 -m pytest -q     # 28 passed in 0.43 s
+```
+
+**28/28, measured 2026-08-21 at `2f97a3b`.** Those 28 are not inside the 1569 and never have
+been, so the tree really carries **1583 tests across two invocations**, not 1569 across one. Run
+both before claiming the backend is green. The lesson generalises past this suite: an exclusion
+outlives the reason it was added, and *"it needs its own environment"* is the most comfortable
+reason to leave sitting there, because it reads as a policy decision rather than as a bug nobody
+re-checked. Re-check the reason, not just the count.
 
 The 162 between `d3a4040` and `0c0f969` is **not 162 new tests**, and reading it that way is
 the mistake the paragraph above warns about. `d3a4040` was a healthy tree that genuinely
