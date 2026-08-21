@@ -57,7 +57,13 @@ assignment  ->  (answer, if it is a question)  ->  [x] Ready  ->  task #NN  ->  
 fourth. "Pending" is a marker on a task, not a place to put something. An assignment that is
 neither carried by a task nor dropped is a **barrier** — recorded and uncarried — and the
 page counts them in red at the top, because an uncounted barrier is how work goes missing.
-The count was 58 on 2026-08-20 and is 0; keep it there.
+The count was 58 on 2026-08-20. It is **3 at `6c1414b`, read 2026-08-21** — and it said 0 in
+this file for a day and a half, which is the same unSHA'd carried-forward figure the rest of this file
+warns about, so the number now travels with the commit it was read on. The three are A-R167
+(waiting on an Apple application that does not exist — a Drop candidate by his own standing
+test, but Drop is his button, not yours) and A-R172/A-R173, the two faults R-171 recorded and
+the drain-floor task did not carry. Drive it back to 0 the only two ways there are: he ticks
+`[x]` and you give it a task number, or he clicks Drop and the reason goes in the file.
 
 ### Working a task
 
