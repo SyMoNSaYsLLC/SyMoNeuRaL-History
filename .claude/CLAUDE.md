@@ -338,11 +338,11 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1668 pass, 0 fail and 14 skip at `1224bf1`, measured 2026-08-21 from `backend/` in
-124.34 s, with `--collect-only` collecting 1682 in 1.24 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1668 + 14 = 1682, which is the arithmetic that says nothing
-aborted. `backend/apps/remix` is **28/28 in 0.43 s** on the same tree, so this tree carries
-**1696 across the two invocations**.
+**1722 pass, 0 fail and 14 skip at `4d0d812`, measured 2026-08-21 from `backend/` in
+123.84 s, with `--collect-only` collecting 1736 in 1.31 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1722 + 14 = 1736, which is the arithmetic that says nothing
+aborted. `backend/apps/remix` is **28/28 in 0.46 s** on the same tree, so this tree carries
+**1750 across the two invocations**.
 
 **Run it from `backend/`, not from the repo root.** `python3 -m pytest backend/apps -q` with the
 `--ignore`s rewritten to match looks equivalent and is not: rootdir moves, `apps` stops being
@@ -351,7 +351,25 @@ the costume of a suite you just broke. That happened here on the run immediately
 one. It is the same rootdir behaviour documented for `apps/remix` further down, and it bites
 the whole suite, not just that corner.
 
-The 43 over the reading below it are one file, and the four files that added none of them are
+The 54 over the reading below it are attributable in full and split two ways: **+52**
+`apps/studio/test_cleanroom.py`, landed whole at `23f2f64` with #97's spec-mediated
+reimplementation pipeline, and **+2** `apps/test_deploy_routes.py` (4 → 6 at `1e54a42`, the
+exemption for `/livestack/live` and the assertion that should have caught its absence).
+52 + 2 = 54, and 1668 + 54 = 1722. `apps/studio/test_studio.py` was also edited in this range —
+a fifth group in `EXPECTED_TOOLS`, a fifth in `EXPECTED_GROUPS`, and `7 · 7 · 6 · 6` becoming
+`7 · 7 · 6 · 6 · 2` — and moved the count by nothing, which is the usual case.
+
+Three of the 52 are the ones worth knowing about, because they were written *after* the module
+already passed everything else: `TheProvenanceBuiltByARealExtractionTests` exists because every
+licence test called the helper functions directly, so `license_determined=bool(licence)`
+returning a hardcoded `True` from the *builder* was invisible — one of seven deliberate breaks
+stayed green. Tested branch is not shipped branch. See `backend/apps/studio/SMOKE-cleanroom.md`.
+
+The previous reading was **1668 pass, 0 fail and 14 skip at `1224bf1`**, measured 2026-08-21
+from `backend/` in 124.34 s with `--collect-only` collecting 1682 in 1.24 s, and `apps/remix`
+28/28 in 0.43 s.
+
+The 43 over the reading below that are one file, and the four files that added none of them are
 the more useful half of the delta: **+43** `apps/live/tests/test_live.py`, landed whole with #96's `apps/live`. 1625 + 43 =
 1668. `apps/test_status_rack.py`, `apps/test_roster.py`, `apps/test_enable_surfaces.py` and
 `apps/test_studio_models.py` were all edited in this range — a fourteenth `EXPECTED` row, `13`
@@ -438,7 +456,7 @@ a path you excluded does not exist — so it stops excluding and you get a colle
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
 `0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
-`87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**, **1682 at `1224bf1`**. Do not
+`87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**, **1682 at `1224bf1`**, **1736 at `4d0d812`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
