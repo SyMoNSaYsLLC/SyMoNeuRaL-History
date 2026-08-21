@@ -32,7 +32,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
 # HERE is the repo ROOT, not this script's directory, and the two call sites below spell
 # their paths from the root accordingly. They did not until 2026-08-20: they read
-# "$HERE/symoneural" and "$HERE/comfyui.sh", neither of which has ever existed at the
+# "$HERE/symoneural" and "$HERE/<launcher>.sh", neither of which has ever existed at the
 # root, so both graceful stops silently fell through to their `||` pkill fallback --
 # and for comfy that fallback is precisely the ungraceful kill the comment on its arm
 # argues against. A `||` fallback hides a broken primary; both are checked by
@@ -106,17 +106,24 @@ evict() {
     # engine is not resident between jobs, so the window is small -- but it is written down
     # here rather than discovered by whoever next sees an image render die unexplained.
     sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
-    # ComfyUI. It is a long-lived HTTP server that holds ~12 GB of FLUX weights while
+    # The render UI. It is a long-lived HTTP server that holds ~12 GB of weights while
     # resident, so it MUST have its own arm: the '*)' arm below pkills the LLM and
-    # diffusion engines, neither of which is ComfyUI, and would log a successful eviction while the
-    # card stayed full -- the exact failure the miner) comment records.
+    # diffusion engines, neither of which is this, and would log a successful eviction while
+    # the card stayed full -- the exact failure the miner) comment records.
     #
-    # The stop is deliberately graceful and staged. `scripts/comfyui.sh stop` asks the
+    # The stop is deliberately graceful and staged. `scripts/symoneural-ui.sh stop` asks the
     # server to unload (POST /free) and then signals its pidfile, because SIGKILLing a
     # process mid-CUDA-teardown returns the lock before the driver has taken the memory
     # back and the next tenant OOMs at step 0 -- which is what `drain` below exists to
     # catch. The pkill is the fallback for a server started outside the script.
-    comfy) "$HERE/scripts/comfyui.sh" stop >/dev/null 2>&1 || pkill -f 'ComfyUI/main.py' 2>/dev/null || true ;;
+    #
+    # The fallback pattern must name the path the process ACTUALLY runs from, which is now
+    # engines/symoneural-ui. It used to name the upstream tree's main.py at the repo root,
+    # a path that no longer exists under any spelling; a pkill that matches nothing does not
+    # fail -- it succeeds having killed nothing, so the governor logs an
+    # eviction, the card stays full, and the next tenant OOMs at step 0. That is the same
+    # silent-failure shape as the two broken `$HERE` paths this arm was already fixed for.
+    comfy) "$HERE/scripts/symoneural-ui.sh" stop >/dev/null 2>&1 || pkill -f 'engines/symoneural-ui/main.py' 2>/dev/null || true ;;
     # A training run holds ~10-13 GB for hours. It is never killed to make room for a demo
     # request -- a half-finished fine-tune is not worth a page view. Serving surfaces queue
     # behind it instead, which is what the acquire timeout is for.

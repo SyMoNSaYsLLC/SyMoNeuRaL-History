@@ -34,7 +34,7 @@ say "the surface is off" without holding a secret.
 Prerequisites for the two heavy paths:
 
 ```bash
-bash scripts/comfyui.sh start        # the bench; loopback :8188, no GPU lock held
+bash scripts/symoneural-ui.sh start        # the bench; loopback :8188, no GPU lock held
 # llama-server is started on demand by the chat surface -- this package never spawns it
 ```
 
@@ -87,7 +87,7 @@ raw tool results, the render form, the status strip and the tool registry.
 One card, 15.92 GiB, shared by chat (~5 GB), image (~7 GB) and QLoRA training (~12 GB) behind
 `scripts/gpu-governor.sh`. CLAUDE.md: *hold the lock for a job, never for a process lifetime.*
 
-`scripts/comfyui.sh` therefore takes **no** lock. A running-but-idle ComfyUI would otherwise
+`scripts/symoneural-ui.sh` therefore takes **no** lock. A running-but-idle ComfyUI would otherwise
 lock every other surface out of the card for as long as somebody left the editor open. The
 lease is taken per render inside `comfy.lease()` and given back with
 `POST /free {"unload_models":true,"free_memory":true}` plus a drain wait below the 1500 MiB
@@ -193,7 +193,7 @@ HuggingFace tensor names, which upstream's text-model branch rejects. That was f
 a render, not by reading the catalogue.
 
 It lives **in this repo**, not in the ComfyUI tree, because `ComfyUI/` is gitignored in full
-(8.5 GB, carries its own `.git`). `scripts/comfyui.sh start` symlinks it into
+(8.5 GB, carries its own `.git`). `scripts/symoneural-ui.sh start` symlinks it into
 `ComfyUI/custom_nodes/` on every start, so deleting and recloning ComfyUI loses nothing of ours.
 
 Moving it there broke it once, immediately and instructively: the module located its sibling
@@ -289,7 +289,7 @@ export SYMONEURAL_STUDIO_TOKEN=$(openssl rand -hex 32); echo "$SYMONEURAL_STUDIO
 cd backend && SYMONEURAL_STUDIO_ENABLED=1 python3 -m uvicorn api:app --port 8875    # blocks
 
 # Second shell, with SYMONEURAL_STUDIO_TOKEN exported to the value the line above printed:
-bash scripts/comfyui.sh start
+bash scripts/symoneural-ui.sh start
 node tests/studio.mjs http://127.0.0.1:8875
 ```
 

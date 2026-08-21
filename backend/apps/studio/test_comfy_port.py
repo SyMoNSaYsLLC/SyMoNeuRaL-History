@@ -1,12 +1,12 @@
 """The Python bridge and the shell that starts the server must agree on where ComfyUI is.
 
-Two files hold this one address. `scripts/comfyui.sh` *starts* ComfyUI on a host and port;
+Two files hold this one address. `scripts/symoneural-ui.sh` *starts* ComfyUI on a host and port;
 `apps/studio/comfy.py` *talks to it* on a host and port. Nothing makes them agree, and they
 are edited by different kinds of change -- an ops tweak touches the shell, a bridge fix
 touches the Python -- which is the same shape as the ExecStart path that took the public API
 down for four hours: two plausible files, and the defect living only in the gap between them.
 
-The failure mode if they drift is not a crash. `scripts/comfyui.sh start` reports success and
+The failure mode if they drift is not a crash. `scripts/symoneural-ui.sh start` reports success and
 writes a pidfile, the server really is up, and every Studio render then fails with
 `comfyui_unreachable` against the port nothing is listening on. That reads as a Studio bug and
 is not one.
@@ -41,9 +41,9 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 BRIDGE = ROOT / "backend" / "apps" / "studio" / "comfy.py"
-LAUNCHER = ROOT / "scripts" / "comfyui.sh"
+LAUNCHER = ROOT / "scripts" / "symoneural-ui.sh"
 
-# The variable both sides must read. `comfy.py` reads it directly; `comfyui.sh` reads it first
+# The variable both sides must read. `comfy.py` reads it directly; `symoneural-ui.sh` reads it first
 # and only then falls back to the legacy `SYM_` spelling, which `symoneuralenv.promote()`
 # rewrites for the Python side at startup.
 PORT_ENV = "SYMONEURAL_COMFY_PORT"
@@ -79,13 +79,13 @@ def _disagreement(bridge_text: str, launcher_text: str) -> str | None:
     b_host, b_port = _bridge_defaults(bridge_text)
     l_host, l_port = _launcher_defaults(launcher_text)
     if (b_host, b_port) != (l_host, l_port):
-        return (f"comfy.py talks to {b_host}:{b_port} but comfyui.sh starts the server on "
+        return (f"comfy.py talks to {b_host}:{b_port} but symoneural-ui.sh starts the server on "
                 f"{l_host}:{l_port}; every Studio render would fail with "
                 "`comfyui_unreachable` while the launcher reported success")
     if PORT_ENV not in bridge_text:
         return f"comfy.py no longer reads {PORT_ENV}, so the launcher's override is ignored"
     if PORT_ENV not in launcher_text:
-        return (f"comfyui.sh no longer reads {PORT_ENV}, so setting it moves the bridge "
+        return (f"symoneural-ui.sh no longer reads {PORT_ENV}, so setting it moves the bridge "
                 "without moving the server")
     return None
 

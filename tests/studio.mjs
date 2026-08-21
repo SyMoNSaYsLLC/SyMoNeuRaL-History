@@ -13,7 +13,7 @@
 //
 //   cd backend && SYMONEURAL_STUDIO_ENABLED=1 SYMONEURAL_STUDIO_TOKEN=devtest \
 //       python3 -m uvicorn api:app --port 8875
-//   bash scripts/comfyui.sh start
+//   bash scripts/symoneural-ui.sh start
 //
 // The last two assertions are the ones worth having. A render succeeding server-side and still
 // showing as a broken image for every visitor is a bug this repo has actually shipped -- curl

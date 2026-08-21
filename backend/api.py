@@ -372,8 +372,9 @@ class ImageRequest(BaseModel):
     size: int = Field(768, ge=64, le=2048, multiple_of=64,
                       description="Square edge length in pixels. Must be a multiple of 64: "
                                   "the VAE downsamples by 8 and the transformer patches by "
-                                  "2, so anything else is not representable and sd-cli "
-                                  "silently rounds it. Above ~1536 will OOM this card.")
+                                  "2, so anything else is not representable and "
+                                  "symoneural-diffuse silently rounds it. Above ~1536 will "
+                                  "OOM this card.")
     seed: int | None = Field(None, ge=0, le=2**31 - 1,
                              description="Omit for random. Supply to reproduce an earlier image.")
 

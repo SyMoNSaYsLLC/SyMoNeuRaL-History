@@ -7,7 +7,8 @@ command whose primary silently could not run, masked by a `||` fallback that cou
     comfy) "$HERE/comfyui.sh" stop        ... || pkill -f 'ComfyUI/main.py'
 
 `HERE` is the repo root, so those were `<root>/symoneural` and `<root>/comfyui.sh`. Neither
-has ever existed -- the CLI is `bin/symoneural-cli` and the script is `scripts/comfyui.sh` --
+has ever existed -- the CLI is `bin/symoneural-cli` and the launcher, since 2026-08-21, is
+`scripts/symoneural-ui.sh` --
 so **every** chat eviction and **every** ComfyUI eviction took the fallback. For comfy that
 fallback is the ungraceful kill its own arm spends a paragraph arguing against: the process
 exits before the driver returns the memory and the next tenant OOMs at step 0.
@@ -41,7 +42,12 @@ DIFFUSE = "bin/symoneural-diffuse"
 
 #: Names this project may not kill by, because it neither builds nor ships them. Renaming an
 #: engine without moving its pkill leaves the kill switch pointing at nothing.
-RETIRED = ("llama-server", "sd-cli", "llama.cpp", "stable-diffusion.cpp")
+RETIRED = ("llama-server", "sd-cli", "llama.cpp", "stable-diffusion.cpp",
+           "ComfyUI/main.py")
+#: `ComfyUI/main.py` joined that list on 2026-08-21. The render UI is now
+#: `engines/symoneural-ui`, produced by `tools/fork_render_ui.sh` from the vendored tree, and
+#: the directory that pattern named is not on disk under any spelling -- so the `comfy)`
+#: fallback would have matched nothing while reporting success, which is this file's subject.
 
 
 class EveryInvokedPathExists(unittest.TestCase):
@@ -61,7 +67,7 @@ class EveryInvokedPathExists(unittest.TestCase):
         """Named explicitly: these two are the arms whose fallback is *worse* than the
         primary, so losing either to a silent path break is a real regression and not a
         cosmetic one."""
-        for rel in ("bin/symoneural-cli", "scripts/comfyui.sh"):
+        for rel in ("bin/symoneural-cli", "scripts/symoneural-ui.sh"):
             with self.subTest(path=rel):
                 self.assertIn(f'"$HERE/{rel}"', CODE,
                               f"the governor no longer invokes {rel}; the graceful stop it "

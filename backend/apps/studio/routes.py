@@ -461,7 +461,7 @@ async def nodes(request: Request, refresh: bool = False) -> Response:
     except httpx.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable", "url": comfy.base_url(),
                              "detail": f"{type(exc).__name__}: {exc}",
-                             "fix": "scripts/comfyui.sh start"}, status_code=503)
+                             "fix": "scripts/symoneural-ui.sh start"}, status_code=503)
     return JSONResponse({"count": len(catalogue), "nodes": catalogue})
 
 
@@ -658,7 +658,7 @@ async def image(request: Request, filename: str, subfolder: str = "",
     except httpx.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable", "url": comfy.base_url(),
                              "detail": f"{type(exc).__name__}: {exc}",
-                             "fix": "scripts/comfyui.sh start"}, status_code=503)
+                             "fix": "scripts/symoneural-ui.sh start"}, status_code=503)
     return Response(payload, media_type=content_type or "image/png",
                     headers={"Cache-Control": "public, max-age=86400"})
 
@@ -703,7 +703,7 @@ async def events(ws: WebSocket) -> None:
         # telling the operator to start a service that is already up sends them the wrong way.
         payload = {"type": "error", "error": f"{type(exc).__name__}: {exc}"}
         if isinstance(exc, (OSError, asyncio.TimeoutError)):
-            payload["fix"] = "scripts/comfyui.sh start"
+            payload["fix"] = "scripts/symoneural-ui.sh start"
         with contextlib.suppress(Exception):
             await ws.send_json(payload)
     with contextlib.suppress(Exception):
@@ -814,7 +814,7 @@ async def _forward(method: str, path: str, body: bytes | None,
     except httpx.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable", "url": url,
                              "detail": f"{type(exc).__name__}: {exc}",
-                             "fix": "scripts/comfyui.sh start"}, status_code=503)
+                             "fix": "scripts/symoneural-ui.sh start"}, status_code=503)
     return Response(content=upstream.content, status_code=upstream.status_code,
                     headers=_clean(upstream.headers.items()),
                     media_type=upstream.headers.get("content-type"))

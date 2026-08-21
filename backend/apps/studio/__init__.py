@@ -146,7 +146,7 @@ def status() -> dict:
             up, addr = comfy_probe()
             if not up:
                 state = "offline"
-                detail = (f"ComfyUI is not answering at {addr} -- scripts/comfyui.sh start "
+                detail = (f"ComfyUI is not answering at {addr} -- scripts/symoneural-ui.sh start "
                           "brings the bench back (nothing starts it at boot)")
             else:
                 detail = (f"{len(registry.names())} tools · workspace {workspace.ROOT} "

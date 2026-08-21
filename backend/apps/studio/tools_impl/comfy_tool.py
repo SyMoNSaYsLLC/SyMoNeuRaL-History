@@ -49,7 +49,7 @@ from ..registry import tool
 __all__ = ["generate_image", "run_workflow", "comfy_status", "list_comfy_nodes",
            "list_workflows", "execute"]
 
-# ComfyUI's own default. `--output-directory` would move it, and `scripts/comfyui.sh` does not
+# ComfyUI's own default. `--output-directory` would move it, and `scripts/symoneural-ui.sh` does not
 # pass that flag, so this is where files land on this box.
 _OUTPUT_DIRNAME = "output"
 
@@ -101,7 +101,7 @@ async def execute(prompt_graph: dict, *, timeout_s: int = 900,
     up = await client.alive()
     if not up.get("up"):
         return {"ok": False, "error": "comfyui_down", "url": client.url, "detail": (
-            "ComfyUI is not answering. Start it with `scripts/comfyui.sh start` (it runs "
+            "ComfyUI is not answering. Start it with `scripts/symoneural-ui.sh start` (it runs "
             "under ComfyUI/.venv on 127.0.0.1:8188). It is not a system service and is not "
             "expected to be up between jobs."), "probe": up}
 
@@ -330,7 +330,7 @@ async def comfy_status() -> dict:
     probe["output_dir"] = str(workspace.COMFYUI / _OUTPUT_DIRNAME) if workspace.COMFYUI else None
     probe["workflows"] = workflows.names()
     if not probe.get("up"):
-        probe["how_to_start"] = "scripts/comfyui.sh start"
+        probe["how_to_start"] = "scripts/symoneural-ui.sh start"
     return probe
 
 
@@ -355,7 +355,7 @@ async def list_comfy_nodes(search: str = "", limit: int = 40) -> dict:
         catalogue = await client.object_info()
     except Exception as e:                      # noqa: BLE001
         return {"error": "comfyui_down", "detail": f"{type(e).__name__}: {e}",
-                "how_to_start": "scripts/comfyui.sh start"}
+                "how_to_start": "scripts/symoneural-ui.sh start"}
 
     needle = (search or "").lower()
     rows = []
