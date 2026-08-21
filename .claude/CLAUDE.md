@@ -344,11 +344,11 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1722 pass, 0 fail and 14 skip at `4d0d812`, measured 2026-08-21 from `backend/` in
-123.84 s, with `--collect-only` collecting 1736 in 1.31 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1722 + 14 = 1736, which is the arithmetic that says nothing
-aborted. `backend/apps/remix` is **28/28 in 0.46 s** on the same tree, so this tree carries
-**1750 across the two invocations**.
+**1736 pass, 0 fail and 14 skip at `594efac`, measured 2026-08-21 from `backend/` in
+138.52 s, with `--collect-only` collecting 1750 in 1.37 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1736 + 14 = 1750, which is the arithmetic that says nothing
+aborted. `backend/apps/remix` is **28/28 in 0.42 s** on the same tree, so this tree carries
+**1778 across the two invocations**.
 
 **Run it from `backend/`, not from the repo root.** `python3 -m pytest backend/apps -q` with the
 `--ignore`s rewritten to match looks equivalent and is not: rootdir moves, `apps` stops being
@@ -356,6 +356,21 @@ importable, and you get `Interrupted: 3 errors during collection` — no reading
 the costume of a suite you just broke. That happened here on the run immediately before this
 one. It is the same rootdir behaviour documented for `apps/remix` further down, and it bites
 the whole suite, not just that corner.
+
+The 14 over the reading below it are one file and are the whole delta: **+14**
+`apps/test_governor_drain.py`, landed whole at `2dfd1af` with R-171's drain-floor fix.
+1722 + 14 = 1736.
+
+**#99 landed in this range as well and moved the count by nothing, and that is the most
+instructive zero in this file.** Everything it added is a browser assertion in
+`tests/studio.mjs` — five of them — and pytest never sees that file. The surface those five
+gate went from **4% of the first viewport to 55%**, which is to say the most important test
+written this week is invisible to the number at the top of this section. Do not read a flat
+count as a quiet week.
+
+The previous reading was **1722 pass, 0 fail and 14 skip at `4d0d812`**, measured 2026-08-21
+from `backend/` in 123.84 s with `--collect-only` collecting 1736 in 1.31 s, and `apps/remix`
+28/28 in 0.46 s.
 
 The 54 over the reading below it are attributable in full and split two ways: **+52**
 `apps/studio/test_cleanroom.py`, landed whole at `23f2f64` with #97's spec-mediated
@@ -462,19 +477,20 @@ a path you excluded does not exist — so it stops excluding and you get a colle
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
 `0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
-`87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**, **1682 at `1224bf1`**, **1736 at `4d0d812`**. Do not
-attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
-spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
-a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
-then 111.55 s on that tree: two readings of one tree, so treat the wall time as a range and the
-count as the reading. The count drifts upward as apps land — it was 682, then 941, then 973,
-then 981, then 1084, then 1085 — so treat the absolute number as a date-stamped reading, not a
-contract, and put a commit SHA beside it. A published 1063 turned out never to have been true of
-the commit it sat beside: the tree it named collects 1084, so the figure was carried forward
-from an earlier one. A number with no SHA cannot be checked, only believed. `--collect-only`
-should report the same figure; that comparison is what catches a collection abort, which is not
-a smaller number but no number at all. Without them pytest stops at *collection* — `Interrupted:
-2 errors`, zero tests run, which reads exactly like you broke the suite.
+`87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**, **1682 at `1224bf1`**, **1736 at
+`4d0d812`**, **1750 at `594efac`**. Do not attribute a jump to one task from these numbers
+alone: the 107 between `e81ffa4` and `74dee33` spans **25 commits** across most of two days'
+work, while the 29 from `74dee33` to `d3a4040` is a single commit. A count moves when tests
+land, not when a task closes. `df1d862` read 110.38 s then 111.55 s on that tree: two readings
+of one tree, so treat the wall time as a range and the count as the reading. The count drifts
+upward as apps land — it was 682, then 941, then 973, then 981, then 1084, then 1085 — so treat
+the absolute number as a date-stamped reading, not a contract, and put a commit SHA beside it. A
+published 1063 turned out never to have been true of the commit it sat beside: the tree it named
+collects 1084, so the figure was carried forward from an earlier one. A number with no SHA
+cannot be checked, only believed. `--collect-only` should report the same figure; that
+comparison is what catches a collection abort, which is not a smaller number but no number at
+all. Without them pytest stops at *collection* — `Interrupted: 2 errors`, zero tests run, which
+reads exactly like you broke the suite.
 
 `apps/studio/plugins/reinforce/tests` imports `cupy`, which is not installed on the **system**
 interpreter and may not be, since that is the serving path (see *Python environments*). That one
@@ -570,13 +586,40 @@ SYMONEURAL_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
 bash scripts/symoneural-ui.sh stop                        # /free, THEN SIGTERM -- see below
 ```
 
-**16/16 passed, re-measured 2026-08-20 at `d3a4040`, and unread since `0c0f969`**, including a 1024x1024 FLUX-schnell
-render decoding in the browser in 14.4 s (14.2 s server-side, card back in 4.2 s, lock
-released). The same 16/16 stood at `1537262` and, before that, at `d20e09b`; each was re-run
-rather than re-dated because `backend/api.py` had changed underneath it, and studio.mjs runs
-against `api.py`. Its three `net::ERR_ABORTED` lines are labelled optional and 404 upstream at
-:8188 as well; they are not proxy faults. `.claude/HANDOVER.md` has the reading and the VRAM
-curve.
+**21/21 passed, measured 2026-08-21 at `594efac`**, including a 1024x1024 FLUX-schnell render
+decoding in the browser in 11.4 s (10.3 s server-side, lock released). It was **16/16** and had
+been unread since `0c0f969`; five assertions landed with #99, and **two of the sixteen were red
+on the first honest run of them, neither for a reason the page had caused**:
+
+- **`26 tools` was stale.** `23f2f64` added `extract_spec` and `generate_native_code` (group
+  `cleanroom`), updated `apps/studio/test_studio.py`'s `EXPECTED_TOOLS`, and never touched
+  `tests/studio.mjs` — so this suite reported two failures for work that was correct. It is 28
+  in both places now, and when you add a tool both move in the same commit.
+- **`the render decoded in the browser` was racy**, which is worse than absent for that
+  particular assertion. It waited on `waitForSelector('#st-shots img')`, which returns the
+  moment `page.js` sets `src`, before a byte of the PNG has arrived; `naturalWidth` is 0 until
+  it decodes, so a good render read `0x0`. Confirmed from the other end at the same moment:
+  `curl` on `/api/studio/image?...` answered `200 image/png content-length: 996780`. It waits on
+  `complete && naturalWidth > 0` now. The assertion exists because a render once succeeded
+  server-side and still showed as a broken image to every visitor, so it has to go red for that
+  and for nothing else.
+
+**The lesson is the one #94 taught, arriving from the other side.** Every check on the Studio
+task was green, this suite was 16/16, and the editor all of it was about had never been seen by
+the person who asked for it: the frame was the fourth block down the page under
+`height:min(78vh,760px)`, which at 1440x1000 put its top at y=962 — 38px of 1000 visible, 4%.
+The suite now measures the frame's area inside the **first viewport**, not its height, because
+`min(78vh,760px)` is 76% of a 1000px viewport and a height assertion would have passed
+throughout. `backend/apps/studio/SMOKE-bench.md` has the three-viewport table and the deliberate
+break.
+
+The 16/16 that stood at `d3a4040`, `1537262` and `d20e09b` is kept in the ladder above rather
+than overwritten: each was re-run rather than re-dated because `backend/api.py` had changed
+underneath it, and studio.mjs runs against `api.py`. Its three `net::ERR_ABORTED` lines are
+labelled optional and 404 upstream at :8188 as well; they are not proxy faults, and #99 checked
+three more of the same class (`api/userdata?dir=workflows`, `?dir=subgraphs`,
+`workflows%2F.index.json`) against :8188 directly and found the proxy faithful on every one.
+`.claude/HANDOVER.md` has the reading and the VRAM curve.
 
 **Run this suite and `frontend.mjs` one after the other, never at once.** Both take the card,
 and `frontend.mjs`'s image assertion evicted ComfyUI out from under a studio render here — the
