@@ -325,14 +325,23 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1564 pass, 0 fail and 14 skip at `0d51b09`, measured 2026-08-21 from `backend/` in
-127.85 s, with `--collect-only` collecting 1578 in 1.24 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1564 + 14 = 1578, which is the arithmetic that says nothing
-aborted.
+**1580 pass, 0 fail and 14 skip at `87c4042`, measured 2026-08-21 from `backend/` in
+122.01 s, with `--collect-only` collecting 1594 in 1.17 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1580 + 14 = 1594, which is the arithmetic that says nothing
+aborted. `backend/apps/remix` is **28/28 in 0.41 s** on the same tree, so this tree carries
+**1622 across the two invocations**.
 
-The 9 over the reading below are all one file, `apps/test_brand_boundary.py`, landed by
-`0d51b09` — #74 item 7. Attributable for the same boring reason as the entry under it: one
-commit, one new test file, nothing else moved.
+The 16 over the reading below are attributable in full, which is the second time running and
+still not what to expect: 9 are `apps/test_api_reference.py`, new at `ad9b9fa`; 4 are
+`apps/test_weight_names.py` going 10 → 14 at `f3ed5ab`; 3 are `apps/test_brand_boundary.py`
+going 9 → 12 at `6542932`. 9 + 4 + 3 = 16. `5299200` is the fourth commit in that range to
+touch a test file and it moved the count by nothing — it rewrote `WindowSmokeTests` to wait on
+the shell instead of on a stopwatch, which is a fix to *what* 15 tests assert, not to how many
+there are. That distinction is why a count is a weak signal on its own.
+
+The reading before that was **1564 pass, 0 fail and 14 skip at `0d51b09`** in 127.85 s with
+`--collect-only` collecting 1578; the 9 over the one below it were all
+`apps/test_brand_boundary.py`, landed by that commit as #74 item 7.
 
 The reading before that was **1555 pass, 0 fail and 14 skip at `2f97a3b`**, measured
 2026-08-21 in 126.41 s with `--collect-only` collecting 1569.
@@ -368,7 +377,8 @@ everywhere else in this file: a count moves when tests land, not when a task clo
 a path you excluded does not exist — so it stops excluding and you get a collection error
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
-`0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**. Do not
+`0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
+`87c4042`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
