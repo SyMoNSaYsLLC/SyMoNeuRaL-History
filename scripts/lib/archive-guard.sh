@@ -64,7 +64,14 @@ _ag_forbidden_paths() {
 _AG_GIT_PATTERN='(^|/)\.git/'
 
 # Key names only. Never a value.
-_AG_SECRET_KEYS='SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|SPOTIFY_REDIRECT_URI|SYMON_URL|VLLM_API_KEY|DJ_TOKEN|DJ_TOKEN_PATH|DJ_HOST|DJ_PORT'
+#
+# `SYMONEURAL_OBS_PASSWORD` joined the list on 2026-08-21 with #96. The path list above
+# already refuses `backend/apps/live/symoneural-live.env`, so this entry is not for the file
+# the rule names -- it is for `live.env.old`, `symoneural-live.env.pre-rotation`, and the copy
+# somebody pastes into a scratch note. That gap is the whole reason a content scan exists
+# beside a path list, and adding the key at the same time as the app is the only moment
+# anybody is thinking about it.
+_AG_SECRET_KEYS='SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|SPOTIFY_REDIRECT_URI|SYMON_URL|VLLM_API_KEY|DJ_TOKEN|DJ_TOKEN_PATH|DJ_HOST|DJ_PORT|SYMONEURAL_OBS_PASSWORD'
 
 # Bulk directories the content scan may skip -- and ONLY in local-authorized mode.
 #
