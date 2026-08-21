@@ -173,6 +173,34 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# The two retired page names. `backend/api.py` redirects /tuner.html -> /streamer.html
+	# and /tuner-watch.html -> /streamer-watch.html, and its comment states why they get a
+	# redirect when /api/tuner/* deliberately does not: *"a bookmark is permanent"* and,
+	# unlike a stale cached page, it does not resolve itself on a reload.
+	#
+	# That redirect was DEAD CODE on the public origin until this block, and the way it was
+	# hidden is worth writing down. The old files were still sitting in the webroot, so
+	# file_server served them -- stale 200s that looked healthy. On 2026-08-20 the first
+	# unattended `deploy.sh --prune` removed both, and the paths went straight from
+	# stale-200 to hard-404: `handle { file_server }` below finds no file and answers
+	# without ever asking the API, which is the same defect @sections, @studio and @exp
+	# each had to learn one at a time. Verified against this box's Caddy, not against
+	# 127.0.0.1:8800 -- the API answers these directly, so localhost showed 302 throughout
+	# and proved nothing. Test a delegation THROUGH Caddy or you are testing the wrong hop.
+	#
+	# `path` is EXACT and lists both names, like @exp and unlike @studio: there is no
+	# subtree here, only two dead bookmarks, and a wildcard would claim the retired
+	# namespace forever -- which api.py's comment argues against directly.
+	#
+	# This block dies when the redirects do. It is not permanent infrastructure: when
+	# api.py stops answering these two names, delete this too, or Caddy will proxy a path
+	# that 404s from the API instead of from here, which is a worse-looking version of the
+	# same nothing.
+	@retired path /tuner.html /tuner-watch.html
+	handle @retired {
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# Anything else is a static file.
 	handle {
 		file_server
