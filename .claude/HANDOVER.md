@@ -560,6 +560,45 @@ symoneural-api` and then hit the surface you moved. This bit twice in one night.
 
 ---
 
+## 0b-quinquies. The deploy is armed: publishing now survives a reboot without a person (2026-08-20)
+
+**`symoneural-deploy.service` is installed and `enabled`, and it prunes.** Garrett authorised
+both halves in answer to `AUDIT.md` Q11 — *"yes, arm it and prune"* — and this section is the
+record of what that changed, because it is root-side state that no file in the repo would
+otherwise show you.
+
+What it does at every boot: `scripts/deploy.sh --prune`, which installs `site/` into
+`/var/www/symoneural` and then deletes everything in the webroot with no counterpart in
+`site/`, except the one `index.prev-<stamp>.html` snapshot taken on that run. **The webroot is
+now a function of `site/`.** That is the property that makes an unattended deploy safe to
+repeat; without `--prune` it would have grown one publicly-served stale copy of the front page
+per boot, forever.
+
+Measured on the first run through systemd (`Result=success`, `ExecMainStatus=0`) rather than by
+hand, so the hardening was exercised as it will be at boot — `ProtectSystem=strict`,
+`ReadOnlyPaths` on the repo, `PrivateNetwork=yes`:
+
+- **pruned 7 files and `docs/`** — five `index.prev-*` snapshots, plus `tuner.html` and
+  `tuner-watch.html`. Those last two are the ones that mattered: pages the site renamed away
+  from (#73 item 2) and went on serving to anyone with the URL.
+- `/tuner.html` now answers **302 → `/streamer.html`**, not 404. The redirect route in `api.py`
+  was already there and was being shadowed by the stale file sitting in front of it.
+- `systemctl --failed` lists **0 units**.
+
+**What had to be fixed first, and why it would have bitten quietly:** the script's reference
+check was reporting `MISSING exp` and `MISSING studio` and exiting non-zero on *every* run,
+for two routes that answer 200. The unit deliberately carries no `SuccessExitStatus`, so arming
+it against that bug meant a red unit at every boot for a working site — which is how people
+learn to ignore `systemctl --failed`. Fixed and pinned by `backend/apps/test_deploy_routes.py`
+in `180cb60`; that test reads `api.py`'s extensionless routes rather than a blessed list, so
+the *next* surface added the ordinary way goes red in the suite instead of at boot.
+
+**The consequence to hold on to:** a page reaching `site/` now reaches visitors on the next
+boot without anyone remembering. The converse is the new sharp edge — anything that must
+survive in the webroot belongs in `site/` or outside the webroot entirely, because a prune runs
+unattended now. `deploy.sh`'s header records the time that lesson was learned the hard way, and
+an allowlist is explicitly *not* the fix.
+
 ## 0b-bis. `scripts/symoneural.sh on` CANNOT WORK — systemd owns the API (2026-08-18)
 
 **`.claude/CLAUDE.md` presents `./scripts/symoneural.sh on|off|status` as the way to manage the
