@@ -155,10 +155,25 @@ missing=0
 # Note the asymmetry this list encodes: `livestack` is a route, `livestack.html` is a file,
 # and both resolve. Only the extensionless form is exempted here, so a genuinely missing
 # livestack.html is still caught.
+# `studio` and `exp` are the same case again and were reported MISSING on a deploy where both
+# answered 200 -- so this check was failing every deploy, and `deploy.sh` exits non-zero when
+# it does. That is not a cosmetic wolf-cry: ops/symoneural-deploy.service deliberately carries
+# no SuccessExitStatus, so an unattended boot-time deploy would have gone red every time.
+#
+# Checked before being added, because the whole value of this list is that nothing goes in it
+# that is genuinely absent: both are `@app.get(..., include_in_schema=False)` in backend/api.py
+# (/studio at :2616, /exp at :2635), both are named in ops/Caddyfile's @studio and @exp
+# matchers, and both answered 200 on the running service. site/index.html links them
+# extensionless at :265 and :272.
+#
+# They differ from the four above in one way worth knowing: livestack IS also livestack.html on
+# disk, whereas there is no studio.html or exp.html and never was -- these render from the API
+# only. So the asymmetry note above does not apply to them; there is no file form to catch.
 is_route() {
   case "$1" in
     docs|docs/*|openapi.json|api|api/*) return 0;;
     overview|livestack|controlboard|receipts) return 0;;
+    studio|exp) return 0;;
     *) return 1;;
   esac
 }
