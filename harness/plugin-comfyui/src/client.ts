@@ -666,12 +666,21 @@ export class ComfyClient {
    * Start the telemetry socket and keep it up until the lifetime signal fires.
    *
    * Idempotent — a second call while the pump is running does nothing. Returns immediately;
-   * the pump runs until teardown or until reconnection is exhausted.
+   * the pump runs until teardown, until reconnection is exhausted, or immediately if this
+   * interpreter has no global `WebSocket` (see {@link pump}'s pre-flight).
+   *
+   * The `.catch()` is not decorative. `plugin.ts` calls this from the startup path, so an
+   * unhandled rejection here would be an unhandled rejection at plugin load — which node has
+   * terminated the process for since v15. A telemetry socket failing must never take the
+   * harness down with it; the REST half is independent and stays usable.
    */
   connect(): void {
     if (this.pumping) return
     this.pumping = true
-    void this.pump()
+    void this.pump().catch((error: unknown) => {
+      this.pumping = false
+      this.ctx.logger.error(`comfyui: telemetry pump stopped unexpectedly: ${renderThrown(error)}`)
+    })
   }
 
   /**
@@ -688,8 +697,31 @@ export class ComfyClient {
     return this.sessionId === undefined ? base : `${base}?clientId=${encodeURIComponent(this.sessionId)}`
   }
 
-  /** Reconnect loop. Each iteration owns one socket from open to close. */
+  /**
+   * Reconnect loop. Each iteration owns one socket from open to close.
+   *
+   * The pre-flight is load-bearing and is not a stylistic guard. `requireWebSocket()` is called
+   * inside {@link runSocket}, which is inside this loop's `try` — so on an interpreter with no
+   * global `WebSocket` (this box: node v20.19.2, measured) the missing-global error would be
+   * caught as though it were a closed socket and fed into the retry ladder: ten attempts,
+   * backoff to 15 s, ten `comfyui/disconnected` emissions, ~2.5 minutes of a machine retrying a
+   * condition that cannot change. A missing global is not a transient network fault. It is
+   * checked once, reported once, and the pump returns without ever starting — the REST half of
+   * this client is unaffected and keeps working, which is the correct degradation.
+   */
   private async pump(): Promise<void> {
+    try {
+      requireWebSocket()
+    } catch (error) {
+      this.ctx.logger.error(
+        `comfyui: telemetry socket not started. ${renderThrown(error)} ` +
+          'REST calls are unaffected; live progress is unavailable and run outcomes must be ' +
+          'read from GET /history.',
+      )
+      this.pumping = false
+      return
+    }
+
     let attempt = 0
     while (!this.lifetime.aborted) {
       let reason: string
