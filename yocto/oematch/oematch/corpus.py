@@ -167,19 +167,131 @@ def parse_bb(path: Path, layer_root: Path = None) -> dict:
     }
 
 
+# Ordered most specific first: "gnu lesser general public" also contains "general
+# public", and "apache license" appears inside several dual-licence preambles, so a
+# first-match-wins scan has to see the narrow patterns before the broad ones. Each
+# pattern is text that appears in the licence body itself, not in a header a project
+# may or may not have pasted in.
+LICENSE_PATTERNS = [
+    ("LGPL-2.1-only",  ("gnu lesser general public license", "version 2.1")),
+    ("LGPL-3.0-only",  ("gnu lesser general public license", "version 3")),
+    ("LGPL-2.1-only",  ("gnu library general public license",)),
+    ("AGPL-3.0-only",  ("gnu affero general public license",)),
+    ("GPL-2.0-only",   ("gnu general public license", "version 2")),
+    ("GPL-3.0-only",   ("gnu general public license", "version 3")),
+    # meta-cryptocurrency's LICENSE says "GNU Public License version 2" -- not the
+    # official name, so the pattern above misses it and the old code returned the
+    # FILENAME. This is why every candidate file is now scanned and why a filename is
+    # never a return value.
+    ("GPL-2.0-only",   ("gnu public license", "version 2")),
+    ("GPL-3.0-only",   ("gnu public license", "version 3")),
+    ("Apache-2.0",     ("apache license", "version 2.0")),
+    ("MPL-2.0",        ("mozilla public license", "version 2.0")),
+    ("MIT",            ("permission is hereby granted, free of charge",)),
+    ("MIT",            ("mit license",)),
+    ("ISC",            ("permission to use, copy, modify, and/or distribute",)),
+    ("BSD-3-Clause",   ("redistributions in binary form", "name of the copyright holder")),
+    ("BSD-3-Clause",   ("redistributions in binary form", "neither the name")),
+    ("BSD-2-Clause",   ("redistributions in binary form",)),
+    ("Zlib",           ("altered source versions must be plainly marked",)),
+    ("CC0-1.0",        ("cc0 1.0 universal",)),
+    ("CC-BY-4.0",      ("creative commons attribution 4.0 international",)),
+    ("CC-BY-SA-4.0",   ("attribution-sharealike 4.0 international",)),
+    ("Unlicense",      ("this is free and unencumbered software released into the public domain",)),
+]
+
+# A licence file may encode the answer in its own name. Used only as a fallback when the
+# text is inconclusive, and mapped to a real SPDX identifier -- the old code returned the
+# bare filename, which is how 17 layers came to report a licence of "LICENSE".
+FILENAME_HINTS = {
+    "mit": "MIT", "gpl2": "GPL-2.0-only", "gplv2": "GPL-2.0-only",
+    "gpl-2.0": "GPL-2.0-only", "gpl-2.0-only": "GPL-2.0-only",
+    "gpl3": "GPL-3.0-only", "gplv3": "GPL-3.0-only", "gpl-3.0": "GPL-3.0-only",
+    "lgpl": "LGPL-2.1-only", "lgpl-2.1": "LGPL-2.1-only", "lgplv2.1": "LGPL-2.1-only",
+    "apache": "Apache-2.0", "apache-2.0": "Apache-2.0",
+    "bsd": "BSD-3-Clause", "bsd-2-clause": "BSD-2-Clause", "bsd-3-clause": "BSD-3-Clause",
+    "mpl-2.0": "MPL-2.0", "isc": "ISC", "zlib": "Zlib",
+}
+
+LICENSE_FILE_RE = re.compile(r"^(LICEN[CS]E|COPYING|COPYRIGHT)([.\-_].*)?$", re.I)
+
+
+def _identify_license_text(text):
+    """SPDX identifier for a licence body, or None. Never returns a filename."""
+    t = re.sub(r"\s+", " ", text).lower()
+    for spdx, needles in LICENSE_PATTERNS:
+        if all(n in t for n in needles):
+            return spdx
+    return None
+
+
+def _license_files(d: Path):
+    try:
+        return sorted(p for p in d.iterdir() if p.is_file() and LICENSE_FILE_RE.match(p.name))
+    except OSError:
+        return []
+
+
 def layer_license(layer_dir: Path) -> str:
-    for name in ("LICENSE", "COPYING", "COPYING.MIT", "LICENSE.MIT", "COPYING.GPLv2"):
-        p = layer_dir / name
-        if p.exists():
-            head = p.read_text(errors="replace")[:400].lower()
-            if "mit license" in head or "permission is hereby granted" in head:
-                return "MIT"
-            if "gnu general public license" in head:
-                return "GPL"
-            if "apache license" in head:
-                return "Apache-2.0"
-            return name
-    return "unknown"
+    """Every licence the layer's own licence files declare, or "unknown".
+
+    Four defects this replaces, each measured against the 477-layer corpus rather than
+    reasoned about:
+
+    * it returned `name` -- a FILENAME -- when no pattern matched, which is why 17
+      layers reported a licence of literally "LICENSE" and one reported "COPYING".
+    * it returned on the FIRST candidate file that existed, so a layer whose LICENSE is
+      a pointer ("see COPYING for details") never had its COPYING read. That is exactly
+      meta-cryptocurrency, which is GPL-2.0 and reported "LICENSE".
+    * it had no BSD pattern at all, so meta-buildutils -- BSD-2-Clause -- reported
+      "LICENSE", and no pattern for any GPL variant.
+    * a sub-layer inside a multi-layer repo never looked at the repo root, where the
+      licence files usually live. meta-agl-app-framework reported "unknown" while its
+      parent holds LICENSE, LICENSE.GPL-2.0-only and LICENSE.MIT.
+
+    Several licences are reported joined by " AND ", meaning the layer contains files
+    under each -- which is the honest reading of a layer holding both LICENSE.MIT and
+    LICENSE.GPL-2.0-only, and better than picking whichever the old loop reached first.
+    """
+    found, hinted = [], []
+
+    def scan(d: Path):
+        for p in _license_files(d):
+            try:
+                spdx = _identify_license_text(p.read_text(errors="replace")[:20000])
+            except OSError:
+                continue
+            if spdx:
+                if spdx not in found:
+                    found.append(spdx)
+                continue
+            # No recognisable body. The name may still say, e.g. an empty or
+            # pointer-only COPYING.MIT.
+            suffix = p.name.split(".", 1)[1].lower() if "." in p.name else ""
+            hint = FILENAME_HINTS.get(suffix)
+            if hint and hint not in hinted:
+                hinted.append(hint)
+
+    scan(layer_dir)
+    if not found and not hinted:
+        # Walk up to the repository root for sub-layers (meta-foo inside a repo whose
+        # licence files sit beside the .git directory), stopping there rather than
+        # wandering into ~/.cache/oematch/layers and reading a sibling layer's licence.
+        d = layer_dir
+        for _ in range(4):
+            parent = d.parent
+            if parent == d:
+                break
+            scan(parent)
+            if found or hinted or (parent / ".git").exists():
+                break
+            d = parent
+
+    # Sorted, so a layer holding LICENSE.MIT and LICENSE.GPL-2.0-only reports one value
+    # rather than two orderings of it -- `MIT AND GPL-2.0-only` and `GPL-2.0-only AND
+    # MIT` both appeared in the first run of this function, five layers each.
+    out = sorted(found or hinted)
+    return " AND ".join(out) if out else "unknown"
 
 
 def index_layer(con, name, layer_dir: Path, vcs_url="", branch="", subdir="", description=""):

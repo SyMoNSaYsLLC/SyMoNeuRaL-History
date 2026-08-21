@@ -35,10 +35,16 @@ def cmd_match(a):
         return
     print(f"# {sig.source}  [{sig.kind}]  sonames={len(sig.sonames)} deps={len(sig.pkg_deps)} "
           f"imports={len(sig.imports)} tools={len(sig.tools)} urls={len(sig.urls)}\n")
-    print(f"{'score':>5}  {'pn':28s} {'layer':22s} {'lic':8s} evidence")
+    # Nothing is sliced. `[:8]` on the licence was rendering `Apache-2.0` as `Apache-2`,
+    # which is not a valid SPDX identifier and is not a licence -- and truncating `pn`
+    # silently corrupts a recipe name someone is about to paste into a bblayers.conf or
+    # a DEPENDS line. Columns are padded to a width and allowed to exceed it; the
+    # repo-wide rule is that a layout change must not drop data, and every
+    # `text-overflow: ellipsis` was removed from the site for exactly this reason.
+    print(f"{'score':>5}  {'pn':28s} {'layer':22s} {'license':18s} evidence")
     for r in res[: a.top]:
         ev = ", ".join(r["evidence"][:4])
-        print(f"{r['score']:5.1f}  {r['pn'][:28]:28s} {r['layer'][:22]:22s} {r['layer_license'][:8]:8s} {ev}")
+        print(f"{r['score']:5.1f}  {r['pn']:28s} {r['layer']:22s} {r['layer_license']:18s} {ev}")
     if a.emit:
         print("\n" + match.emit_yocto(res))
 
@@ -92,7 +98,7 @@ def cmd_upstream(a):
 def cmd_stats(a):
     con = db.connect(Path(a.db))
     for r in con.execute("SELECT l.name, l.license, count(r.id) n FROM layers l LEFT JOIN recipes r ON r.layer_id=l.id GROUP BY l.id ORDER BY n DESC"):
-        print(f"{r['n']:6d}  {r['license']:10s} {r['name']}")
+        print(f"{r['n']:6d}  {r['license']:22s} {r['name']}")
 
 
 def main(argv=None):
