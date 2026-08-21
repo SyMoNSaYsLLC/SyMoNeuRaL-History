@@ -174,6 +174,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists ops/symoneural-deploy.service
         check: grep GatewayUnitPathTests -- backend/apps/test_gateway_unit.py
         check: grep FakeRootTests -- backend/apps/test_service_control.py
+        check: ngrep exp.status() -- backend/api.py
         note: `grep tuner_router` used to stand here, and it has been REMOVED rather than kept.
         note: It was a good check for the file merge — the loose `grep tuner` passed on guide's
         note: docstring while tuner's exports were still missing — but it became an anti-check the
@@ -786,3 +787,280 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists .claude/hooks/capture-prompt.sh
         check: grep UserPromptSubmit -- .claude/settings.json
         check: grep barrier -- tools/build_intake.py
+◻ #79 — SyMoNeuRaL Image: image-to-image, and parameters the visitor can actually turn
+        owner: coder
+        R-152. "add image to image as well as parameter adjustment to symoneural image."
+
+        Today the surface takes a prompt and nothing else. No init image, and no exposed steps,
+        guidance, seed or size — so a visitor cannot reproduce a render they liked or steer one
+        they nearly liked. Both are already parameters of the engine underneath; this is
+        surfacing them, not inventing capability.
+
+        The honesty rule bites directly here: **every control shown must reach the engine.** A
+        slider that is read and thrown away is the decorative-status-LED failure with extra
+        steps, and it is barred. If a parameter cannot be plumbed yet, it does not get a widget.
+
+        Seed is the one to get right first, because it is what makes a render repeatable, and
+        repeatable is the whole argument of this site.
+
+        check: grep init_image -- backend/api.py
+        check: grep img2img -- backend/api.py
+        check: grep ImageParamsTests -- backend/apps/test_image_params.py
+
+◻ #80 — The prompt placeholder on every surface is that surface's Symon Say name
+        owner: coder
+        R-153. "also replace make it draw something with symonsayimage", then "talk to the box in
+        symon chat needs to be replaced with symonsaychat".
+
+        Two instances of one rule, so it is worked as the rule: the input placeholder on a surface
+        is the surface's own name in the house `symonsay<thing>` spelling, not a jokey
+        instruction. Image's heading is `Make it draw something.` in `tools/build_pages.py:5769`;
+        Chat's title is `SyMoNeuRaL Chat — talk to the box` at `5756`. Both are generator strings,
+        so the generated page has to be rebuilt in the same commit or the site still says the old
+        thing — and then `build_cachebust.py` last, because that rebuild strips the stamps.
+
+        Read the other surfaces and bring them into line rather than leaving a mix of two
+        conventions, which is what "replace X with Y" twice in one minute is telling us.
+
+        check: ngrep Make it draw something -- tools/build_pages.py
+        check: ngrep talk to the box -- tools/build_pages.py
+        check: grep symonsayimage -- tools/build_pages.py
+        check: grep symonsaychat -- tools/build_pages.py
+        check: ngrep Make it draw something -- site/image.html
+        check: ngrep talk to the box -- site/chat.html
+
+◻ #81 — /livestack/<name> for every application, and every app page static HTML + JS + CSS
+        owner: coder
+        R-154, and it absorbs the URL half of #73 item 4. "the https://symoneural.com/image.html
+        needs to be updated to https://symoneural.com/livestack/image and the image html should be
+        static with json and css", corrected by him one minute later — "**correction not json it
+        was suppose to be js**" — then scoped: "apply this to all applications."
+
+        Two halves. The addresses: `/livestack/<name>` for every application surface, done in
+        `api.py` the way `SECTION_PAGES` already does the four front-page sections, because
+        FastAPI does all the routing and `ops/Caddyfile` has no rewrites and must not grow any.
+        The structure: each page is static HTML with its behaviour in a `.js` file and its styling
+        in a `.css` file, rather than markup with logic inlined into it.
+
+        **The old URLs cannot simply stop existing.** `/image.html` is published and shared;
+        `SECTION_PAGES` handles this the right way already and says so in its comment — the clean
+        URLs "are an addition, not a redirect", and the `.html` files stay reachable. Same here. A
+        404 on a link that used to work is the one failure this site cannot afford.
+
+        Do image first, all the way through, and only then repeat it — a pattern proven on one
+        page is worth more than nine half-migrations.
+
+        check: grep LIVESTACK_PAGES -- backend/api.py
+        check: grep LivestackRouteTests -- backend/apps/test_livestack_routes.py
+        check: exists site/image.js
+        check: grep /livestack/image -- tests/frontend.mjs
+
+◻ #82 — symoneural-remix: export a playlist in a form YouTube Music and Spotify will take
+        owner: coder
+        R-155. "symoneural-remix needs to have means of exporting the playlist to a form that can
+        be uploaded to youtube music and spotify."
+
+        Export, not integration: a file the visitor downloads and uploads themselves. That
+        distinction is what keeps this free of credentials, OAuth apps and third-party API terms —
+        nothing here needs Garrett, which is why it is a coder task.
+
+        The work is "which format, and does a real import actually accept it". Answer it by
+        testing an import, not by reading a doc: both services take a CSV of track/artist/album
+        through the common transfer tools, and Spotify additionally reads a plain list of track
+        URIs. Write the exporter as a pure function over the playlist so it can be tested with no
+        engine and no `symon_capture` import — `apps/remix/tests` is `--ignore`d from the suite for
+        exactly that reason, so a test that lands there is a test nobody runs.
+
+        check: exists backend/apps/remix/playlist_export.py
+        check: grep PlaylistExportTests -- backend/apps/test_playlist_export.py
+
+◻ #83 — Remove SyMoNeuRaL Project completely; put a cowork inside SyMoNeuRaL Chat
+        owner: coder
+        R-161, which supersedes the first half of R-156. He looked at `/project` and said it "is
+        not what symoneural project was intended to be", then: "to keep it from being confusing
+        remove symoneural project completely and just integrate a "cowork" into the symoneural
+        chat".
+
+        The reason he gives is the specification: **to keep it from being confusing.** A separate
+        surface that half-does what Chat should do is worse than no surface. So Project goes — rack
+        row, page, app package, browser suite, harness — and Chat gains a cowork: the project the
+        conversation is about, the files it touches, what happened last time, inside the chat
+        surface rather than beside it. Not the old thing mounted inside the new one; that moves
+        the confusion instead of removing it.
+
+        Three consequences to handle in the same commit rather than discover afterwards. The rack
+        goes thirteen rows to twelve, and `apps/test_status_rack.py` asserts that on purpose —
+        typing the new number is the point. `tests/project.mjs` and `tests/project-harness.py` are
+        the sixth browser suite and are documented at length in `.claude/CLAUDE.md`, so deleting
+        them means deleting what that file says about them in the same change: a paragraph
+        describing a suite that cannot run is worse than a stale count, which that file says about
+        itself. And the harness lesson survives the deletion — **any single-app harness must mount
+        news**, because `site/ui.js` fetches `/api/news/ticker` on every page load.
+
+        check: absent site/project.html
+        check: absent backend/apps/project
+        check: absent tests/project.mjs
+        check: ngrep "project" -- backend/apps/test_status_rack.py
+        check: grep cowork -- tools/build_pages.py
+        check: grep CoworkTests -- backend/apps/test_cowork.py
+
+◻ #84 — RavenCalc: the calculator at the top of its own page
+        owner: coder
+        R-157. He pasted the preamble block verbatim, asked for it to be "removed from where it
+        is" and merged into the sentence below the heading, and stated the goal plainly: "so that
+        the top of the calculator is at the top of the page".
+
+        A visitor arriving at the calculator should land on the calculator. Two blocks currently
+        say nearly the same thing twice — one above the tool, one under the heading — and the
+        instrument is below both.
+
+        **Not a trim.** Layout changes must not drop data: the CPU-never-queues fact and the
+        not-a-language-model claim are both load-bearing arguments about what this surface is, so
+        they move and merge, and anything long folds into `<details>`. No `text-overflow` — that
+        rule has no exceptions here.
+
+        Same page as the standing SymPy rebrand request, and deliberately not doing it: that is
+        its own task, and re-typing the word here is the edit that would hide it.
+
+        check: grep RavenCalcTopTests -- backend/apps/test_page_layout.py
+        check: grep ravencalc-instrument-first -- tests/frontend.mjs
+
+◻ #85 — The miner page, embedded the way RavenCalc is
+        owner: coder
+        R-158, with a screenshot. "this looks terrible make it more embedded like symoneural
+        ravencalc".
+
+        The complaint is legible in the picture: a wide prose preamble, then two tall bordered
+        cards of label/value rows, code blocks and folds, with the whole thirteen-row rack bolted
+        down the right — and the actual instrument, a token field and two buttons, two thirds of
+        the way down one card. The page reads as documentation with a control panel hidden in it.
+
+        "Embedded like RavenCalc" is the reference to build to: there, the tool IS the page — one
+        inset surface at the top, explanation around and below it. Pairs with #84, which asks for
+        exactly that on RavenCalc itself.
+
+        Every telemetry row, every token-required reading, the "starts by itself and holds the
+        card" warning and the measured hashrate paragraph survive the restyle — folded, not
+        trimmed. And every READY/OFFLINE pill in that rack is a real reading and stays one.
+
+        check: grep MinerEmbeddedTests -- backend/apps/test_page_layout.py
+        check: grep miner-instrument-first -- tests/frontend.mjs
+
+◻ #86 — A page can ship to site/ and never reach the webroot, and nothing goes red
+        owner: coder
+        R-159. "symoneural streamer page cant be found". Reproduced from the public origin
+        immediately: `404 /streamer.html`, `200 /tuner.html`, and `/var/www/symoneural/` still
+        carrying the old name. `site/` is correct and no page references `tuner.html` — the rename
+        (#73 item 2) simply never reached the live tree, because `deploy.sh` needs root and had
+        not run since. Visitors following the nav got a 404 on a page that had existed here for
+        hours.
+
+        The immediate fix is one command and it is Garrett's, because it needs a password only he
+        has: `sudo ./scripts/deploy.sh`. Told to him directly rather than filed.
+
+        **The defect is that nothing noticed.** This is the same shape as the ExecStart that took
+        the public API down: a name changed in one place and not the other, with no check
+        comparing the two. So `tools/check_deployed.py` compares the staging tree against the live
+        webroot and names what is stale, missing or orphaned, and a test covers it. Pairs with #73
+        item 6 (`ops/symoneural-deploy.service`), which is what stops it happening again rather
+        than just reporting it.
+
+        check: exists tools/check_deployed.py
+        check: grep WebrootDriftTests -- backend/apps/test_check_deployed.py
+
+◻ #87 — SyMoNeuRaL Coder must open a terminal, not documentation.html
+        owner: coder
+        R-160. "symoneural coder takes you to symoneural.com/documentation.html; this should take
+        you to a terminal like what they have in /references/deepseek harness".
+
+        `api.py:1724` gives the Coder row `href="/documentation.html"` — a page about the project
+        — so the one surface whose entire point is that you can use it hands you a manual instead.
+        `references/deepseek-harness`, plus the two saved `DeepSeek Harness*.mhtml` captures beside
+        it, are the reference for what it should hand you: a terminal in the browser.
+
+        Reference only, and the rule has no exception here: "we cannot use code in references its
+        for reference only we must rebrand if we want to use it", and "i dont care if you rebrand,
+        recreate or write it completely from scratch". Read for behaviour; build ours.
+
+        Related to R-156's live half — the coder reachable from the browser with filesystem access
+        to this machine — and it inherits that entry's caution. `/api*` is proxied to the public
+        internet, so a browser terminal here is the most dangerous surface in this repo. It gets
+        built because he asked for it; where the gate lands is #88's decision, not this task's,
+        and whatever #88 decides, the two trade-secret training artefacts stay unreachable
+        through it.
+
+        check: ngrep href="/documentation.html" -- backend/api.py
+        check: exists site/coder.html
+        check: grep CoderTerminalTests -- backend/apps/test_coder_terminal.py
+
+◻ #88 — No tokens while we are testing: take the token requirement off Studio
+        owner: coder
+        R-162. "symoneural studio does not need to require SYM_STUDIO_TOKEN we are testing
+        everything without keys and tokens."
+
+        Standing, not Studio-only: *everything*, while testing. Today Studio answers 503 unless
+        both `SYMONEURAL_STUDIO_ENABLED=1` and `SYMONEURAL_STUDIO_TOKEN` are set, and the same
+        double gate sits on Reinforce, Exp, Miner, ASIC and Discovery. Every one is a surface he
+        cannot use on his own site without exporting a secret first, which is the whole complaint.
+
+        **Said once, then done as asked.** `ops/Caddyfile` proxies `/api*` to the public internet,
+        so an untokened Studio is open to anyone who finds it, and Studio takes the card for a real
+        render — a stranger finding it means every other surface queues behind them. Reinforce is
+        worse, because it is never evicted. That is the only reason those gates exist. Three ways
+        to have both are written out in R-162 for him to pick from; the middle one — nothing on
+        read paths, a token only where the card or the disk is at stake — is what I would
+        recommend, and it is his exposure and his call.
+
+        Until he says otherwise the instruction is the instruction. The proof it came off rather
+        than moved is `tests/studio.mjs`, which passes `SYMONEURAL_STUDIO_TOKEN=devtest` today and
+        must pass with nothing set.
+
+        check: ngrep SYMONEURAL_STUDIO_TOKEN=devtest -- tests/studio.mjs
+        check: grep TokenNotRequiredTests -- backend/apps/studio/test_studio.py
+◻ #89 — SyMoNeuRaL Studio should mirror what DeepSeek Harness provides
+        owner: coder
+        R-163, second sentence. "Studio needs major work it should mirror what deepseek harness
+        provides."
+
+        Studio today is a render bench with an agent loop behind it. The harness he is pointing at
+        is a different proposition — its own developer preview is titled *"Everything is a
+        plugin"*, which is the same claim `apps/studio/plugins/exp` was built to make and has
+        never been asked to keep in public. So this is not a restyle: it is Studio becoming the
+        surface where a plugin is mounted, configured, watched and torn down, with the render bench
+        as one plugin among them rather than as the whole page.
+
+        Start by reading `references/deepseek-harness` and the two saved `DeepSeek Harness*.mhtml`
+        captures beside it and writing down, as a checklist of observable behaviour, what it gives
+        a user that we do not. That list is the task; guessing at "major work" is not. Reference
+        only — read for behaviour, nothing imported, linked or served, and what ships is ours.
+
+        Depends on the Exp row leaving the rack (#73, which folds #22): Exp migrating INTO Studio
+        is the same change as Studio gaining a plugin surface, and doing them in the other order
+        means building the surface twice.
+
+        check: exists docs/studio-harness-gap.md
+        check: grep StudioPluginSurfaceTests -- backend/apps/studio/test_studio.py
+
+◻ #90 — CLI, Code and Cowork measured against the client he actually uses
+        owner: coder
+        R-164, extending R-151. "symoneural cli, symoneural code and symoneural cowork must mirror
+        look feel and capabilities of claude."
+
+        A standing quality bar across three surfaces, one of which does not exist yet — cowork
+        lands inside Chat under #83. So the deliverable here is not a feature: it is the checklist
+        R-151 already wrote out (bare invocation opens a session, in-session slash commands, a
+        permission prompt before any side-effecting tool and a mode that skips it, resume by
+        session id with a picker, @-file references, multi-line paste, Ctrl-C interrupt, markdown
+        rendered as it streams, a status line) applied to all three, tracked, and closed item by
+        item rather than declared.
+
+        The clean-room position from R-151 is what makes this legitimate and it does not bend:
+        behaviour observed and rebuilt, never copied. Nothing under `references/` is imported,
+        linked or shipped, and nothing ships under a third-party name.
+
+        Write the checklist down where it can be checked, then work it. A claim of "mirrors Claude"
+        with no per-item state is exactly the kind of assertion this list exists to replace with a
+        measurement.
+
+        check: exists docs/client-parity.md
+        check: grep parity -- bin/symoneural-cli
