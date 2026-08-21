@@ -62,15 +62,39 @@ def _is_route(ref: str) -> bool:
 
 
 def _extensionless_page_routes() -> set[str]:
-    """Top-level `@app.get("/name")` paths in api.py: one segment, no dot, no parameter."""
+    r"""`@app.get("/name")` and `@app.get("/name/child")` paths in api.py: no dot, no parameter.
+
+    `[\w/-]*` rather than `[\w-]*`, and that one character is the whole point. This pattern
+    matched ONE path segment until 2026-08-21, and `/livestack/live` -- #96's page, and this
+    repo's first two-segment page route -- was therefore never parsed out of `api.py` at all.
+    So it never entered the intersection below, the assertion that exists to catch exactly
+    this passed on an empty contribution, and the deploy it was written to protect exited 1
+    with `MISSING livestack/live` for a page answering 200.
+
+    That is this file's own docstring coming true: *"the allowlist is the kind of thing that
+    rots silently."* The allowlist did rot, and the test guarding it rotted the same day, for
+    the adjacent reason -- the guard encoded an assumption (one segment) that the thing it
+    guarded did not share. A vacuity guard on the whole set cannot see a hole in its shape;
+    `test_a_multi_segment_route_is_parsed_at_all` below is the narrower guard that can.
+
+    Parameterised routes still fall out on their own: `{` is not in the class. `api/...` paths
+    are now parsed too, and harmlessly -- nothing links them, so they never reach the
+    intersection, and `is_route()` exempts `api/*` anyway.
+    """
     return {m.group(1) for m in
-            re.finditer(r'@app\.get\(\s*"/([A-Za-z][\w-]*)"', API.read_text())
+            re.finditer(r'@app\.get\(\s*"/([A-Za-z][\w/-]*)"', API.read_text())
             if "." not in m.group(1)}
 
 
 def _linked_extensionless() -> set[str]:
-    """Extensionless local hrefs on the front page -- what the check would actually look up."""
-    return {m.group(1) for m in re.finditer(r'href="/([A-Za-z][\w-]*)"', INDEX.read_text())}
+    r"""Extensionless local hrefs on the front page -- what the check would actually look up.
+
+    Multi-segment for the same reason as above: `site/index.html` links `/livestack/live`, and
+    with `[\w-]*` this returned `livestack` only, so the link the deploy actually chokes on
+    was invisible on both sides of the comparison.
+    """
+    return {m.group(1) for m in
+            re.finditer(r'href="/([A-Za-z][\w/-]*)"', INDEX.read_text())}
 
 
 class ReferenceCheckTests(unittest.TestCase):
@@ -81,10 +105,36 @@ class ReferenceCheckTests(unittest.TestCase):
         self.assertTrue(_extensionless_page_routes(), "no @app.get routes parsed out of api.py")
         self.assertTrue(_linked_extensionless(), "no extensionless hrefs parsed out of index.html")
 
+    def test_a_multi_segment_route_is_parsed_at_all(self):
+        """The shape guard, and the one that was missing.
+
+        `test_the_extraction_found_something_to_test` above asserts both sets are non-empty,
+        which they were -- three routes and four hrefs -- while containing no two-segment path
+        on either side. A set can be non-empty and still be blind to a whole shape of input,
+        and the assertion below is the cheap way to say so out loud rather than trusting a
+        regex to keep matching something it was never written to match."""
+        routes = _extensionless_page_routes()
+        self.assertIn("livestack/live", routes,
+                      "api.py serves /livestack/live but the parser did not find it -- the "
+                      "route regex is back to matching a single path segment")
+        self.assertIn("livestack/live", _linked_extensionless(),
+                      "site/index.html links /livestack/live but the href regex did not "
+                      "find it")
+
     def test_studio_and_exp_are_not_reported_missing(self):
         """The regression itself. Both were `MISSING` on a deploy where both answered 200."""
         self.assertTrue(_is_route("studio"))
         self.assertTrue(_is_route("exp"))
+
+    def test_the_live_page_route_is_not_reported_missing(self):
+        """#96's page, and the second time this allowlist has failed a working deploy.
+
+        Measured 2026-08-21: `sudo ./scripts/deploy.sh` printed `MISSING livestack/live` and
+        exited 1, while `/livestack/live` answered 200 on the running service, is
+        `@app.get("/livestack/live", include_in_schema=False)` in `api.py`, and carries its own
+        `@live path /livestack/live` matcher in `ops/Caddyfile`. Checked all three ways before
+        the exemption was added, which is the discipline `deploy.sh`'s comment asks for."""
+        self.assertTrue(_is_route("livestack/live"))
 
     def test_every_linked_api_route_is_known_to_the_deploy_check(self):
         """A new surface that api.py serves and a page links must not fail the next deploy."""
@@ -100,7 +150,8 @@ class ReferenceCheckTests(unittest.TestCase):
 
         `livestack` is the documented asymmetry: the route is exempt, the file is not."""
         for ref in ("studio.html", "exp.html", "studio.js", "studio-64.png",
-                    "livestack.html", "nonesuch"):
+                    "livestack.html", "live.html", "live.css", "livestack/live.html",
+                    "nonesuch"):
             with self.subTest(ref=ref):
                 self.assertFalse(_is_route(ref), f"{ref} is exempted; a missing one would pass")
 

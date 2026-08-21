@@ -169,11 +169,28 @@ missing=0
 # They differ from the four above in one way worth knowing: livestack IS also livestack.html on
 # disk, whereas there is no studio.html or exp.html and never was -- these render from the API
 # only. So the asymmetry note above does not apply to them; there is no file form to catch.
+# `livestack/live` is the THIRD time this list has failed a working deploy, and the first
+# two-segment page route in the repo. Measured 2026-08-21: `MISSING livestack/live`, exit 1,
+# while the path answered 200. Verified all three ways before adding, per the paragraph above:
+# `@app.get("/livestack/live", include_in_schema=False)` at backend/api.py:2969, its own
+# `@live path /livestack/live` matcher in ops/Caddyfile, and 200 on the running service.
+#
+# Listed as the exact path, NOT as `livestack/*`. A glob would exempt every future child of
+# /livestack -- including a typo -- and exempting a path is how this check stops catching the
+# absent file it exists for. There is no `livestack/live.html` on disk to be masked: the file
+# is `site/live.html`, which the mount answers at `/live.html` and which this loop still
+# checks under that name.
+#
+# apps/test_deploy_routes.py was written to make this class of rot go red and did not, which
+# is worth more than the one-line fix: its route regex matched a single path segment, so a
+# two-segment route was never parsed out of api.py and never reached the comparison. Both
+# regexes are multi-segment now and there is a narrow shape guard beside them.
 is_route() {
   case "$1" in
     docs|docs/*|openapi.json|api|api/*) return 0;;
     overview|livestack|controlboard|receipts) return 0;;
     studio|exp) return 0;;
+    livestack/live) return 0;;
     *) return 1;;
   esac
 }
