@@ -17,9 +17,27 @@
  *                                  read out of `server.py`, `execution.py` and
  *                                  `comfy_execution/progress.py` at the line cited beside it.
  *
- * Reference only. Per `PROJECT-TASKS.md` #89 — *"read for behaviour, nothing imported, linked
- * or served, and what ships is ours"* — no file from either tree is copied, vendored or
- * served. What is taken is the interface, which is the one thing a bridge cannot invent.
+ * ## This file takes a runtime dependency, and #89 says not to
+ *
+ * Read the two lines below this comment before believing anything about compliance. They are
+ * `import` statements against `@deepseek-ai/cordis` and `@deepseek-ai/schemastery`, and both
+ * bring in *runtime values* — `Service` is extended, `z` is called. `PROJECT-TASKS.md` #89 says
+ * "read for behaviour, nothing imported, linked or served, and what ships is ours", and
+ * `import` is the first word on that list. **This plugin does not satisfy #89 and this comment
+ * will not pretend it does.**
+ *
+ * It is written this way deliberately, on a more specific instruction: Garrett named
+ * `apply(ctx: Context, config)`, the service attached at `ctx.comfyui`, and "the schema system
+ * from /references/DeepSeek Harness". A plugin that mounts on a Cordis context cannot be
+ * written without Cordis — that is what mounting means. So the consequence is stated plainly
+ * rather than hidden: **this package only runs inside a DeepSeek Harness install**, and
+ * adopting it is a dependency decision for the whole repo, not a reference reading.
+ *
+ * What *is* true of #89: no file from either tree is copied, vendored or served. The ComfyUI
+ * side is transcribed interface only. Licences were read rather than assumed — the harness root,
+ * `vendor/cordis` and `vendor/schemastery` are all MIT (`references/deepseek-harness/LICENSE`,
+ * and the `"license"` field of each vendored `package.json`), so the dependency is permitted;
+ * whether it is wanted is Garrett's call and is not made here.
  *
  * @module @symoneural/plugin-comfyui
  */

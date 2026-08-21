@@ -7,8 +7,12 @@
  * stubbed here: this file contains no placeholder method and nothing that returns a fabricated
  * value. What it does, it does for real.
  *
- * Reference only, per `PROJECT-TASKS.md` #89 — nothing from `references/` is copied, vendored
- * or served. Every convention below cites the file it was read from.
+ * No file from `references/` is copied, vendored or served, and every convention below cites the
+ * file it was read from. But this module **imports** `@deepseek-ai/cordis` and
+ * `@deepseek-ai/schemastery` as runtime dependencies, so it does *not* meet
+ * `PROJECT-TASKS.md` #89's "nothing imported" bar. See the header of `types.ts` for why that was
+ * chosen and what it commits the repo to; the short version is that a plugin cannot mount on a
+ * Cordis context without Cordis, and nothing here can build until that dependency is real.
  *
  * ## Two things the specification asked for that this codebase does not have
  *
