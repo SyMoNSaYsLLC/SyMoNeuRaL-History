@@ -204,8 +204,54 @@ export interface ComfyNode {
   _meta?: { title?: string }
 }
 
-/** A node input: a literal, or a `[sourceNodeId, outputIndex]` link. */
-export type ComfyInputValue = string | number | boolean | null | [string, number]
+/** A scalar input value, passed through to the node's own coercion. */
+export type ComfyScalarValue = string | number | boolean | null
+
+/**
+ * A link from another node's output: `[sourceNodeId, outputIndex]`.
+ *
+ * Blueprint: `references/ComfyUI/execution.py:917` — `if isinstance(val, list):` is the entire
+ * test. There is no tag, no marker key and no opt-in: *any* JSON array in an input slot takes
+ * the link branch, is required to be length 2 (`:918-930`, error type `bad_linked_input`), and
+ * has `val[0]` read as a node id and `val[1]` as an output slot index (`:932-935`).
+ */
+export type ComfyNodeLink = [string, number]
+
+/**
+ * A literal value that would otherwise be misread as a link, wrapped so it is not.
+ *
+ * Blueprint: `references/ComfyUI/execution.py:983-989`, whose own comment is the reason this
+ * type exists: *"Unwraps values wrapped in `__value__` key or typed wrapper. This is used to
+ * pass list widget values to execution, as by default list value is reserved to represent the
+ * connection between nodes."*
+ *
+ * So a genuine array-valued widget — the only kind this affects — cannot be written bare. It
+ * must arrive as `{ "__value__": [...] }`, which the server unwraps in place before the INT /
+ * FLOAT / STRING / BOOLEAN coercions at `:993-1002`. Writing the array bare is not a type
+ * error and does not fail loudly: it is read as a link to a node that probably does not exist,
+ * and the failure surfaces one layer away from the mistake.
+ */
+export interface ComfyBoxedValue {
+  __value__: unknown
+}
+
+/**
+ * A node input: a scalar, a link, a boxed literal, or a plain object.
+ *
+ * The four-way union is not decoration — it is the shape of a real ambiguity in the wire
+ * format, documented on {@link ComfyNodeLink} and {@link ComfyBoxedValue}. Anything writing
+ * into a graph has to choose between the second and third members deliberately, because the
+ * server cannot tell an intended literal array from an intended link.
+ *
+ * The final member covers object-valued inputs that carry no `__value__` key. `execution.py`
+ * takes the `else` branch at `:981` for these and passes them to the node's own validator
+ * untouched, so they are legal and this plugin does not narrow them further.
+ */
+export type ComfyInputValue =
+  | ComfyScalarValue
+  | ComfyNodeLink
+  | ComfyBoxedValue
+  | Record<string, unknown>
 
 /** An API-format prompt graph: node id → node. */
 export type ComfyGraph = Record<string, ComfyNode>
@@ -258,8 +304,14 @@ export interface ComfyPromptResponse {
   prompt_id: PromptId
   /** Queue position assigned by the server. */
   number: number
-  /** Per-node complaints raised during validation of an otherwise accepted prompt. */
-  node_errors: Record<string, unknown>
+  /**
+   * Per-node complaints raised during validation of an otherwise accepted prompt.
+   *
+   * Non-empty here means **partial acceptance**, which is the case worth typing for. See
+   * {@link ComfyNodeError}: the prompt ran, and the outputs listed in each entry's
+   * `dependent_outputs` did not.
+   */
+  node_errors: Record<string, ComfyNodeError>
 }
 
 /**
@@ -280,7 +332,61 @@ export interface ComfyPromptError {
     extra_info: Record<string, unknown>
   }
   /** Per-node validation failures. */
-  node_errors: Record<string, unknown>
+  node_errors: Record<string, ComfyNodeError>
+}
+
+/**
+ * One complaint against one input of one node.
+ *
+ * Blueprint: `references/ComfyUI/execution.py` builds these as bare dicts at many sites; the
+ * four keys below are common to all of them. `type` is a machine tag, and every tag the source
+ * actually writes was enumerated by `grep -n '"type": "' execution.py` rather than recalled:
+ * `dependency_cycle` (`:860`), `required_input_missing` (`:905`), `bad_linked_input` (`:920`),
+ * `return_type_mismatch` (`:940`), `exception_during_inner_validation` (`:967`),
+ * `invalid_input_type` (`:1006`), `value_smaller_than_min` (`:1022`), `value_bigger_than_max`
+ * (`:1035`), `value_not_in_list` (`:1070`), `custom_validation_failed` (`:1101`),
+ * `missing_node_type` (`:1135`), `prompt_no_outputs` (`:1169`),
+ * `exception_during_validation` (`:1192`) and `prompt_outputs_failed_validation` (`:1239`).
+ *
+ * The set is nonetheless **open**: each is a string literal written at its own raise site, not
+ * a member of an enumeration, and a custom node pack's validator can add to it. So `type` is
+ * typed as `string`, nothing here branches exhaustively on it, and an unrecognised tag must
+ * pass through to the caller rather than be flattened into a default.
+ */
+export interface ComfyNodeErrorReason {
+  /** Machine tag written at the raise site. Open set; do not switch exhaustively. */
+  type: string
+  /** One-line summary suitable for showing a person. */
+  message: string
+  /** Longer explanation. Frequently names the offending input. */
+  details: string
+  /** Raise-site context: `input_name`, `input_config`, `received_value`, and others. */
+  extra_info: Record<string, unknown>
+}
+
+/**
+ * Everything the server has to say about one failing node.
+ *
+ * Blueprint: `references/ComfyUI/execution.py:1219-1223` —
+ * `node_errors[node_id] = {"errors": reasons, "dependent_outputs": [], "class_type": class_type}`
+ * with `dependent_outputs` filled in at `:1228`.
+ *
+ * `dependent_outputs` is the field that makes this worth carrying rather than stringifying:
+ * it names the output nodes that will not produce anything because this node failed. On the
+ * 400 path that is context; on the **200** path it is the whole story, because the prompt was
+ * accepted and those outputs were silently dropped from the run.
+ *
+ * The comment at `:1214-1216` records a real limitation to pass on rather than paper over:
+ * nodes downstream of a failing node are *not* themselves reported here. An empty
+ * `node_errors` therefore means no node was *individually* rejected — not that every node ran.
+ */
+export interface ComfyNodeError {
+  /** Every complaint against this node. */
+  errors: ComfyNodeErrorReason[]
+  /** Ids of output nodes that will not produce anything because this node failed. */
+  dependent_outputs: string[]
+  /** The node's registered class, echoed so a caller need not re-read the graph. */
+  class_type: string
 }
 
 /**

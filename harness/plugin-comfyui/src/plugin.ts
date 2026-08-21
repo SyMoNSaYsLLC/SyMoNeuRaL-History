@@ -42,6 +42,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { ComfyClient, ComfyHttpError, ComfyProtocolError, ComfyTransportError } from './client.ts'
+import * as ComfyTools from './tools.ts'
 import {
   ClientId,
   ComfyPluginConfig,
@@ -62,11 +63,15 @@ export const name = 'comfyui-harness-bridge'
  *
  * Empty, and deliberately so. `inject` is a *gate*: the fiber holds the plugin inactive until
  * every named service exists (`references/deepseek-harness/packages/interaction/tool-ask-user/src/index.ts:14`
- * injects `['tools', 'userQuestions']` because it registers a tool in `apply`). This
- * deliverable registers no tool, so naming `tools` here would make the bridge unavailable
- * whenever the tool registry is absent, in exchange for nothing. Deliverable 3 adds `'tools'`
- * in the same commit as the first `ctx.tools.register` call, which is the only point at which
- * the gate becomes true.
+ * injects `['tools', 'userQuestions']` because it registers a tool in `apply`).
+ *
+ * **This comment used to promise that deliverable 3 would add `'tools'` here. It does not, and
+ * the reasoning that promise was based on was incomplete.** Tools now exist — `./tools.ts`
+ * registers five — but they are registered by a *child* plugin mounted from `apply`, not by
+ * this one. Putting `'tools'` on this gate would make the entire REST bridge unavailable on
+ * any deployment with no tool registry, which is precisely the trade this comment already
+ * argued against; the child fiber carries `inject: ['comfyui', 'tools']` instead, so only the
+ * tool layer waits on the registry and the bridge stays usable without it.
  */
 export const inject: string[] = []
 
@@ -390,5 +395,16 @@ export function apply(ctx: Context, config: ComfyPluginConfig): void {
     ctx.logger.debug(`comfyui: telemetry ${frame.type}`)
   })
 
+  // Construct the bridge FIRST. The `Service` constructor is what calls
+  // `ctx.reflect.provide('comfyui', self, ...)` (`vendor/cordis/src/service.ts:57`), so the
+  // service exists from this line onward — and `ComfyTools` gates on `'comfyui'`. Mounting the
+  // child before this would not fail loudly; the gate would simply hold it inactive, and five
+  // tools would be quietly missing with nothing in the log to say why.
   new ComfyBridge(ctx, resolved)
+
+  // Mounted as a child fiber rather than inlined, so the tool layer's dependency on
+  // `ctx.tools` is its own and not the bridge's. `ctx.plugin()` takes a namespace import whole
+  // — `references/deepseek-harness/packages/schedule/schedule/tests/plugin.spec.ts:9` and `:36`
+  // — which is why `./tools.ts` exports `name`, `inject` and `apply` and nothing by default.
+  ctx.plugin(ComfyTools)
 }

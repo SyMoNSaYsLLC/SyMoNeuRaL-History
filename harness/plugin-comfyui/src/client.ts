@@ -49,6 +49,8 @@ import {
   type ComfyBinaryFrame,
   type ComfyHistory,
   type ComfyNodeDefinition,
+  type ComfyNodeError,
+  type ComfyNodeErrorReason,
   type ComfyObjectInfo,
   type ComfyPromptError,
   type ComfyPromptOutcome,
@@ -189,18 +191,92 @@ function isSystemStats(value: unknown): value is ComfySystemStats {
 }
 
 /** Shape check for `POST /prompt`'s success body. `server.py:1132`. */
-function isPromptResponse(value: unknown): value is { prompt_id: string; number: number; node_errors: Record<string, unknown> } {
+function isPromptResponse(value: unknown): value is { prompt_id: string; number: number; node_errors?: unknown } {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as { prompt_id?: unknown; number?: unknown }
   return typeof candidate.prompt_id === 'string' && typeof candidate.number === 'number'
 }
 
 /** Shape check for the 400 body shared by every `POST /prompt` refusal. */
-function isPromptError(value: unknown): value is ComfyPromptError {
+function isPromptErrorEnvelope(value: unknown): value is { error: ComfyPromptError['error']; node_errors?: unknown } {
   if (typeof value !== 'object' || value === null) return false
   const error = (value as { error?: unknown }).error
   if (typeof error !== 'object' || error === null) return false
   return typeof (error as { type?: unknown }).type === 'string'
+}
+
+/**
+ * Turn whatever arrived in `node_errors` into {@link ComfyNodeError} records, checking rather
+ * than asserting.
+ *
+ * This function exists because the two shape checks above are deliberately shallow — they
+ * establish enough to route the response and nothing more — and a predicate that *claimed*
+ * `Record<string, ComfyNodeError>` on that evidence would be a lie the compiler then believes
+ * everywhere downstream. `node_errors` is the field the tool layer reasons about hardest (it
+ * is the difference between a clean run and a partial one), so it is the last field that
+ * should be taken on trust.
+ *
+ * Malformed entries are **kept, not dropped**. An entry the server sent and this client cannot
+ * parse is still evidence that a node was rejected; discarding it would turn a partial
+ * acceptance back into a clean one, which is the exact misreport this typing was added to
+ * prevent. Such an entry is normalised to an empty `errors` list with `class_type: 'unknown'`
+ * and the raw value preserved under the reason's `extra_info.raw`.
+ */
+function readNodeErrors(value: unknown): Record<string, ComfyNodeError> {
+  const out: Record<string, ComfyNodeError> = {}
+  if (typeof value !== 'object' || value === null) return out
+  for (const [nodeId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== 'object' || raw === null) {
+      out[nodeId] = unparsedNodeError(raw)
+      continue
+    }
+    const record = raw as { errors?: unknown; dependent_outputs?: unknown; class_type?: unknown }
+    if (!Array.isArray(record.errors)) {
+      out[nodeId] = unparsedNodeError(raw)
+      continue
+    }
+    out[nodeId] = {
+      errors: record.errors.map(readNodeErrorReason),
+      dependent_outputs: Array.isArray(record.dependent_outputs)
+        ? record.dependent_outputs.filter((id): id is string => typeof id === 'string')
+        : [],
+      class_type: typeof record.class_type === 'string' ? record.class_type : 'unknown',
+    }
+  }
+  return out
+}
+
+/** One `errors[]` entry, with every field defaulted rather than assumed. `execution.py:905`. */
+function readNodeErrorReason(value: unknown): ComfyNodeErrorReason {
+  if (typeof value !== 'object' || value === null) {
+    return { type: 'unparsed', message: String(value), details: '', extra_info: { raw: value } }
+  }
+  const record = value as Partial<ComfyNodeErrorReason> & { extra_info?: unknown }
+  return {
+    type: typeof record.type === 'string' ? record.type : 'unparsed',
+    message: typeof record.message === 'string' ? record.message : '',
+    details: typeof record.details === 'string' ? record.details : '',
+    extra_info:
+      typeof record.extra_info === 'object' && record.extra_info !== null
+        ? (record.extra_info as Record<string, unknown>)
+        : {},
+  }
+}
+
+/** A `node_errors` entry this client could not parse, preserved rather than discarded. */
+function unparsedNodeError(raw: unknown): ComfyNodeError {
+  return {
+    errors: [
+      {
+        type: 'unparsed',
+        message: 'comfyui returned a node_errors entry in an unrecognised shape',
+        details: 'expected {errors, dependent_outputs, class_type} per execution.py:1219-1223',
+        extra_info: { raw },
+      },
+    ],
+    dependent_outputs: [],
+    class_type: 'unknown',
+  }
 }
 
 /** Pull `prompt_id` off a frame payload without asserting the rest of its shape. */
@@ -541,7 +617,12 @@ export class ComfyClient {
       } catch {
         throw new ComfyHttpError('POST', url, response.status, '')
       }
-      if (isPromptError(parsed)) throw new ComfyPromptRejectedError(url, response.status, parsed)
+      if (isPromptErrorEnvelope(parsed)) {
+        throw new ComfyPromptRejectedError(url, response.status, {
+          error: parsed.error,
+          node_errors: readNodeErrors(parsed.node_errors),
+        })
+      }
       throw new ComfyHttpError('POST', url, response.status, JSON.stringify(parsed).slice(0, MAX_BODY_CHARS))
     }
 
@@ -557,7 +638,7 @@ export class ComfyClient {
     return {
       prompt_id: PromptId(body.prompt_id),
       number: body.number,
-      node_errors: body.node_errors ?? {},
+      node_errors: readNodeErrors(body.node_errors),
     }
   }
 
