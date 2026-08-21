@@ -912,3 +912,53 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         resolve: backend/apps/test_build_progress.py -> backend/tests/test_build_progress.py
         check: maxcount 0 apps/reinforce/tests -- .claude/CLAUDE.md
         check: grep AppsRootIsApplicationsOnly -- backend/tests/test_roster.py
+
+◻ #95 — What `train` reports on the rack when SyMoNeuRaL Reinforce is switched off
+        owner: garrett
+        [ ]
+        Carries AUDIT.md Q10. Garrett's answer there — "try all - check proxy, logs, and
+        restart" — has been carried out in full and it closed the investigation without
+        answering the question, which is why this is a task and not a fix.
+
+        What the three checks established, so nobody repeats them: the proxy is clear
+        (`ops/Caddyfile` forwards `/api` verbatim, `/reinforce.html` answers 200); the
+        `ImportError: cannot import name 'reinforce' from 'apps'` restart loop in the journal
+        is historical and already fixed, last seen 14:54:16 against a service start of
+        17:22:55 with zero errors since; and a restart on spare port 8879 with
+        `SYMONEURAL_REINFORCE_ENABLED=1` answers 200 with a real completed job
+        (20260817-102314-8e6000, 48 rows, state finished). **Nothing is broken.** The row read
+        `ready` with the switch on and it reads `ready` with the switch off, which is the
+        proof that it never consults the switch at all.
+
+        So the whole of what is left is one judgement: what a visitor-facing LED means.
+
+        - **(a) The row reads its switch** — `offline`, detail naming
+          `SYMONEURAL_REINFORCE_ENABLED`, exactly as miner, coder, gateway and studio already
+          do. One state expression changes, and `tests/frontend.mjs` must be re-read because
+          it asserts on what `/api/status` renders and is in the past tense since `0c0f969`.
+        - **(b) `ready` means the weights are installed** — the LED keeps its meaning and the
+          detail line carries the truth (`adapter loaded · surface off`). Then miner and coder
+          are the inconsistent ones and those three change the other way.
+        - **(c) Something else** — say what.
+
+        **Why this is owner: garrett and not FIX-not-FILE.** The code states the choice in the
+        repo's own voice and hands it over by name: the comment immediately above the row
+        argues (b) — *"Splatting one over the other would flip a unit that reads `ready` to
+        `offline` the moment the env vars are unset, which is not what a visitor is being told
+        here"* — and ends *"The merge is available and is a separate decision."* Overriding a
+        written decision because it is awkward to wait is not fixing, and the honesty rule it
+        turns on ("every LED and gauge reflects a real reading") is satisfiable both ways.
+        Tick the box when you have chosen; that sets `ready for review`, not `done`.
+
+        The row is at `backend/api.py:1946`. AUDIT.md Q10 says 1671 and that line number is
+        stale — 1671 is inside the API-doc renderer now, and following it wastes ten minutes.
+
+        note: 2026-08-21 coder — the two checks are the decision, not the implementation. The
+        note: implementation check for (a) and the one for (b) are different checks, so
+        note: declaring both would make 100% unreachable whichever way you go; the second one
+        note: is added in the commit that implements the chosen option. The `ngrep` is green
+        note: under (a) and under (b) alike, because both replace today's constant detail
+        note: string, and green under nothing else.
+
+        check: exists docs/train-row-decision.md
+        check: ngrep for model/adapter tuning -- backend/api.py
