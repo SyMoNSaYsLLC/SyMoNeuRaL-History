@@ -1018,59 +1018,6 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: temperature 0.2 gave 15, 21 and 22. It is a reading of one run, never a
         note: property of the file, and it must not be published as one.
 
-◻ #100 — The GPU lease tells the truth about itself: `resident` is a hint, and a contended card answers 503
-        owner: coder
-        check: exists backend/apps/test_governor_evict.py
-        check: exists scripts/SMOKE-governor-evict.md
-        check: exists backend/SMOKE-lease-503.md
-        check: ngrep """/backend/apps -- scripts/gpu-governor.sh
-        check: grep surface_pattern -- scripts/gpu-governor.sh
-
-        Folds A-R172 and A-R173. One defect class -- the lease reporting something the machine
-        cannot back up -- one file pair, one test file, so it is one task rather than two.
-
-        **R-172.** `run/resident` outlives the process it names, so `evict` reports killing what
-        was already gone. `a944fae` claimed to fix this and fixed the half that was already
-        honest: `image`, `sigil` and the `*` fallback call `pkill` directly and get a truthful
-        exit code, so `&& active=1` means something there. The two arms that call a helper
-        script cannot work that way, and one of them is the surface R-172 reproduced with:
-
-        - `bin/symoneural-cli:346` `cmd_stop_chat` ends `return 0` unconditionally.
-        - `scripts/symoneural-ui.sh:95-120` exits 0 on the not-running path.
-
-        So the governor logs `stopping 'comfy' to make room` over a marker with nothing behind
-        it, and the log -- the only record of an eviction -- cannot be read to find out whether
-        anything was freed. `status` at `gpu-governor.sh:276` still prints the marker with no
-        liveness check at all, which R-172 asks for in as many words.
-
-        The shape is prescribed by the ledger, not invented: *"`status` and `evict` both treat
-        the marker as a hint and the process table as the fact."* One `surface_pattern()` helper
-        returns the pattern each arm already hands to `pkill`; `evict` probes with `pgrep -f`
-        **before** the stop attempt and logs off that reading. Do not plumb exit codes out of
-        the helpers -- `cmd_stop_chat` returning 0 when nothing is running is arguably right for
-        a command named *stop*, and changing it would break its own callers.
-
-        **R-173.** A contended card reached the visitor as a bodyless 500, because the 503 was
-        raised inside the streaming generator, after `200 OK` had gone out. `a944fae` moved the
-        acquisition into the handler and that part is correct and stays. What came with it: the
-        RavenCalc `anticipate()` task is created *before* `__aenter__`, so a 503 from `hold()`
-        orphans it, never awaited.
-
-        **`gpu-governor.sh:204` is a regression from the same commit.** `"'"$ROOT"'/backend/apps"`
-        was collapsed to `"""/backend/apps"`; the arm raises `SyntaxError: unterminated
-        triple-quoted string literal` and always falls through to its pgid `pkill`. It is inert
-        today -- `run/miner.pid` does not exist, `pgrep -g -1` exits 1 and matches nothing, and
-        the miner surface stays dead until `SYMONEURAL_MINER_CMD` names a real binary -- but
-        `bash -n` passes over it, which is the part worth remembering: shell syntax checking
-        cannot see inside a `python3 -c` string, so the test asserts that string compiles.
-
-        note: 2026-08-21 coder -- the two SMOKE checks are here because the other three would
-        note: all have gone green over the broken code. `grep surface_pattern` passes while the
-        note: logic is still wrong, which is #94 verbatim. `SMOKE-lease-503.md` also settles a
-        note: hazard rather than a claim: whether a client disconnecting before the generator's
-        note: first `__anext__` leaks the lease. That turns on Starlette internals, so it is
-        note: measured -- open a chat request, abandon it unread, read `status` -- not asserted.
-
 ◻ #101 — ssh and rdp: the forwards, and what actually closes them
         owner: garrett
         [ ]

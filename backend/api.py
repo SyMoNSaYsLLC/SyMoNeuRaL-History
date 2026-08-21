@@ -46,6 +46,7 @@ from fastapi import (Depends, FastAPI, HTTPException, Request, Response, WebSock
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send  # for RackPowerGate, which is raw ASGI on purpose
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -290,6 +291,17 @@ RATE_PER_MIN, RATE_PER_HOUR = LIMITS["chat"]
 # Mirrors ACQUIRE_TIMEOUT_S in gpu-governor.sh. A serving request waits this long
 # behind a CLI job or a fine-tune before telling the visitor to try RavenCalc.
 ACQUIRE_TIMEOUT_S = 300
+
+# How often the chat handler asks whether the visitor is still on the other end. It is
+# one ASGI receive poll, so it costs nothing; the interval only bounds how long a dead
+# request can keep holding the card, against the ACQUIRE_TIMEOUT_S the next tenant would
+# otherwise wait. Measured detection here: ~0.5 s.
+DISCONNECT_POLL_S = 0.25
+
+# Strong references to in-flight disconnect watchdogs. The event loop holds only a weak
+# reference to a task, so one created inside a request frame can be garbage-collected
+# before it ever runs. Discarded by a done-callback, so this cannot grow without bound.
+_WATCHDOGS: set[asyncio.Task] = set()
 
 # Image prompt gate. GUTTED 2026-08-17 on the operator's instruction: he had not asked
 # for any of the previous list, it was written into the initial commit (bf7c8fb) rather
@@ -1400,8 +1412,7 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
 
 
-@app.middleware("http")
-async def rack_power_gate(request: Request, call_next):
+class RackPowerGate:
     """Refuse HTTP work on a surface an operator has taken off the rack.
 
     THIS IS WHAT MAKES THE BUTTON REAL. `.claude/CLAUDE.md`: *"No decorative status
@@ -1423,17 +1434,56 @@ async def rack_power_gate(request: Request, call_next):
     503 with `Retry-After`, not 404: the surface exists and is coming back. 404 would tell a
     visitor the feature was never built, and the honest answer is that an operator took it
     down and the detail line on the rack says when.
+
+    **Written as a raw ASGI class rather than as `@app.middleware("http")`, and that is not a
+    style choice -- it is load-bearing for a defect one layer down. Do not convert it back.**
+    `@app.middleware("http")` is `BaseHTTPMiddleware`, which runs the endpoint in a task and
+    hands it a *substitute* receive channel. `http.disconnect` never reaches the endpoint's
+    own `Request`, so `await request.is_disconnected()` blocks forever instead of answering
+    True, and `/api/chat`'s disconnect watchdog -- the thing that gives the GPU lease back
+    when a visitor closes the tab -- never fires. Measured here 2026-08-21, four stacks, one
+    handler, one abandoned socket:
+
+        bare app                     -> RELEASED   ['saw disconnect', 'released']
+        + GZipMiddleware             -> RELEASED   ['saw disconnect', 'released']
+        + BaseHTTPMiddleware         -> LEAKED     []
+        + this gate as raw ASGI      -> RELEASED   ['saw disconnect', 'released']
+
+    Note the empty list on the third row: neither the watchdog nor the generator's `finally`
+    ran at all, so nothing appears in any log to read. GZip is above this in the stack and is
+    exonerated by row two -- it is pure ASGI and passes `receive` straight through, as this
+    now does. `backend/SMOKE-lease-503.md` has the run.
+
+    What it decides is unchanged from the `BaseHTTPMiddleware` version: same prefix walk, same
+    503 body, same `Retry-After`, same position in the stack (added after GZip, so still the
+    outer of the two and its 503 is still uncompressed).
     """
-    unit_id = rackpower.unit_for_path(request.url.path)
-    if unit_id is not None and rackpower.is_disabled(unit_id):
-        return JSONResponse(
-            status_code=503,
-            headers={"Retry-After": "300"},
-            content={"error": f"{unit_id} has been taken off the rack by an operator. "
-                              f"It is not faulty and nothing was lost; see the rack on the "
-                              f"home page for when it went down."},
-        )
-    return await call_next(request)
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        # `Request(scope)` with no `receive` bound: this reads the path and nothing else, so
+        # the endpoint downstream still owns the one real receive channel. That ownership is
+        # the entire point of the class -- see the docstring.
+        unit_id = rackpower.unit_for_path(Request(scope).url.path)
+        if unit_id is not None and rackpower.is_disabled(unit_id):
+            response = JSONResponse(
+                status_code=503,
+                headers={"Retry-After": "300"},
+                content={"error": f"{unit_id} has been taken off the rack by an operator. "
+                                  f"It is not faulty and nothing was lost; see the rack on the "
+                                  f"home page for when it went down."},
+            )
+            return await response(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
+# Added after GZip, so it is the OUTER of the two -- the order the `@app.middleware("http")`
+# registration it replaced produced, kept deliberately.
+app.add_middleware(RackPowerGate)
 
 
 DOCS_HEADER = """
@@ -2313,7 +2363,7 @@ async def ws_remix(ws: WebSocket, msg: dict) -> None:
 
 
 @app.post("/api/chat", tags=["surfaces"])
-async def chat(body: ChatRequest,
+async def chat(body: ChatRequest, request: Request,
                 _: Annotated[None, Depends(throttled_for("chat"))]) -> StreamingResponse:
     """Ask the local model. Streams Server-Sent Events as the card produces tokens.
 
@@ -2321,21 +2371,87 @@ async def chat(body: ChatRequest,
     `{"done": true, "tokens": N, "seconds": S, "tok_per_s": R, "model": "...", "adapter": bool}`.
     The rate in that final event is measured, not claimed.
     """
-    # Kick RavenCalc off first, then take the card.
+    # Kick RavenCalc off first, then take the card. The calculator runs on the CPU and
+    # deliberately never takes the lock, so it does its work inside the time the GPU
+    # surface spends loading -- by the time the model can speak, the exact answer is
+    # already sitting here waiting for it.
     thinking = asyncio.create_task(anticipate(body.prompt))
 
-    # Acquire the lease in the route handler.
-    # If the queue is full, this raises a 503 *before* the 200 OK headers are sent.
+    # Take the lease HERE, in the handler, not inside the generator. R-173: a contended
+    # card used to reach the visitor as a bodyless 500, because Starlette sends 200 OK the
+    # moment a StreamingResponse is returned and the HTTPException was not raised until the
+    # generator first ran -- after the status line had gone out, where it can only abort the
+    # connection. Acquiring before the response exists means a full queue is an ordinary
+    # 503 with a readable body.
     lease = gpu.hold("chat")
-    await lease.__aenter__()
+    try:
+        await lease.__aenter__()
+    except BaseException:
+        # RavenCalc was started before the acquire on purpose (above), so an acquire that
+        # raises leaves a task nobody will ever await. Left alone it logs "Task exception
+        # was never retrieved" out of the event loop at collection time -- a stack trace
+        # with no request attached to it, arriving whenever the GC happens to run.
+        thinking.cancel()
+        raise
 
-    async def stream(active_lease):
+    # Returning the card is the handler's job as well as the generator's, because a client
+    # that hangs up is not an event the generator ever sees.
+    #
+    # Measured 2026-08-21 on starlette 0.46.1 / uvicorn 0.32.0 against a generator that
+    # cannot finish on its own -- connect, send the request line, close the socket, wait:
+    # the generator keeps being resumed and keeps yielding into a socket nobody is reading,
+    # forever. Its `finally` never runs, so the lease is never dropped and the next tenant
+    # waits out the full ACQUIRE_TIMEOUT_S. Two shapes were tried and measured NOT to fix
+    # it, so do not reach for either again:
+    #
+    #   * subclassing StreamingResponse and releasing in a `try/finally` around
+    #     `__call__` -- on an already-dead client `__call__` is never entered at all;
+    #   * arming a watchdog on "has the generator started yet" -- it starts immediately,
+    #     disarms the watchdog, and then runs on against nobody.
+    #
+    # `request.is_disconnected()` is the one signal that reflects the client rather than
+    # us, so the watchdog polls that. `drop_lease` is idempotent because both it and the
+    # generator's `finally` can reach it, and the generator checks `released` each turn so
+    # it stops feeding a socket that has gone away instead of running to max_tokens.
+    released = asyncio.Event()
+
+    async def drop_lease():
+        if released.is_set():
+            return
+        released.set()
+        await lease.__aexit__(None, None, None)
+
+    async def watchdog():
+        try:
+            while not released.is_set():
+                if await request.is_disconnected():
+                    log.info("chat client disconnected mid-stream; returning the card")
+                    thinking.cancel()
+                    await drop_lease()
+                    return
+                await asyncio.sleep(DISCONNECT_POLL_S)
+        except asyncio.CancelledError:
+            raise
+
+    guard = asyncio.create_task(watchdog())
+    # asyncio keeps only a weak reference to a task, and this one outlives the frame that
+    # created it, so without a strong reference here it can be collected mid-flight.
+    _WATCHDOGS.add(guard)
+    guard.add_done_callback(_WATCHDOGS.discard)
+
+    async def stream():
         try:
             if not await start_llama():
                 thinking.cancel()
                 yield f"data: {json.dumps({'error': 'Chat surface is not available.'})}\n\n"
                 return
 
+            # The caller's own system prompt wins outright when supplied. Previously the
+            # persona was unconditional and a client could not replace it, because
+            # Turn.role is Literal["user","assistant"] -- that Literal is still there and
+            # still does its job (it stops a system turn being smuggled in mid-transcript
+            # where it would be invisible), but overriding is now an explicit parameter
+            # rather than something to work around.
             system = SYSTEM_PROMPT if body.system is None else body.system
             try:
                 exact = await asyncio.wait_for(thinking, timeout=5)
@@ -2358,6 +2474,10 @@ async def chat(body: ChatRequest,
                         + [{"role": "user", "content": body.prompt}])
             started, tokens, out = time.time(), 0, []
             async for piece in chat_deltas(messages, body.max_tokens, body.temperature):
+                if released.is_set():
+                    # The watchdog gave the card back: the visitor is gone. Stop here
+                    # rather than generating the rest of max_tokens into a dead socket.
+                    return
                 tokens += 1
                 out.append(piece)
                 yield f"data: {json.dumps({'delta': piece})}\n\n"
@@ -2368,12 +2488,16 @@ async def chat(body: ChatRequest,
                 "model": CHAT_MODEL.stem, "adapter": CHAT_ADAPTER.exists(),
             }) + "\n\n"
         finally:
-            # Guarantee the lease drops when the stream finishes or disconnects
-            await active_lease.__aexit__(None, None, None)
+            # Every exit from the generator returns the card: a clean finish, a client that
+            # hangs up mid-stream, and an exception on the way through. `drop_lease` is
+            # idempotent because the watchdog above can also have reached it.
+            guard.cancel()
+            await drop_lease()
 
-    # Pass the held lease into the generator
-    return StreamingResponse(stream(lease), media_type="text/event-stream",
+    return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/image", response_model=ImageResult, tags=["surfaces"])
 async def image(body: ImageRequest,
                 _: Annotated[None, Depends(throttled_for("image"))]) -> ImageResult:
