@@ -227,6 +227,50 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep replacing it would cost -- backend/DEPENDENCIES.md
         check: ngrep swagger -- backend/api.py
         check: ngrep SymPy -- site/ravencalc.html
+        check: ngrep SymPy -- site/chat.html
+        check: ngrep SymPy -- site/exp.html
+        check: ngrep SymPy -- site/gateway.html
+        check: ngrep SymPy -- site/image.html
+        check: ngrep SymPy -- site/index.html
+        check: ngrep SymPy -- site/livestack.html
+        check: ngrep SymPy -- site/miner.html
+        check: ngrep SymPy -- site/project.html
+        check: ngrep SymPy -- site/reinforce.html
+        check: ngrep SymPy -- site/remix.html
+        check: ngrep SymPy -- site/sigils.html
+        check: ngrep SymPy -- site/streamer.html
+        check: ngrep SymPy -- site/studio.html
+        check: ngrep sympy -- site/ravencalc.html
+        check: grep SymPy -- site/credits.html
+        check: grep BSD-3-Clause -- site/credits.html
+        check: ngrep spec="SymPy -- backend/api.py
+        check: grep symbolic core -- backend/apps/ravencalc/ravencalc.py
+        check: exists backend/apps/test_brand_boundary.py
+
+        note: 2026-08-21 — **item 7's single check could not see the worst occurrence and
+        note: would have archived this task with the vendor name still printing on screen.**
+        note: `ngrep SymPy -- site/ravencalc.html` covered one page of fifteen, so fixing that
+        note: one file flipped it green while thirteen other pages still said SymPy. It is now
+        note: one line per page. A directory target does not work as a wildcard —
+        note: `build_progress.py` returns False for anything that is not a file, so
+        note: `ngrep SymPy -- site/` would be permanently red rather than broad.
+        note: Worse, and the reason the last two checks above exist: `ravencalc.py` returned
+        note: `"engine": f"sympy {version}"` and `build_pages.py` renders that field into the
+        note: readout, so the page printed `eng sympy 1.13.3` after **every** calculation. No
+        note: grep of `site/` can see a runtime string. Same for `note`, which carried "sympy
+        note: cannot integrate that" and "sympy returned this unevaluated". The engine line now
+        note: reads `RavenCalc (symbolic core 1.13.3)` — the vendor name goes, the real version
+        note: stays, and it is not presented as RavenCalc's own version number, which would name
+        note: a release that does not exist.
+        note: `backend/apps/test_brand_boundary.py` is what actually holds this: it scans every
+        note: shipped page, every `tools/build_*.py`, and computes real expressions to read the
+        note: fields a browser displays. It asserts `credits.html` **keeps** the notice, because
+        note: BSD-3-Clause requires it in accompanying documentation and a slightly-too-broad
+        note: sweep would satisfy every other assertion here while stripping it.
+        note: The generator list is globbed, not hand-written, because that was the second trap:
+        note: the shared "RavenCalc is the exception" sentence is emitted by **eight** generators,
+        note: not the two that a grep of `site/` pointed at, and six pages kept the vendor name
+        note: through a full rebuild because nobody ran the generator that owns them.
 
         note: 2026-08-20 — **the quotes came off five patterns above, and three of them were
         note: passing on work that was not done.** `run_check` hands the pattern straight to

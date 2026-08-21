@@ -82,7 +82,7 @@ SHELL = """<!doctype html>
         it is one card doing one thing at a time.
       </p>
       <p>
-        <strong>RavenCalc is the exception</strong> &mdash; it is SymPy on the CPU, so it never
+        <strong>RavenCalc is the exception</strong> &mdash; it is symbolic algebra on the CPU, so it never
         touches the GPU and never queues. Everything here is a demonstration of the stack on
         the smallest machine we would ever ship, not a statement of capacity. A server we spec
         for you would not be sharing one GPU with itself.
@@ -669,7 +669,7 @@ CALC_BODY = """    <style>
           <span class="grow">cpu &middot; never queues</span></div>
         <div class="body">
           <div class="readout" id="out" style="color:var(--faint)">
-            Exact symbolic mathematics. Not a language model guessing at algebra &mdash; SymPy
+            Exact symbolic mathematics. Not a language model guessing at algebra &mdash; an exact symbolic engine
             computing it, and checking its own answer where checking is cheap.
           </div>
         </div>
@@ -702,7 +702,7 @@ CALC_BODY = """    <style>
              type="button" would make Enter type a digit instead of computing. They all
              carry type="button" as well; both halves, because either alone is one edit
              away from being wrong.
-             Every label is the SymPy name that is actually inserted. `title` carries the
+             Every label is the engine name that is actually inserted. `title` carries the
              human meaning; the button does not lie about what it types. -->
         <div class="rc-pad" id="rcpad">
           <div class="rc-group">
@@ -717,11 +717,11 @@ CALC_BODY = """    <style>
               <button type="button" class="rc-key rc-fn" data-fn="sinh" title="hyperbolic sine">sinh</button>
               <button type="button" class="rc-key rc-fn" data-fn="cosh" title="hyperbolic cosine">cosh</button>
               <button type="button" class="rc-key rc-fn" data-fn="tanh" title="hyperbolic tangent">tanh</button>
-              <button type="button" class="rc-key rc-fn" data-fn="log" title="natural logarithm (log and ln are the same function in SymPy)">log</button>
+              <button type="button" class="rc-key rc-fn" data-fn="log" title="natural logarithm (log and ln are the same function here)">log</button>
               <button type="button" class="rc-key rc-fn" data-fn="ln" title="natural logarithm">ln</button>
               <button type="button" class="rc-key rc-fn" data-fn="exp" title="e raised to the power">exp</button>
               <button type="button" class="rc-key rc-fn" data-fn="sqrt" title="square root">sqrt</button>
-              <button type="button" class="rc-key rc-fn" data-fn="Abs" title="absolute value &mdash; capital A, this is SymPy's name for it">Abs</button>
+              <button type="button" class="rc-key rc-fn" data-fn="Abs" title="absolute value &mdash; capital A, this is the engine's name for it">Abs</button>
               <button type="button" class="rc-key rc-fn" data-fn="factorial" title="factorial, n!">factorial</button>
               <button type="button" class="rc-key rc-fn" data-ins="pi" title="pi, exactly &mdash; not 3.14159">pi</button>
               <button type="button" class="rc-key rc-fn" data-ins="E" title="Euler's number e, exactly">E</button>
@@ -771,7 +771,7 @@ CALC_BODY = """    <style>
           <input type="text" id="pt" value="0" maxlength="32">
         </div>
         <p class="hint">
-          The keys type SymPy, which is the language the engine actually reads:
+          The keys type the engine&#39;s own notation, which is the language it actually reads:
           <code>**</code> for a power, <code>sqrt(x)</code>, <code>Abs(x)</code>,
           <code>pi</code> and <code>E</code> as exact constants, <code>oo</code> for
           infinity. You can type it yourself as well &mdash; the box is a plain text field.
@@ -805,7 +805,7 @@ CALC_JS = """<script>
 
   // ---- the operation ------------------------------------------------------
   // `point` reaches the engine for BOTH limit and series -- ravencalc.py parses it and
-  // passes it to sympy.series() as the expansion point, even though CalcRequest documents
+  // passes it to the engine's series expansion as the expansion point, even though CalcRequest documents
   // the field as limit-only. Offered for both, hidden for the five that ignore it.
   function setOp(name) {
     opField.value = name;
@@ -895,12 +895,12 @@ CALC_JS = """<script>
            : c.passed === false ? '<span class="bad">CHECK FAILED</span>'
            : '<span class="bad">unconfirmed</span>')
         : '<span class="k">not checked</span>';
-      // `in` is what the engine PARSED, which is not always what you typed -- SymPy
+      // `in` is what the engine PARSED, which is not always what you typed -- the engine
       // evaluates as it parses, so integrate(x**2, x) is already x**3/3 by the time the
       // operation runs. Printing it is how you can see that, rather than being surprised
       // by the answer. It is not decoration and it is asserted on by the test suite.
       out.innerHTML =
-        '<div class="rc-line"><span class="k" title="the expression as SymPy parsed it">in</span> ' +
+        '<div class="rc-line"><span class="k" title="the expression as the engine parsed it">in</span> ' +
           esc(r.input.text) + '</div>' +
         '<div class="rc-line"><span class="k">out</span> <span class="rc-ans">' +
           esc(r.result.text) + '</span></div>' +
@@ -5773,10 +5773,10 @@ def main() -> int:
 
     page("ravencalc.html", gpu=False, surface="RavenCalc",
          title="SyMoNeuRaL RavenCalc — exact mathematics",
-         desc="SymPy-powered symbolic computation that checks its own work.",
+         desc="Exact symbolic computation that checks its own work.",
          icon="/calc-64.png", eyebrow="Live surface · CPU",
          heading="Mathematics, computed rather than predicted.",
-         lede="RavenCalc is SymPy underneath, not a language model guessing at algebra. It "
+         lede="RavenCalc is an exact symbolic engine, not a language model guessing at algebra. It "
               "runs on the CPU, so it is the one surface here that never waits for the GPU.",
          body=CALC_BODY, script=CALC_JS)
 

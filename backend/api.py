@@ -1365,7 +1365,7 @@ app = FastAPI(
         "surfaces on one RTX 5070 Ti.\n\n"
         "**Chat**, **Image** and **Remix** all want the same GPU, and the chat and image "
         "weight sets do not both fit in 15.92 GiB. So exactly one holds the card at a time "
-        "and the others queue. **RavenCalc** is SymPy on the CPU and never queues — which "
+        "and the others queue. **RavenCalc** is symbolic algebra on the CPU and never queues — which "
         "is why it is always available even when the rack shows everything else busy.\n\n"
         "Rate limits are per endpoint, scaled to cost: **calc** 240/min, **chat** 120/min, "
         "**remix** 40/min, **image** 20/min (hourly budgets are 25x the minute). Every "
@@ -1630,7 +1630,7 @@ def build_status() -> Status:
                  state=gpu_unit("remix", chat_ok), bus="gpu", href="/remix.html",
                  spec="client of the chat surface", detail="no weights of its own"),
             Unit(id="ravencalc", label="SyMoNeuRaL RavenCalc", slot="1U", state="ready",
-                 bus="cpu", href="/ravencalc.html", spec="SymPy, exact symbolic",
+                 bus="cpu", href="/ravencalc.html", spec="exact symbolic algebra",
                  detail="cpu only, never queues"),
             # The adapter bay. Idle most of the time, but when a fine-tune is running it
             # owns the card outright and every serving surface waits behind it -- so it

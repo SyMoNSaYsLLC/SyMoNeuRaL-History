@@ -1,0 +1,229 @@
+"""The vendor name of the symbolic engine must not appear on a visitor-facing surface.
+
+Task #74 item 7. The rule it enforces, in Garrett's framing: *"Only the vendor's name
+goes"* -- the argument the RavenCalc page makes ("exact symbolic computation, not a
+language model guessing at algebra") is true of our engine word for word, so the prose
+survives the rename and only the third-party name is removed.
+
+**Two of these tests exist because grep cannot see the worst offender.** `ravencalc.py`
+returns an `engine` field and a `note` field, and `build_pages.py` renders both straight
+into the readout -- so the page printed `eng sympy 1.13.3` after every single calculation
+while every static occurrence in `site/` was already clean. A check that greps the HTML
+goes green in that state, which is why `test_rendered_response_fields` computes real
+expressions and reads the values a browser would actually display.
+
+**`site/credits.html` is asserted the other way round, and that is deliberate.** SymPy is
+BSD-3-Clause. The licence does not require the name in the interface, but it does require
+the copyright notice in accompanying documentation, and once the pages stop naming it
+`credits.html` and `LICENSES.md` become the whole of the disclosure. So this file fails if
+that attribution is ever removed. Renaming what we present is ours to do; dropping the
+notice is not.
+
+Nothing here objects to `import sympy` in the engine internals. The import is not a
+surface, and putting the dependency behind our own module is item 5's separate job.
+"""
+from __future__ import annotations
+
+import pathlib
+import re
+import unittest
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+SITE = REPO / "site"
+
+#: Matched case-insensitively: the JS comment shipped in `ravencalc.html` spells it
+#: lowercase, and a rename that tidied the capitalised ones only would still ship it.
+VENDOR = re.compile(r"sympy", re.IGNORECASE)
+
+#: The one page that must keep the name, because it is where the licence is honoured.
+ATTRIBUTION_PAGES = {"credits.html"}
+
+#: Every generator, found by glob rather than listed. Editing `site/*.html` by hand would
+#: be undone by the next build, so the boundary is asserted on the source as well.
+#:
+#: Globbed because a hand-written list is what made this task look finished when it was
+#: not: the shared "RavenCalc is the exception" sentence is emitted by *eight* generators,
+#: not the two that grep of `site/` pointed at, and six pages kept the vendor name through
+#: a full rebuild simply because nobody ran the generator that owns them.
+GENERATORS = tuple(sorted(str(p.relative_to(REPO)) for p in (REPO / "tools").glob("build_*.py")))
+
+
+class SiteBrandBoundaryTests(unittest.TestCase):
+    def test_no_shipped_page_names_the_vendor(self):
+        """Every page a visitor can load, except the attribution page."""
+        offenders = {}
+        for page in sorted(SITE.glob("*.html")):
+            if page.name in ATTRIBUTION_PAGES:
+                continue
+            hits = [
+                f"{page.name}:{n}"
+                for n, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1)
+                if VENDOR.search(line)
+            ]
+            if hits:
+                offenders[page.name] = hits
+        self.assertEqual(
+            offenders,
+            {},
+            "the vendor name is still on a visitor-facing page; edit the generator that "
+            "emits it, never site/*.html directly",
+        )
+
+    def test_the_generators_do_not_emit_it(self):
+        """Fixing the HTML without fixing its source lasts until the next build."""
+        offenders = {}
+        for rel in GENERATORS:
+            path = REPO / rel
+            hits = [
+                f"{rel}:{n}"
+                for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+                if VENDOR.search(line)
+            ]
+            if hits:
+                offenders[rel] = hits
+        self.assertEqual(offenders, {}, "a generator still writes the vendor name into site/")
+
+    def test_credits_still_carries_the_bsd_notice(self):
+        """The licence condition. This test failing means we are out of compliance.
+
+        Asserted positively and on purpose: every other test here removes the name, and
+        a sweep that was slightly too broad would satisfy all of them while quietly
+        stripping the one instance BSD-3-Clause actually requires us to keep.
+        """
+        credits = (SITE / "credits.html").read_text(encoding="utf-8")
+        self.assertIn("SymPy", credits, "the attribution was removed from credits.html")
+        self.assertIn("BSD-3-Clause", credits, "the licence name was removed from credits.html")
+
+
+class EngineMessageTests(unittest.TestCase):
+    """Strings the engine hands back, read from the source rather than provoked.
+
+    `note` and the `RavenCalcError` text are rendered into the readout, so every one of
+    them is visitor-facing. Reaching them all at runtime would mean computing an integral
+    with no closed form and an unsolvable quintic -- both are genuinely expensive in
+    seconds, and a brand check has no business putting that in a suite that runs on every
+    commit. The first draft of this file did exactly that and had to be killed by hand.
+
+    So the strings are read out of the module instead. Docstrings and comments are
+    excluded on purpose: the engine's internal prose may name what it imports, and it
+    should, because that is what the code actually does. Only literals that can travel to
+    a caller are in scope.
+    """
+
+    def test_no_user_facing_literal_in_the_engine_names_the_vendor(self):
+        import ast
+
+        source = (REPO / "backend/apps/ravencalc/ravencalc.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        docstrings = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                first = node.body[0] if node.body else None
+                if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                    if isinstance(first.value.value, str):
+                        docstrings.add(id(first.value))
+
+        offenders = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if id(node) in docstrings:
+                    continue
+                if VENDOR.search(node.value):
+                    offenders.append(f"ravencalc.py:{node.lineno}: {node.value!r}")
+
+        self.assertEqual(
+            offenders,
+            [],
+            "these reach the browser as the `note` or error line of the readout",
+        )
+
+
+class PublicApiTextTests(unittest.TestCase):
+    """`api.py` publishes two strings that a visitor reads without opening a page.
+
+    Read as source and never imported -- importing it starts a process that owns the GPU
+    lease, which is why every other suite in this directory reads it the same way.
+
+    Its comments and module docstring still name the library, and that is correct: they
+    describe what the code imports, to a reader who is looking at the import. Only the
+    two strings that leave the box are in scope here.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (REPO / "backend/api.py").read_text(encoding="utf-8")
+
+    def test_rack_unit_specs_do_not_name_the_vendor(self):
+        """`spec=` is rendered into the rack unit by `/api/status` on the front page."""
+        specs = re.findall(r'spec="([^"]*)"', self.source)
+        self.assertTrue(specs, "no spec= values found -- has the rack been restructured?")
+        offenders = [s for s in specs if VENDOR.search(s)]
+        self.assertEqual(offenders, [], "a rack unit still shows the vendor name")
+
+    def test_the_openapi_description_does_not_name_the_vendor(self):
+        """Served at /docs, which is public.
+
+        The description is assembled from adjacent string literals, so this looks for the
+        sentence rather than one literal.
+        """
+        marker = "**RavenCalc** is"
+        self.assertIn(marker, self.source, "the RavenCalc sentence moved; re-point this test")
+        start = self.source.index(marker)
+        self.assertNotRegex(
+            self.source[start : start + 200],
+            VENDOR,
+            "the OpenAPI description at /docs still names the vendor",
+        )
+
+
+class RenderedResponseFieldTests(unittest.TestCase):
+    """What the readout prints, which is not what `site/*.html` contains.
+
+    `build_pages.py` renders `r.note` and `r.engine` into the page, so these strings are
+    as visitor-facing as any heading -- they were simply invisible to a grep of the HTML.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from apps.ravencalc import ravencalc
+
+        cls.ravencalc = ravencalc
+
+    def _run(self, **doc):
+        return self.ravencalc.run_request(doc)
+
+    def test_the_engine_line_does_not_name_the_vendor(self):
+        result = self._run(operation="differentiate", expression="x**2", variable="x")
+        self.assertNotRegex(
+            result["engine"],
+            VENDOR,
+            "the readout prints this after every calculation -- see the `eng` line",
+        )
+
+    def test_the_engine_line_still_reports_a_real_version(self):
+        """The name goes; the provenance does not.
+
+        A bare product name here would be a downgrade on a site whose whole argument is
+        that its numbers are real, so the symbolic core's actual version is still
+        reported -- it is simply no longer labelled with the vendor's name. It must not
+        be presented as *RavenCalc's* version, because that would name a release that
+        does not exist.
+        """
+        result = self._run(operation="differentiate", expression="x**2", variable="x")
+        self.assertIn("RavenCalc", result["engine"])
+        self.assertRegex(
+            result["engine"],
+            r"\d+\.\d+",
+            "the version was dropped along with the name; keep the measurement",
+        )
+
+    def test_error_messages_do_not_name_the_vendor(self):
+        """Raised text reaches the user as the readout's error line."""
+        with self.assertRaises(self.ravencalc.RavenCalcError) as caught:
+            self._run(operation="integrate", expression="))(", variable="x")
+        self.assertNotRegex(str(caught.exception), VENDOR)
+
+
+if __name__ == "__main__":
+    unittest.main()

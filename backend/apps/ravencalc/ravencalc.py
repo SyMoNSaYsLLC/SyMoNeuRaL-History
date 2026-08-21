@@ -324,7 +324,7 @@ def validate_request(doc: Any) -> Request:
 
     lower, upper = doc.get("lower", ""), doc.get("upper", "")
     if not isinstance(lower, str) or not isinstance(upper, str):
-        problems.append("lower and upper must be strings (sympy syntax: 'pi', 'oo', '0')")
+        problems.append("lower and upper must be strings (engine syntax: 'pi', 'oo', '0')")
         lower, upper = "", ""
     elif bool(lower.strip()) != bool(upper.strip()):
         # Half a definite integral is not a definite integral, and the natural failure --
@@ -538,7 +538,7 @@ def run_request(doc: Any) -> dict[str, Any]:
         "check": check,
         "note": note,
         "assumed": _assumed(symbols),
-        "engine": f"sympy {sympy.__version__}",
+        "engine": f"RavenCalc (symbolic core {sympy.__version__})",
     }
 
 
@@ -576,7 +576,7 @@ def _compute(
             point = parse(request.point, symbols)
             result = sympy.limit(expression, variable, point, dir=request.direction)
             note = (
-                "two-sided limit: sympy's '+-' asks for both one-sided limits to agree"
+                "two-sided limit: the engine's '+-' asks for both one-sided limits to agree"
                 if request.direction == "+-"
                 else f"one-sided limit from the {'right' if request.direction == '+' else 'left'}"
             )
@@ -605,14 +605,14 @@ def _compute(
         # unedited. Turning it into a generic failure would hide the single most useful
         # sentence in the exchange.
         raise RavenCalcError(
-            f"sympy cannot {operation} that",
+            f"RavenCalc cannot {operation} that",
             [f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__],
             REQUEST_SCHEMA_ID,
         ) from exc
     except RecursionError as exc:
         raise RavenCalcError(
             f"{operation} did not terminate on that input",
-            ["sympy recursed past python's limit -- the expression is too deeply nested"],
+            ["the engine recursed past python's limit -- the expression is too deeply nested"],
             REQUEST_SCHEMA_ID,
         ) from exc
     except Exception as exc:
@@ -636,12 +636,12 @@ def _integrate(
         # Handing that back as "the answer" is the failure worth catching: it renders as
         # tidy LaTeX and says nothing.
         if result.has(sympy.Integral):
-            return result, _UNCHECKED, "sympy returned this unevaluated -- no closed form was found"
+            return result, _UNCHECKED, "the engine returned this unevaluated -- no closed form was found"
         return result, _UNCHECKED, f"definite integral over [{lower}, {upper}]"
 
     result = sympy.integrate(expression, variable)
     if result.has(sympy.Integral):
-        return result, _UNCHECKED, "sympy returned this unevaluated -- no closed form was found"
+        return result, _UNCHECKED, "the engine returned this unevaluated -- no closed form was found"
     # The check that earns its place: differentiate the antiderivative and see whether the
     # difference is zero. It catches a wrong answer outright, and it costs one diff.
     passed = _zero(sympy.diff(result, variable) - expression)
@@ -676,7 +676,7 @@ def _solve(expression: Any, variable: sympy.Symbol) -> tuple[Any, dict[str, Any]
     else:
         passed, how = None, "substitution did not simplify to 0 for every root -- undecided"
     note = (
-        "sympy's solve does not promise completeness for every equation class;"
+        "RavenCalc's solve does not promise completeness for every equation class;"
         " an empty list means it found none, not that none exist"
     )
     return result, _check(passed, how), note
