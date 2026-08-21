@@ -38,6 +38,14 @@ AUDIT_HEAD = re.compile(r"^#{2,3}\s*(\d+)\.\s+(.*)$")
 REQUEST_HEAD = re.compile(r"^## (R-\d+) — (.+)$")
 #: A ledger entry cites the task that carries it out as `#41`. Two digits minimum would be
 #: wrong -- numbering starts at 11 but the next block could be #9 if one is ever reused.
+#:
+#: **Any `#NN` anywhere in an entry's prose reads as "carried".** That is deliberate -- the
+#: citation is usually in a sentence, not in a field -- but it means a `#NN` written for any
+#: other reason silently takes the entry off the intake list, which is the one surface that
+#: exists to stop work going missing. R-171 was filed with `for #97` in its `source:` line,
+#: meaning "found while working on 97", and vanished. It was found by looking for it, not by
+#: any warning. If an entry needs to mention a task without claiming to be carried by it,
+#: write the number without the hash.
 TASK_REF = re.compile(r"#\d+")
 
 #: How deep the request ledger should ever get. Garrett: "our request ledger should hardly

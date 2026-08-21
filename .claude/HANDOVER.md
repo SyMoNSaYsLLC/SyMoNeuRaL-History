@@ -270,6 +270,77 @@ conversation, so every number, path and decision you need is stated here.
 
 ---
 
+## 0a-sexies. `/api/chat` was answering 500 to every visitor, and the engine was fine (2026-08-21)
+
+Found while trying to warm llama-server for #97's smoke run. The documented command
+
+```bash
+curl -sS -X POST http://127.0.0.1:8800/api/chat -H 'Content-Type: application/json' \
+    -d '{"prompt":"ready","max_tokens":8}'
+```
+
+returned `Internal Server Error` after **61 s** with nothing bound to `:8081` afterwards, and
+`run/api.log` carried no traceback — its last lines were startup at 13:36:35. The traceback is
+in the **journal**, not the log file, which is worth knowing on its own:
+`journalctl -u symoneural-api`. Reading it:
+
+```
+api.py:2330  async with gpu.hold("chat"):
+api.py:673   raise HTTPException(503, "Something else is using the GPU right now ...")
+run/governor.log:
+  2026-08-21 14:56:17  wait   'chat' wants the card
+  2026-08-21 14:56:17  evict  stopping 'image' to make room -- the weight sets do not co-fit
+  2026-08-21 14:57:19  drain  FAILED: still 1556 MiB after 60s -- refusing to hand over
+```
+
+**Three separate faults, and the third is the one to fix.**
+
+**(1) `run/resident` said `image` while nothing image-shaped was running.** The `image)` arm of
+`evict` is `pkill -f 'bin/symoneural-diffuse'`, and no such process existed — the marker
+outlived the render that wrote it. That arm therefore killed nothing, correctly, and the
+governor went straight to `drain`. This is benign here but it is the `miner)` comment's exact
+warning arriving from the marker side rather than the pattern side: a stale `resident` names a
+tenant that is gone, so eviction is a no-op and the log reads like a successful one.
+
+**(2) `DRAIN_FLOOR_MIB=1500` is below this box's own desktop baseline, so drain can never
+succeed while any second tenant is resident.** Measured with ComfyUI stopped:
+
+```
+$ bash scripts/symoneural-ui.sh stop
+2026-08-21 15:03:24  drain  settled at 1336 MiB after 0s (floor 1500 MiB)
+```
+
+**1336 MiB is the floor's whole headroom minus 164 MiB, and none of it is ours.** From
+`nvidia-smi`: Xorg 534, kwin_x11 191, plasmashell 119, chrome 72 + 3, obs 49, and a dozen KDE
+services at 3 each. These are **graphics** contexts (`G`), which is why
+`--query-compute-apps` shows none of them and reports only ComfyUI's 222 MiB — a reading that
+makes the card look nearly empty while `memory.used` says 1572. So `drain` measures the KDE
+session, not the previous tenant, and 222 MiB of resident ComfyUI is enough to wedge chat
+permanently. Open a second Chrome window and it wedges with no tenant at all.
+
+The fix is not to raise the number, which would only move the coin flip. `drain` should wait on
+what actually contends for the weights — no **compute** context other than the incoming
+tenant — or on `used` falling back to a baseline sampled when nothing of ours is resident.
+Filed rather than done, because this is #97's neighbour and not #97.
+
+**(3) The 503 that `hold()` raises can never reach the client, so a contended card shows as a
+500.** `api.py:2330` is inside the streaming generator, and Starlette has already sent
+`200 OK` and its headers by then. Raising `HTTPException` there produces
+`RuntimeError: Caught handled exception, but response already started` and the visitor gets
+`Internal Server Error` with no body. The friendly sentence — *"Something else is using the GPU
+right now -- RavenCalc is on the CPU and still available"* — was written, is correct, and is
+undeliverable from where it is raised. It has to be checked **before** the `StreamingResponse`
+is returned, or emitted as an SSE error frame the page can render.
+
+**Workaround until (2) and (3) are fixed:** stop the render UI before chat needs the card, with
+`scripts/symoneural-ui.sh stop` and never by killing the pid. Once llama-server is resident,
+chat holds ~8.1 GiB and answers in milliseconds — measured immediately after the stop above:
+6.244 s cold including spawn and weight load, `49.6 tok/s`, `model symon-1.0-7b-q4_k_m`,
+`adapter true`, and `:8081` stayed up afterwards. **The engine, the weights and the adapter
+were never the problem**, which is worth stating plainly because
+`engines/symoneural-llm/build/bin/symoneural-llm` is 17,952 bytes next to 7 MB `.so` siblings
+and reads exactly like a truncated build. It is a thin launcher and it works.
+
 ## 0a-quinquies. Studio is back online: the render UI was forked out of `references/` and renamed (2026-08-21)
 
 **Read this before anything further down that says `ComfyUI/`.** Every path of that shape in
