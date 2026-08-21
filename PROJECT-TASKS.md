@@ -962,3 +962,116 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         check: exists docs/train-row-decision.md
         check: ngrep for model/adapter tuning -- backend/api.py
+
+◻ #96 — SyMoNeuRaL Live: his OBS stream watchable on the site while it runs and after it ends
+        owner: coder
+        Carries R-166 and R-170, both 2026-08-21, both marked ASAP. "please add port 28001 to
+        the webserver and add a tab for my live stream using obs studio ASAP ... you can port
+        this where i would not need to open port 28001 on router correct?" and, answering the
+        blocking question about what "my live stream" meant, "can you make it be live stream on
+        site as well as recorded and available to watch after im done streaming?"
+
+        **No router port, and 28001 is never proxied.** obs-websocket v5 authenticates with a
+        SHA256 challenge/response, so a browser-side client needs the password — proxying 28001
+        to 443 would hand the stream-control credential to every visitor, and anyone reaching
+        that socket can switch scenes and stop the stream. The shape that satisfies the ask is
+        the one `scripts/symoneural-ui.sh` already uses for the node editor and states in its
+        header: **FastAPI is the client.** It holds the password server-side, talks to OBS on
+        loopback, and re-publishes only what a visitor may see. Measured 2026-08-21: v5 has no
+        bind-address setting, so OBS is on `0.0.0.0:28001` and LAN-reachable today.
+
+        **The video path and the control bridge are one deliverable and two independent
+        mechanisms.** The websocket carries no video — scene names, record/stream state,
+        bitrate, dropped frames. The video is HLS on disk, and the same files are both
+        surfaces: live is the rolling playlist, VOD is that playlist once `#EXT-X-ENDLIST`
+        lands. One output, no second recording, no re-encode. Deliberately, **the video path
+        needs no credential**: a visitor can watch before the password is ever configured, and
+        a dead bridge degrades the tab to a video with no telemetry rather than to nothing.
+
+        Two facts measured 2026-08-21 rather than assumed, either of which would have killed
+        the design: OBS's bundled `libavformat.so.62` carries the HLS muxer
+        (`Apple HTTP Live Streaming`), so Custom Output (FFmpeg) with container `hls` is
+        available in this Flatpak build; and the Flatpak holds `filesystems=host`, so OBS can
+        write into the repo at all.
+
+        1. **`backend/apps/live/`, a new app.** `obs.py` is the v5 client (challenge/response,
+           reconnecting, never raising into a request); `hls.py` owns the playlist directory
+           and classifies live vs. finished; `routes.py` serves `/api/live/state`,
+           `/api/live/now`, `/api/live/vods` and the playlist and segment bytes. Roster id
+           `live`, so the directory name IS the roster id — #93's rule, obeyed on arrival
+           rather than fixed later.
+        2. **Segments live in `backend/output/live/`, never in `site/`.** A file written into
+           the staging `site/` 404s in production until somebody deploys, and `deploy.sh` then
+           copies every one of them into the public webroot. That is the 19-unreferenced-PNGs
+           bug with a video bitrate behind it, and it is why renders already moved to
+           `backend/output/` and `/api/gen/<name>`.
+        3. **It takes the Recording output, not the Stream output.** He streams to YouTube from
+           the Stream output and that must keep working untouched. The consequence to wire
+           correctly: the websocket then fires `RecordStateChanged`, **not**
+           `StreamStateChanged`. Bind the tab to the wrong event and the site says offline
+           while segments are being written, with nothing in any log — the `/studio/comfy`
+           cookie-path drift in a new costume. Assert the pairing in a test.
+        4. **`symoneural-live.env`, mode 600, holding the obs-websocket password**, with a
+           tracked `symoneural-live.env.example` carrying empty values — the per-app naming
+           rule from `.gitignore`. `scripts/lib/archive-guard.sh`'s path list already catches
+           `*.env`; its `_AG_SECRET_KEYS` content scan does not know the new key name and must,
+           or a stray copy named `live.env.old` scans clean.
+        5. **The page, static, at `/livestack/live`.** HTML, JS and CSS in separate files with
+           no inline `<script>` or `<style>`, per his standing instruction on the nine app
+           pages. A `<video>` with the live playlist, the VOD list beneath it, and the bridge's
+           readings as labelled instrument lines. `live.html` keeps answering so nothing that
+           already links to it breaks.
+        6. **A rack row.** An app that is not on the rack is invisible. `ROSTER.md`,
+           `apps/roster.py`, `build_status()`'s `Unit(...)` calls and `controlboard`'s
+           `TOGGLEABLE` all change in the same commit or four lists disagree — that is what the
+           roster exists to prevent.
+        7. **`tests/live.mjs`**, its own browser suite, self-contained: its own API on a spare
+           port, a checked-in fixture playlist, no GPU and no OBS. `frontend.mjs` and
+           `studio.mjs` both take the card and must never run beside each other; this one takes
+           nothing and must stay that way, or it stops being runnable.
+
+        **The rack's one-screen budget is at its ceiling and this adds the fourteenth unit.**
+        `.claude/HANDOVER.md` §0 records that fourteen fit everywhere and fifteen only at
+        1990x970, with the binding viewport at 1301x740. Fourteen is therefore inside budget
+        and fifteen is not, so the lever left unspent stays unspent here. Measure with a cloned
+        `.unit`, never `scrollHeight` — it floors at `clientHeight`, so `584/584` reads "fits"
+        and says nothing about by how much. Closing an overflow by dropping a row or adding
+        `text-overflow` is barred outright.
+
+        note: 2026-08-21 coder — `check: exists backend/apps/live/SMOKE.md` is the check that
+        note: cannot be faked and it is not optional here. A `<video>` element with an HLS URL
+        note: behind it passes `exists`, `grep` and every DOM assertion in the suite while
+        note: playing nothing — that is exactly #94's shape, eighteen green checks and a dead
+        note: surface, archived by the timer two minutes later. Do not write SMOKE.md until a
+        note: segment has been watched playing in a browser and a second one has been watched
+        note: appearing while the first still played. A note saying the checks are weak does
+        note: not help; archive_tasks.py reads checks, not notes, and #94's note said this.
+        note: 2026-08-21 coder — do NOT publish a bitrate, a segment length or a glass-to-glass
+        note: latency taken from anywhere but a real stream, and do not claim NVENC coexists
+        note: with a GPU tenant until nvidia-smi has been read during one. NVENC is a separate
+        note: silicon block from the CUDA cores, but its VRAM is invisible to the governor's
+        note: 1500 MiB drain floor, which is how the next tenant OOMs at step 0. OBS takes no
+        note: lease — it is a process lifetime, not a job, the same reasoning that keeps
+        note: RavenCalc off the lock.
+        check: exists backend/apps/live/obs.py
+        check: exists backend/apps/live/hls.py
+        check: exists backend/apps/live/routes.py
+        check: exists backend/apps/live/README.md
+        check: exists backend/apps/live/symoneural-live.env.example
+        check: exists backend/apps/live/tests/test_live.py
+        check: exists backend/apps/live/SMOKE.md
+        check: exists site/live.html
+        check: exists site/live.js
+        check: exists tests/live.mjs
+        check: grep output/live -- backend/apps/live/hls.py
+        check: grep EXT-X-ENDLIST -- backend/apps/live/hls.py
+        check: grep EXT-X-ENDLIST -- backend/apps/live/tests/test_live.py
+        check: grep RecordStateChanged -- backend/apps/live/obs.py
+        check: grep RecordStateChanged -- backend/apps/live/tests/test_live.py
+        check: grep SYMONEURAL_OBS_PASSWORD -- scripts/lib/archive-guard.sh
+        check: grep apps.live -- backend/api.py
+        check: grep /livestack/live -- backend/api.py
+        check: grep backend/apps/live -- backend/apps/ROSTER.md
+        check: grep "exp", "live" -- backend/apps/test_status_rack.py
+        check: ngrep <script> -- site/live.html
+        check: ngrep <style> -- site/live.html
