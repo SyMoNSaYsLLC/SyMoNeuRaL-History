@@ -217,16 +217,39 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         **Never blind-replace `MIT`.** Most matches in this corpus are ordinary words — limits,
         limited, submit, emits. Whole phrases and filesystem paths only.
 
-        check: ngrep "llama\.cpp" -- backend/api.py
-        check: ngrep "stable-diffusion\.cpp" -- backend/api.py
+        check: ngrep llama\.cpp -- backend/api.py
+        check: ngrep stable-diffusion\.cpp -- backend/api.py
         check: grep symoneural-llm -- backend/api.py
         check: grep symoneural-diffuse -- backend/api.py
         check: exists backend/models/NAMES.md
         check: grep upstream -- backend/models/NAMES.md
         check: exists backend/DEPENDENCIES.md
-        check: grep "would cost" -- backend/DEPENDENCIES.md
-        check: ngrep "swagger" -- backend/api.py
-        check: ngrep "SymPy" -- site/ravencalc.html
+        check: grep replacing it would cost -- backend/DEPENDENCIES.md
+        check: ngrep swagger -- backend/api.py
+        check: ngrep SymPy -- site/ravencalc.html
+
+        note: 2026-08-20 — **the quotes came off five patterns above, and three of them were
+        note: passing on work that was not done.** `run_check` hands the pattern straight to
+        note: `re.search`, so `"SymPy"` searched for the seven characters `"SymPy"` WITH the
+        note: double quotes. Measured before changing anything: that check was green while
+        note: `site/ravencalc.html` said `RavenCalc is SymPy underneath` and contained the
+        note: word **ten** times. `ngrep "swagger"` and `ngrep "stable-diffusion\.cpp"` were
+        note: green the same way. Three of the ten checks on this task were reporting done.
+        note: This is the exact failure the note above already records for these same two
+        note: engine ngreps — it happened twice, in opposite directions, which is why the
+        note: quoting is now called out rather than just fixed. The earlier agent added the
+        note: quotes for a real reason: `api.py` built its paths as `ROOT / "contrib" /
+        note: "llama.cpp"`, so the bare pattern only matched the string literal anyway and
+        note: quoting made the check sharper. Item 1 then rebranded those paths away, and the
+        note: same quotes that had sharpened the check turned it vacuous.
+        note: `grep "would cost"` was not yet vacuous only because the file does not exist —
+        note: it is a trap set for whoever writes it, who would have had to type the phrase in
+        note: quotes to score. It now reads `replacing it would cost`, which is the sentence
+        note: item 5 actually asks each row to contain.
+        note: Not a blanket rule, and #87's `ngrep href="/documentation.html"` is the proof:
+        note: there the quotes ARE the thing being matched, and stripping them would break a
+        note: correct check. Checked all seven quoted patterns in this file, changed these
+        note: five, left #87 and #83 alone.
 
         **Updated 2026-08-20 at `597ec8c`: 6 of 10 checks pass.** The four engine checks are
         green — `api.py` names `symoneural-llm` and `symoneural-diffuse` and no longer names
