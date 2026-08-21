@@ -310,6 +310,28 @@ class NoUpstreamIdentifiersTests(unittest.TestCase):
         self.assertNotRegex(".widsworth{color:red}", UPSTREAM)
         self.assertNotRegex(".rack-unit{--gap:4px}", UPSTREAM)
 
+    def test_openapi_schema_does_not_leak_upstream_cli_names(self):
+        """sd-cli survives in internal comments in api.py, which is fine, but it must not leak into the public OpenAPI schema Fields."""
+        import ast
+
+        api_source = (REPO / "backend/api.py").read_text(encoding="utf-8")
+        tree = ast.parse(api_source)
+
+        offenders = []
+        for node in ast.walk(tree):
+            # Target Field(..., description="...") assignments
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Field":
+                for kw in node.keywords:
+                    if kw.arg == "description" and isinstance(kw.value, ast.Constant):
+                        if "sd-cli" in str(kw.value.value).lower():
+                            offenders.append(kw.value.value)
+
+        self.assertEqual(
+            offenders,
+            [],
+            "An upstream CLI name (sd-cli) leaked into a public OpenAPI Field description in api.py"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

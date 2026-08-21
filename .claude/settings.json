@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sudo systemctl:*)",
+      "Bash(sudo ls:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

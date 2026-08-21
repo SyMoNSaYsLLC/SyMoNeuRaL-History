@@ -45,6 +45,9 @@ indistinguishable from one that was stripped while the work was still shipping, 
 second is a licence violation. So the retirement is stated, with its date, and the next
 person auditing this file can tell which of the two happened without reading `git log`.
 
+### ComfyUI — GPL-3.0 — **RETIRED, no longer distributed**
+ComfyUI was evaluated but is absent from disk, gitignored, excluded from the build, and never deployed. The GPL-3.0 source offer attaches on distribution; because we do not distribute it, no copyleft obligations apply. It is recorded here to confirm the GPL boundary was considered rather than missed.
+
 ### hls.js — Apache-2.0
 `site/hls.js` (384 KB, the **light** build) and `site/hls-LICENSE.txt`, served on `/tuner.html`.
 
@@ -78,7 +81,8 @@ GPL-encumbered. hls.js does the same job in 384 KB under a permissive licence.
 | **Qwen2.5-0.5B-Instruct** | speculative draft | **Apache-2.0** | identical SHA-256 to the above |
 | **FLUX.1-schnell** (+ VAE) | image | **Apache-2.0** | model card declares it; explicitly permits commercial use |
 | **T5-XXL**, **CLIP-L** | FLUX text encoders | **Apache-2.0** as redistributed | the GGUF repos we fetched from are Apache-2.0 tagged |
-| **ggml-base.en** (Whisper) | speech → text for Stickers | **MIT** | `ggerganov/whisper.cpp` model card declares `license: mit`; it is a conversion of `openai/whisper`, whose repo `LICENSE` is MIT (both texts fetched) |
+| **ggml-base.en** (Whisper) | speech → text for Stickers | **MIT** | `ggerganov/whisper.cpp` model card declares `license: mit`; it is a conversion of `openai/whisper`, whose repo `LICENSE
+` is MIT (both texts fetched) |
 | **u2net.onnx** (U²-Net) | photograph cut-out for Stickers | **Apache-2.0** | see the provenance note below — the text is the source repo's, not the file's |
 
 > **u2net's provenance, stated precisely rather than flattened to "verified".** The `.onnx`
