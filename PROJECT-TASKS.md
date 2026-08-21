@@ -174,7 +174,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists ops/symoneural-deploy.service
         check: grep GatewayUnitPathTests -- backend/apps/test_gateway_unit.py
         check: grep FakeRootTests -- backend/apps/test_service_control.py
-        check: ngrep exp.status() -- backend/api.py
+        check: grep PluginRowsMatchRosterTests -- backend/apps/test_roster.py
         note: `grep tuner_router` used to stand here, and it has been REMOVED rather than kept.
         note: It was a good check for the file merge — the loose `grep tuner` passed on guide's
         note: docstring while tuner's exports were still missing — but it became an anti-check the
@@ -528,8 +528,9 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         `exists ops/symoneural-deploy.service` — nothing yet makes a staged page reach the
         webroot on its own, which is the whole reason a rename shipped to `site/` and stopped
         there.
-        `ngrep exp.status() -- backend/api.py` — Exp is still a rack row at `api.py:1783`
-        after being migrated into Studio, so the rack claims a unit that is a plugin.
+        `ngrep exp.status() -- backend/api.py` — RETIRED 2026-08-20 at `43c65f4`; satisfying it
+        meant deleting a row four other authorities require. See the note below. Replaced by
+        `grep PluginRowsMatchRosterTests -- backend/apps/test_roster.py`.
 
         **Upgraded, because the title promises something the checks never measured.** "Every
         application online" is not proven by twenty-four greps for symbols; it is proven by
@@ -580,6 +581,31 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: by editing comfyui.sh to 8199 and watching it go red naming both ports, then
         note: restoring. It carries its own vacuity guard: if either file is restructured so
         note: the parse finds nothing, it raises rather than comparing two absences.
+        note: 2026-08-20 coder — a FOURTH, found the same way and worse than the other three,
+        note: because this one was actively wrong rather than merely weak.
+        note: `ngrep exp.status() -- backend/api.py` said "Exp is still a rack row at
+        note: api.py:1783 after being migrated into Studio, so the rack claims a unit that is a
+        note: plugin". Turning it green means deleting that row. Four things on disk require it:
+        note: ROSTER.md lists `exp` as row 13 and states in prose "exp is the only plugin with a
+        note: row of its own"; EXPECTED in apps/test_status_rack.py is a hand-typed 13 ids
+        note: including it; tools/build_rack.py emits it into the no-socket fallback; and
+        note: site/exp is a live page. A fifth argues the mechanism: apps/studio/plugins/
+        note: __init__.py is headed "This is a conformance contract, NOT a loader" and spends a
+        note: section on why api.py's three hand-written mounts must stay — a loop either
+        note: flattens the OpenAPI tags a visitor-facing Swagger page renders, or re-implements
+        note: api.py's table one layer further away. So the check asked for a real unit to be
+        note: taken off the front page, and two suites to go red, to move a percentage.
+        note: Retired, not replaced in kind — the invariant it groped for is already held by
+        note: `grep RosterMatchesApiTests`, which is a check on this same task. What was
+        note: genuinely unasserted is the DECISION: nothing anywhere said exp is the only
+        note: plugin with a row, so that sentence in ROSTER.md was prose nothing checked, which
+        note: is the exact failure the rest of test_roster.py exists to close. PluginRowsMatch
+        note: RosterTests now pins it in the direction the disk supports, with a vacuity guard
+        note: (two empty sets are equal) and a note saying that folding exp into the studio row
+        note: means editing this test, which is where that argument should be made.
+        note: Proven: injected `Unit(**discovery.status())` beside exp in api.py, watched both
+        note: new assertions go red naming `discovery`, then restored. 22 passed across
+        note: test_roster.py and test_status_rack.py after.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder

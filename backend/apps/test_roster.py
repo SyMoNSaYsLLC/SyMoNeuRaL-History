@@ -227,6 +227,65 @@ class GeneratedFallbackTests(unittest.TestCase):
         self.assertNotIn('class="led on"', block)
 
 
+class PluginRowsMatchRosterTests(unittest.TestCase):
+    """Which Studio plugins get a rack row of their own -- pinned, because it is a decision.
+
+    `ROSTER.md` states it in prose: *"`discovery` and `reinforce` (under `studio/plugins/`) --
+    Studio plugins. `exp` is the only plugin with a row of its own."* Nothing asserted it, and
+    prose that nothing checks is how this repo got four disagreeing copies of the roster in the
+    first place -- which is the defect the rest of this file exists to close.
+
+    It is not a detail. #73 carried `check: ngrep exp.status() -- backend/api.py`, on the
+    reading that "Exp is still a rack row after being migrated into Studio, so the rack claims a
+    unit that is a plugin". Satisfying that check meant DELETING a row that `ROSTER.md`,
+    `EXPECTED` in `apps/test_status_rack.py`, `tools/build_rack.py`'s generated fallback and a
+    live page at `/exp` all require, and that `apps/studio/plugins/__init__.py` argues at length
+    must stay a hand-written mount ("This is a conformance contract, NOT a loader"). It would
+    have taken a real unit off the front page to move a percentage, and turned two suites red on
+    the way. Retired, and replaced by this: the same subject, asserted in the direction the disk
+    actually supports.
+
+    So a future reader who wants `exp` folded into the `studio` row has to change this test, and
+    changing it is where the argument gets made rather than assumed.
+    """
+
+    def _plugin_names(self) -> tuple[str, ...]:
+        from apps.studio import plugins
+        return plugins.PLUGINS
+
+    def test_the_lists_were_read_at_all(self):
+        """Vacuity guard. Two empty sets are equal, and would pass every assertion below."""
+        self.assertTrue(self._plugin_names(), "the plugin tuple is empty")
+        self.assertTrue([_row_id(c) for c in _unit_calls()], "build_status() yielded no rows")
+        self.assertTrue(roster.rows(), "ROSTER.md yielded no rows")
+
+    def test_exactly_one_plugin_has_a_row_and_it_is_exp(self):
+        rows = {_row_id(call) for call in _unit_calls()}
+        with_rows = sorted(set(self._plugin_names()) & rows)
+        self.assertEqual(
+            with_rows, ["exp"],
+            "ROSTER.md says exp is the only Studio plugin with a rack row of its own. "
+            f"build_status() now gives rows to {with_rows}. Whichever is wrong, they cannot "
+            "both stand -- and adding or removing a row is the five-step procedure in "
+            "ROSTER.md's `Adding a row`, not a one-line edit to api.py")
+
+    def test_the_roster_and_build_status_agree_on_which_plugins_are_rows(self):
+        """The two are compared, never derived one from the other -- see this file's docstring."""
+        names = set(self._plugin_names())
+        in_api = names & {_row_id(call) for call in _unit_calls()}
+        in_roster = names & {row["id"] for row in roster.rows()}
+        self.assertEqual(
+            sorted(in_api), sorted(in_roster),
+            "a Studio plugin is a rack row in one of ROSTER.md / api.py and not the other")
+
+    def test_the_roster_points_exps_implementation_at_the_plugin_directory(self):
+        """A row whose `implementation` says `backend/api.py` would read as a surface of its
+        own. `exp` is a plugin that happens to have a row, and the column has to say so."""
+        exp = next(row for row in roster.rows() if row["id"] == "exp")
+        self.assertEqual(exp["implementation"], "backend/apps/studio/plugins/exp")
+        self.assertTrue((REPO / exp["implementation"]).is_dir())
+
+
 def _tempfile():
     """A context manager yielding a temp path, so `enterContext` cleans it up."""
     import contextlib
