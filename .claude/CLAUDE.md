@@ -354,6 +354,59 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
+**1758 pass, 0 fail and 14 skip, measured 2026-08-21 from `backend/` in 139.31 s, with
+`--collect-only` collecting 1772 in 1.24 s and `apps/remix` 28/28 in 0.43 s — and there is
+deliberately no SHA on that sentence, because there is no commit it is true of.** It is a
+reading of the **working tree** at `48dcaaf`, which is not the same thing as a reading of
+`48dcaaf`, and the difference is the most useful thing in this section.
+
+A clean worktree checked out at `48dcaaf` does not collect at all:
+
+```
+ERROR apps/ravencalc/test_ravencalc.py - NameError: name 'convert_xor' is not defined
+!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!
+```
+
+Zero tests run — **no number at all**, wearing the costume of a broken suite, which is the
+shape this file warns about twice already. Bisected in a detached worktree, `apps/ravencalc`
+alone: **14 collected at `a944fae`**, then `1 error` at `49185b8`, `f63dd3e`, `95e02c5` and
+`48dcaaf`. `49185b8` ("Facade sympy behind symbolic.py to close Task #74") routed
+`ravencalc.py:47` at `symbolic.py` for `convert_xor` and `symbolic.py` does not re-export it,
+so `_TRANSFORMS` at `ravencalc.py:89` blows up at import.
+
+**What makes the tree green is two uncommitted files** — `backend/apps/ravencalc/ravencalc.py`
+and `backend/apps/ravencalc/symbolic.py`, 5 insertions and 2 deletions, work in flight from
+another session, which add the missing re-export. They are not mine and were deliberately kept
+out of `48dcaaf` (explicit pathspecs on the commit). So the 1758 is a real measured reading
+that **nobody can reproduce from git alone** until that repair lands, and stamping it with a
+SHA would have been the carried-forward figure this file exists to prevent — arriving not by
+somebody re-dating a number, but by the tree moving underneath one that was honestly taken.
+Re-measure and re-stamp once ravencalc is committed.
+
+The 22 over the reading below it are attributable in full, per file: **+13**
+`apps/test_governor_evict.py`, landed whole at `95e02c5` with #100's R-172 half (the marker is
+a hint, the process table is the fact), and **+9** `apps/test_chat_lease.py`, landed whole at
+`48dcaaf` with #100's R-173 half. 1736 + 13 + 9 = 1758.
+
+**Eight of those nine were red against `95e02c5` and that is the point of them**, not a
+footnote: the ninth (`test_the_gate_still_decides_exactly_what_it_decided_before`) is green on
+both trees on purpose, because it asserts the rack gate's verdict did *not* change when its
+mounting did. And one of the eight was green on the broken tree when first written — it
+asserted `"thinking.cancel()" in src`, and the handler has always cancelled that task on the
+RavenCalc branch, so the loose form passed over the bug it was written to catch. A check that
+can pass without the work being finished is worse than no check; it archives the task.
+`backend/SMOKE-lease-503.md` has that and the four runs behind it.
+
+**`@app.middleware("http")` is now barred in `api.py` and a test enforces it.** It is
+`BaseHTTPMiddleware`, which runs the endpoint against a *substitute* receive channel, so
+`http.disconnect` never arrives and `await request.is_disconnected()` never answers True —
+which meant a visitor closing the tab mid-answer leaked the GPU lease until the process died,
+with the next tenant waiting out `ACQUIRE_TIMEOUT_S = 300`. Measured, one handler, one
+abandoned socket: bare app RELEASED, `+GZipMiddleware` RELEASED, `+BaseHTTPMiddleware`
+**LEAKED with an empty event list** — neither the watchdog nor the generator's `finally` ran,
+so there was nothing in any log to read — and `+` the gate rewritten as raw ASGI RELEASED.
+Write middlewares as ASGI classes here.
+
 **1736 pass, 0 fail and 14 skip at `594efac`, measured 2026-08-21 from `backend/` in
 138.52 s, with `--collect-only` collecting 1750 in 1.37 s; the two `--ignore`s are not optional
 and not a failure you introduced.** 1736 + 14 = 1750, which is the arithmetic that says nothing
@@ -488,7 +541,9 @@ instead of a count. The ladder behind the figure, each read on the tree it names
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
 `0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
 `87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**, **1682 at `1224bf1`**, **1736 at
-`4d0d812`**, **1750 at `594efac`**. Do not attribute a jump to one task from these numbers
+`4d0d812`**, **1750 at `594efac`**, and then the ladder stops: `49185b8` onward collects
+**nothing**, so there is no rung for `f63dd3e`, `95e02c5` or `48dcaaf` and none may be
+invented for them. Do not attribute a jump to one task from these numbers
 alone: the 107 between `e81ffa4` and `74dee33` spans **25 commits** across most of two days'
 work, while the 29 from `74dee33` to `d3a4040` is a single commit. A count moves when tests
 land, not when a task closes. `df1d862` read 110.38 s then 111.55 s on that tree: two readings

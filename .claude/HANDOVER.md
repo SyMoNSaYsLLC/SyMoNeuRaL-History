@@ -1,6 +1,13 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-20. Written for a fresh agent with zero prior context.**
+**Last updated 2026-08-21. Written for a fresh agent with zero prior context.**
+
+> **Before you trust a test figure — including the ones below — read §0a-octies.** The
+> backend suite does **not collect** at HEAD: `apps/ravencalc/test_ravencalc.py` raises
+> `NameError: name 'convert_xor' is not defined`, one collection error, zero tests run,
+> from `49185b8` onward. The working tree is green only because two uncommitted
+> `apps/ravencalc/` files from another session repair it. A green suite proves the
+> working tree, not the commit.
 
 > **If you read nothing else:** nothing is broken and nothing is blocked, but **the whole of
 > `site/` is now waiting on a deploy** — as of `26cb58e` that is `site/ui.js` and
@@ -269,6 +276,107 @@ conversation, so every number, path and decision you need is stated here.
   so every preference and reinforcement figure is arithmetic and labelled `projected`.
 
 ---
+
+## 0a-octies. The suite at HEAD collects NOTHING, and two uncommitted files are hiding it (2026-08-21)
+
+**Read this before you trust any test figure taken today, including mine.** A clean worktree
+checked out at `48dcaaf` — the current HEAD — does not run the backend suite:
+
+```
+ERROR apps/ravencalc/test_ravencalc.py - NameError: name 'convert_xor' is not defined
+!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!
+```
+
+That is **zero tests run**, which `.claude/CLAUDE.md` is explicit about: a collection error is
+not a smaller number, it is no number at all, and it reads exactly like you broke the suite.
+
+Bisected in a detached worktree, `apps/ravencalc` alone, so the boundary is exact:
+
+| commit | `pytest apps/ravencalc --co` |
+|---|---|
+| `a944fae` | 14 collected |
+| `49185b8` | **1 error** |
+| `f63dd3e` | 1 error |
+| `95e02c5` | 1 error |
+| `48dcaaf` | 1 error |
+
+`49185b8` — *"Facade sympy behind symbolic.py to close Task #74"* — routed `ravencalc.py:47`
+at `symbolic.py` for `convert_xor`, and `symbolic.py` does not re-export it, so `_TRANSFORMS`
+at `ravencalc.py:89` raises at import time.
+
+**The working tree is green and git is not**, which is why nobody noticed. `git status` carries
+uncommitted changes to `backend/apps/ravencalc/ravencalc.py` and `backend/apps/ravencalc/symbolic.py`
+(5 insertions, 2 deletions) that add the missing re-export — work in flight from another
+session. Those two files are the whole difference between `1758 passed` and `Interrupted`.
+
+**Not fixed here, on purpose.** They are somebody else's open edit and clobbering an in-flight
+repair is worse than the break. They were kept out of `48dcaaf` with explicit pathspecs. What
+is needed is for that session to commit them; then re-measure and re-stamp, because the ladder
+in `.claude/CLAUDE.md` has no rung for `49185b8` onward and must not be given an invented one.
+
+The general lesson is the one this project keeps relearning from a new direction: **a green
+suite proves the working tree, not the commit.** Every figure in this repo is stamped with a
+SHA so it can be checked, and the check is only real if somebody occasionally runs it against
+a fresh checkout of that SHA. This is the first time that was done here and it found a live
+break four commits deep.
+
+## 0a-septies. A closed tab leaked the GPU lease, and the culprit was a middleware with nothing to do with chat (2026-08-21) — FIXED, `48dcaaf`
+
+Task #100 (R-173), now archived at 5/5. `backend/SMOKE-lease-503.md` is the full record; this
+is the part a future agent needs at a glance.
+
+**The defect.** A visitor who closed the tab mid-answer never gave the card back. The lease was
+held until the process died — no timeout recovers it, so the next tenant waited out
+`ACQUIRE_TIMEOUT_S = 300` and then failed. Measured against `95e02c5` with a stub governor
+that logs every call: `acquire chat`, and nothing after it.
+
+**Why `finally` was not enough.** uvicorn's `send` **silently discards on a dead client** rather
+than raising, so the streaming generator is resumed forever, yields into nothing, and its
+`finally` never runs. `/api/chat` now arms a watchdog polling `request.is_disconnected()` every
+`DISCONNECT_POLL_S` (0.25 s), with an idempotent `drop_lease()` that both it and the generator
+call, and a module-level `_WATCHDOGS` set because the event loop keeps only a *weak* reference
+to a task — one created in a request frame can be collected before it ever runs.
+
+**And that watchdog was still leaking.** `rack_power_gate` was registered with
+`@app.middleware("http")`, which is Starlette's `BaseHTTPMiddleware`, and that runs the endpoint
+against a **substitute receive channel** — so `http.disconnect` never reaches the endpoint's own
+`Request` and `is_disconnected()` never answers True. One handler, one abandoned socket, four
+stacks:
+
+| stack | events the app recorded | |
+|---|---|---|
+| bare app | `['saw disconnect', 'released']` | RELEASED |
+| `+ GZipMiddleware` | `['saw disconnect', 'released']` | RELEASED |
+| `+ BaseHTTPMiddleware` | `[]` | **LEAKED** |
+| `+ the gate as raw ASGI` | `['saw disconnect', 'released']` | RELEASED |
+
+The **empty list** on row three is why this took four probes: neither the watchdog nor the
+generator's `finally` ran at all, so there was nothing in any log to read. Row two exonerates
+`GZipMiddleware`, which sits above the gate in the real stack and was the other suspect.
+
+`rack_power_gate` is now the class `RackPowerGate` in the same stack position. **What it decides
+is unchanged** — same prefix walk over `rackpower.ROUTES`, same 503, same `Retry-After: 300`,
+same pairing with `build_status()`. Only the mounting changed, and
+`apps/test_chat_lease.py` now fails if `@app.middleware("http")` reappears anywhere in `api.py`.
+**Write middlewares here as ASGI classes.**
+
+**Two fix shapes were built, measured, and do not work** — recorded because both are the obvious
+reach: subclassing `StreamingResponse` to release in `try/finally` around `__call__` (never
+entered at all on an already-dead client), and arming the watchdog on "has the generator
+started" (it does start, which disarms it immediately).
+
+**The regression this could have caused was checked, not assumed.** A watchdog that
+false-positives on a live-but-slow reader would truncate a real visitor's answer, which is worse
+than the leak. A client reading unhurriedly for 8 s: `read 1468 bytes, first at 0.01s, last at
+8.02s, still open at 8.00s`, never dropped, released only after its own clean close.
+
+`tests/chat-contention-harness.py` is how any of this is re-run, and it **never touches the
+card**: it repoints `api.GOVERNOR` at a stub, so it is safe beside the live service on :8800.
+`refuse` mode reproduces a contended card (503 with a body — R-173's original complaint;
+before `a944fae` the same request read `HTTP/1.1 500`, `content-length: 21`, a generic body
+that could not be told from a broken server). `grant` mode logs every governor call, so a
+leaked lease is an acquire with no release, readable from **outside** the process — nothing
+inside the app can be trusted to report its own leak.
 
 ## 0a-sexies. `/api/chat` was answering 500 to every visitor, and the engine was fine (2026-08-21)
 
