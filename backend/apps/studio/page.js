@@ -390,6 +390,55 @@
     absent.hidden = true;
   }
 
+  /* Expand -- the bench over the whole viewport.
+   *
+   * `st-wide` is toggled on `.st-bench` and nothing is moved. That is the whole reason this is
+   * a class toggle rather than the obvious `document.body.appendChild(bench)`: re-parenting an
+   * iframe reloads its document, which would throw away the graph being edited. Same argument
+   * as `mountBench`'s never-remount guard, from the other direction.
+   *
+   * The preference is in localStorage, not sessionStorage. The token dies with the tab on
+   * purpose; a window-size preference is not a secret and there is no reason to make the
+   * operator re-expand on every visit.
+   */
+  var WIDE_KEY = 'sym.studio.bench.wide';
+
+  function setWide(on) {
+    var bench = $('st-bench');
+    var btn = $('st-expand');
+    if (!bench || !btn) return;
+    bench.classList.toggle('st-wide', !!on);
+    btn.textContent = on ? 'Collapse' : 'Expand';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    /* Inline rather than a stylesheet rule: `body` is outside this panel, and every selector in
+     * page.html is `#studio`-prefixed precisely so this file cannot reach out and restyle the
+     * rest of the site. One property set from here is the honest exception. */
+    document.body.style.overflow = on ? 'hidden' : '';
+    try { localStorage.setItem(WIDE_KEY, on ? '1' : '0'); } catch (e) { /* private mode */ }
+  }
+
+  function wireBench() {
+    var btn = $('st-expand');
+    if (!btn) return;
+    /* No token means the frame is an "it needs the operator token" box, and expanding that to
+     * fill the viewport would be a full-screen apology. `token()` is a synchronous
+     * sessionStorage read, so this is accurate here even though `boot()` has not resolved. */
+    btn.disabled = !token();
+    btn.addEventListener('click', function () {
+      setWide(!$('st-bench').classList.contains('st-wide'));
+    });
+    /* Escape is what every full-screen surface on the web answers to, and a fixed panel with no
+     * keyboard way out is a trap -- the site header is covered, so there is nothing else to
+     * click. Bound on document because focus is usually inside the iframe, which means the
+     * keydown never reaches this document at all: hence the button stays visible while wide. */
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && $('st-bench').classList.contains('st-wide')) setWide(false);
+    });
+    var stored = null;
+    try { stored = localStorage.getItem(WIDE_KEY); } catch (e) { /* private mode */ }
+    if (stored === '1' && token()) setWide(true);
+  }
+
   /* ---- boot --------------------------------------------------------------- */
   var timer = null;
 
@@ -431,6 +480,7 @@
       askAgent(q);
     });
     $('st-render').addEventListener('submit', doRender);
+    wireBench();
     boot();
   });
 })();

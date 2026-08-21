@@ -49,7 +49,12 @@ console.log('      strip:', JSON.stringify(cells));
 cells.length === 6 ? ok('the status strip has six cells') : no('strip cells', String(cells.length));
 const byTitle = Object.fromEntries(cells);
 byTitle['Surface'] === 'on' ? ok('surface reads on') : no('surface', byTitle['Surface']);
-byTitle['Tools'] === '26' ? ok('26 tools reported') : no('tools', byTitle['Tools']);
+// 28, and the literal stays a literal: reading the expected count from the same API that
+// produces it would assert nothing. It was 26 until `23f2f64` added `extract_spec` and
+// `generate_native_code` (group `cleanroom`) and updated `test_studio.py`'s EXPECTED_TOOLS but
+// not this file -- so this suite reported two failures for work that was correct. When you add
+// a tool, this number and `test_studio.py` both move, in the same commit.
+byTitle['Tools'] === '28' ? ok('28 tools reported') : no('tools', byTitle['Tools']);
 // 'Render UI', not 'ComfyUI': the cell reads the `render_ui` key of /api/studio/status, which
 // is an unauthenticated public payload and so is held to the same naming standard as the URL.
 // The *prose* on the page still names ComfyUI on purpose -- see page.html's bench comment;
@@ -60,7 +65,7 @@ byTitle['GPU lease'] === 'not held' ? ok('lease reads not held at rest')
 
 // --- tool table ---
 const rows = await page.locator('#st-tools tr').count();
-rows === 26 ? ok('the tool table has a row per tool') : no('tool rows', String(rows));
+rows === 28 ? ok('the tool table has a row per tool') : no('tool rows', String(rows));
 const writes = await page.locator('#st-tools .st-danger').count();
 writes > 0 ? ok('writing tools are labelled', `${writes} flagged`) : no('no writes labelled');
 
@@ -85,6 +90,60 @@ try {
               : no('object_info through proxy', String(nodes));
 } catch (e) { no('ComfyUI editor in iframe', String(e).split('\n')[0]); }
 
+// --- the editor gets the window -------------------------------------------------------------
+//
+// These four exist because every check on this surface was green while the thing the surface is
+// *for* was invisible. The bench used to be the fourth block down the page under
+// `height:min(78vh,760px)`, which at 1440x1000 put its top at y>1000: entirely below the fold.
+// An `exists` or a `grep` cannot ask that question, and neither can "is the iframe present" --
+// it was present, sized, and pointed at a working proxy the whole time.
+//
+// Note what is asserted: not the frame's height, because 760px of 1000 is 76% and would have
+// passed. It is the frame's area *inside the first viewport*, which was zero.
+const geom = await page.evaluate(() => {
+  const f = document.getElementById('st-bench-frame');
+  const r = f.getBoundingClientRect();
+  const kids = [...document.querySelectorAll('#studio > *')].map(e => e.id);
+  return { top: r.top, h: r.height, vh: innerHeight,
+           visible: Math.max(0, Math.min(innerHeight, r.top + r.height) - Math.max(0, r.top)),
+           benchBeforeStrip: kids.indexOf('st-bench') < kids.indexOf('st-strip') };
+});
+const share = geom.visible / geom.vh;
+share >= 0.4 ? ok('the editor is visible without scrolling',
+                  `${Math.round(geom.visible)}px of ${geom.vh} = ${Math.round(share * 100)}%`)
+             : no('editor below the fold',
+                  `top=${Math.round(geom.top)} visible=${Math.round(geom.visible)}px of ${geom.vh}`);
+geom.benchBeforeStrip ? ok('the bench comes before the status strip')
+                      : no('the bench was pushed back down the page');
+
+// Expand. The button must reach a genuinely fixed, viewport-filling frame -- and the iframe must
+// still be the same document afterwards, which is why `st-wide` is a class toggle and not a
+// `body.appendChild(bench)`: re-parenting an iframe reloads it and discards the operator's graph.
+const before = await page.locator('#st-bench-frame').getAttribute('src');
+await page.click('#st-expand');
+await page.waitForTimeout(400);
+const wide = await page.evaluate(() => {
+  const f = document.getElementById('st-bench-frame').getBoundingClientRect();
+  return { cover: f.height / innerHeight, w: f.width, vw: innerWidth,
+           pos: getComputedStyle(document.getElementById('st-bench')).position,
+           bodyOv: getComputedStyle(document.body).overflow,
+           hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+           src: document.getElementById('st-bench-frame').getAttribute('src') };
+});
+(wide.pos === 'fixed' && wide.cover >= 0.85 && wide.bodyOv === 'hidden' && !wide.hscroll)
+  ? ok('Expand fills the viewport', `${Math.round(wide.cover * 100)}% tall, ${wide.w}/${wide.vw} wide`)
+  : no('Expand did not fill the viewport', JSON.stringify(wide));
+wide.src === before ? ok('expanding did not remount the iframe')
+                    : no('the iframe was remounted and the graph is gone');
+
+// Escape must get out. A fixed panel covers the site header, so without this there is nothing
+// left to click and the operator is trapped on a page with no way back.
+await page.keyboard.press('Escape');
+await page.waitForTimeout(400);
+const back = await page.evaluate(() =>
+  getComputedStyle(document.getElementById('st-bench')).position);
+back === 'static' ? ok('Escape collapses the bench') : no('Escape left the bench fixed', back);
+
 // --- no ellipsis anywhere on the rendered page ---
 const clipped = await page.$$eval('#studio *', ns =>
   ns.filter(n => getComputedStyle(n).textOverflow === 'ellipsis').length);
@@ -102,7 +161,22 @@ await page.fill('#st-prompt', 'a raven perched on a foundry crucible, sparks, ni
 const t0 = Date.now();
 await page.click('#st-go');
 try {
-  await page.waitForSelector('#st-shots img', { timeout: 300000 });
+  /* Wait for the image to DECODE, not for the `<img>` to exist.
+   *
+   * This used to be `waitForSelector('#st-shots img')`, which returns the moment page.js sets
+   * `src` -- before a byte of the PNG has arrived. `naturalWidth` is 0 until it decodes, so the
+   * assertion below read 0x0 and called a perfectly good render a failure: a ~1 MB PNG over
+   * loopback is fast but not free. Measured on the run that caught it, the endpoint answered
+   * `200 image/png content-length: 996780` to curl at the same moment the browser reported 0x0.
+   *
+   * A racy version of this assertion is worse than not having it. It exists because a render
+   * once succeeded server-side and still showed as a broken image to every visitor, so it must
+   * go red for exactly that and for nothing else. `complete` alone would not do -- it is true
+   * for a failed load too, which is the case this is here to catch. */
+  await page.waitForFunction(() => {
+    const i = document.querySelector('#st-shots img');
+    return !!i && i.complete && i.naturalWidth > 0;
+  }, { timeout: 300000 });
   const shot = await page.$eval('#st-shots img',
     i => ({ w: i.naturalWidth, h: i.naturalHeight, src: i.getAttribute('src'), alt: i.alt }));
   shot.w > 0 && shot.h > 0
