@@ -310,10 +310,27 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         grep that proves it belongs here rather than in the task doing the porting — a task that
         renames things should not also be the task that certifies the renaming.
 
-        check: exists backend/models/NAMES.md
+        note: 2026-08-21 — **the check below was pointed at `backend/tests/`, which does not
+        note: exist.** That path is where #93 will move the cross-app suites; until it runs,
+        note: pytest collects from `backend/apps/`, so the check was red for a file nobody
+        note: could have made green without doing #93 first — and had it been made green by
+        note: creating the file at that path, the class would have sat somewhere the
+        note: documented invocation never collects. Re-pointed to where tests actually run.
+        note: #93 owns the move and carries `resolve:` lines for it; this check travels then.
+        note: **The two `ngrep`s beside it were green on a leak.** They are one token per
+        note: file — `dsw-` in the CSS, `deepseek` in the JS — and each file was checked for
+        note: the token it happened not to contain: `site/symoneural.css` named the upstream
+        note: twice, in served comments, and no declared check could see it. Same shape as
+        note: `ngrep SymPy -- site/ravencalc.html` covering one page of fifteen. They are
+        note: left in place because they are cheap and true, but the thing that actually
+        note: holds this is the test class, which scans every served asset for both tokens
+        note: and the generators as well. It found those two lines on the first run.
+        note: They were quotations of Garrett's own words, so the fix is a bracketed
+        note: substitution rather than a deletion — an unmarked edit to a quote misreports it.
+
         check: ngrep dsw- -- site/symoneural.css
         check: ngrep deepseek -- site/ui.js
-        check: grep NoUpstreamIdentifiersTests -- backend/tests/test_brand_boundary.py
+        check: grep NoUpstreamIdentifiersTests -- backend/apps/test_brand_boundary.py
 
 
 ◻ #75 — Secrets, credentials and leak containment

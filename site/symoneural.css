@@ -2701,9 +2701,13 @@ header > .wrap, footer > .wrap{max-width:min(1800px, calc(100vw - 64px))}
    DEPTH AND MOTION
    ==================================================================================
    Garrett, after reading a competitor's developer-preview page: "it wasnt the text of
-   deepseek i loved it was the look and feel of the buttons, wallpaper etc. Integrate this
-   into symoneural while keeping our core", and "the website really felt alive; i want
-   symoneural.com to be like this".
+   [that harness] i loved it was the look and feel of the buttons, wallpaper etc. Integrate
+   this into symoneural while keeping our core", and "the website really felt alive; i want
+   symoneural.com to be like this". The bracketed words replace the vendor's name, which he
+   used and this file may not: everything here is served verbatim and unminified, so a
+   comment is as public as a heading. Brackets rather than a deletion because a quotation
+   edited without saying so is a quotation misreported -- the saved copy is in `references/`
+   and that is where the name still lives.
 
    What that page actually does, read out of the saved copy and written down as values
    rather than as an impression:
@@ -2990,8 +2994,9 @@ body{
 .navlink{transition:color var(--dur1) var(--ease), background var(--dur1) var(--ease)}
 
 /* ---------- the same surface on a phone, which is not the same problem ----------
-   Garrett: "i noticed on the mobile browser deepseeks backdrop isnt 'alive' i would like
-   ours to work better when loading in mobile app browser".
+   Garrett: "i noticed on the mobile browser [that harness]'s backdrop isnt 'alive' i would
+   like ours to work better when loading in mobile app browser". Bracketed for the reason
+   given in DEPTH AND MOTION above: the name he used is not one this file may ship.
 
    That observation is correct and the cause is `background-attachment:fixed`, which is the
    one declaration in the wallpaper above that phones do not honour the way desktops do.

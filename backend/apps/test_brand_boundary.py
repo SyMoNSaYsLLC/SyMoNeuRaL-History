@@ -47,6 +47,14 @@ ATTRIBUTION_PAGES = {"credits.html"}
 #: a full rebuild simply because nobody ran the generator that owns them.
 GENERATORS = tuple(sorted(str(p.relative_to(REPO)) for p in (REPO / "tools").glob("build_*.py")))
 
+#: The upstream identifiers of the ported design tokens (#91). `dsw` is anchored on a word
+#: boundary rather than matched as a bare substring: three letters is short enough to land
+#: inside an ordinary word, and this repo has a standing rule against blind substring
+#: sweeps because most `MIT` matches here are *limits*, *submit*, *emits*. Measured before
+#: the anchor went in -- `\bdsw` has zero matches across `site/` and `tools/`, so the
+#: anchor costs nothing today and stops a false positive later.
+UPSTREAM = re.compile(r"\bdsw|deepseek", re.IGNORECASE)
+
 
 class SiteBrandBoundaryTests(unittest.TestCase):
     def test_no_shipped_page_names_the_vendor(self):
@@ -223,6 +231,84 @@ class RenderedResponseFieldTests(unittest.TestCase):
         with self.assertRaises(self.ravencalc.RavenCalcError) as caught:
             self._run(operation="integrate", expression="))(", variable="x")
         self.assertNotRegex(str(caught.exception), VENDOR)
+
+
+class NoUpstreamIdentifiersTests(unittest.TestCase):
+    """#91 ports a competitor's design tokens. Their names must not come with them.
+
+    Task #74 states the reason for putting this here rather than in #91: *"a task that
+    renames things should not also be the task that certifies the renaming"*. #91 is free
+    to lift every value in that stylesheet -- a colour ladder is not copyrightable
+    expression and the look is what Garrett asked for. What it may not do is carry
+    `--dsw-static-deepseek-450` across, because a variable name is shipped verbatim: CSS
+    and JS are served unminified from this box, so an identifier in an asset is as public
+    as a heading.
+
+    **The scope here is deliberately wider than #74's two declared checks, and the gap
+    between them was real, not hypothetical.** Those checks are
+    `ngrep dsw- -- site/symoneural.css` and `ngrep deepseek -- site/ui.js`: one token per
+    file, and each file checked for the token it happened not to contain. Both were green
+    while `site/symoneural.css` named the upstream twice. That is the same failure this
+    task already recorded once -- `ngrep SymPy -- site/ravencalc.html` covered one page of
+    fifteen and fixing that one page flipped it green while thirteen others still said it.
+    So this scans **every** served asset for **both** tokens, and the generators too,
+    because a page fixed by hand is undone by the next build.
+
+    Comments are in scope on purpose, and that is where the two live hits were. `site/` is
+    served as-is; a `/* ... */` block is not private just because it is not rendered.
+    """
+
+    #: Everything a visitor can fetch. HTML is included although the task names only CSS
+    #: and JS: inline `<style>` and `<script>` is exactly where a ported token lands, and
+    #: a scope that stops one file short is the failure mode above.
+    SERVED = ("*.css", "*.js", "*.html")
+
+    def _scan(self, paths):
+        offenders = {}
+        for path in paths:
+            hits = [
+                f"{path.name}:{n}: {line.strip()[:90]}"
+                for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1)
+                if UPSTREAM.search(line)
+            ]
+            if hits:
+                offenders[path.name] = hits
+        return offenders
+
+    def test_no_served_asset_carries_an_upstream_identifier(self):
+        paths = sorted({p for pattern in self.SERVED for p in SITE.glob(pattern)})
+        self.assertTrue(paths, "no served assets found -- has site/ moved?")
+        self.assertEqual(
+            self._scan(paths),
+            {},
+            "a served asset names the upstream the design tokens came from. CSS and JS "
+            "are served unminified, so this is public text -- rename the identifier, and "
+            "inside a quotation use a bracketed substitution rather than deleting a word, "
+            "which would silently falsify the quote",
+        )
+
+    def test_no_generator_writes_one(self):
+        """Editing `site/` by hand lasts exactly until somebody runs the build."""
+        self.assertEqual(
+            self._scan(sorted((REPO / "tools").glob("build_*.py"))),
+            {},
+            "a generator emits an upstream identifier into site/",
+        )
+
+    def test_the_pattern_would_actually_catch_the_thing_it_is_for(self):
+        """A guard matching nothing looks identical to a guard that is satisfied.
+
+        Both of the above assert an empty dict, and an empty dict is what a broken regex
+        returns too. This pins the pattern against the real variable name from the
+        upstream stylesheet and against the anchor's two edges, so the day someone
+        loosens `\\bdsw` to `dsw` -- or tightens it into matching nothing -- a test says
+        so instead of the suite staying quietly green.
+        """
+        self.assertRegex("--dsw-static-deepseek-450: #eee;", UPSTREAM)
+        self.assertRegex("/* ported from the DeepSeek harness */", UPSTREAM)
+        self.assertRegex("var dswToken = 1;", UPSTREAM)
+        self.assertNotRegex(".widsworth{color:red}", UPSTREAM)
+        self.assertNotRegex(".rack-unit{--gap:4px}", UPSTREAM)
 
 
 if __name__ == "__main__":
