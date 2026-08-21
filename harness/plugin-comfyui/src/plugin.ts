@@ -41,6 +41,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { ComfyClient, ComfyHttpError, ComfyProtocolError, ComfyTransportError } from './client.ts'
 import {
   ClientId,
   ComfyPluginConfig,
@@ -246,12 +247,21 @@ export class ComfyBridge extends Service {
   stats: ComfySystemStats | undefined
 
   /**
+   * The REST and telemetry client. Deliverable 2, `client.ts`.
+   *
+   * Public because it *is* the surface: `ctx.comfyui.http.queuePrompt(...)`. The bridge owns
+   * discovery and lifetime; everything that talks to the engine lives on this.
+   */
+  readonly http: ComfyClient
+
+  /**
    * @param ctx - The context to register in.
    * @param config - Resolved config, produced by {@link resolveConfig} in {@link apply}.
    */
   constructor(ctx: Context, config: ResolvedComfyConfig) {
     super(ctx, 'comfyui')
     this.config = config
+    this.http = new ComfyClient(ctx, config, this.lifetime.signal)
   }
 
   /** An abort signal that fires when the plugin unloads. Pass it to every request. */
@@ -299,6 +309,16 @@ export class ComfyBridge extends Service {
       + (device ? `, ${device.name} ${device.vram_free}/${device.vram_total} bytes free` : ', no device reported'),
     )
     this.ctx.emit('comfyui/connected', this.stats)
+
+    // Only after a successful probe. A socket opened against an endpoint that just refused a
+    // cheap GET would spend its whole reconnect budget failing and then log an error, which is
+    // noise standing in for the `comfyui/unreachable` already emitted above.
+    //
+    // The cost, stated rather than left to be discovered: **if ComfyUI starts after the plugin
+    // does, this plugin does not notice.** There is no rediscovery loop, because a poll that
+    // runs forever against an endpoint nobody has configured is its own problem. Reload the
+    // plugin, or call `ctx.comfyui.probe()` and then `ctx.comfyui.http.connect()`.
+    this.http.connect()
   }
 
   /**
@@ -319,60 +339,31 @@ export class ComfyBridge extends Service {
    * @throws ComfyUnreachableError if the endpoint does not answer within `timeoutMs`.
    */
   async probe(): Promise<ComfySystemStats> {
-    const url = `${this.config.endpoint}/system_stats`
-    const deadline = AbortSignal.timeout(this.config.timeoutMs)
-    const signal = AbortSignal.any([this.lifetime.signal, deadline])
-
-    let response: Response
     try {
-      response = await fetch(url, { signal, headers: { accept: 'application/json' } })
+      return await this.http.systemStats()
     } catch (error) {
-      throw new ComfyUnreachableError(this.config.endpoint, error)
-    }
-
-    if (!response.ok) {
+      // The client speaks in transport terms; this service's contract, and the two error
+      // classes above it, speak in discovery terms. The mapping is the whole body of this
+      // method because deliverable 2 moved the fetch itself into `client.ts` — leaving a
+      // second implementation here would have been two places to fix a header or a timeout.
+      if (error instanceof ComfyTransportError) {
+        throw new ComfyUnreachableError(this.config.endpoint, error)
+      }
+      if (error instanceof ComfyHttpError) {
+        throw new ComfyDiscoveryError(
+          this.config.endpoint,
+          `GET /system_stats answered ${error.status}`,
+        )
+      }
+      if (error instanceof ComfyProtocolError) {
+        throw new ComfyDiscoveryError(this.config.endpoint, error.message)
+      }
       throw new ComfyDiscoveryError(
         this.config.endpoint,
-        `GET /system_stats answered ${response.status} ${response.statusText}`,
+        `GET /system_stats failed: ${renderThrown(error)}`,
       )
     }
-
-    let body: unknown
-    try {
-      body = await response.json()
-    } catch (error) {
-      throw new ComfyDiscoveryError(
-        this.config.endpoint,
-        `GET /system_stats returned a body that is not JSON: ${renderThrown(error)}`,
-      )
-    }
-
-    if (!isSystemStats(body)) {
-      throw new ComfyDiscoveryError(
-        this.config.endpoint,
-        'GET /system_stats returned JSON without the documented system/devices shape',
-      )
-    }
-    return body
   }
-}
-
-/**
- * Narrow an unknown decoded body to {@link ComfySystemStats}.
- *
- * Checks the two fields the plugin reads and their types, and nothing more. A stricter guard
- * would reject a newer ComfyUI that added a field, which is the failure the negative
- * constraint is aimed at from the other direction: the reference is authoritative about what
- * is *there*, not about what will never be added.
- *
- * @param value - A decoded JSON body.
- * @returns `true` if `value` carries the shape this plugin depends on.
- */
-function isSystemStats(value: unknown): value is ComfySystemStats {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as { system?: unknown; devices?: unknown }
-  if (typeof candidate.system !== 'object' || candidate.system === null) return false
-  return Array.isArray(candidate.devices)
 }
 
 /* ------------------------------------------------------------------ entrypoint */

@@ -62,9 +62,9 @@ export type NodeId = string & { readonly __brand: 'ComfyNodeId' }
 /**
  * A websocket session identifier.
  *
- * Blueprint: `references/ComfyUI/server.py:272` — `sid = request.rel_url.query.get('clientId', '')`.
+ * Blueprint: `references/ComfyUI/server.py:273` — `sid = request.rel_url.query.get('clientId', '')`.
  * Supplying one reconnects to an existing session and *evicts the previous socket* for that
- * id (`self.sockets.pop(sid, None)`, line 275); omitting it makes the server mint
+ * id (`self.sockets.pop(sid, None)`, line 276); omitting it makes the server mint
  * `uuid.uuid4().hex`. Two agents sharing a client id therefore silently disconnect each
  * other, which is why `clientId` is per-instance config and not a constant.
  */
@@ -187,7 +187,7 @@ export interface ResolvedComfyConfig {
 /**
  * One node in a ComfyUI prompt graph.
  *
- * Blueprint: `references/ComfyUI/server.py:1088` — the object posted as `prompt` is passed
+ * Blueprint: `references/ComfyUI/server.py:1112` — the object posted as `prompt` is passed
  * straight to `execution.validate_prompt(prompt_id, prompt, partial_execution_targets)`, so
  * this is the API-format graph (node id → node), not the editor's `workflow` format. The two
  * are different documents and only this one is accepted by `/prompt`.
@@ -220,8 +220,8 @@ export type ComfyGraph = Record<string, ComfyNode>
  *
  * - `prompt_id` absent or explicitly null makes the server mint one; a supplied value must be
  *   canonical lowercase hyphenated UUID or the call is refused with 400 `invalid_prompt_id`
- *   (line 1091-1101).
- * - `client_id` is copied into `extra_data` (line 1117) and is what routes telemetry back to
+ *   (line 1090-1104).
+ * - `client_id` is copied into `extra_data` (line 1117-1118) and is what routes telemetry back to
  *   one socket. It is not the prompt id and does not have to be a UUID.
  *
  * `number` and `front` are alternatives, not companions: `number` is read directly when
@@ -247,7 +247,7 @@ export interface ComfyPromptRequest {
 /**
  * Success response of `POST /prompt`.
  *
- * Blueprint: `references/ComfyUI/server.py:1130` —
+ * Blueprint: `references/ComfyUI/server.py:1132` —
  * `{"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}`.
  *
  * Note `node_errors` on the *success* path. A prompt can be accepted and still carry per-node
@@ -265,8 +265,8 @@ export interface ComfyPromptResponse {
 /**
  * Error body returned with 400 by `POST /prompt`.
  *
- * Blueprint: `references/ComfyUI/server.py:1094-1099` (invalid prompt id),
- * `:1133-1134` (invalid prompt) and `:1139-1144` (no prompt). All three share this shape.
+ * Blueprint: `references/ComfyUI/server.py:1098-1104` (invalid prompt id),
+ * `:1135-1136` (invalid prompt) and `:1138-1144` (no prompt). All three share this shape.
  */
 export interface ComfyPromptError {
   error: {
@@ -323,27 +323,38 @@ export interface ComfyQueueState {
 
 /**
  * Every websocket message type ComfyUI emits, enumerated from the reference tree rather than
- * recalled. The set was taken by grepping every `send_sync("...")` and `add_message("...")`
- * call site in `references/ComfyUI`, which is the only way to be sure the list is complete —
- * five of the ten are emitted from `execution.py` and `comfy_execution/progress.py` rather
- * than from `server.py`, so reading the server alone would have produced a plausible,
- * incomplete union.
+ * recalled.
  *
- * | type                | emitted at                                       |
- * |---------------------|--------------------------------------------------|
+ * **The method matters and an earlier revision of this comment stated it wrong.** It said the
+ * set was taken by grepping every `send_sync("...")` and `add_message("...")` call site. Those
+ * are two of the three emitting forms; the third is a direct `await self.send("...", ...)`, and
+ * missing it cost exactly one type — `feature_flags` at `references/ComfyUI/server.py:308`,
+ * which no grep of the other two forms could ever have found. The list below was rebuilt over
+ * all three forms. Five of the eleven are emitted from `execution.py` and
+ * `comfy_execution/progress.py` rather than from `server.py`, so reading the server alone would
+ * have produced a plausible, incomplete union in the other direction too.
+ *
+ * The correction is left visible rather than quietly patched because the sentence describing the
+ * method is the only record of how the list was built, and a rigor claim with a known hole in it
+ * is worse than no claim — the next reader trusts it and stops checking.
+ *
+ * | type                | emitted at                                        |
+ * |---------------------|---------------------------------------------------|
  * | `status`            | `server.py:287` (on connect) and `:1287`          |
- * | `execution_start`   | `execution.py:742`                               |
- * | `execution_cached`  | `execution.py:770`                               |
+ * | `feature_flags`     | `server.py:308` — reply to the client's first frame |
+ * | `execution_start`   | `execution.py:742`                                |
+ * | `execution_cached`  | `execution.py:770`                                |
  * | `executing`         | `server.py:289` (on reconnect) and execution      |
  * | `progress`          | `comfy_execution/progress.py:224`                 |
  * | `progress_state`    | `comfy_execution/progress.py:183`                 |
- * | `executed`          | execution                                        |
- * | `execution_success` | `execution.py:824`                               |
- * | `execution_error`   | execution                                        |
- * | `logs`              | server                                           |
+ * | `executed`          | execution                                         |
+ * | `execution_success` | `execution.py:824`                                |
+ * | `execution_error`   | execution                                         |
+ * | `logs`              | server                                            |
  */
 export type ComfyTelemetryType =
   | 'status'
+  | 'feature_flags'
   | 'execution_start'
   | 'execution_cached'
   | 'executing'
@@ -380,6 +391,29 @@ export interface ComfyTelemetryFrame {
 export interface ComfyStatusData {
   status: { exec_info: { queue_remaining: number } }
   sid?: string
+}
+
+/**
+ * `feature_flags` — the server's half of a capability negotiation.
+ *
+ * Blueprint: `references/ComfyUI/server.py:302-312`. The server sends this **only** in reply to
+ * a client that made `{"type":"feature_flags","data":{…}}` its *first* text frame; the handler
+ * stores the client's flags in `sockets_metadata[sid]["feature_flags"]` and answers with
+ * `feature_flags.get_server_features()` (`comfy_api/feature_flags.py:159-166`, which returns a
+ * copy of `SERVER_FEATURE_FLAGS`).
+ *
+ * Two consequences for anything driving this socket. The first text frame is a **negotiation
+ * slot**: send anything else and the slot is spent, because the handler only inspects the first
+ * message. And a client that never negotiates simply gets no `feature_flags` frame — which is
+ * the state this plugin is in deliberately, since it has not identified a feature it needs to
+ * ask for. The member exists so a frame arriving from a client that *did* negotiate is a known
+ * type rather than an unrecognised one.
+ *
+ * The contents are the server's to define and are not enumerated here; reading them as
+ * `Record<string, unknown>` is the honest shape for a payload this plugin does not interpret.
+ */
+export interface ComfyFeatureFlagsData {
+  [flag: string]: unknown
 }
 
 /** `execution_start` — the queued prompt has begun. Blueprint: `execution.py:742`. */
@@ -452,6 +486,161 @@ export interface ComfyExecutionErrorData {
   [key: string]: unknown
 }
 
+/* ------------------------------------------------------------------ history */
+
+/**
+ * The verdict a finished run leaves behind.
+ *
+ * Blueprint: `references/ComfyUI/execution.py:1281-1284` — a `NamedTuple` with exactly these
+ * three fields, deep-copied to a dict at `:1293` and stored under `status`.
+ */
+export interface ComfyExecutionStatus {
+  status_str: 'success' | 'error'
+  completed: boolean
+  messages: unknown[]
+}
+
+/**
+ * One history entry.
+ *
+ * Blueprint: `references/ComfyUI/execution.py:1300-1305` — the record is built as
+ * `{"prompt": …, "outputs": {}, "status": status_dict}` and then `.update(history_result)`
+ * merges the run's real outputs over the top, so the field set is open and the index signature
+ * is not laziness.
+ *
+ * **`status` is genuinely nullable.** `task_done` sets `status_dict = None` when it is handed no
+ * status (`:1292-1294`), so a record can exist with no verdict on it. Anything reading this to
+ * decide whether a run succeeded needs a third answer for that case — see
+ * {@link ComfyPromptOutcome}, and `desktop-client/README.md`'s three-valued `check.passed`,
+ * which is the same rule already applied elsewhere in this repository: a gap where a verdict
+ * belongs reads as "fine", so it has to be rendered as *unconfirmed* rather than as blank.
+ */
+export interface ComfyHistoryRecord {
+  prompt?: unknown
+  outputs?: Record<string, unknown>
+  status?: ComfyExecutionStatus | null
+  [key: string]: unknown
+}
+
+/**
+ * The `GET /history` and `GET /history/{prompt_id}` document: prompt id → record.
+ *
+ * Blueprint: `references/ComfyUI/server.py:1045` and `:1059`, over
+ * `execution.py:1364-1389`. Note the single-prompt form still returns a **map**, and an unknown
+ * prompt id yields `{}` with a **200** (`:1388`) — not a 404. A caller that treats "not found"
+ * as an HTTP error will never see it.
+ */
+export type ComfyHistory = Record<string, ComfyHistoryRecord>
+
+/**
+ * What a client concluded about one run, and how it concluded it.
+ *
+ * The `outcome` is deliberately three-valued. A run can finish, fail, or leave no readable
+ * verdict at all — the socket dropped across the completion, or the history record carries a
+ * null `status` (see {@link ComfyHistoryRecord}). Collapsing that third case into `error`
+ * would report a failure that may not have happened, and collapsing it into `success` is
+ * worse. `unconfirmed` says what is actually known.
+ *
+ * `source` is carried alongside because the two are not equally strong evidence and a caller
+ * should be able to tell them apart: `socket` is the engine's own completion frame, `history`
+ * is a durable record read afterwards, and `unavailable` means neither could be obtained.
+ */
+export interface ComfyPromptOutcome {
+  promptId: PromptId
+  outcome: 'success' | 'error' | 'unconfirmed'
+  source: 'socket' | 'history' | 'unavailable'
+  /** The `execution_success` / `execution_error` frame, when the socket delivered one. */
+  frame?: ComfyTelemetryFrame
+  /** The history record, when that is what settled it. */
+  record?: ComfyHistoryRecord
+  /** Why the outcome is `unconfirmed`, in words. Absent when it is not. */
+  reason?: string
+}
+
+/* ------------------------------------------------------------- binary frames */
+
+/**
+ * The four binary event ids, read from `references/ComfyUI/protocol.py`.
+ *
+ * Every binary websocket frame is a 4-byte **big-endian** event id followed by a payload —
+ * `encode_bytes` at `references/ComfyUI/server.py:1302-1310`, `struct.pack(">I", event)`. The
+ * payload shape then depends on the id, and the three that reach the wire each carry a *second*
+ * length- or type-prefixed header of their own. They are transcribed on {@link ComfyBinaryFrame}.
+ *
+ * `UNENCODED_PREVIEW_IMAGE` (2) is the one id that never appears on the wire. It is an internal
+ * marker: `send()` at `server.py:1291` intercepts it, encodes the image, and emits it as
+ * `PREVIEW_IMAGE` (1). A client that waits for a 2 waits forever.
+ */
+export const COMFY_BINARY_EVENT = {
+  /** JPEG or PNG preview. Emitted at `server.py:1333`. */
+  PREVIEW_IMAGE: 1,
+  /** Internal marker only — see the note above. Never received. */
+  UNENCODED_PREVIEW_IMAGE: 2,
+  /** Per-node progress **text**, not an image. Emitted at `server.py:1479`. */
+  TEXT: 3,
+  /** Preview image with a JSON metadata header. Emitted at `server.py:1370`. */
+  PREVIEW_IMAGE_WITH_METADATA: 4,
+} as const
+
+/** One of {@link COMFY_BINARY_EVENT}'s values, or any id a future ComfyUI adds. */
+export type ComfyBinaryEventId = (typeof COMFY_BINARY_EVENT)[keyof typeof COMFY_BINARY_EVENT] | (number & {})
+
+/**
+ * A decoded binary websocket frame.
+ *
+ * **"Binary frame" does not mean "image".** `TEXT` (3) is a binary frame carrying UTF-8 progress
+ * text for one node, and routing all four ids to a preview handler would render a node id and a
+ * status string as a broken picture. Branch on {@link ComfyBinaryFrame.event}.
+ *
+ * The payload headers, each transcribed from its emit site:
+ *
+ * | id | payload |
+ * |----|---------|
+ * | 1 `PREVIEW_IMAGE` | 4-byte BE image type (`1` = JPEG, `2` = PNG — `server.py:1322-1328`), then the encoded image |
+ * | 3 `TEXT` | 4-byte BE node-id byte length, then the node id, then the text — `server.py:1469-1479` |
+ * | 4 `PREVIEW_IMAGE_WITH_METADATA` | 4-byte BE metadata JSON byte length, then the JSON, then the image — `server.py:1355-1370` |
+ *
+ * This plugin decodes the outer event id and hands the rest on as bytes. It does not parse the
+ * inner headers, and it does not decode an image: the frames are forwarded so a consumer can,
+ * and inventing a decode here would be this layer touching data it is supposed to relay.
+ */
+export interface ComfyBinaryFrame {
+  /** The 4-byte big-endian prefix, decoded. */
+  event: ComfyBinaryEventId
+  /** Everything after the 4-byte prefix, untouched. */
+  payload: Uint8Array
+}
+
+/* ------------------------------------------------------------- node metadata */
+
+/**
+ * One entry of `GET /object_info` — the definition of a single node class.
+ *
+ * Blueprint: `references/ComfyUI/server.py:800` (the whole map) and `:813`
+ * (`/object_info/{node_class}`, the same value under a one-key object).
+ *
+ * Only the fields this plugin relies on are named. The rest is left to the index signature
+ * rather than guessed at, because `input` in particular is a deeply irregular document — a
+ * node's input spec is a tuple whose first element is either a type name or an array of
+ * literal choices, and whose optional second element is a config object. Inventing a type for
+ * it would be exactly the fabrication the build directive bars, and a consumer that needs it
+ * should read the value rather than trust a shape asserted here.
+ */
+export interface ComfyNodeDefinition {
+  name: string
+  display_name?: string
+  category?: string
+  description?: string
+  output_node?: boolean
+  input?: { required?: Record<string, unknown>; optional?: Record<string, unknown>; hidden?: Record<string, unknown> }
+  output?: unknown[]
+  output_name?: string[]
+  [key: string]: unknown
+}
+
+/** The `GET /object_info` document: node class name → definition. `server.py:800`. */
+export type ComfyObjectInfo = Record<string, ComfyNodeDefinition>
+
 /* ------------------------------------------------------------------ events */
 
 /**
@@ -490,5 +679,28 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'comfyui/telemetry'(frame: ComfyTelemetryFrame): void
+    /**
+     * One binary frame, with the 4-byte event id decoded and the payload untouched.
+     *
+     * Separate from `comfyui/telemetry` because it is a different document — see
+     * {@link ComfyBinaryFrame}. It is emitted rather than dropped so that nothing the engine
+     * sent disappears silently at this layer; a consumer that does not want previews simply
+     * does not listen.
+     * @param frame - the decoded binary frame.
+     * @mode emit
+     */
+    'comfyui/binary'(frame: ComfyBinaryFrame): void
+    /**
+     * The telemetry socket closed and the client is about to retry, or has given up.
+     *
+     * **This is a gap marker, not a frame.** Frames that arrived while the socket was down are
+     * gone and cannot be recovered from the socket; `GET /history/{prompt_id}` is the durable
+     * record. Nothing is synthesised to fill the hole, because a fabricated progress value or
+     * completion is precisely the dishonest reading `.claude/CLAUDE.md` bars — so the gap is
+     * announced instead.
+     * @param detail - why the socket dropped, and whether a retry is coming.
+     * @mode emit
+     */
+    'comfyui/disconnected'(detail: { reason: string; attempt: number; retrying: boolean }): void
   }
 }
