@@ -10,8 +10,9 @@ answered out of a task percentage.
 
 ## How this reading was taken
 
-**Commit `428e3bb`, 2026-08-20.** Two uvicorns on spare ports, never the live service on
-`:8800` — pointing a probe at the running service measures what is *deployed*, not what is on
+**Commit `428e3bb`, 2026-08-20, and the `live` row re-measured at `a616168`, 2026-08-21 —
+the same two-run method on ports 8878 and 8877.** Two uvicorns on spare ports, never the live
+service on `:8800` — pointing a probe at the running service measures what is *deployed*, not what is on
 disk, which is the same rule `tests/frontend.mjs` is run under.
 
 | run | port | environment |
@@ -48,9 +49,24 @@ the row renders on the rack, straight out of `/api/status`.
 | sigils | /sigils.html | 200 | /api/sigils/state | 200 | ready | 200 | ready |
 | studio | /studio | 200 | /api/studio/state | 200 | offline | 200 | offline |
 | exp | /exp | 200 | /api/exp/state | 200 | queued | 200 | queued |
+| live | /livestack/live | 200 | /api/live/state | 200 | ready | 200 | ready |
 
-**All thirteen roster rows answer 200 on their own href, in both environments.** That is the
+**All fourteen roster rows answer 200 on their own href, in both environments.** That is the
 sentence #73 asked for, and it is now measured rather than believed.
+
+**`live` is the one row whose two `state` columns are identical for a reason that is not a
+defect** — read the `train` section below before assuming otherwise, because that row is
+identical across the columns *because* it ignores its switch, and this one is not.
+`apps/live/routes.py::enabled()` **defaults ON**, uniquely among the togglable surfaces, and
+the argument is in that function: every other gated surface costs the GPU or an outbound
+fetcher the moment it is switched on, while this one serves files out of a directory that is
+empty until OBS has been configured to write into it, so default-off could only produce a tab
+that was broken on arrival. Its row reads the switch and would publish `offline` with
+`SYMONEURAL_LIVE_ENABLED=0` set; neither run above sets it, so both read `ready`. The reading
+was taken with the recording directory empty, and the row says exactly that in its detail
+line — `nothing recorded yet — point OBS's Recording output at
+backend/output/live` — which is the honest state of this box on 2026-08-21 and not a fault.
+`busy` is reserved for a playlist actually growing on disk and is not reachable from a probe.
 
 `ravencalc` was asked to do real work rather than merely answer: `integrate(x**2, x)` returned
 `x**3/3` in **262 ms** (default run) and **289 ms** (switches-on run) — SymPy on the CPU, no

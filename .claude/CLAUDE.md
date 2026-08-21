@@ -331,6 +331,8 @@ node tests/streamer_failpaths.mjs   # streamer.html, self-contained -- starts it
 node tests/streamer_watch.mjs       # streamer-watch.html, ditto -- no account, no real stream
 node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI up, and the GPU
 node tests/streamer_guide.mjs       # the guide grid on streamer.html -- own API, no GPU, no provider
+node tests/project.mjs              # /project -- needs tests/project-harness.py, no GPU
+node tests/live.mjs                 # /livestack/live -- needs tests/live-harness.py, no GPU, no OBS
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
@@ -583,6 +585,48 @@ and it answers 200 with an empty bar rather than 503 when the surface is off —
 reason for that last one is *this same* red-line-in-the-console argument, aimed at a visitor
 instead of a test. So the harness mounts it now, which reproduces the production shape rather
 than papering over a gap. **If you write a harness, mount news in it.**
+
+**`tests/live.mjs` is the seventh suite, it takes nothing — no GPU, no OBS, no provider
+account, no token — and it had never been executed once before 2026-08-21.** Not "was red",
+not "was skipped": `node` could not load it. Line 17 read
+`import { dirname, fileURLToPath } from 'node:url'` and `node:url` exports neither name, so
+the module failed to instantiate with a SyntaxError before a single assertion ran, and both
+imported names were unused anywhere else in the file. It landed in `14814e9` beside the code
+it was written to gate. A test file on disk satisfies `exists`, satisfies `grep`, and reads
+to a human exactly like a suite — and says nothing at all about whether it has ever run.
+That is #94's shape arriving from a new direction, and it is the reason this list exists and
+the reason `apps/test_streamer_migration.py` fails when a `tests/*.mjs` file is not named
+here.
+
+```bash
+python3 tests/live-harness.py &      # 127.0.0.1:8897, throwaway store, no OBS, no GPU
+node tests/live.mjs                  # or pass a base URL
+kill %1
+```
+
+**21/21 passed, measured 2026-08-21 at `a616168`.** The assertion it exists for is `video
+decodes`: a `<video>` with an HLS URL behind it satisfies every DOM check anybody would think
+to write while playing nothing, so the suite asserts `readyState >= 3`, that `videoWidth` and
+`videoHeight` are the fixture's own `320x180`, and that `currentTime` advances — read
+`readyState=4`, `320x180`, `4.67 -> 5.87`. Only real decoded video produces those three.
+`tests/fixtures/live/` is six seconds of real MPEG-TS for the same reason: a hand-written
+`.m3u8` pointing at empty files would go green.
+
+**Start the harness immediately before the suite, and do not "fix" a timeout by widening
+`hls.LIVE_WINDOW_S`.** `live-harness.py` builds its store at *import*, so the live session's
+mtime is frozen at harness start; the window is 20 s, and after that `hls.scan()` correctly
+reclassifies that session `abandoned`, `#lv-player` stays hidden and the run times out on its
+third assertion. That is the classifier working. The harness carries a comment saying so, and
+this is the second place it is written down because the misdiagnosis is so much cheaper than
+the diagnosis: nothing in the console, no failed request, no HTTP >= 400 — the page simply
+and correctly reports that nothing is being recorded.
+
+It also asserts the trap that `site/streamer.html:1989` measured: Chrome returns the **truthy
+string** `'maybe'` from `canPlayType('application/vnd.apple.mpegurl')` and then plays nothing,
+so `if (canPlayType(...)) native;` takes a branch that cannot work. hls.js goes first
+everywhere and native only where hls.js will not run, which is Safari. Asserting the
+measurement means a future Chrome changing it is a red line here rather than folklore rotting
+in two comments.
 
 **The Studio agent loop does not stream tokens, so do not quote a first-token latency for
 it.** `inference.Backend.chat` sends `"stream": False` and is the loop's only call site;
