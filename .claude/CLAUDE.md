@@ -325,10 +325,17 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1555 pass, 0 fail and 14 skip at `2f97a3b`, measured 2026-08-21 from `backend/` in
-126.41 s, with `--collect-only` collecting 1569 in 1.22 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1555 + 14 = 1569, which is the arithmetic that says nothing
+**1564 pass, 0 fail and 14 skip at `0d51b09`, measured 2026-08-21 from `backend/` in
+127.85 s, with `--collect-only` collecting 1578 in 1.24 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1564 + 14 = 1578, which is the arithmetic that says nothing
 aborted.
+
+The 9 over the reading below are all one file, `apps/test_brand_boundary.py`, landed by
+`0d51b09` — #74 item 7. Attributable for the same boring reason as the entry under it: one
+commit, one new test file, nothing else moved.
+
+The reading before that was **1555 pass, 0 fail and 14 skip at `2f97a3b`**, measured
+2026-08-21 in 126.41 s with `--collect-only` collecting 1569.
 
 The reading before it was **1526 pass, 0 fail, 14 skip at `c847b64`** in 126.78 s, and for once
 the whole jump is accounted for rather than estimated: 21 are `apps/capture/test_capture.py`
@@ -361,7 +368,7 @@ everywhere else in this file: a count moves when tests land, not when a task clo
 a path you excluded does not exist — so it stops excluding and you get a collection error
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
-`0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**. Do not
+`0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
@@ -394,8 +401,8 @@ the suite is not dead, needs no venv, and runs on the system interpreter:
 cd backend/apps/remix && python3 -m pytest -q     # 28 passed in 0.43 s
 ```
 
-**28/28, measured 2026-08-21 at `2f97a3b`.** Those 28 are not inside the 1569 and never have
-been, so the tree really carries **1583 tests across two invocations**, not 1569 across one. Run
+**28/28, measured 2026-08-21 at `0d51b09`.** Those 28 are not inside the 1578 and never have
+been, so the tree really carries **1592 tests across two invocations**, not 1578 across one. Run
 both before claiming the backend is green. The lesson generalises past this suite: an exclusion
 outlives the reason it was added, and *"it needs its own environment"* is the most comfortable
 reason to leave sitting there, because it reads as a policy decision rather than as a bug nobody
