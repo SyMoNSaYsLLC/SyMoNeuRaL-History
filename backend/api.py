@@ -148,6 +148,12 @@ from apps import news  # noqa: E402  -- the ticker's collector. Bound to
 # request: `feeds.py` is a tuple of literals, and nothing fetches until `refresher()` is
 # started below, which only happens when SYMONEURAL_NEWS_ENABLED=1. Placed above `rackpower`
 # because that import claims the last word and should keep it.
+from apps import live  # noqa: E402  -- his OBS stream, watchable while it runs and after it
+# ends. Bound to the package for the same shadowing reason as `news` and `studio`: it exports
+# a bare `enabled`. Importing it opens no socket and reads no directory -- `live/__init__.py`
+# constructs the bridge but connects only when `start()` is awaited in `lifespan` below, and
+# `hls.py` touches the disk only inside a request. Placed above `rackpower` because that
+# import claims the last word and should keep it.
 from apps import controlboard as rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
 # so its bare `enabled`/`status_rows`/`apply` cannot shadow anything here. Importing it is
 # free and safe with the switch off: it reads no file until `enabled()` passes, spawns
@@ -1339,6 +1345,12 @@ async def lifespan(_: FastAPI):
     store_path = project.bootstrap()
     if store_path:
         log.info("project surface enabled; store at %s", store_path)
+    # The obs-websocket client. Started here and never from a route: a connection per request
+    # would re-run the SHA256 challenge/response on every page load, and obs-websocket rate
+    # limits nothing, so that fault is invisible except as latency. `start()` returns as soon
+    # as the task is scheduled and never raises -- an absent OBS is the normal state of this
+    # box, not an error, and it must not be able to stop the API booting.
+    await live.bridge.start()
     yield
     ticker.cancel()
     if asic:
@@ -1350,6 +1362,10 @@ async def lifespan(_: FastAPI):
     # Without this a reload leaks one ffmpeg per live stream: the sessions outlive the
     # process that spawned them and nothing else knows their pids.
     streamer.sessions.MANAGER.shutdown()
+    # Closes the socket and cancels the reconnect loop. Without it a `--reload` cycle leaves
+    # the old task backing off against an OBS the new process is also connecting to, which is
+    # two clients holding one credential and a reconnect storm nobody can see from a log.
+    await live.bridge.stop()
     await stop_llama()
 
 
@@ -2737,6 +2753,22 @@ app.include_router(exp.router, prefix="/api/exp", tags=["exp"])
 # every visitor's console -- see `apps/news/routes.py`.
 app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 
+# ---- the live stream -------------------------------------------------------
+# Entirely tokenless, and that is the design rather than an omission. The video is HLS on
+# disk written by OBS's Recording output; serving it needs no credential, and the credential
+# this app does hold -- the obs-websocket password -- never leaves the process. A visitor can
+# therefore watch before the bridge is configured at all, and a wrong password or a closed
+# OBS costs the page its telemetry line and not its video. `apps/live/__init__.py` states
+# that split as an import graph: `hls.py` does not import `obs.py`.
+#
+# Every handler in it is a plain `def`, not `async def`, and that is load-bearing rather than
+# an oversight. Starlette runs a sync handler in the threadpool; `hls.scan()` globs and stats
+# every segment of every session, which for a three-hour stream at two-second segments is
+# ~5400 stat calls. Inside `async def` that would block the event loop -- and with it the rack
+# websocket for every visitor on the site. Making them `async` again would look like a
+# tidy-up and would be a regression.
+app.include_router(live.router, prefix="/api/live", tags=["live"])
+
 
 # ---- the studio model list -------------------------------------------------
 # A read of one pre-computed file, and deliberately nothing else.
@@ -2923,6 +2955,37 @@ async def exp_page() -> FileResponse:
         raise HTTPException(status_code=404,
                             detail="exp.html has not been generated; "
                                    "run python3 tools/build_exp.py")
+    return FileResponse(f, media_type="text/html")
+
+
+@app.get("/livestack/live", include_in_schema=False)
+async def live_page() -> FileResponse:
+    """SyMoNeuRaL Live, at the address he asked every app to be at.
+
+    *"Applications from the live stack url as https://symoneural.com/chat.html for example.
+    They all need to be as such https://symoneural.com/livestack/chat"* — so this one is born
+    at `/livestack/live` rather than being migrated there later by #81.
+
+    `/live.html` keeps working, and not by accident: `site/` is mounted at `/` below, so the
+    file answers at its own name for anything that already links to it. Two addresses for one
+    file is the migration path #81 has to walk for the other nine, and the reason it is cheap
+    is that this route does not redirect — a redirect would break a `<video>` mid-playlist,
+    since the player resolves segment URIs relative to the manifest it was handed.
+
+    Declared above the StaticFiles mount, for the same reason every route here is.
+    """
+    f = SITE / "live.html"
+    if not f.is_file():
+        # Deliberately NOT "run tools/build_<x>.py". There is no generator for this page and
+        # there is not meant to be: *"Make sure to update the applications to be static with
+        # js css and html"*, so `site/live.html` is hand-authored and tracked. If it is
+        # missing, it was deleted or the checkout is partial, and sending the next person to
+        # a generator that does not exist is the exact failure `/studio`'s docstring above
+        # exists to avoid.
+        raise HTTPException(status_code=404,
+                            detail="site/live.html is missing. It is a tracked, "
+                                   "hand-authored static page with no generator; "
+                                   "restore it with git checkout -- site/live.html")
     return FileResponse(f, media_type="text/html")
 
 
