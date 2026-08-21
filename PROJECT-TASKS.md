@@ -93,7 +93,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder
-        Folds #20 #25 #27 #33 #40 #71. Read those blocks in
+        Folds #20 #25 #27 #33 #40 #71. Read those blocks in. Completed 2026-08-21.
         `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
 
         **The rule that makes this blocking rather than cosmetic**, Garrett 2026-08-20: *"we

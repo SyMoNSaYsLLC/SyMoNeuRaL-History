@@ -42,11 +42,9 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-import sympy
-from sympy.parsing.sympy_parser import (
-    convert_xor,
-    parse_expr,
-    standard_transformations,
+import symbolic
+from sympy.parsing.sympy_parser import (  # Keep the parser direct until we wrap it
+    parse_expr, standard_transformations, implicit_multiplication_application
 )
 
 REQUEST_SCHEMA_ID = "ravencalc/request/v1"
@@ -125,7 +123,7 @@ def _safe_globals() -> dict[str, Any]:
 _GLOBALS = _safe_globals()
 
 
-def parse(text: str, symbols: dict[str, sympy.Symbol] | None = None) -> sympy.Expr:
+def parse(text: str, symbols: dict[str, symbolic.Symbol] | None = None) -> symbolic.Expr:
     """Turn a string into a sympy expression, defensively.
 
     The thing to be honest about: `parse_expr` tokenises and then **evals**. It is a compiler
@@ -183,7 +181,7 @@ def parse(text: str, symbols: dict[str, sympy.Symbol] | None = None) -> sympy.Ex
             [f"{type(exc).__name__}: {exc}", f"input: {text}"],
         ) from exc
 
-    if not isinstance(expression, (sympy.Expr, sympy.logic.boolalg.Boolean, sympy.Eq)):
+    if not isinstance(expression, (symbolic.Expr, symbolic.Boolean, symbolic.Eq)):
         raise RavenCalcError(
             "that parsed to something this engine cannot compute with",
             [f"got a {type(expression).__name__}", f"input: {text}"],
@@ -191,7 +189,7 @@ def parse(text: str, symbols: dict[str, sympy.Symbol] | None = None) -> sympy.Ex
     return expression
 
 
-def make_symbols(assume: dict[str, Any] | None) -> dict[str, sympy.Symbol]:
+def make_symbols(assume: dict[str, Any] | None) -> dict[str, symbolic.Symbol]:
     """Build the caller's symbols carrying the caller's assumptions.
 
     An empty `assume` produces an empty dict, not a set of real symbols: sympy's default is a
@@ -205,7 +203,7 @@ def make_symbols(assume: dict[str, Any] | None) -> dict[str, sympy.Symbol]:
         raise RavenCalcError(
             "too many assumed symbols", [f"{len(assume)}, limit {MAX_SYMBOLS}"]
         )
-    symbols: dict[str, sympy.Symbol] = {}
+    symbols: dict[str, symbolic.Symbol] = {}
     for name, raw in assume.items():
         if not isinstance(name, str) or not _IDENT.match(name):
             raise RavenCalcError(
@@ -220,7 +218,7 @@ def make_symbols(assume: dict[str, Any] | None) -> dict[str, sympy.Symbol]:
                     [f"got: {item!r}", "known: " + ", ".join(sorted(ASSUMPTIONS))],
                 )
             flags[item] = True
-        symbols[name] = sympy.Symbol(name, **flags)
+        symbols[name] = symbolic.Symbol(name, **flags)
     return symbols
 
 
@@ -403,7 +401,7 @@ def _print_digits(value: Any) -> int:
         ints.append(value)
     else:
         try:
-            atoms = value.atoms(sympy.Rational)
+            atoms = value.atoms(symbolic.Rational)
         except Exception:
             return 0
         for atom in atoms:
@@ -469,9 +467,9 @@ def _rendered(value: Any) -> dict[str, Any]:
         raise _unprintable_error(digits, limit)
     try:
         return {
-            "text": sympy.sstr(value),
-            "latex": sympy.latex(value),
-            "tree": sympy.srepr(value),
+            "text": symbolic.sstr(value),
+            "latex": symbolic.latex(value),
+            "tree": symbolic.srepr(value),
         }
     except ValueError as exc:
         if "integer string conversion" not in str(exc):
@@ -479,7 +477,7 @@ def _rendered(value: Any) -> dict[str, Any]:
         raise _unprintable_error(digits, limit) from exc
 
 
-def _zero(expression: sympy.Expr) -> bool | None:
+def _zero(expression: symbolic.Expr) -> bool | None:
     """Is this expression identically zero? Three-valued on purpose.
 
     `simplify(e) == 0` is a proof; `e.equals(0)` returning None is sympy telling us it could
@@ -488,7 +486,7 @@ def _zero(expression: sympy.Expr) -> bool | None:
     are worse than saying "unknown".
     """
     try:
-        if sympy.simplify(expression) == 0:
+        if symbolic.simplify(expression) == 0:
             return True
     except Exception:
         pass
@@ -522,7 +520,7 @@ def run_request(doc: Any) -> dict[str, Any]:
         # default. Reusing the same Symbol object matters -- Symbol('x', real=True) and
         # Symbol('x') are different symbols to sympy, and differentiating with the wrong one
         # returns 0 for an expression that plainly depends on x.
-        variable = symbols.get(request.variable) or sympy.Symbol(request.variable)
+        variable = symbols.get(request.variable) or symbolic.Symbol(request.variable)
 
     result, check, note = _compute(request, expression, symbols, variable)
 
@@ -533,16 +531,16 @@ def run_request(doc: Any) -> dict[str, Any]:
         "input": _rendered(expression),
         "result": _rendered(result),
         "exact": not result.free_symbols and result.is_number and not result.is_Float
-        if isinstance(result, sympy.Expr)
+        if isinstance(result, symbolic.Expr)
         else True,
         "check": check,
         "note": note,
         "assumed": _assumed(symbols),
-        "engine": f"RavenCalc (symbolic core {sympy.__version__})",
+        "engine": f"RavenCalc (symbolic core {symbolic.version()})",
     }
 
 
-def _assumed(symbols: dict[str, sympy.Symbol]) -> dict[str, list[str]]:
+def _assumed(symbols: dict[str, symbolic.Symbol]) -> dict[str, list[str]]:
     """What the answer actually depends on, echoed back.
 
     Reported even when it is empty, and the empty case is the important one: a caller reading
@@ -558,15 +556,15 @@ def _assumed(symbols: dict[str, sympy.Symbol]) -> dict[str, list[str]]:
 
 def _compute(
     request: Request,
-    expression: sympy.Expr,
-    symbols: dict[str, sympy.Symbol],
-    variable: sympy.Symbol | None,
+    expression: symbolic.Expr,
+    symbols: dict[str, symbolic.Symbol],
+    variable: symbolic.Symbol | None,
 ) -> tuple[Any, dict[str, Any], str]:
     """Dispatch to the operation. Each branch returns (result, check, note)."""
     operation = request.operation
     try:
         if operation == "differentiate":
-            result = sympy.diff(expression, variable, request.order)
+            result = symbolic.diff(expression, variable, request.order)
             return result, _UNCHECKED, ""
 
         if operation == "integrate":
@@ -574,7 +572,7 @@ def _compute(
 
         if operation == "limit":
             point = parse(request.point, symbols)
-            result = sympy.limit(expression, variable, point, dir=request.direction)
+            result = symbolic.limit(expression, variable, point, dir=request.direction)
             note = (
                 "two-sided limit: the engine's '+-' asks for both one-sided limits to agree"
                 if request.direction == "+-"
@@ -584,23 +582,23 @@ def _compute(
 
         if operation == "series":
             point = parse(request.point, symbols)
-            result = sympy.series(expression, variable, point, request.order)
+            result = symbolic.series(expression, variable, point, request.order)
             return result, _UNCHECKED, f"expanded to O(({request.variable} - {point})**{request.order})"
 
         if operation == "solve":
             return _solve(expression, variable)
 
         if operation == "simplify":
-            result = sympy.simplify(expression)
+            result = symbolic.simplify(expression)
             # The one check that is free: simplify must not change what the expression means.
-            same = _zero(sympy.expand(expression - result)) if isinstance(result, sympy.Expr) else None
+            same = _zero(symbolic.expand(expression - result)) if isinstance(result, symbolic.Expr) else None
             return result, _check(same, "subtracted the simplified form from the original"), ""
 
         if operation == "evaluate":
             return _evaluate(request, expression, symbols)
     except RavenCalcError:
         raise
-    except (NotImplementedError, sympy.PolynomialError, sympy.SympifyError) as exc:
+    except (NotImplementedError, symbolic.PolynomialError, symbolic.SympifyError) as exc:
         # sympy saying "I cannot do this one" is a real answer and belongs to the caller
         # unedited. Turning it into a generic failure would hide the single most useful
         # sentence in the exchange.
@@ -625,26 +623,26 @@ def _compute(
 
 def _integrate(
     request: Request,
-    expression: sympy.Expr,
-    symbols: dict[str, sympy.Symbol],
-    variable: sympy.Symbol,
+    expression: symbolic.Expr,
+    symbols: dict[str, symbolic.Symbol],
+    variable: symbolic.Symbol,
 ) -> tuple[Any, dict[str, Any], str]:
     if request.lower:
         lower, upper = parse(request.lower, symbols), parse(request.upper, symbols)
-        result = sympy.integrate(expression, (variable, lower, upper))
+        result = symbolic.integrate(expression, (variable, lower, upper))
         # A definite integral sympy could not close comes back as an unevaluated Integral.
         # Handing that back as "the answer" is the failure worth catching: it renders as
         # tidy LaTeX and says nothing.
-        if result.has(sympy.Integral):
+        if result.has(symbolic.Integral):
             return result, _UNCHECKED, "the engine returned this unevaluated -- no closed form was found"
         return result, _UNCHECKED, f"definite integral over [{lower}, {upper}]"
 
-    result = sympy.integrate(expression, variable)
-    if result.has(sympy.Integral):
+    result = symbolic.integrate(expression, variable)
+    if result.has(symbolic.Integral):
         return result, _UNCHECKED, "the engine returned this unevaluated -- no closed form was found"
     # The check that earns its place: differentiate the antiderivative and see whether the
     # difference is zero. It catches a wrong answer outright, and it costs one diff.
-    passed = _zero(sympy.diff(result, variable) - expression)
+    passed = _zero(symbolic.diff(result, variable) - expression)
     return (
         result,
         _check(passed, "differentiated the antiderivative and simplified the difference against 0"),
@@ -652,18 +650,18 @@ def _integrate(
     )
 
 
-def _solve(expression: Any, variable: sympy.Symbol) -> tuple[Any, dict[str, Any], str]:
+def _solve(expression: Any, variable: symbolic.Symbol) -> tuple[Any, dict[str, Any], str]:
     """Roots, plus the substitution that confirms them.
 
     `solve` is handed the expression as an equation against zero unless the caller wrote one
     with `=`, which is the convention every CAS uses and the one that matches how people write
     the request.
     """
-    equation = expression if isinstance(expression, sympy.Eq) else sympy.Eq(expression, 0)
-    roots = sympy.solve(equation, variable, dict=False)
+    equation = expression if isinstance(expression, symbolic.Eq) else symbolic.Eq(expression, 0)
+    roots = symbolic.solve(equation, variable, dict=False)
     if not isinstance(roots, list):
         roots = [roots]
-    result = sympy.Tuple(*roots)
+    result = symbolic.Tuple(*roots)
 
     verdicts = [_zero((equation.lhs - equation.rhs).subs(variable, root)) for root in roots]
     if not roots:
@@ -682,7 +680,7 @@ def _solve(expression: Any, variable: sympy.Symbol) -> tuple[Any, dict[str, Any]
     return result, _check(passed, how), note
 
 
-def _exact_note(result: sympy.Expr) -> str:
+def _exact_note(result: symbolic.Expr) -> str:
     """The pre-rounding exact form, or an honest description of it when it cannot be printed.
 
     This is deliberately *not* the refusal `_rendered` raises, and the difference is the point.
@@ -702,11 +700,11 @@ def _exact_note(result: sympy.Expr) -> str:
             f"exact form before rounding: an integer of about {digits:,} digits, too wide for "
             f"this interpreter to print (its limit is {limit:,})"
         )
-    return f"exact form before rounding: {sympy.sstr(result)}"
+    return f"exact form before rounding: {symbolic.sstr(result)}"
 
 
 def _evaluate(
-    request: Request, expression: sympy.Expr, symbols: dict[str, sympy.Symbol]
+    request: Request, expression: symbolic.Expr, symbols: dict[str, symbolic.Symbol]
 ) -> tuple[Any, dict[str, Any], str]:
     """Substitute values in, and only then -- if asked -- go numeric.
 
@@ -715,14 +713,14 @@ def _evaluate(
     point applied before simplification is how `1e16 + 1 - 1e16` becomes 0.
     """
     bindings = {
-        (symbols.get(name) or sympy.Symbol(name)): parse(value, symbols)
+        (symbols.get(name) or symbolic.Symbol(name)): parse(value, symbols)
         for name, value in request.at.items()
     }
     result = expression.subs(bindings)
     if request.digits:
-        numeric = sympy.N(result, request.digits)
+        numeric = symbolic.evalf(result, request.digits)
         return numeric, _UNCHECKED, _exact_note(result)
-    return sympy.simplify(result), _UNCHECKED, "exact -- pass digits: N for a decimal"
+    return symbolic.simplify(result), _UNCHECKED, "exact -- pass digits: N for a decimal"
 
 
 def selfcheck() -> list[dict[str, Any]]:
