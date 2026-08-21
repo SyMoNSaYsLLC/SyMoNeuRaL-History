@@ -182,33 +182,103 @@ drain() {
   done
 }
 
+# What each surface looks like in the process table.
+#
+# One place, because `evict` now asks the same question twice -- once to find out whether
+# anything is running and once to stop it -- and two copies of a pattern is how one of them
+# goes stale.
+#
+# These are anchored at $ROOT and the `pkill` patterns below are not, deliberately. The two
+# are asking different questions. `pkill` is aimed at a process we are about to stop and a
+# tail match is the safer, more forgiving end of that; the probe is answering "is OUR
+# surface resident", and a bare `engines/symoneural-ui/main.py` would answer yes to any
+# other checkout of this repo on the same box. Anchoring can only ever produce a false
+# *negative* -- we conclude nothing is running when something is -- and that failure lands
+# on `drain`, which reads the card itself and refuses the handoff. A false positive has no
+# such backstop: it logs a successful eviction and hands over memory that is still held.
+#
+# api.py:1151 and :2397 both spawn their engine by absolute path (LLM_ENGINE, DIFFUSE_ENGINE
+# are ROOT-relative Paths) and symoneural-ui.sh does the same, so the anchored form is what
+# is actually in the process table -- measured here 2026-08-21:
+#   /home/google/Symoneural/engines/symoneural-ui/.venv/bin/python \
+#       /home/google/Symoneural/engines/symoneural-ui/main.py --listen 127.0.0.1 --port 8188
+surface_pattern() {
+  case "${1:-}" in
+    chat)  echo "$ROOT/engines/symoneural-llm/" ;;
+    image|sigil) echo "$ROOT/engines/symoneural-diffuse/" ;;
+    comfy) echo "$ROOT/engines/symoneural-ui/main.py" ;;
+    train) echo '[t]rain_lora.py' ;;
+    *)     echo "$ROOT/engines/symoneural-llm/|$ROOT/engines/symoneural-diffuse/" ;;
+  esac
+}
+
+# Is the named surface actually running? R-172: "`status` and `evict` both treat the marker
+# as a hint and the process table as the fact."
+#
+# This exists because the exit code of a stop command cannot answer it. Two of the arms
+# below shell out to a helper script, and both helpers succeed whether or not there was
+# anything to stop -- `cmd_stop_chat` ends `return 0` with no branch that reports otherwise,
+# and `symoneural-ui.sh stop` reaches its success exit through the not-running path. So
+# `<stop> && active=1` reads true over an empty process table, and the governor logs a
+# successful eviction of something that was already gone. That log line is the only record
+# an eviction leaves; a944fae fixed the three arms whose stop action is a bare `pkill` and
+# whose exit code was therefore already honest, and left the two that needed it -- including
+# `comfy`, the surface the request was written about.
+#
+# The miner is the exception and does not have a `-f` pattern: it is a process *group*,
+# recorded by pid file, so liveness is a signal-0 to the group.
+surface_live() {
+  local surface="${1:-}" pgid
+  [ -z "$surface" ] && return 1
+  if [ "$surface" = "miner" ]; then
+    pgid="$(cat "$RUN/miner.pid" 2>/dev/null || true)"
+    [ -n "$pgid" ] || return 1
+    kill -0 -- "-$pgid" 2>/dev/null
+    return $?
+  fi
+  pgrep -f "$(surface_pattern "$surface")" >/dev/null 2>&1
+}
+
 # Stop whatever is resident, then wait for the memory back.
 evict() {
   local prev="${1:-}"
   [ -z "$prev" ] && return 0
 
-  local active=0
+  # `train` is answered before anything else and is never evicted to serve a page view.
+  # Its own liveness check is the refusal, so it does not go through the probe below.
+  if [ "$prev" = "train" ]; then
+    if pgrep -f '[t]rain_lora.py' >/dev/null 2>&1; then
+      log evict "REFUSING to evict a training run -- wait for it or stop it deliberately"
+      return 1
+    fi
+    log evict "'train' recorded but no run is active -- treating as stale"
+    rm -f "$RUN/resident"
+    drain
+    return $?
+  fi
 
-  case "$prev" in
-    chat)  "$HERE/bin/symoneural-cli" _stop-chat >/dev/null 2>&1 && active=1 || { pkill -f 'bin/symoneural-llm' 2>/dev/null && active=1; } || true ;;
-    image) pkill -f 'bin/symoneural-diffuse' 2>/dev/null && active=1 || true ;;
-    sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null && active=1 || true ;;
-    comfy) "$HERE/scripts/symoneural-ui.sh" stop >/dev/null 2>&1 && active=1 || { pkill -f 'engines/symoneural-ui/main.py' 2>/dev/null && active=1; } || true ;;
-    train)
-      if pgrep -f '[t]rain_lora.py' >/dev/null 2>&1; then
-        log evict "REFUSING to evict a training run -- wait for it or stop it deliberately"
-        return 1
-      fi
-      ;;
-    miner)
-      python3 -c 'import sys; sys.path.insert(0, """/backend/apps"); import cryptominer; cryptominer.stop()' \
-        >/dev/null 2>&1 && active=1 || { pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null && active=1; } || true
-      ;;
-    *)     pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse' 2>/dev/null && active=1 || true ;;
-  esac
+  # Read the process table BEFORE trying to stop anything. This is the whole fix: what
+  # gets logged is a reading, not an inference from an exit code that cannot fail.
+  local active=0
+  surface_live "$prev" && active=1
 
   if [ "$active" -eq 1 ]; then
     log evict "stopping '$prev' to make room -- the weight sets do not co-fit"
+    case "$prev" in
+      # Graceful first, ungraceful second. A `||` fallback hides a broken primary, so both
+      # halves of each pair are checked by apps/test_governor_paths.py.
+      chat)  "$HERE/bin/symoneural-cli" _stop-chat >/dev/null 2>&1 \
+               || pkill -f 'bin/symoneural-llm' 2>/dev/null || true ;;
+      image|sigil) pkill -f 'bin/symoneural-diffuse' 2>/dev/null || true ;;
+      # Never a bare pkill first: symoneural-ui.sh POSTs /free and waits for the drain, and
+      # the process exiting is not the memory coming back.
+      comfy) "$HERE/scripts/symoneural-ui.sh" stop >/dev/null 2>&1 \
+               || pkill -f 'engines/symoneural-ui/main.py' 2>/dev/null || true ;;
+      miner) python3 -c 'import sys; sys.path.insert(0, "'"$ROOT"'/backend/apps"); import cryptominer; cryptominer.stop()' \
+               >/dev/null 2>&1 \
+               || pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null || true ;;
+      *)     pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse' 2>/dev/null || true ;;
+    esac
   else
     log evict "'$prev' recorded but no run is active -- treating as stale"
   fi
@@ -273,7 +343,17 @@ cmd_release() {
 
 cmd_status() {
   local surface compute; surface="$(held_surface)"
-  echo "resident surface   $(cat "$RUN/resident" 2>/dev/null || echo none)"
+  # The marker with its liveness beside it. R-172 names `status` alongside `evict` for the
+  # same reason: `resident surface   comfy` over a dead process is not a smaller truth than
+  # a wrong one, it is the line somebody reads to decide the card is busy.
+  local marker; marker="$(cat "$RUN/resident" 2>/dev/null || true)"
+  if [ -z "$marker" ]; then
+    echo "resident surface   none"
+  elif surface_live "$marker"; then
+    echo "resident surface   $marker (running)"
+  else
+    echo "resident surface   $marker (not running -- stale marker)"
+  fi
   # Not a ${x:+..}${x:-..} pair: when x is set, the second form expands to x rather than
   # to the default, so a held lock printed "HELD by train (pid N)train".
   if [ -n "$surface" ]; then
