@@ -150,10 +150,6 @@ class NestedGuidePrefixTests(unittest.TestCase):
                          "what that does to its /state probe")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class InvocableDocsTests(unittest.TestCase):
     """Every command `.claude/CLAUDE.md` hands an agent has to be runnable.
 
@@ -235,3 +231,23 @@ class InvocableDocsTests(unittest.TestCase):
                          f"browser suites exist that CLAUDE.md never tells anyone to run: "
                          f"{sorted(unnamed)}")
 
+if __name__ == "__main__":
+    # This block lives at the END of the file, and that is not a style point. It used to sit
+    # above `InvocableDocsTests`, where `unittest.main()` ran before the class was defined --
+    # so `python3 backend/apps/test_streamer_migration.py` reported **9 tests** and never
+    # collected the guard at all. An invocation that succeeds while silently doing less than
+    # it says is the same defect `InvocableDocsTests` exists to catch, committed inside the
+    # test that catches it.
+    #
+    # The sys.path insert is what makes running it directly work rather than merely run.
+    # `NestedGuidePrefixTests` does `from apps import streamer`, and there is no `__init__.py`
+    # or pytest config anywhere under `backend/` -- so what puts `backend/` on the path is the
+    # `-m` in CLAUDE.md's `cd backend && python3 -m pytest apps/ -q`: `python3 -m` prepends the
+    # cwd. Verified both ways here -- with `-m`, `apps/test_roster.py` is 13 passed; without it,
+    # `Interrupted: 1 error during collection`, zero tests run. Invoked as a script instead,
+    # Python prepends the script's own directory (`backend/apps`), which is one level too deep,
+    # so the import raised `ModuleNotFoundError: No module named 'apps'` in three tests.
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    unittest.main()
