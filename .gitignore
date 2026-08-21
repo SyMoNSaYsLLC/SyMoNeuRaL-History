@@ -203,3 +203,11 @@ bin/claude-desktop
 # `npm install` in tests/ reproduces it; 13 MB of node_modules in git is not provenance,
 # the version pin is. Playwright never ships -- see backend/DEPENDENCIES.md.
 tests/node_modules/
+
+# Debian build products of yocto/oematch. `dpkg-buildpackage` writes them one directory up
+# from the source, which is `yocto/`, not a build directory -- so they land in the repo and
+# read as new source files. The .deb is 60 kB of the tree beside it and goes stale the moment
+# anything under yocto/oematch/ changes; rebuild it rather than tracking it.
+yocto/oematch_*.deb
+yocto/oematch_*.buildinfo
+yocto/oematch_*.changes
