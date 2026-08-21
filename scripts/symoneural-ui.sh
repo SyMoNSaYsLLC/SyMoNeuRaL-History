@@ -60,11 +60,16 @@ case "${1:-status}" in
     # source of truth for `symoneural_gguf` lives in the repo and this is what puts it where
     # the server looks. Delete engines/symoneural-ui and re-fork it and the node comes back
     # on the next start rather than having to be remembered.
-    NODE_SRC="$ROOT/backend/apps/studio/custom_nodes/symoneural_gguf"
-    NODE_DST="$COMFY/custom_nodes/symoneural_gguf"
-    if [ -d "$NODE_SRC" ] && [ ! -e "$NODE_DST" ]; then
-      ln -s "$NODE_SRC" "$NODE_DST" && echo "linked symoneural_gguf into custom_nodes/"
-    fi
+    # A loop over the directory rather than a named pack: `symoneural_cleanroom` was added
+    # second and a hardcoded name would have left it unlinked, which fails as "the node is
+    # not in the menu" with nothing anywhere to read.
+    for NODE_SRC in "$ROOT"/backend/apps/studio/custom_nodes/*; do
+      [ -d "$NODE_SRC" ] || continue
+      NODE_DST="$COMFY/custom_nodes/$(basename "$NODE_SRC")"
+      if [ ! -e "$NODE_DST" ]; then
+        ln -s "$NODE_SRC" "$NODE_DST" && echo "linked $(basename "$NODE_SRC") into custom_nodes/"
+      fi
+    done
     # --disable-auto-launch: this is a headless server behind a proxy; opening a browser on
     # a box being driven over SSH is noise at best.
     setsid "$VENV" "$COMFY/main.py" \
