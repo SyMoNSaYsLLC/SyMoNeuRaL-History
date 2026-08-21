@@ -11,6 +11,6 @@ the line below fails by name rather than by a total nobody reads.
 Import order is alphabetical and does not matter; the decorator refuses duplicate tool names,
 so a collision is an ImportError at startup rather than one tool quietly shadowing another.
 """
-from . import comfy_tool, fs, host, stack  # noqa: F401
+from . import cleanroom, comfy_tool, fs, host, stack  # noqa: F401
 
-__all__ = ["comfy_tool", "fs", "host", "stack"]
+__all__ = ["cleanroom", "comfy_tool", "fs", "host", "stack"]

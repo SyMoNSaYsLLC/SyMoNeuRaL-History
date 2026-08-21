@@ -78,6 +78,7 @@ class RegistryTests(unittest.TestCase):
     #: equals itself, and the bug this guards is a module dropped from `tools_impl/__init__.py`,
     #: which leaves a registry that is smaller and perfectly self-consistent.
     EXPECTED_TOOLS = {
+        "cleanroom": {"extract_spec", "generate_native_code"},
         "comfy_tool": {"comfy_status", "generate_image", "list_comfy_nodes", "list_workflows",
                        "read_image_file", "run_workflow"},
         "fs": {"delete_path", "find_files", "list_dir", "read_file", "search", "workspace_root",
@@ -110,6 +111,7 @@ class RegistryTests(unittest.TestCase):
     #: derived from the registry it would assert that the registry equals itself, and the thing
     #: being guarded is a static table in a document.
     EXPECTED_GROUPS = {
+        "cleanroom": {"extract_spec", "generate_native_code"},
         "workspace": {"workspace_root", "list_dir", "read_file", "write_file", "delete_path",
                       "search", "find_files"},
         "host": {"run_command", "env_get", "env_set", "service_status", "gpu_status",
@@ -142,11 +144,11 @@ class RegistryTests(unittest.TestCase):
         # moved -- which is the only thing anyone reading it needs.
         self.maxDiff = None
         self.assertEqual(groups, self.EXPECTED_GROUPS)
-        # The README states these four numbers in prose under the table ("7 · 7 · 6 · 6"), which
+        # The README states these numbers in prose under the table ("7 · 7 · 6 · 6 · 2"), which
         # is a second place they can go stale, so assert the shape the sentence claims and not
         # only the membership above.
         self.assertEqual({g: len(n) for g, n in sorted(groups.items())},
-                         {"comfyui": 6, "host": 7, "stack": 6, "workspace": 7})
+                         {"cleanroom": 2, "comfyui": 6, "host": 7, "stack": 6, "workspace": 7})
 
     def test_names_are_unique(self):
         names = registry.names()

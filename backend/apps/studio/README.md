@@ -124,8 +124,9 @@ disagree.
 | `host` | `run_command` `env_get` `env_set` `service_status` `gpu_status` `disk_usage` `python_packages` |
 | `stack` | `list_apps` `app_status` `read_app_config` `list_routes` `list_models` `list_generators` |
 | `comfyui` | `generate_image` `run_workflow` `list_workflows` `list_comfy_nodes` `comfy_status` `read_image_file` |
+| `cleanroom` | `extract_spec` `generate_native_code` |
 
-The four counts are 7 · 7 · 6 · 6 and they are read out of `registry.TOOLS` rather than
+The five counts are 7 · 7 · 6 · 6 · 2 and they are read out of `registry.TOOLS` rather than
 counted by eye — `read_image_file` sat under `workspace` in this table for two weeks because it
 lives in a file about images and reads from disk, while `comfy_tool.py:393` registers it
 `@tool("comfyui")`. The group is what the model is shown, so the table being wrong meant the
