@@ -178,7 +178,39 @@ class TheCuratedGroupingsTests(unittest.TestCase):
     # Measured, not aspirational: these are the rows that DID resolve into the group
     # Garrett put them in. The rest are listed in the module docstring with the reason,
     # which is usually that no layer in the corpus carries the project at all.
-    RESOLVES_TO = ()
+    RESOLVES_TO = (
+        # openembedded-core: the base layer, and every one of these is an exact PN or a
+        # PROJECT_ALIASES rename (SDL -> libsdl2, WebKit -> webkitgtk, linux -> linux-yocto,
+        # ghostpdl -> ghostscript). None of them is found by URL: oe-core cites release
+        # tarballs, not GitHub.
+        ("https://github.com/sqlite/sqlite", "sqlite3"),
+        ("https://github.com/madler/zlib", "zlib"),
+        ("https://github.com/pnggroup/libpng", "libpng"),
+        ("https://github.com/libjpeg-turbo/libjpeg-turbo", "libjpeg-turbo"),
+        ("https://github.com/openssl/openssl", "openssl"),
+        ("https://github.com/curl/curl", "curl"),
+        ("https://github.com/lua/lua", "lua"),
+        ("https://github.com/libsdl-org/SDL", "libsdl2"),
+        ("https://github.com/WebKit/WebKit", "webkitgtk"),
+        ("https://github.com/boostorg/boost", "boost"),
+        ("https://github.com/FFmpeg/FFmpeg", "ffmpeg"),
+        ("https://code.videolan.org/videolan/x264", "x264"),
+        ("https://git.busybox.net/busybox", "busybox"),
+        ("https://github.com/torvalds/linux", "linux-yocto"),
+        ("https://github.com/ArtifexSoftware/ghostpdl", "ghostscript"),
+        ("https://github.com/tukaani-project/xz", "xz"),
+        # meta-oe
+        ("https://github.com/nodejs/node", "nodejs"),
+        ("https://github.com/postgres/postgres", "postgresql"),
+        ("https://gitlab.com/libeigen/eigen", "libeigen"),
+        ("https://github.com/redis/redis", "redis"),
+        ("https://github.com/valkey-io/valkey", "valkey"),
+        ("https://github.com/mongodb/mongo", "mongodb"),
+        # one layer each
+        ("https://github.com/nginx/nginx", "nginx"),
+        ("https://chromium.googlesource.com/chromium/src", "chromium-ozone-wayland"),
+        ("https://github.com/qt/qtbase", "qtbase"),
+    )
 
     @classmethod
     def setUpClass(cls):
@@ -206,13 +238,37 @@ class TheCuratedGroupingsTests(unittest.TestCase):
                 self.assertEqual([], got["matches"], f"{url} should have no recipe anywhere")
 
     def test_the_measured_rows_still_resolve_to_their_group(self):
-        if not self.RESOLVES_TO:
-            self.skipTest("no measured rows recorded yet")
         by_url = {u: g for g, u, _ in upstream.UPSTREAM_GROUPS}
-        for url in self.RESOLVES_TO:
+        for url, pn in self.RESOLVES_TO:
             with self.subTest(url=url):
-                want = upstream.GROUP_LAYERS.get(by_url[url], {by_url[url]})
+                group = by_url[url]
+                want = upstream.GROUP_LAYERS.get(group, {group})
                 got = upstream.resolve(self.con, url)
-                layers = [r["layer"] for r in got["matches"]] + [a["layer"] for a in got["appends"]]
-                self.assertTrue(set(layers) & want,
-                                f"{url} expected {by_url[url]}, got {layers}")
+                inside = [r for r in got["matches"] if r["layer"] in want]
+                self.assertTrue(inside, f"{url} expected {group}, got "
+                                        f"{[r['layer'] for r in got['matches']]}")
+                # The recipe, not merely the layer. "something in meta-oe answered" is
+                # satisfied by a sibling that vendors the project (libcurl-vendor,
+                # omxplayer), which is the wrong answer wearing the right layer name.
+                self.assertEqual(pn, inside[0]["pn"],
+                                 f"{url}: {group} should answer {pn} first, "
+                                 f"got {[r['pn'] for r in inside]}")
+
+    def test_the_recorded_tally_is_the_one_the_cli_reports(self):
+        """25 of 46 in the expected group, measured 2026-08-21 on 479 layers.
+
+        Not a target -- a reading, and a low one on purpose. Sixteen of these projects
+        are carried by no layer in the corpus at all (eight of them the npm group, which
+        has no layer by design), so the number this can reach is bounded by what OE
+        packages, not by how well the matcher ranks.
+        """
+        n = 0
+        for group, url, _note in upstream.UPSTREAM_GROUPS:
+            want = upstream.GROUP_LAYERS.get(group, {group})
+            got = upstream.resolve(self.con, url)
+            layers = [r["layer"] for r in got["matches"]] + [a["layer"] for a in got["appends"]]
+            if set(layers) & want:
+                n += 1
+        self.assertEqual(25, n, f"{n} rows land in their group, the reading was 25")
+        self.assertEqual(n, len(self.RESOLVES_TO),
+                         "RESOLVES_TO lists the rows one by one; re-measure and update both")

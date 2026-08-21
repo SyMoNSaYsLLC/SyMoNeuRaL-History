@@ -63,8 +63,12 @@ sudo apt install ../oematch_0.1.0_all.deb
 ```bash
 cd yocto/oematch
 python3 -m unittest discover -s oematch/tests -t .          # 49, no corpus needed
-OEMATCH_TEST_CORPUS=1 python3 -m unittest discover -s oematch/tests -t .
+OEMATCH_TEST_CORPUS=1 python3 -m unittest discover -s oematch/tests -t .   # 52
 ```
+
+`dpkg-buildpackage -us -uc -b` runs the first of those: **49 pass, 1 skips** (the corpus
+class) at `8dc1b73`. The second is **52 pass** against the local index of 479 layers,
+39507 recipes, measured 2026-08-21.
 
 The suite lives **inside** the package, which looks wrong and is not: pybuild runs
 `unittest discover` from `.pybuild/cpython3_*/build`, a directory holding only what the
@@ -74,3 +78,13 @@ package installs, so a top-level `tests/` is never copied there. The 0.1.0 build
 The corpus-backed rows are opt-in via `OEMATCH_TEST_CORPUS=1` and deliberately excluded
 from `dh_auto_test`: they are a claim about 479 cloned layers, and a package build that
 fails because an upstream layer moved a recipe is a build broken by somebody else's commit.
+
+They name each row rather than checking a score, because a ranking regression shows up as
+a worse feeling and nothing else. `TheCuratedGroupingsTests.RESOLVES_TO` lists the 25 of
+Garrett's 46 upstreams that land in the layer he put them in, each with the recipe that
+must answer first — deleting one line of `PROJECT_ALIASES` fails the row by name
+(`url='https://github.com/sqlite/sqlite'`), not the suite by total.
+
+**25 of 46, and that is a reading rather than a target.** Sixteen of the 46 are carried by
+no layer in the corpus at all — eight of those are the npm group, which has no layer by
+design — so the ceiling here is what OE packages, not how well the matcher ranks.
