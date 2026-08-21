@@ -330,8 +330,82 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         check: ngrep dsw- -- site/symoneural.css
         check: ngrep deepseek -- site/ui.js
-        check: grep NoUpstreamIdentifiersTests -- backend/apps/test_brand_boundary.py
-
+        check: ngrep import sympy -- backend/apps/ravencalc/ravencalc.py
+        check: exists backend/apps/ravencalc/symbolic.py
+        check: ngrep import httpx -- backend/apps/studio/inference.py
+        check: ngrep import httpx -- backend/apps/studio/comfy.py
+        check: ngrep import httpx -- backend/apps/studio/routes.py
+        check: ngrep import httpx -- backend/apps/remix/symoneural_dj/symon_client.py
+        check: ngrep import httpx -- backend/apps/remix/symoneural_dj/pipeline.py
+        check: ngrep import httpx -- backend/apps/remix/symoneural_dj/connectors/ytmusic.py
+        check: ngrep import httpx -- backend/apps/remix/symoneural_dj/connectors/spotify.py
+        check: ngrep from fastmcp -- backend/apps/studio/mcp_server.py
+        resolve: scripts/comfyui.sh -> scripts/symoneural-ui.sh
+        check: ngrep ComfyUI -- scripts/gpu-governor.sh
+        check: ngrep /studio/comfy -- backend/api.py
+        check: grep ComfyUI -- LICENSES.md
+        note: 2026-08-21 coder — REOPENED. This task archived at 32/32 on 2026-08-21 with items
+        note: 2 and 5 untouched, and the archive line "every declared check passes" was true.
+        note: That is the failure this file warns about in its own words -- "a check that can
+        note: pass without the work being finished is worse than no check, since it will
+        note: archive the task" -- and it is now the FOURTH instance recorded on this task.
+        note: The first three are in the notes above: ngrep SymPy covered one page of fifteen,
+        note: and ngrep dsw- / ngrep deepseek each checked the file that happened not to hold
+        note: its token. The new one is different in kind and worth naming separately:
+        note: `check: grep NoUpstreamIdentifiersTests -- backend/apps/test_brand_boundary.py`,
+        note: added by me at 6542932, goes green the moment the class name is TYPED. It was
+        note: green while that very class was red and finding two real CSS leaks. A grep for a
+        note: test measures that a test was written, never that it passes; build_progress.py's
+        note: vocabulary (exists/absent/grep/ngrep/maxcount/resolve) cannot run a test, so a
+        note: test-backed invariant is NOT expressible as a check. That line is deleted rather
+        note: than kept, and no check on this task points at a test file any more. The two
+        note: ngreps it sat beside measure the artifact and stay.
+        note:
+        note: 2026-08-21 coder — what is actually left, measured not asserted. Items 1, 3, 4, 6
+        note: and 7 are done and their checks are green. Items 2 and 5 are not started, and the
+        note: 14 lines added above were each verified RED before being declared.
+        note:
+        note: Item 2, narrowed by evidence. The GPL-3.0 source-offer half never attached and no
+        note: work is owed on it: ComfyUI/ is absent from disk, gitignored entire (.gitignore
+        note: :127-142), excluded from the deb (build-deb.sh:16) and never deployed. The offer
+        note: attaches on DISTRIBUTION, and we do not distribute it, so LICENSES.md:24 "nothing
+        note: in this stack is copyleft ... in anything shipped" is accurate as written. But it
+        note: never NAMES ComfyUI, so a reader cannot tell the question was considered rather
+        note: than missed -- a vanished notice and a stripped one read identically. Hence
+        note: `grep ComfyUI -- LICENSES.md`: state the non-distribution, the way Swagger UI got
+        note: "RETIRED 2026-08-21, no longer distributed" instead of silence. What remains of
+        note: item 2 is the rebrand: scripts/comfyui.sh (name is in the filename, so `resolve:`
+        note: is the instrument), the pkill fallback at gpu-governor.sh:119, and /studio/comfy/*
+        note: at api.py:2720 -- that last one is a URL a VISITOR sees, which is exactly what
+        note: this task's standard forbids. Note backend/apps/studio/test_comfy_port.py:44 pins
+        note: scripts/comfyui.sh by path and moves with it.
+        note:
+        note: Separately, and not part of this task: with ComfyUI/ absent, the Studio surface
+        note: and tests/studio.mjs cannot run at all right now. The 16/16 in .claude/CLAUDE.md
+        note: is not re-runnable on this tree. Recorded here because it is load-bearing for
+        note: anyone who believes that figure.
+        note:
+        note: Item 5 is ~25 packages, not sympy. An ast scan of every non-vendored module under
+        note: backend/apps (excluding .venv, site-packages, node_modules, stdlib and local
+        note: names) finds application code naming third-party packages directly at these
+        note: counts: fastapi 48, pytest 12, cuda 11, cryptography 10, pydantic 9, httpx 8,
+        note: numpy 7, cupy 6, playwright 4, pyasic 4, gi 4, bs4 3, sympy 3, then torch, peft,
+        note: trl, dotenv, PIL and websockets at 2 each and anyio, datasets, transformers,
+        note: fastmcp, gguf, psutil, rembg and yaml at 1. A sympy-only facade would not satisfy
+        note: item 5, and a sympy-only CHECK would be the one-token-one-file failure above for
+        note: the fifth time. The checks declared are scoped by the verdicts already argued in
+        note: backend/DEPENDENCIES.md rather than by the raw scan: sympy, httpx and fastmcp are
+        note: the three rows that file marks Facade, and every site of each is enumerated on
+        note: its own line. fastapi and pydantic are marked Keep there and are deliberately not
+        note: checked -- the framework is the application's own vocabulary, not a vendor name
+        note: leaking through it.
+        note:
+        note: One contradiction left standing rather than silently resolved: item 5's text above
+        note: puts sympy in the Recreate bucket, while backend/DEPENDENCIES.md:56 argues it as
+        note: "Facade now, recreate incrementally". The checks follow DEPENDENCIES.md because
+        note: that is where the argument was actually made. If Garrett wants Recreate, the
+        note: `exists backend/apps/ravencalc/symbolic.py` check still holds and only what is
+        note: behind that module changes.
 
 ◻ #75 — Secrets, credentials and leak containment
         owner: coder
