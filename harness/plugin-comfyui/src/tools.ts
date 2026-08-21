@@ -1261,15 +1261,17 @@ export function apply(ctx: Context): void {
     defineTool({
       name: 'comfy_queue_prompt',
       description:
-        'Submit the loaded graph to ComfyUI for execution. Returns one of three outcomes and ' +
-        'they are not interchangeable: "accepted" (queued, nothing complained about), ' +
+        'Submit the loaded graph to ComfyUI for execution. Returns one of four outcomes and ' +
+        'they are not interchangeable. Three are the server\'s verdict: "accepted" (queued, ' +
+        'nothing complained about), ' +
         '"accepted_with_dropped_outputs" (queued and running, but some nodes failed ' +
         'validation and the outputs that depended on them will never be produced), or ' +
         '"rejected" (the server refused it and nothing was queued). Read node_errors on the ' +
         'middle outcome; a partial run looks like a success in every other respect. A local ' +
         'pre-check runs first and travels back as local_precheck, but it is advisory and does ' +
         'not stop a submission unless refuse_if_local_invalid is set, in which case the ' +
-        'outcome is "not_submitted". This queues work on a single ' +
+        'fourth outcome "not_submitted" is returned — that one is this plugin refusing, not ' +
+        'ComfyUI, and the graph never left this machine. This queues work on a single ' +
         'contended GPU shared with every other surface on this machine, so it is not free and ' +
         'should not be called speculatively. Follow progress with comfy_stream_status.',
       parameters: {
