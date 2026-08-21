@@ -324,17 +324,28 @@ cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 ```
 
-**1376 pass, 3 fail and 12 skip at `0c0f969`, measured 2026-08-20 from `backend/` in
-114.79 s, with `--collect-only` collecting 1391 in 1.07 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1376 + 3 + 12 = 1391, which is the arithmetic that says
-nothing aborted. **The three failures are real, deliberate and not yours** — they are all
-`apps/test_rack_probes.py`, they say `api.py` probes `contrib/llama.cpp` and
-`contrib/stable-diffusion.cpp` which are not on disk, and they are correct: Garrett moved the
-engines to `references/`, and *"we cannot use code in references its for reference only we must
-rebrand if we want to use it"*. Repointing the probe at `references/` would turn all three
-green while breaking that rule, so they stay red until task #74 lands a rebranded engine tree.
-Red here means chat and image are offline; it is the honest signal and deleting it would be the
-bug.
+**1526 pass, 0 fail and 14 skip at `c847b64`, measured 2026-08-20 from `backend/` in
+126.78 s, with `--collect-only` collecting 1540 in 1.18 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1526 + 14 = 1540, which is the arithmetic that says nothing
+aborted.
+
+**The suite is green, and the three deliberate failures that stood here are gone for the right
+reason.** This paragraph said for two days that `apps/test_rack_probes.py` fails three times
+because `api.py` probes `contrib/llama.cpp` and `contrib/stable-diffusion.cpp`, which are not on
+disk — Garrett having moved the engines to `references/`, and *"we cannot use code in
+references its for reference only we must rebrand if we want to use it"*. That was true and it
+is no longer: `d6b7838` forked both engines under our own names and repointed every consumer,
+which is #74's work, so the probes now find what they look for and all five pass. **Nothing was
+repointed at `references/` to make them green** — that was and remains barred. If those three go
+red again, read them: red there means chat and image are offline, and it is the honest signal.
+
+The published figure before this one was **1376 pass, 3 fail, 12 skip at `0c0f969`**. It is
+left here rather than overwritten because the difference is instructive and not a mystery: of
+the 149 between the two collections, three are the rack probes turning green, thirteen landed
+with #73's four retired checks (`ComfyPortAgreementTests` 4, `PluginRowsMatchRosterTests` 4,
+`RowCoverageTests` 5, plus 2 more skips for the live half of `test_server_ready.py`, which is
+why the skip count moved 12 → 14), and the rest arrived across the commits between. As
+everywhere else in this file: a count moves when tests land, not when a task closes.
 
 **Note the `--ignore` paths changed at `0c0f969` and the old ones matched nothing.** They were
 `apps/reinforce/tests` and `apps/remix/tests`; reinforce is now a studio plugin, so the first is
@@ -342,7 +353,7 @@ bug.
 a path you excluded does not exist — so it stops excluding and you get a collection error
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
-`0c0f969`**. Do not
+`0c0f969`**, **1540 at `c847b64`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s
