@@ -14,7 +14,6 @@
 // while playing nothing at all -- that is #94's shape, eighteen green checks and a surface
 // that was dead on arrival, archived by the timer two minutes later. `readyState >= 3` and a
 // `currentTime` that advances are the two things only real decoded video produces.
-import { dirname, fileURLToPath } from 'node:url';
 import { chromium } from './browser.mjs';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8897';
