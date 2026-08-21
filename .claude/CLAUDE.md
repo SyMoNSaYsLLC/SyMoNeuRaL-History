@@ -336,13 +336,28 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1612 pass, 0 fail and 14 skip at `7079933`, measured 2026-08-21 from `backend/` in
-124.13 s, with `--collect-only` collecting 1626 in 1.17 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1612 + 14 = 1626, which is the arithmetic that says nothing
-aborted. `backend/apps/remix` is **28/28 in 0.42 s** on the same tree, so this tree carries
-**1654 across the two invocations**.
+**1625 pass, 0 fail and 14 skip at `79d139b`, measured 2026-08-21 from `backend/` in
+122.50 s, with `--collect-only` collecting 1639 in 1.22 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1625 + 14 = 1639, which is the arithmetic that says nothing
+aborted. `backend/apps/remix` is **28/28 in 0.43 s** on the same tree, so this tree carries
+**1667 across the two invocations**.
 
-The 32 over the reading below are one file: `apps/test_desktop_client.py`, landed whole by
+The 13 over the reading below it are attributable in full, counted per file rather than
+inferred from the total: **+5** `apps/studio/test_comfy_port.py` (4 → 9,
+`TheEditorMountAndItsCookieAgreeTests` at `79d139b` — the editor's mount prefix and its
+session-cookie path read off `api.py` and `gate.py` and compared, because a rename that moves
+one and not the other breaks the framed editor with nothing in any log to read), **+3**
+`apps/test_build_progress.py` (25 → 28, `AResolveIsEvidenceNotAVerdict` at `8c70d9b`), **+4**
+`apps/test_desktop_client.py` (32 → 36 at `f1e8e51`), **+1** `apps/test_brand_boundary.py`
+(12 → 13 at `e2da088`). 5 + 3 + 4 + 1 = 13. `apps/test_governor_paths.py` and
+`apps/studio/test_studio.py` were both edited in this range and moved the count by nothing —
+the first had its retired-path list and launcher names updated, the second had a URL literal
+changed. That is the usual case and the reason a count is a weak signal on its own.
+
+The previous reading was **1612 pass, 0 fail and 14 skip at `7079933`**, measured 2026-08-21
+in 124.13 s with `--collect-only` collecting 1626, and `apps/remix` 28/28 in 0.42 s.
+
+The 32 over the reading below it are one file: `apps/test_desktop_client.py`, landed whole by
 `7079933` with #94's client. 1580 + 32 = 1612. Three of those 32 were written *after* the
 client had already been declared finished by its checks, and are the more useful part of the
 delta: `TheCapabilityGrantsExactlyWhatThePageUsesTests` exists because Tauri v2 gates its core
@@ -400,7 +415,7 @@ a path you excluded does not exist — so it stops excluding and you get a colle
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
 `0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
-`87c4042`**, **1626 at `7079933`**. Do not
+`87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s

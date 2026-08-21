@@ -270,6 +270,89 @@ conversation, so every number, path and decision you need is stated here.
 
 ---
 
+## 0a-quinquies. Studio is back online: the render UI was forked out of `references/` and renamed (2026-08-21)
+
+**Read this before anything further down that says `ComfyUI/`.** Every path of that shape in
+this document is now historical. The rows in §1 and the studio row in §0a-ter are left as they
+were written — they are dated readings and this repo does not re-date a figure — but the tree
+they describe has moved, so read them for what was measured, not for where anything lives.
+
+### What was wrong
+
+The Studio surface read `offline` on the live rack. `scripts/comfyui.sh` looked for
+`$ROOT/ComfyUI`; the 2026-08 restructure had swept that tree into `references/ComfyUI`, and
+`references/` is read-only material by standing rule — Garrett: *"we cannot use code in
+references its for reference only we must rebrand if we want to use it"* — enforced by
+`backend/apps/test_references_boundary.py`. So there was nothing to start and nothing that
+could legitimately be pointed at.
+
+Worth knowing because it is silent: **a `pkill` that matches nothing succeeds.** The
+governor's `evict()` fallback was `pkill -f 'ComfyUI/main.py'`, which after the move killed
+nothing and reported success. The governor logged an eviction, the card stayed full, and the
+next tenant OOM'd at step 0.
+
+### What is on disk now
+
+| Was | Is |
+|---|---|
+| `ComfyUI/` at the repo root, then `references/ComfyUI` | **`engines/symoneural-ui`** |
+| `scripts/comfyui.sh` | **`scripts/symoneural-ui.sh`** |
+| `/studio/comfy/*` | **`/studio/editor/*`** |
+| `"comfyui"` in `/api/studio/status` | **`"render_ui"`** |
+| `ComfyUI/.venv` | `engines/symoneural-ui/.venv` |
+
+`engines/symoneural-ui` is **derived and gitignored**, exactly like the two forked C++ engines
+beside it. The tracked artefact is **`tools/fork_render_ui.sh`**, which is the provenance: it
+rsyncs from `references/ComfyUI`, rewrites `pyvenv.cfg`'s `command =` line and the `.venv/bin`
+shebangs, and repoints the copied `extra_model_paths.yaml` at the house weight names. Delete
+the tree and re-run the script and you get it back. **The venv is COPIED, not rebuilt** — the
+script says so in its header and nobody should claim otherwise.
+
+It is **GPL-3.0**, unlike the MIT engines, so it carries a source-offer obligation. Nothing is
+distributed, `LICENSES.md` states the non-distribution, and the Studio page still says in prose
+*"ComfyUI's node editor … its editor, not a copy of it"*. That sentence is attribution and
+stays. #74 permits the rebrand and bars quietly dropping the licence; the tests check the
+**URL**, not the page's words, on purpose.
+
+### Measured, 2026-08-21, not asserted
+
+Against the running server at `127.0.0.1:8188`:
+
+- `/system_stats` → ComfyUI **0.33.0**, python **3.13.5**,
+  `NVIDIA GeForce RTX 5070 Ti : cudaMallocAsync`, **15858 MiB**.
+- `/object_info` → **863 node classes**, which matches the figure §1 recorded for the old tree,
+  so the fork lost no node pack.
+- `/object_info/UnetLoaderGGUF` → `['symoneural-image-t5-q8_0.gguf',
+  'symoneural-image-unet-q4_k.gguf']` — the relocated yaml resolves to the one weights
+  directory under house names, with no second copy of the 12 GB.
+- `/studio` reads **ready** on the live rack.
+
+### The two bugs found on the way, both committed
+
+1. **`tools/build_progress.py` was archiving tasks over the top of their own failing checks.**
+   A `resolve: OLD -> NEW` line was assigned straight to the task's state, and the percentage
+   gate below it can only ever *set* `done`, never withhold it — so one satisfied `git mv`
+   silenced eleven red `check:` lines and `archive_tasks.py` moved all **330 lines** of #74 to
+   `review/CLOSED-TASKS.md` two minutes later, stamped *"resolved against the filesystem"*.
+   A `resolve:` is now **evidence, not a verdict**: its answer is kept when it is *not* `done`
+   (it is the only thing on the page that can see a half-finished move), and closing goes
+   through the ordinary all-checks-pass gate. `AResolveIsEvidenceNotAVerdict` in
+   `backend/apps/test_build_progress.py` was watched failing against the old line first.
+   #74 is restored and correctly open.
+2. **`scripts/lib/archive-guard.sh` stopped pruning 9.5 GiB.** Its `_AG_PRUNE_DIRS` named
+   `ComfyUI`, which after the move matched nothing — and an entry that matches nothing prunes
+   nothing *and says nothing about it*, because the summary line only names entries that exist.
+   The credential scan went quietly back to reading the whole tree. Now `engines`.
+
+### What #74 item 2 does NOT cover, deliberately
+
+The `@tool("comfyui")` namespace in `backend/apps/studio/tools_impl/comfy_tool.py` is
+unchanged. Those are names the **model** sees in its tool registry, not a URL a visitor reads,
+and `apps/studio/test_studio.py` asserts the whole namespace map. Moving them is a change to
+what the agent is told and wants its own commit.
+
+---
+
 ## 0a-ter. `SYM_*` -> `SYMONEURAL_*` and `X-Sym-Token` -> `X-Symoneural-Token` — DONE, with a legacy fallback in exactly the places named below (2026-08-20)
 
 Task #19. Three commits: `a833fda` (the one live defect), `74dee33` (the env promotion shim),
