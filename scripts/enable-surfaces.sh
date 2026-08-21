@@ -197,15 +197,16 @@ fi
 
 # ## The gated surfaces this script deliberately does not switch
 #
-# Seven env-gated surfaces have no arm here. Asic gained one above, because its rack row was in
+# Eight env-gated surfaces have no arm here. Asic gained one above, because its rack row was in
 # exactly the state Studio's was -- SubUnit `asicminer` (backend/api.py:1655) told an operator
 # to "set SYMONEURAL_ASIC_ENABLED=1 ... and SYMONEURAL_ASIC_TOKEN" and nothing sanctioned would
 # do it. News then joined the list -- it was always in this state and the test could not see
 # it, because the test's regex looked for the `SYM_` prefix and news was the first surface
 # named `SYMONEURAL_*` from the start. Discovery joined it on the day it landed, caught by the
-# test below before its first commit rather than found later on a rack. The seven are not
-# oversights and each is a different reason, so they are named rather than left as a silence
-# someone has to re-derive:
+# test below before its first commit rather than found later on a rack. Live joined it the
+# same way and for a reason unlike any of the others -- it is the one surface that is already
+# on. The eight are not oversights and each is a different reason, so they are named rather
+# than left as a silence someone has to re-derive:
 #
 #   accounts   -- the key is not a token. `enabled()` (apps/accounts/__init__.py:233) wants
 #                 SYMONEURAL_SESSION_SECRET of at least MIN_SECRET_CHARS=32 (:139), and minting a
@@ -243,9 +244,24 @@ fi
 #                 and `stats`, need neither the switch nor a token; the half that is dark
 #                 needs playwright installed and a provider key, and this script can supply
 #                 neither. Same rule as voice -- the page comes first.
+#   live       -- it is ALREADY ON, uniquely among the togglable surfaces, so there is nothing
+#                 here to enable. enabled() (apps/live/routes.py) defaults true and writes the
+#                 argument out: every other gated surface costs something the moment it is
+#                 switched on -- the GPU, an outbound fetcher, a miner -- while this one serves
+#                 files out of a directory that is empty unless OBS has been configured to
+#                 write into it. Default-off had no safety to offer there; it could only
+#                 produce a tab that was broken on arrival. So the only key worth writing for
+#                 this surface is SYMONEURAL_LIVE_ENABLED=0, and this script's verb is enable:
+#                 a tool named for turning surfaces on is the wrong place for the one
+#                 default-on surface to be turned off, and an arm that wrote =1 would be a
+#                 command that reports success and changes nothing -- exactly the half-fix
+#                 test_every_argument_the_parser_accepts_writes_something exists to catch.
+#                 There is no token to mint either: the video path holds no credential at all.
+#                 The bridge's password lives in apps/live/symoneural-live.env at mode 600
+#                 (see that package's README), which is a file this script must never touch.
 #
-# apps/test_enable_surfaces.py pins this list in both directions: it fails if a fourteenth
-# gated switch appears, if one of these seven quietly gains an arm, and if a name is dropped
+# apps/test_enable_surfaces.py pins this list in both directions: it fails if a fifteenth
+# gated switch appears, if one of these eight quietly gains an arm, and if a name is dropped
 # from this block. Adding an arm means deciding here first, not discovering it from a rack row.
 
 install -d -m 0755 "$DROPIN_DIR"

@@ -98,7 +98,7 @@ class RouteIsReachable(unittest.TestCase):
                         "can never match")
 
     def test_the_router_count_is_unchanged(self):
-        """Twelve `include_router` calls, and adding a plain route must not move that.
+        """Fourteen `include_router` calls, and adding a plain route must not move that.
 
         The count is the cheap proxy for "no surface was mounted or unmounted by accident".
         It is recorded in `.claude/HANDOVER.md`; if this fails, one of the two is wrong and
@@ -123,11 +123,19 @@ class RouteIsReachable(unittest.TestCase):
         Then 12 -> 13 for `apps/news` at `/api/news` -- the live ticker's collector.
         One router carrying one read-only endpoint, and the bar itself is drawn by
         `site/ui.js` rather than by a page of its own, so again this moved by one.
+
+        Then 13 -> 14 for `apps/live` at `/api/live` -- the OBS stream. One router carrying
+        all five of its routes including the segment bytes, and the page at `/livestack/live`
+        is a plain `@app.get` like `/exp`'s, so this moved by one and not by two. Worth
+        knowing why it is one and not two: the video is served BY that router
+        (`/api/live/hls/{name}`) rather than by a static mount, because `site/` is a staging
+        directory and a file written there 404s for every visitor until `deploy.sh` runs --
+        a live stream that only appears after a deploy is not a live stream.
         """
         calls = [n for n in ast.walk(TREE)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "include_router"]
-        self.assertEqual(len(calls), 13)
+        self.assertEqual(len(calls), 14)
 
 
 class ValidatorRejectsJunk(unittest.TestCase):

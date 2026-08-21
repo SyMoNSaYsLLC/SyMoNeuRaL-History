@@ -173,6 +173,27 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# SyMoNeuRaL Live at /livestack/live. The fourth delegation to be added for the same
+	# reason as the three above, which is the whole argument for writing it down each time:
+	# @sections matches `/livestack` EXACTLY, so it does NOT cover the child, and
+	# `handle { file_server }` below looks for /var/www/symoneural/livestack/live, does not
+	# find it, and 404s the page WITHOUT ASKING THE API -- while 127.0.0.1:8800 answers it
+	# perfectly. apps/test_caddy_delegation.py went red on exactly this and is the only
+	# reason it was caught before he opened the tab.
+	#
+	#   * `path` EXACT, like @exp. There is no subtree: the manifests and MPEG-TS segments
+	#     are served from /api/live/hls/*, already delegated by the /api block above. A
+	#     wildcard here would claim addresses nothing serves.
+	#   * No `flush_interval -1`. site/live.js POLLS /api/live/state and /api/live/vods on a
+	#     5 s timer; it holds no stream open, so there is nothing here to unbuffer. Video
+	#     arrives as ordinary segment GETs, not as a socket. Copying the directive across
+	#     from @studio would read as "this streams" to the next person, and it does not --
+	#     the streaming is HLS, which is precisely a design that needs no long-lived hop.
+	@live path /livestack/live
+	handle @live {
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# The two retired page names. `backend/api.py` redirects /tuner.html -> /streamer.html
 	# and /tuner-watch.html -> /streamer-watch.html, and its comment states why they get a
 	# redirect when /api/tuner/* deliberately does not: *"a bookmark is permanent"* and,

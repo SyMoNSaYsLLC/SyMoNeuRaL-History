@@ -1,17 +1,17 @@
 """`scripts/enable-surfaces.sh` -- does the operator tool know about every gated surface?
 
-Written because it did not. Thirteen `SYMONEURAL_<NAME>_ENABLED` switches gate the serving path,
+Written because it did not. Fourteen `SYMONEURAL_<NAME>_ENABLED` switches gate the serving path,
 and the script that exists to set exactly those could set four. Studio was one of the seven it
 could not, which is why the live rack showed Studio `offline` with no sanctioned command an
 operator could run to change it: not a bug in Studio, a gap in the tool. With the `studio)` and
-`asic)` arms added the split is six switchable to seven unswitchable, which is the count
-`test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_seven` holds it at. This
+`asic)` arms added the split is six switchable to eight unswitchable, which is the count
+`test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_eight` holds it at. This
 docstring said "eleven ... six" until 2026-08-20 and named a test that had already been
 renamed twice; the figures below are re-measured at `ba523b0`, and the rule that catches this
 class of rot is that a docstring naming a test must name one that exists.
 
-Thirteen switches, not thirteen apps: the thirteen are read across fourteen packages and the
-mapping is neither one-to-one nor onto. `SYMONEURAL_ASIC_ENABLED` is checked in `asicminer` and `voice`,
+Fourteen switches, not fourteen apps: the fourteen are read across fifteen packages and
+the mapping is neither one-to-one nor onto. `SYMONEURAL_ASIC_ENABLED` is checked in `asicminer` and `voice`,
 `SYMONEURAL_MINING_ENABLED` in `asicminer` and `cryptominer`, `SYMONEURAL_GATEWAY_ENABLED` in `gateway` and
 `settlement`. `gated_surfaces()` below counts switches because switches are what the script
 writes; no assertion here depends on a package count.
@@ -120,11 +120,11 @@ class EnableSurfacesTests(unittest.TestCase):
                 self.assertIn(flag, self.writable,
                               f"`{arg}` sets WANT_{flag} and nothing ever reads it")
 
-    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_seven(self):
+    def test_the_surfaces_this_script_cannot_switch_are_exactly_the_known_eight(self):
         """The gap this file exists to make visible, pinned in both directions.
 
-        This was six, then five, six again, and is now seven -- and the way NEWS and DISCOVERY
-        joined it is the point of the test. ASIC came off because its rack row was in exactly the
+        This was six, then five, six again, seven, and is now eight -- and the way NEWS,
+        DISCOVERY and LIVE joined it is the point of the test. ASIC came off because its rack row was in exactly the
         state Studio\'s had been -- SubUnit `asicminer` (api.py:1655) telling an operator to set
         SYMONEURAL_ASIC_ENABLED and SYMONEURAL_ASIC_TOKEN with nothing sanctioned that would do it
         -- and the earlier version of this docstring got its reason wrong: it said ASIC "points at
@@ -150,13 +150,24 @@ class EnableSurfacesTests(unittest.TestCase):
         this test, and the resolution was to write the reason into the script, not to widen
         the literal below and move on.
 
+        LIVE is the second name caught on the way in, and it is the first whose reason is
+        not "the surface is not finished" but "the switch would write a key that changes
+        nothing an operator wants changed". `apps/live/routes.py:enabled()` defaults ON,
+        uniquely among the togglable apps, and its docstring gives the argument: the other
+        surfaces cost the GPU or an outbound fetcher when switched on, while this one serves
+        files out of a directory that is empty unless OBS has been configured to write into
+        it. So there is nothing for `enable-surfaces.sh live` to enable. The only key worth
+        writing is `SYMONEURAL_LIVE_ENABLED=0`, and this script's verb is enable -- a tool
+        named for turning surfaces on should not be the place the one default-on surface gets
+        turned off. That reason is in the script with the others.
+
         Each reason is recorded in the script rather than here, and
         `test_the_script_records_why_each_unswitchable_one_has_no_arm` below asserts the
-        record still names them. This test fails when a fourteenth gated surface appears with
-        no switch AND when one of these seven quietly gains one, and either way the fix is to
+        record still names them. This test fails when a fifteenth gated surface appears with
+        no switch AND when one of these eight quietly gains one, and either way the fix is to
         make the decision there rather than discover it from a rack row reading `offline`."""
-        known_unswitchable = {"ACCOUNTS", "DISCOVERY", "EXP", "MINING", "NEWS", "REINFORCE",
-                              "VOICE"}
+        known_unswitchable = {"ACCOUNTS", "DISCOVERY", "EXP", "LIVE", "MINING", "NEWS",
+                              "REINFORCE", "VOICE"}
         self.assertEqual(self.gated - self.writable, known_unswitchable)
         self.assertEqual(self.writable - self.gated, set(),
                          "the script writes an ENABLED key no app reads")
@@ -173,7 +184,7 @@ class EnableSurfacesTests(unittest.TestCase):
         head = "# ## The gated surfaces this script deliberately does not switch"
         self.assertIn(head, self.text, "the record of why is gone, or its heading changed")
         block = self.text.split(head, 1)[1].split("\ninstall -d", 1)[0]
-        for surface in sorted({"ACCOUNTS", "DISCOVERY", "EXP", "MINING", "NEWS",
+        for surface in sorted({"ACCOUNTS", "DISCOVERY", "EXP", "LIVE", "MINING", "NEWS",
                                "REINFORCE", "VOICE"}):
             with self.subTest(surface=surface):
                 self.assertIn(surface.lower(), block,
