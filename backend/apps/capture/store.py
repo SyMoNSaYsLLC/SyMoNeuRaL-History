@@ -4,12 +4,28 @@ One file per app per UTC day. Appends are serialised with `flock`, because the
 callers are concurrent: `symoneural_dj` backgrounds every playlist as its own task
 and two jobs finishing together would otherwise interleave inside one line.
 
-A note on why the lock is not optional. O_APPEND makes the *offset update* atomic, and
-a single short `write()` usually lands whole -- but "usually" is doing the work in that
-sentence, and a torn line is not a corrupt record, it is a corrupt FILE: every reader
-of a JSONL store parses line by line, so one interleaved write costs the two records
-that collided and every tool that later chokes on them. The lock is cheap and the
-failure it prevents is silent.
+A note on why the lock is here. A torn line is not a corrupt record, it is a corrupt
+FILE: every reader of a JSONL store parses line by line, so one interleaved write costs
+the two records that collided and every tool that later chokes on them.
+
+This paragraph used to say the lock "is not optional" and that O_APPEND alone leaves a
+write that only "usually" lands whole. **Measured 2026-08-20, and that overstated it on
+this box.** With both `flock` calls removed, 8 concurrent processes appending 20 records
+each produced 160 intact, parseable lines at 100 B, at 100 KB and at 4 MB per record.
+Linux holds the inode lock across a buffered write to a regular file, so `O_APPEND` plus
+a single `write()` is already atomic against other writers on ext4, at any size.
+
+The lock stays, and the honest reason is portability rather than ext4: that guarantee is
+the kernel's implementation, not POSIX, and it is specifically **not** true over NFS,
+where `O_APPEND` is emulated client-side and concurrent appends genuinely do interleave.
+`root` is a caller-supplied path -- `settings.capture_dir` -- so nothing here gets to
+assume the filesystem underneath it. The lock is cheap and the failure it prevents is
+silent.
+
+What this means for testing: `test_capture.py`'s `ConcurrencyTests` asserts the outcome
+and CANNOT fail when the lock is removed on this box. Its docstring says so rather than
+letting its name imply a guard it does not provide. Do not "fix" that test by adding
+workers; the measurement above is why it would not help.
 """
 from __future__ import annotations
 
