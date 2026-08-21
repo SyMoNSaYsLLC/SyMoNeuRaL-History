@@ -407,7 +407,24 @@ def parse_tasks(text: str, root: Path | None = None) -> list[dict]:
             r = RESOLVE.match(line)
             if r:
                 old, new = r.group(1), r.group(2)
-                t["state"] = disk_state(old, new, root)
+                # A resolve is EVIDENCE, not a verdict. It used to read
+                # `t["state"] = disk_state(...)` unconditionally, and because the
+                # percentage rule below can only ever *set* `done` and never withhold it,
+                # one satisfied `resolve:` closed the task no matter how many `check:`
+                # lines were still red. #74 was archived that way on 2026-08-21 with
+                # `ngrep /studio/comfy -- backend/api.py` failing on three occurrences and
+                # `grep ComfyUI -- LICENSES.md` never written: a `git mv` of the launcher
+                # satisfied the move, and forty-odd unmet checks went with it. CLAUDE.md
+                # names this exact failure -- "a check that can pass without the work being
+                # finished is worse than no check, since it will archive the task".
+                #
+                # So the resolve may hold a task OPEN (a half-done move is real information
+                # and `disk_state` is the only thing that can see it), and may never close
+                # one. Closing goes through the same all-checks-pass gate as everything
+                # else, using the two derived checks appended just below.
+                moved = disk_state(old, new, root)
+                if moved != "done":
+                    t["state"] = moved
                 t["from_disk"] = True
                 # A move is two facts: the destination arrived and the source left. Counting
                 # them separately is what makes a half-done move read as 50% instead of

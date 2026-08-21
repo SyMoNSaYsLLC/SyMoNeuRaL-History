@@ -702,3 +702,77 @@ class PromotionIsAnExitFromTheIntakeSurface(unittest.TestCase):
         self.assertNotIn("INTAKE.md not present", page,
                          "the healthy end state must not be reported as a missing file — they "
                          "are different conditions and one of them needs somebody to act")
+
+
+class AResolveIsEvidenceNotAVerdict(unittest.TestCase):
+    """A `resolve:` line may hold a task open. It may not close one on its own.
+
+    `tools/build_progress.py` used to read the disk for a `resolve: OLD -> NEW` line and
+    assign the answer straight to `t["state"]`. Because the percentage rule underneath it can
+    only ever *set* `done` and never withhold it, a satisfied move closed the task no matter
+    how many `check:` lines were still red.
+
+    That is not hypothetical. On 2026-08-21 a `git mv scripts/comfyui.sh
+    scripts/symoneural-ui.sh` -- one item out of five on task #74 -- satisfied that task's
+    single `resolve:` line, and `archive_tasks.py` moved all 330 lines of it to
+    `review/CLOSED-TASKS.md` two minutes later with the verdict "resolved against the
+    filesystem". Eleven of its forty-six checks were failing at the time, including
+    `ngrep /studio/comfy -- backend/api.py` against three live occurrences.
+
+    CLAUDE.md names this species directly: "Choose checks where 100% genuinely means done --
+    a check that can pass without the work being finished is worse than no check, since it
+    will archive the task." A resolve that *overrides* checks is the strongest possible form
+    of that bug, because it does not merely pass vacuously, it silences everything else.
+    """
+
+    def _parse(self, block: str, root: Path):
+        sys.path.insert(0, str(ROOT / "tools"))
+        try:
+            import build_progress
+        finally:
+            sys.path.pop(0)
+        return build_progress.parse_tasks(block, root)
+
+    def test_a_satisfied_move_does_not_close_a_task_with_a_failing_check(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "new.sh").write_text("moved\n")     # resolve: destination arrived
+            # `old.sh` deliberately absent -> the move reads as done on the disk.
+            block = ("◻ #1 — a move plus an unmet requirement\n"
+                     "        resolve: old.sh -> new.sh\n"
+                     "        check: exists never-written.md\n")
+            t = self._parse(block, root)[0]
+
+            self.assertTrue(t["from_disk"],
+                            "the row still answers from the filesystem; only the verdict moved")
+            self.assertEqual(
+                [ok for _, ok in t["checks"]], [True, True, False],
+                "expected the two derived move checks green and the declared check red")
+            self.assertLess(t["pct"], 100)
+            self.assertNotEqual(
+                t["state"], "done",
+                "a satisfied `resolve:` closed a task whose `check:` line is red -- this is "
+                "the #74 archive bug, and archive_tasks.py will move the block on the next "
+                "two-minute tick")
+
+    def test_a_resolve_alone_still_closes_a_task_that_declares_nothing_else(self):
+        """The fix must not break the case the feature exists for."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "new.sh").write_text("moved\n")
+            block = "◻ #2 — a plain move\n        resolve: old.sh -> new.sh\n"
+            t = self._parse(block, root)[0]
+            self.assertEqual(t["pct"], 100)
+            self.assertEqual(t["state"], "done")
+
+    def test_a_half_done_move_reads_as_in_progress_not_as_pending(self):
+        """`disk_state` is the only thing that can see a move that has started. Keeping its
+        answer when it is NOT `done` is why the fix demotes rather than deletes it."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "old.sh").write_text("still here\n")
+            (root / "new.sh").write_text("arrived\n")
+            block = "◻ #3 — a half-done move\n        resolve: old.sh -> new.sh\n"
+            t = self._parse(block, root)[0]
+            self.assertEqual(t["state"], "in progress")
+            self.assertEqual(t["pct"], 50, "destination arrived, source did not leave")
