@@ -871,7 +871,7 @@ class StateCommandTests(unittest.TestCase):
         obj = {"enabled": False, "workspace": {}, "tools": 26, "max_steps": 8,
                "inference": {"backends": {"llama": {"up": False,
                                                     "detail": "socket closed"}}},
-               "comfyui": {}, "lease": {}, "workflows": []}
+               "render_ui": {}, "lease": {}, "workflows": []}
         self.cli.api_json = lambda path, **kw: (200, obj)
 
         with self.subTest(mode="plain"):

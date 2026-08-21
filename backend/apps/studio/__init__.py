@@ -4,7 +4,7 @@ Three exports, and they are the whole contract with `api.py`:
 
     from apps import symoneuralstudio as studio
     app.include_router(studio.router, prefix="/api/studio", tags=["studio"])   # before static
-    app.include_router(studio.ui_router, prefix="/studio/comfy")               # before static
+    app.include_router(studio.ui_router, prefix="/studio/editor")               # before static
     Unit(**studio.status())          # the rack row -- same rule as voice: page first
     "studio": (60, 900)              # already present in api.py's _RATE_SUGGESTED
 
@@ -26,9 +26,9 @@ Three exports, and they are the whole contract with `api.py`:
 editor, with snap-to-grid, typed port wiring, a searchable palette, link-release node
 suggestions, per-node progress and inline results. Reimplementing that in vanilla JS was the
 original plan and it was the wrong plan: it would have been a worse editor maintained by us
-instead of a better one maintained upstream. `ui_router` proxies it at `/studio/comfy/` and
+instead of a better one maintained upstream. `ui_router` proxies it at `/studio/editor/` and
 the Studio page frames it. Its frontend computes `api_base` from `location.pathname`, so it
-addresses `/studio/comfy/api/...` on its own with no URL rewriting -- that is a supported
+addresses `/studio/editor/api/...` on its own with no URL rewriting -- that is a supported
 sub-path deployment, not a trick.
 
 ## The gate

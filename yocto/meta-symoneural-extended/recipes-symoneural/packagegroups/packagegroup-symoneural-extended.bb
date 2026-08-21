@@ -38,5 +38,5 @@ RDEPENDS:packagegroup-symoneural-extended = "\
 # ComfyUI itself has no recipe here and that is deliberate rather than unfinished. It is a
 # third-party clone with its own .venv and 223 packages including torch 2.13.0+cu130 built
 # for sm_120; packaging that as recipes would mean maintaining a CUDA Python stack in
-# bitbake against a driver the target may not have. scripts/comfyui.sh manages it from the
+# bitbake against a driver the target may not have. scripts/symoneural-ui.sh manages it from the
 # checkout, and the image ships that script.

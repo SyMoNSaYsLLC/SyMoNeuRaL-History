@@ -44,7 +44,7 @@ COOKIE = "symoneural_studio"
 # exactly the seven-aborted-requests failure `tests/studio.mjs` was written to catch. Read
 # both, mint only `COOKIE`, so an open session heals on its next entry-document load.
 COOKIE_LEGACY = "sym_studio"
-COOKIE_PATH = "/studio/comfy"
+COOKIE_PATH = "/studio/editor"
 
 
 def enabled() -> bool:
@@ -85,7 +85,7 @@ def present_token(headers, query, cookies=None) -> str | None:
     The cookie form exists for exactly one thing, and an earlier version of this docstring
     said it was "worse" than the query string, which was written before the editor was framed
     and turned out to be a claim about a situation that does not arise. The proxied ComfyUI
-    editor at `/studio/comfy/` loads its own assets by *relative* URL -- `assets/index-*.js`,
+    editor at `/studio/editor/` loads its own assets by *relative* URL -- `assets/index-*.js`,
     `materialdesignicons.min.css`, `api/userdata/user.css` -- from inside an iframe. Those
     requests carry no header (no JavaScript of ours issues them) and no query string (the
     token was on the iframe's URL, not on theirs), so every one of them 401'd and the editor
@@ -100,7 +100,7 @@ def present_token(headers, query, cookies=None) -> str | None:
 
     It is also `HttpOnly`, and that flag wants stating narrowly: it keeps *this copy* out of
     `document.cookie` and it protects nothing about the token itself. The same secret is on the
-    iframe's own URL -- `page.js:373` sets `frame.src = '/studio/comfy/?token=' + token()` --
+    iframe's own URL -- `page.js:373` sets `frame.src = '/studio/editor/?token=' + token()` --
     so it sits in `location.search` of the framed document, readable by any script ComfyUI
     loads there, its own frontend bundle and any custom node alike. `page.js:274` puts it on
     image URLs the same way, and the page holds a copy in `sessionStorage` besides. Anything

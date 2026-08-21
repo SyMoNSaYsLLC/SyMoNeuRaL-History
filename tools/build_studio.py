@@ -7,13 +7,13 @@
 
 The Studio is the local agent (tool-calling, over llama.cpp) plus the image bench (ComfyUI,
 behind the GPU governor), on one page. The bench is **ComfyUI's own node editor**, in an
-iframe, served same-origin through `/studio/comfy/` by a reverse proxy in
+iframe, served same-origin through `/studio/editor/` by a reverse proxy in
 `backend/apps/studio/routes.py`.
 
 That last point is the largest single decision in this app, so it is written down here as well
 as in the routes: **no node canvas was written for this page.** An earlier draft had one --
 snap-to-grid, SVG wires, port-type checking, about a thousand lines. Then
-`comfyui_frontend_package 1.49.6` turned out to be installed in `ComfyUI/.venv`, which is the
+`comfyui_frontend_package 1.49.6` turned out to be installed in `engines/symoneural-ui/.venv`, which is the
 same production editor ComfyUI itself serves, and it computes its API base as
 `location.pathname.split('/').slice(0,-1).join('/')` -- meaning sub-path hosting is a supported
 configuration upstream, not a hack. A hand-written canvas would have been a permanently worse

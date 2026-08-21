@@ -429,7 +429,7 @@ class EditorCookieTests(unittest.TestCase):
     def test_the_cookie_is_scoped_to_the_editor_only(self):
         """If this path ever widened to `/`, the operator token would be attached to every
         request to the public site, including pages served to anyone."""
-        self.assertEqual(gate.COOKIE_PATH, "/studio/comfy")
+        self.assertEqual(gate.COOKIE_PATH, "/studio/editor")
 
 
 class PageTests(unittest.TestCase):

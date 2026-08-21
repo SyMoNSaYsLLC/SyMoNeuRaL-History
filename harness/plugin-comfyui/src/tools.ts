@@ -1329,7 +1329,7 @@ export function apply(ctx: Context): void {
         schema: { type: 'json' },
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
       },
-      // No isConcurrencySafe: this takes the card. `scripts/comfyui.sh` leases the GPU per
+      // No isConcurrencySafe: this takes the card. `scripts/symoneural-ui.sh` leases the GPU per
       // render, and this tool is a tenant of that lease exactly as a browser visitor is — it
       // deliberately makes no `gpu-governor.sh` call of its own, which would be a second
       // claimant on a mutex it does not own.

@@ -2689,11 +2689,11 @@ app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
 # TWO routers, because the surface genuinely lives in two places:
 #
 #   /api/studio/*    the agent (SSE), the tool registry, the queue, the render proxy
-#   /studio/comfy/*  a same-origin reverse proxy in front of ComfyUI's shipped frontend
+#   /studio/editor/*  a same-origin reverse proxy in front of ComfyUI's shipped frontend
 #
 # The second one is not an API and does not belong under /api: it serves an HTML application
 # and its assets. `comfyui_frontend_package` derives its own API base from `location.pathname`,
-# so mounted at /studio/comfy/ it addresses /studio/comfy/api/... by itself and no path is
+# so mounted at /studio/editor/ it addresses /studio/editor/api/... by itself and no path is
 # rewritten anywhere -- FastAPI still owns every routing decision, which is the rule.
 #
 # `ops/Caddyfile` DOES need a delegation block for /studio, and this is the /overview class of
@@ -2718,7 +2718,7 @@ app.include_router(sigils.router, prefix="/api/sigils", tags=["sigils"],
 # 2026-08-20 -- a deliberate pre-launch state, not a cleared posture (request ledger R-98, held,
 # being re-scoped per surface). This is the strongest candidate on the list when it is.
 app.include_router(studio.router, prefix="/api/studio", tags=["studio"])
-app.include_router(studio.ui_router, prefix="/studio/comfy", include_in_schema=False)
+app.include_router(studio.ui_router, prefix="/studio/editor", include_in_schema=False)
 
 # ---- the plugin runtime ----------------------------------------------------
 # Reads are open, mutations need SYMONEURAL_EXP_ENABLED=1 and SYMONEURAL_EXP_TOKEN. The split is narrower

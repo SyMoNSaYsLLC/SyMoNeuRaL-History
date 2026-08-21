@@ -104,7 +104,7 @@ declare module '@deepseek-ai/cordis' {
  * failure, or the discovery probe exceeded `timeoutMs`.
  *
  * Distinct from {@link ComfyDiscoveryError} on purpose. This one means *nothing is listening
- * there*, which on this box is the ordinary state — `scripts/comfyui.sh` starts ComfyUI on
+ * there*, which on this box is the ordinary state — `scripts/symoneural-ui.sh` starts ComfyUI on
  * demand and stops it again — and is not a fault. The other means something answered and was
  * not ComfyUI, which always is.
  *
@@ -282,7 +282,7 @@ export class ComfyBridge extends Service {
    * `ctx.comfyui` has already had this run.
    *
    * **It does not throw when ComfyUI is down.** On this box ComfyUI is started on demand by
-   * `scripts/comfyui.sh` and stopped again, so absent is its normal state; rejecting here
+   * `scripts/symoneural-ui.sh` and stopped again, so absent is its normal state; rejecting here
    * would unload the plugin and take `ctx.comfyui` away exactly when a caller wants to ask
    * whether ComfyUI is up. Unreachable is reported on `comfyui/unreachable` and left as a
    * `stats` of `undefined`, which is a reading a consumer can render honestly. A

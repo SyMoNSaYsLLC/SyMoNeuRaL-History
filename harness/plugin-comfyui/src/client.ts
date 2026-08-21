@@ -304,7 +304,7 @@ function binaryEventName(event: ComfyBinaryEventId): string {
  * reasoning attached, which can become config the day someone needs them to differ.
  *
  * Ten attempts over exponential backoff capped at 15 s is about two and a half minutes of
- * retrying — long enough to ride out a ComfyUI restart (`scripts/comfyui.sh` waits on a VRAM
+ * retrying — long enough to ride out a ComfyUI restart (`scripts/symoneural-ui.sh` waits on a VRAM
  * drain, so a restart here is tens of seconds, not milliseconds), short enough that a socket
  * pointed at a dead port gives up and says so instead of retrying until the process exits.
  */
@@ -692,7 +692,7 @@ export class ComfyClient {
    * `/interrupt`, which catches `json.JSONDecodeError` and carries on. Two neighbouring
    * routes, two different tolerances.
    *
-   * This is what `scripts/comfyui.sh stop` POSTs before waiting on a VRAM drain. The process
+   * This is what `scripts/symoneural-ui.sh stop` POSTs before waiting on a VRAM drain. The process
    * exiting is not the memory coming back, and the next tenant OOMs at step 0 — see
    * `.claude/CLAUDE.md`. Calling this does not perform that wait.
    */

@@ -130,8 +130,8 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
-	# SyMoNeuRaL Studio: the agent page at /studio, and ComfyUI's own node editor
-	# reverse-proxied by FastAPI at /studio/comfy/*.
+	# SyMoNeuRaL Studio: the agent page at /studio, and the render UI's own node editor
+	# reverse-proxied by FastAPI at /studio/editor/*.
 	#
 	# Same shape and same reason as @sections above -- a DELEGATION, not a rewrite. Neither
 	# path is a file on disk, so without this block file_server looks for
@@ -139,8 +139,8 @@ symoneural.com, www.symoneural.com {
 	# Against localhost the API answers directly and this block is not exercised at all, so
 	# run tests/frontend.mjs against production after changing it.
 	#
-	# `handle` covers the subtree, which is what /studio/comfy/* needs: one page open pulls
-	# dozens of assets and opens a WebSocket at /studio/comfy/ws. The upgrade needs no
+	# `handle` covers the subtree, which is what /studio/editor/* needs: one page open pulls
+	# dozens of assets and opens a WebSocket at /studio/editor/ws. The upgrade needs no
 	# directive here -- that is the reason this file is Caddy and not Apache (see 1. above).
 	#
 	# flush_interval -1 because /api/studio/agent streams the agent's reasoning as SSE and

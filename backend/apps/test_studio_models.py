@@ -110,7 +110,7 @@ class RouteIsReachable(unittest.TestCase):
         to add a router without someone typing the new number and meaning it.
 
         Then 9 -> 11, both in the commit that added the Studio, and both deliberate: one
-        router at `/api/studio` and one at `/studio/comfy`. The second is the odd one and is
+        router at `/api/studio` and one at `/studio/editor`. The second is the odd one and is
         the reason this docstring says eleven rather than ten -- it serves ComfyUI's own node
         editor as an HTML application, so it does not belong under `/api`, and it is a
         separate `include_router` rather than a sub-prefix because a router's prefix cannot

@@ -13,7 +13,7 @@
  *    a value that came back over the wire. The site's whole argument is that its readouts are
  *    real; a placeholder LED here would be the one dishonest pixel on it.
  * 2. **The node editor is not ours.** It is ComfyUI's own frontend in an iframe, served
- *    same-origin at /studio/comfy/. This file does not reimplement a canvas, does not proxy its
+ *    same-origin at /studio/editor/. This file does not reimplement a canvas, does not proxy its
  *    events and does not decorate it. It gives it the token and gets out of the way.
  */
 'use strict';
@@ -95,11 +95,17 @@
       active && backends[active] ? backends[active].url
         : (inf.detail || (backends.llamacpp && backends.llamacpp.detail) || '')));
 
-    var comfy = s.comfyui || {};
-    strip.appendChild(cell('ComfyUI',
+    /* The down branch prints the command that fixes it, so this cell has to name a script
+     * that exists. It named `scripts/comfyui.sh` for a day after the fork renamed that file
+     * to `scripts/symoneural-ui.sh`, which is worse than an unhelpful cell: an operator who
+     * pastes it gets "No such file or directory" and reasonably concludes the page is
+     * stale about more than this. `tests/studio.mjs` asserts the label; nothing asserts the
+     * hint, which is why it drifted. */
+    var comfy = s.render_ui || {};
+    strip.appendChild(cell('Render UI',
       comfy.up ? 'up' : 'down',
       comfy.up ? 'st-on' : 'st-warn',
-      comfy.up ? comfy.url : 'scripts/comfyui.sh start'));
+      comfy.up ? comfy.url : 'scripts/symoneural-ui.sh start'));
 
     strip.appendChild(cell('Tools', s.tools, s.tools ? 'st-on' : 'st-off',
       (s.workflows || []).length + ' stock workflow'
@@ -379,7 +385,7 @@
     if (frame.getAttribute('src')) return;   // never remount: it would reset the user's graph
     /* The token rides in the query string because an iframe cannot carry a header. The proxy
      * strips it before forwarding, so it never reaches ComfyUI's access log. */
-    frame.src = '/studio/comfy/?token=' + encodeURIComponent(token());
+    frame.src = '/studio/editor/?token=' + encodeURIComponent(token());
     frame.hidden = false;
     absent.hidden = true;
   }

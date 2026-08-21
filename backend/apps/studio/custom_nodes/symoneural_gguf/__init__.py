@@ -78,7 +78,7 @@ def _gguf_module(name: str):
     """
     # Matched by *shape of path*, not by an absolute path computed from `__file__`.
     #
-    # This pack no longer lives inside the ComfyUI tree: ComfyUI/ is gitignored in full, so
+    # This pack no longer lives inside the render UI tree: engines/ is gitignored in full, so
     # the source of truth is `backend/apps/studio/custom_nodes/symoneural_gguf/`
     # and `scripts/symoneural-ui.sh start` symlinks it into `custom_nodes/`. The previous version
     # computed the sibling as `Path(__file__).resolve().parent.parent / "ComfyUI-GGUF"`, and

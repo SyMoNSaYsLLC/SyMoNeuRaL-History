@@ -645,8 +645,8 @@ def cmd_state(args) -> int:
             if up else c("down", AMBER))
         if not up and b.get("detail") and args.why:
             row("", c(str(b["detail"]), DIM))
-    cu = obj.get("comfyui") or {}
-    row("comfyui", c("up", GREEN) if cu.get("up") else c("down", AMBER))
+    cu = obj.get("render_ui") or {}
+    row("render ui", c("up", GREEN) if cu.get("up") else c("down", AMBER))
     lease = obj.get("lease") or {}
     row("gpu lease", c("held", AMBER) if lease.get("holding") else c("not held", GREEN))
     row("workflows", ", ".join(obj.get("workflows") or []) or "none")

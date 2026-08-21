@@ -50,7 +50,11 @@ cells.length === 6 ? ok('the status strip has six cells') : no('strip cells', St
 const byTitle = Object.fromEntries(cells);
 byTitle['Surface'] === 'on' ? ok('surface reads on') : no('surface', byTitle['Surface']);
 byTitle['Tools'] === '26' ? ok('26 tools reported') : no('tools', byTitle['Tools']);
-byTitle['ComfyUI'] === 'up' ? ok('ComfyUI reads up') : no('comfyui', byTitle['ComfyUI']);
+// 'Render UI', not 'ComfyUI': the cell reads the `render_ui` key of /api/studio/status, which
+// is an unauthenticated public payload and so is held to the same naming standard as the URL.
+// The *prose* on the page still names ComfyUI on purpose -- see page.html's bench comment;
+// that is attribution, not branding, and GPL-3.0 is the reason it stays.
+byTitle['Render UI'] === 'up' ? ok('the render UI reads up') : no('render ui', byTitle['Render UI']);
 byTitle['GPU lease'] === 'not held' ? ok('lease reads not held at rest')
                                     : no('lease', byTitle['GPU lease']);
 
@@ -66,7 +70,7 @@ wf.length >= 1 ? ok('workflow select populated', wf.join(', ')) : no('no workflo
 
 // --- the embedded editor ---
 const src = await page.locator('#st-bench-frame').getAttribute('src');
-src && src.startsWith('/studio/comfy/?token=') ? ok('bench iframe points at the proxy', src.split('=')[0] + '=…')
+src && src.startsWith('/studio/editor/?token=') ? ok('bench iframe points at the proxy', src.split('=')[0] + '=…')
                                                 : no('iframe src', String(src));
 try {
   const frame = await (await page.locator('#st-bench-frame').elementHandle()).contentFrame();
@@ -74,7 +78,7 @@ try {
   const title = await frame.title();
   ok('ComfyUI editor booted inside the iframe', `title=${JSON.stringify(title)}`);
   const nodes = await frame.evaluate(async () => {
-    const r = await fetch('/studio/comfy/api/object_info');
+    const r = await fetch('/studio/editor/api/object_info');
     return Object.keys(await r.json()).length;
   });
   nodes > 800 ? ok('the editor reaches its own API through the proxy', `${nodes} node classes`)

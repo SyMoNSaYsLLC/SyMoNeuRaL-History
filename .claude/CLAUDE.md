@@ -498,14 +498,14 @@ send you hunting a bug you already fixed.
 **`tests/studio.mjs` is the fourth suite and is deliberately not part of `frontend.mjs`.** That
 one runs against any instance and asserts what every visitor sees; this one needs the Studio
 surface switched on and it **takes the card for a real render**, so pointing it at the deployed
-service would queue a job on the live GPU. Start ComfyUI and your own API, then run it:
+service would queue a job on the live GPU. Start the render UI and your own API, then run it:
 
 ```bash
-bash scripts/comfyui.sh start                       # loopback :8188, no lock held
+bash scripts/symoneural-ui.sh start                       # loopback :8188, no lock held
 cd backend && SYMONEURAL_STUDIO_ENABLED=1 SYMONEURAL_STUDIO_TOKEN=devtest \
     python3 -m uvicorn api:app --port 8876          # a spare port, not the service
 SYMONEURAL_STUDIO_TOKEN=devtest node tests/studio.mjs http://127.0.0.1:8876
-bash scripts/comfyui.sh stop                        # /free, THEN SIGTERM -- see below
+bash scripts/symoneural-ui.sh stop                        # /free, THEN SIGTERM -- see below
 ```
 
 **16/16 passed, re-measured 2026-08-20 at `d3a4040`, and unread since `0c0f969`**, including a 1024x1024 FLUX-schnell
@@ -525,11 +525,11 @@ is real for a visitor too. The state document claimed for two days that this sui
 because ComfyUI "has no venv and no torch" — it has both (torch **2.13.0+cu130**, sm_120
 verified by a real CUDA probe, 223 packages), and the suite had simply never been invoked.
 
-**Stop ComfyUI with `scripts/comfyui.sh stop`, never by killing the pid.** The script POSTs
+**Stop the render UI with `scripts/symoneural-ui.sh stop`, never by killing the pid.** The script POSTs
 `/free` and then waits on `gpu-governor.sh drain` — the process exiting is not the memory coming
 back, and the next tenant OOMs at step 0. Measured here: a render peaks at **13,114 MiB of
 16,303** and returns to 666 MiB in **4.1 s**, against the governor's 60 s timeout and 1500 MiB
-floor. `comfyui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
+floor. `symoneural-ui.sh` deliberately does **not** hold the lock for its process lifetime; the lease
 is taken per render and released after the drain, which is the rule above applied.
 
 **`tests/streamer_guide.mjs` is the fifth suite, and it was dead for a fortnight because

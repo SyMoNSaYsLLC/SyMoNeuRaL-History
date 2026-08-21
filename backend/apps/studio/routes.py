@@ -4,7 +4,7 @@ Two routers, because they live at two different places in the URL space and `api
 `site/` at `/` last, so both must be declared above that mount:
 
     /api/studio/*      router      the agent, the tools, the queue, the state
-    /studio/comfy/*    ui_router   a same-origin reverse proxy in front of ComfyUI's own editor
+    /studio/editor/*    ui_router   a same-origin reverse proxy in front of ComfyUI's own editor
 
 ## Why there is a reverse proxy here and not a hand-written canvas
 
@@ -18,7 +18,7 @@ inline image results.
 
 It is also designed to be hosted under a sub-path: its `api_base` is computed as
 `location.pathname.split('/').slice(0, -1).join('/')`, and its asset references are relative.
-Served at `/studio/comfy/`, it addresses `/studio/comfy/api/...` by itself, with no URL
+Served at `/studio/editor/`, it addresses `/studio/editor/api/...` by itself, with no URL
 rewriting anywhere in this file. That is a supported deployment mode, not a hack.
 
 So what is written here is the part that is genuinely ours: the lease discipline, the agent,
@@ -28,7 +28,7 @@ the tool registry, and the chrome around the editor.
 
 A render started inside the embedded editor goes straight to ComfyUI and would never touch
 `scripts/gpu-governor.sh` -- FLUX would take 7 GB of a 15.9 GiB card while `chat` or `train`
-sat blocked on `acquire`. Every `POST /studio/comfy/api/prompt` is therefore routed through
+sat blocked on `acquire`. Every `POST /studio/editor/api/prompt` is therefore routed through
 `_KEEPER`, which holds one `comfy.lease()` for as long as any job started through this proxy
 is still in flight, then runs the drain-and-release cycle. The agent's own path
 (`tools_impl/comfy_tool.execute`) already does this; the editor now shares it.
@@ -345,7 +345,7 @@ async def state(request: Request) -> JSONResponse:
         "tools": len(registry.names()),
         "workflows": workflows.names(),
         "inference": llm_state,
-        "comfyui": {**comfy_state, "editor": "/studio/comfy/"},
+        "render_ui": {**comfy_state, "editor": "/studio/editor/"},
         "lease": _KEEPER.snapshot(full=privileged),
         "max_steps": agent.MAX_STEPS,
         # What a `permissions: "ask"` or `"deny"` run will stop on. Published here, without a
@@ -426,7 +426,7 @@ async def get_workflow(name: str, request: Request) -> JSONResponse:
     """The prompt graph, plus the same graph run back through `graph.from_prompt`.
 
     Not for the editor, and nothing in this repo calls it. The embedded editor is ComfyUI's own
-    frontend in an iframe (`page.html:169`), proxied at `/studio/comfy/`; it loads graphs through
+    frontend in an iframe (`page.html:169`), proxied at `/studio/editor/`; it loads graphs through
     ComfyUI's own API and has never seen this route or the canvas format -- `graph.py`'s header
     says the same thing from the other end. Neither `page.js` nor `tests/studio.mjs` fetches it.
 
@@ -671,7 +671,7 @@ async def events(ws: WebSocket) -> None:
     """Relay ComfyUI's event stream to a browser that is not running the editor.
 
     Nothing in this repo consumes this yet -- the chrome reads `/api/studio/state` and the
-    editor iframe drives its own socket at `/studio/comfy/ws`. It is here for a client that
+    editor iframe drives its own socket at `/studio/editor/ws`. It is here for a client that
     wants the event stream without the editor, and its frame protocol is tested rather than
     assumed (`test_studio.py`, `EventRelayTests`).
 
@@ -711,7 +711,7 @@ async def events(ws: WebSocket) -> None:
 
 
 # ---------------------------------------------------------------------------
-# /studio/comfy/*  --  the editor, reverse-proxied
+# /studio/editor/*  --  the editor, reverse-proxied
 # ---------------------------------------------------------------------------
 #: Headers a proxy must not forward. `content-length` because httpx recomputes it and a stale
 #: value truncates the body; the rest are per-connection by RFC 9110 §7.6.1.
@@ -824,7 +824,7 @@ async def _forward(method: str, path: str, body: bytes | None,
 async def editor_socket(ws: WebSocket) -> None:
     """Pump the editor's own event socket both ways.
 
-    The editor connects to `<api_base>/ws?clientId=…`, which resolves to `/studio/comfy/ws`.
+    The editor connects to `<api_base>/ws?clientId=…`, which resolves to `/studio/editor/ws`.
     Its client id is passed through untouched -- that is what makes ComfyUI route this user's
     progress events to this user's editor, and substituting one here would silently blank
     every progress ring in the UI.
@@ -881,7 +881,7 @@ async def editor(path: str, request: Request) -> Response:
     """Everything else the editor asks for, forwarded to 127.0.0.1:8188 unchanged.
 
     No URL rewriting happens here and none is needed: the frontend derives its API base from
-    `location.pathname`, so under `/studio/comfy/` it already addresses `/studio/comfy/api/…`
+    `location.pathname`, so under `/studio/editor/` it already addresses `/studio/editor/api/…`
     and every asset reference is relative. The one request that is *not* passed through is
     `api/prompt`, which is where the GPU lease is imposed.
     """
@@ -912,7 +912,7 @@ def _mint_cookie(request: Request, response: Response) -> None:
     401'd, seven of them, and the canvas never appeared. A cookie is the only credential a
     browser attaches to requests it issues on its own behalf.
 
-    Scoped to `/studio/comfy`, so it is not sent to `/api/studio` and not to any other page on
+    Scoped to `/studio/editor`, so it is not sent to `/api/studio` and not to any other page on
     this site. `HttpOnly`, so page script cannot read the operator token back out of it -- the
     page already has its own copy in `sessionStorage` and does not need this one. `SameSite=Strict`,
     because nothing off-origin has any business loading the editor. No `Max-Age` and no

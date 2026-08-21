@@ -135,7 +135,7 @@ export interface ComfyPluginConfig {
  * Config schema and defaults.
  *
  * The default endpoint is `http://127.0.0.1:8188`, which is not a guess either: it is the
- * address `scripts/comfyui.sh` binds in this repository, and the loopback-only binding is the
+ * address `scripts/symoneural-ui.sh` binds in this repository, and the loopback-only binding is the
  * reason no credential appears anywhere in this config. If this ever needs to reach a remote
  * ComfyUI, the transport question and the authentication question arrive together and neither
  * should be answered by quietly widening a default.

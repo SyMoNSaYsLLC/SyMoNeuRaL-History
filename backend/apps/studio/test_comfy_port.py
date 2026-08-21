@@ -129,6 +129,117 @@ class ComfyPortAgreementTests(unittest.TestCase):
         self.assertIsNone(why, why)
 
 
+# ---------------------------------------------------------------------------
+# The second address pair in this surface, and the same failure shape.
+#
+# `api.py` MOUNTS the editor proxy at a URL prefix. `gate.py` scopes the editor's
+# session cookie to a path. Nothing makes them agree, and they are edited by
+# different kinds of change -- a rebrand touches the mount, a gate fix touches the
+# cookie -- which is the gap this whole module exists to close.
+#
+# The failure mode if they drift is the worst kind: nothing errors. A cookie scoped
+# to `/studio/comfy` is simply never sent to `/studio/editor`, because that is what
+# `Path=` means and the browser is behaving correctly. The entry document loads (it
+# carries the token in its own query string), the editor's own relative sub-resource
+# requests then arrive with no header, no query string and no cookie, and every one
+# of them 401s. The iframe renders a frame and then nothing -- which is #94's
+# signature exactly, and `gate.py`'s own docstring records that this precise thing
+# already happened once here: "seven aborted requests and a timeout waiting for the
+# canvas".
+#
+# So this is read off both files rather than asserted as a literal. A hard-coded
+# `assertEqual(COOKIE_PATH, "/studio/editor")` goes green the moment somebody edits
+# the constant, which is the half of the rename that is easy to remember; the half
+# that gets forgotten is the mount two thousand lines away in `api.py`.
+API = ROOT / "backend" / "api.py"
+GATE = ROOT / "backend" / "apps" / "studio" / "gate.py"
+
+#: What the editor's URL prefix may not contain. This is task #74 item 2's standard --
+#: the upstream name must not appear in a URL a visitor sees -- enforced here rather
+#: than only in `apps/test_brand_boundary.py` because the mount is what makes the URL
+#: real, and a page can be clean while the address bar is not.
+FORBIDDEN_IN_PREFIX = re.compile(r"comfy", re.IGNORECASE)
+
+
+def _mount_prefix(api_text: str) -> str:
+    """The prefix `api.py` mounts `studio.ui_router` at. Raises if the mount is gone.
+
+    Matched on `ui_router` specifically, not on any `include_router`: the same file
+    mounts the agent router at `/api/studio`, and a pattern loose enough to catch
+    either would happily compare the cookie path against the wrong one of the two.
+    """
+    m = re.search(r'include_router\(\s*studio\.ui_router\s*,\s*prefix\s*=\s*"([^"]*)"',
+                  api_text)
+    if m is None:
+        raise AssertionError(
+            f"{API} no longer mounts studio.ui_router with a literal prefix=; this "
+            "comparison has stopped comparing anything and must be rewritten, not "
+            "deleted")
+    return m.group(1)
+
+
+def _cookie_path(gate_text: str) -> str:
+    """The path `gate.py` scopes the editor cookie to. Raises if the constant is gone."""
+    m = re.search(r'^COOKIE_PATH\s*=\s*"([^"]*)"', gate_text, re.M)
+    if m is None:
+        raise AssertionError(
+            f"{GATE} no longer declares COOKIE_PATH at module scope; this comparison "
+            "has stopped comparing anything and must be rewritten, not deleted")
+    return m.group(1)
+
+
+def _prefix_disagreement(api_text: str, gate_text: str) -> str | None:
+    """None if the mount and the cookie address the same place, else why not."""
+    mount = _mount_prefix(api_text)
+    cookie = _cookie_path(gate_text)
+    if mount.rstrip("/") != cookie.rstrip("/"):
+        return (f"api.py mounts the editor at {mount!r} but gate.py scopes its cookie to "
+                f"{cookie!r}. The browser will not send that cookie to that mount, so the "
+                "framed editor's own asset requests arrive unauthenticated and 401 -- the "
+                "iframe will render and then stay empty, with nothing in any log to read.")
+    return None
+
+
+class TheEditorMountAndItsCookieAgreeTests(unittest.TestCase):
+    def test_the_comparison_catches_a_half_finished_rename(self):
+        """Rename the mount, forget the cookie: the exact way this drifts."""
+        why = _prefix_disagreement(
+            'app.include_router(studio.ui_router, prefix="/studio/editor")\n',
+            'COOKIE_PATH = "/studio/comfy"\n')
+        self.assertIsNotNone(why, "a half-finished rename was reported as agreeing")
+        self.assertIn("/studio/comfy", why)
+
+    def test_a_trailing_slash_is_not_a_disagreement(self):
+        """`Path=/studio/editor` and `Path=/studio/editor/` scope the same subtree, and
+        failing on that would be a false positive teaching people to ignore this test."""
+        self.assertIsNone(_prefix_disagreement(
+            'app.include_router(studio.ui_router, prefix="/studio/editor")\n',
+            'COOKIE_PATH = "/studio/editor/"\n'))
+
+    def test_a_parse_that_stopped_parsing_is_an_error_not_a_pass(self):
+        with self.assertRaises(AssertionError):
+            _mount_prefix("app.include_router(studio.router, prefix='/api/studio')\n")
+        with self.assertRaises(AssertionError):
+            _cookie_path("COOKIE_LEGACY = 'sym_studio'\n")
+
+    def test_the_mount_and_the_cookie_agree_on_disk(self):
+        why = _prefix_disagreement(API.read_text(), GATE.read_text())
+        self.assertIsNone(why, why)
+
+    def test_the_editor_url_does_not_carry_the_upstream_name(self):
+        """#74 item 2. The engine was forked to `symoneural-ui`; the URL a visitor reads
+        must move with it. This is the check `PROJECT-TASKS.md` declares as
+        `ngrep /studio/comfy -- backend/api.py`, asserted here as well because a grep on
+        one file cannot see that the cookie, the iframe `src` and the proxy all agree."""
+        for label, value in (("api.py mount", _mount_prefix(API.read_text())),
+                             ("gate.py cookie path", _cookie_path(GATE.read_text()))):
+            self.assertNotRegex(
+                value, FORBIDDEN_IN_PREFIX,
+                f"{label} is {value!r}, which puts the upstream render UI's name in a URL "
+                "a visitor sees. Rebranding the tree and leaving the address is the half "
+                "of the rename nobody looks at.")
+
+
 if __name__ == "__main__":
     # At the END of the file, with backend/ on the path: see the block at the foot of
     # apps/test_streamer_migration.py for what a misplaced one of these hides.

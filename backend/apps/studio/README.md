@@ -64,7 +64,7 @@ bash scripts/symoneural-ui.sh start        # the bench; loopback :8188, no GPU l
 
 The original plan had one — snap-to-grid, SVG wires, port-type checking, roughly a thousand
 lines. It was deleted before it shipped, because `comfyui_frontend_package 1.49.6` is installed
-in `ComfyUI/.venv` and is the same production editor ComfyUI serves itself: searchable palette,
+in `engines/symoneural-ui/.venv` and is the same production editor ComfyUI serves itself: searchable palette,
 typed wiring, link-release node suggestions, per-node progress, inline results, 863 node
 classes on this box. It also computes its API base as
 
@@ -194,7 +194,7 @@ a render, not by reading the catalogue.
 
 It lives **in this repo**, not in the ComfyUI tree, because `ComfyUI/` is gitignored in full
 (8.5 GB, carries its own `.git`). `scripts/symoneural-ui.sh start` symlinks it into
-`ComfyUI/custom_nodes/` on every start, so deleting and recloning ComfyUI loses nothing of ours.
+`engines/symoneural-ui/custom_nodes/` on every start, so deleting and recloning ComfyUI loses nothing of ours.
 
 Moving it there broke it once, immediately and instructively: the module located its sibling
 `ComfyUI-GGUF` with `Path(__file__).resolve()`, and `.resolve()` walks *through* the symlink —
