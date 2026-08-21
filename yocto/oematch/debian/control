@@ -1,0 +1,19 @@
+Source: oematch
+Section: devel
+Priority: optional
+Maintainer: SymonSays LLC <garrett@symoneural.com>
+Build-Depends: debhelper-compat (= 13), dh-python, python3-all, python3-setuptools, pybuild-plugin-pyproject
+Standards-Version: 4.6.2
+Homepage: https://symoneural.com
+Rules-Requires-Root: no
+
+Package: oematch
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, binutils, dpkg, git
+Recommends: xz-utils, zstd
+Description: Match software artifacts to OpenEmbedded/Yocto layers
+ Fingerprints a .deb, tarball, wheel, ELF binary or directory using
+ package metadata, ELF NEEDED entries, manifests and printable strings,
+ then ranks recipes from every layer in the OpenEmbedded Layer Index
+ that provide the same libraries, tools and dependencies. Emits a
+ bblayers list and DEPENDS stub. No disassembly or decompilation.

@@ -1,0 +1,18 @@
+# dpkg-buildpackage and pybuild artefacts. Every one of these was sitting in the tree
+# when it was moved out of the gitignored references/ directory, so the first commit
+# nearly carried a built package into version control.
+build/
+.pybuild/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# debhelper's per-build scratch. `debian/oematch/` is the staging root the .deb is
+# packed from -- a whole second copy of the installed tree.
+debian/.debhelper/
+debian/oematch/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.debhelper
+debian/*.log
