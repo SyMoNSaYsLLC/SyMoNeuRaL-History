@@ -193,8 +193,8 @@
     <p class="shead">In your browser</p>
     <h2>Code we send to every visitor</h2>
     <p class="sub">
-      Two third-party files are served from this site as-is. Their licence texts are served
-      alongside them, at the links below, rather than only being described here.
+      One third-party file is served from this site as-is. Its licence text is served
+      alongside it, at the link below, rather than only being described here.
     </p>
 
     <div class="tw">
@@ -204,26 +204,6 @@
           <tr><th>Component</th><th>Where</th><th>Licence</th><th>Notice</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td class="k">Swagger UI 5.17.14</td>
-            <td>the API reference at <a href="/docs">/docs</a></td>
-            <td class="num"><span class="badge ok">Apache-2.0</span></td>
-            <td>swagger-ui &mdash; Copyright 2020-2021 SmartBear Software Inc.
-                <a href="/swagger-ui-LICENSE.txt">LICENSE</a> &middot;
-                <a href="/swagger-ui-NOTICE.txt">NOTICE</a></td>
-          </tr>
-          <tr>
-            <td class="k">core-js</td>
-            <td>embedded inside the Swagger UI bundle</td>
-            <td class="num"><span class="badge ok">MIT</span></td>
-            <td>Covered by the Swagger UI NOTICE above.</td>
-          </tr>
-          <tr>
-            <td class="k">normalize.css v7.0.0</td>
-            <td>embedded inside the Swagger UI bundle</td>
-            <td class="num"><span class="badge ok">MIT</span></td>
-            <td>Covered by the Swagger UI NOTICE above.</td>
-          </tr>
           <tr>
             <td class="k">hls.js (light build)</td>
             <td>the stream player on <a href="/streamer.html">/streamer.html</a></td>
@@ -241,6 +221,18 @@
       build of VLC specifically on licensing: VLC is GPLv2, and shipping a GPL blob inside
       these pages would place the whole site under that licence. That is the kind of decision
       this page exists to be honest about.
+    </p>
+
+    <p class="tnote">
+      <b>There used to be a second row here.</b> The API reference at <a href="/docs">/docs</a>
+      was rendered by a third-party documentation UI &mdash; 1.6&nbsp;MB of Apache-2.0 bundle
+      served from this webroot, with its <code>LICENSE</code> and <code>NOTICE</code> beside
+      it. It is now rendered by our own code, reading the same
+      <a href="/openapi.json">openapi.json</a> the service already publishes, so that bundle
+      and its notice files are no longer distributed and the obligation no longer applies.
+      The row is described here instead of deleted, because an attribution that quietly
+      disappears looks exactly like one that was stripped, and this page is worth more if it
+      also records what it stopped shipping.
     </p>
   </div>
 </section>

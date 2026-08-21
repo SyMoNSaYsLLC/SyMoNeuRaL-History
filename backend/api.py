@@ -3,9 +3,9 @@
 
 Four surfaces, and they are not alike:
 
-    POST /api/chat    GPU. Proxied to llama-server, streamed token by token.
-    POST /api/image   GPU. Evicts chat, runs stable-diffusion.cpp, returns a PNG url.
-    POST /api/ravencalc  CPU. RavenCalc/SymPy. Exact, and never queues behind anything.
+    POST /api/chat    GPU. Proxied to symoneural-llm, streamed token by token.
+    POST /api/image   GPU. Evicts chat, runs symoneural-diffuse, returns a PNG url.
+    POST /api/ravencalc  CPU. RavenCalc, exact symbolic. Never queues behind anything.
     POST /api/remix   GPU indirectly -- a client of the chat surface, not its own tenant.
     GET  /api/status  Per-unit state for the rack display on the home page.
 
@@ -46,7 +46,6 @@ from fastapi import (Depends, FastAPI, HTTPException, Request, Response, WebSock
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -1485,32 +1484,290 @@ DOCS_HEADER = """
 """
 
 
+# The API reference renderer. Ours, and inline on purpose -- see `api_reference()` below.
+#
+# Every class is prefixed `ar-`. That is not tidiness: three separate bugs in this repo have
+# come from generic class names colliding across components -- `.bar` collapsed the site
+# header to 7px sitewide, `.live` styled the control board legend from the nav badge, and
+# `#console .sub` outranked `.mod .sub` and rendered a footnote larger than the sentence
+# above it. This page loads `/symoneural.css` and `/rack-detail.css`, so an unprefixed
+# `.method` or `.path` here is that bug waiting to be written again.
+#
+# No `text-overflow`. Long paths, long descriptions and long schemas wrap or fold into a
+# `<details>`; they are never trimmed. An ellipsis on a reference page is data loss with
+# extra steps, and every such rule was deliberately deleted from the site's CSS after
+# `built on Qwen2.5-7B-Instruct` -- an Apache-2.0 condition -- was cut to `...7B-Ins...`.
+API_REFERENCE_STYLE = """
+<style>
+.ar-wrap{max-width:1080px;margin:0 auto;padding:0 22px 80px}
+.ar-note{color:var(--dim);margin:18px 0 26px;max-width:78ch;line-height:1.55}
+.ar-group{margin:34px 0 0}
+.ar-group>h2{font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);
+  font-weight:640;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.ar-op{border:1px solid var(--line);border-radius:9px;margin:9px 0;background:var(--panel)}
+.ar-op>summary{cursor:pointer;padding:11px 14px;display:flex;gap:11px;align-items:baseline;
+  flex-wrap:wrap;list-style:none}
+.ar-op>summary::-webkit-details-marker{display:none}
+.ar-op>summary:hover{background:rgba(255,255,255,.028)}
+.ar-verb{font:600 11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.07em;
+  padding:3px 8px;border-radius:5px;border:1px solid var(--line);flex:none}
+.ar-get{color:#7fd1b9;border-color:#2f5f52}
+.ar-post{color:#8fb8f0;border-color:#33507d}
+.ar-put,.ar-patch{color:#e0c07a;border-color:#6b5a2e}
+.ar-delete{color:#e59a9a;border-color:#7a3f3f}
+.ar-ws{color:#c9a2e8;border-color:#5d3f74}
+.ar-path{font:500 13.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+  word-break:break-word;overflow-wrap:anywhere}
+.ar-sum{color:var(--dim);font-size:13.5px;line-height:1.6;flex:1 1 220px;min-width:0}
+.ar-body{padding:4px 14px 16px;border-top:1px solid var(--line)}
+.ar-body p{line-height:1.6;max-width:80ch}
+.ar-body h3{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);
+  margin:18px 0 7px;font-weight:640}
+.ar-tbl{width:100%;border-collapse:collapse;font-size:13.5px;display:block;overflow-x:auto}
+.ar-tbl th,.ar-tbl td{text-align:left;padding:6px 12px 6px 0;vertical-align:top;
+  border-bottom:1px solid var(--line);line-height:1.55}
+.ar-tbl th{color:var(--dim);font-weight:600;font-size:11.5px;letter-spacing:.04em;
+  text-transform:uppercase;white-space:nowrap}
+.ar-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+.ar-req{color:#e59a9a;font-size:11px;letter-spacing:.04em}
+.ar-pre{background:var(--sunk,rgba(0,0,0,.28));border:1px solid var(--line);border-radius:7px;
+  padding:11px 13px;overflow-x:auto;font:400 12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,
+  monospace;white-space:pre;margin:0}
+.ar-fold{margin:9px 0 0}
+.ar-fold>summary{cursor:pointer;color:var(--dim);font-size:12.5px;padding:4px 0}
+.ar-count{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+.ar-fail{border:1px solid #7a3f3f;border-radius:9px;padding:14px 16px;color:#e59a9a;
+  line-height:1.6}
+@media (max-width:560px){.ar-op>summary{gap:8px}.ar-sum{flex-basis:100%}}
+</style>
+"""
+
+# Reads `/openapi.json` -- the same document `/api/status` and the CLI read -- and renders it.
+# There is no build step and no data of its own: if the schema changes, this page changes,
+# because it has nothing else to draw from.
+API_REFERENCE_SCRIPT = """
+<script>
+(function () {
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+
+  // $ref resolution, depth-capped. A schema may legitimately reference itself -- a tree
+  // node with children of its own type is the ordinary case -- so an uncapped walk hangs
+  // the tab rather than failing visibly. Six levels renders every schema this API has.
+  function resolve(node, doc, depth) {
+    if (!node || typeof node !== "object" || depth > 6) return node;
+    if (node.$ref) {
+      var parts = String(node.$ref).replace(/^#\\//, "").split("/");
+      var at = doc;
+      for (var i = 0; i < parts.length; i++) {
+        at = at && at[parts[i]];
+      }
+      return at ? resolve(at, doc, depth + 1) : { type: "object" };
+    }
+    return node;
+  }
+
+  function typeOf(schema, doc, depth) {
+    var s = resolve(schema, doc, depth || 0);
+    if (!s) return "any";
+    if (s.anyOf || s.oneOf) {
+      return (s.anyOf || s.oneOf).map(function (m) {
+        return typeOf(m, doc, (depth || 0) + 1);
+      }).join(" | ");
+    }
+    if (s.enum) return s.enum.map(function (v) { return JSON.stringify(v); }).join(" | ");
+    if (s.type === "array") return typeOf(s.items, doc, (depth || 0) + 1) + "[]";
+    if (s.type) return s.format ? s.type + " (" + s.format + ")" : s.type;
+    if (s.properties) return "object";
+    return "any";
+  }
+
+  // Fields are listed in full, never sampled. A reference that shows "the first few"
+  // properties is the same failure as a truncated attribution: the reader cannot tell
+  // whether what they need is missing or absent.
+  function fieldTable(schema, doc) {
+    var s = resolve(schema, doc, 0);
+    if (!s || !s.properties) return "";
+    var required = s.required || [];
+    var rows = Object.keys(s.properties).map(function (name) {
+      var p = resolve(s.properties[name], doc, 0) || {};
+      var need = required.indexOf(name) >= 0
+        ? '<span class="ar-req">required</span>' : "";
+      var extra = [];
+      if (p.minimum !== undefined) extra.push("min " + p.minimum);
+      if (p.maximum !== undefined) extra.push("max " + p.maximum);
+      if (p.maxLength !== undefined) extra.push("max length " + p.maxLength);
+      if (p.default !== undefined) extra.push("default " + JSON.stringify(p.default));
+      return "<tr><td class=\\"ar-mono\\">" + esc(name) + "</td>"
+        + '<td class="ar-mono">' + esc(typeOf(s.properties[name], doc, 0)) + "</td>"
+        + "<td>" + need + "</td>"
+        + "<td>" + esc(p.description || "")
+        + (extra.length ? " <span class=\\"ar-count\\">" + esc(extra.join(" \\u00b7 "))
+            + "</span>" : "")
+        + "</td></tr>";
+    });
+    if (!rows.length) return "";
+    return '<table class="ar-tbl"><thead><tr><th>Field</th><th>Type</th><th></th>'
+      + "<th>Notes</th></tr></thead><tbody>" + rows.join("") + "</tbody></table>";
+  }
+
+  function paramTable(params, doc) {
+    if (!params || !params.length) return "";
+    var rows = params.map(function (p) {
+      return "<tr><td class=\\"ar-mono\\">" + esc(p.name) + "</td>"
+        + "<td>" + esc(p.in) + "</td>"
+        + '<td class="ar-mono">' + esc(typeOf(p.schema, doc, 0)) + "</td>"
+        + "<td>" + (p.required ? '<span class="ar-req">required</span>' : "") + "</td>"
+        + "<td>" + esc(p.description || "") + "</td></tr>";
+    });
+    return "<h3>Parameters</h3>"
+      + '<table class="ar-tbl"><thead><tr><th>Name</th><th>In</th><th>Type</th><th></th>'
+      + "<th>Notes</th></tr></thead><tbody>" + rows.join("") + "</tbody></table>";
+  }
+
+  function schemaOf(content, doc) {
+    if (!content) return null;
+    var key = Object.keys(content)[0];
+    return key ? content[key].schema : null;
+  }
+
+  function render(doc) {
+    var root = document.getElementById("ar-root");
+    var groups = {}, order = [], total = 0;
+
+    Object.keys(doc.paths || {}).sort().forEach(function (path) {
+      var item = doc.paths[path];
+      Object.keys(item).forEach(function (verb) {
+        if (["get", "post", "put", "patch", "delete", "head", "options"]
+            .indexOf(verb) < 0) return;
+        var op = item[verb];
+        var tag = (op.tags && op.tags[0]) || path.split("/")[2] || "root";
+        if (!groups[tag]) { groups[tag] = []; order.push(tag); }
+        groups[tag].push({ path: path, verb: verb, op: op });
+        total++;
+      });
+    });
+
+    if (!total) {
+      root.innerHTML = '<div class="ar-fail">The schema loaded but declares no '
+        + "operations. That is a fault in the API, not in this page.</div>";
+      return;
+    }
+
+    var html = ['<p class="ar-count">' + total + " operations across "
+      + order.length + ' groups, read from <span class="ar-mono">/openapi.json</span> '
+      + "at " + esc(new Date().toLocaleTimeString()) + ".</p>"];
+
+    order.sort().forEach(function (tag) {
+      html.push('<section class="ar-group"><h2>' + esc(tag) + "</h2>");
+      groups[tag].forEach(function (entry) {
+        var op = entry.op, doc_ = doc;
+        var body = [];
+        if (op.description) {
+          body.push("<p>" + esc(op.description) + "</p>");
+        }
+        body.push(paramTable(op.parameters, doc_));
+
+        var reqSchema = schemaOf(op.requestBody && op.requestBody.content, doc_);
+        if (reqSchema) {
+          var t = fieldTable(reqSchema, doc_);
+          body.push("<h3>Request body</h3>" + (t ||
+            '<p class="ar-count">Free-form; see the schema below.</p>'));
+          body.push('<details class="ar-fold"><summary>Raw request schema</summary>'
+            + '<pre class="ar-pre">'
+            + esc(JSON.stringify(resolve(reqSchema, doc_, 0), null, 2))
+            + "</pre></details>");
+        }
+
+        var responses = op.responses || {};
+        var codes = Object.keys(responses).sort();
+        if (codes.length) {
+          body.push("<h3>Responses</h3>");
+          body.push('<table class="ar-tbl"><thead><tr><th>Code</th><th>Meaning</th>'
+            + "</tr></thead><tbody>"
+            + codes.map(function (code) {
+                return "<tr><td class=\\"ar-mono\\">" + esc(code) + "</td><td>"
+                  + esc((responses[code] || {}).description || "") + "</td></tr>";
+              }).join("")
+            + "</tbody></table>");
+          codes.forEach(function (code) {
+            var rs = schemaOf((responses[code] || {}).content, doc_);
+            if (!rs) return;
+            body.push('<details class="ar-fold"><summary>Response schema for '
+              + esc(code) + "</summary>"
+              + (fieldTable(rs, doc_) || "")
+              + '<pre class="ar-pre">'
+              + esc(JSON.stringify(resolve(rs, doc_, 0), null, 2))
+              + "</pre></details>");
+          });
+        }
+
+        html.push('<details class="ar-op"><summary>'
+          + '<span class="ar-verb ar-' + entry.verb + '">'
+          + esc(entry.verb.toUpperCase()) + "</span>"
+          + '<span class="ar-path">' + esc(entry.path) + "</span>"
+          + '<span class="ar-sum">' + esc(op.summary || "") + "</span>"
+          + '</summary><div class="ar-body">' + body.join("") + "</div></details>");
+      });
+      html.push("</section>");
+    });
+
+    root.innerHTML = html.join("");
+  }
+
+  fetch("/openapi.json", { headers: { accept: "application/json" } })
+    .then(function (r) {
+      if (!r.ok) throw new Error("/openapi.json answered " + r.status);
+      return r.json();
+    })
+    .then(render)
+    .catch(function (err) {
+      // Says what actually failed. A reference page that renders an empty list on a fetch
+      // error reads as "this API has no endpoints", which is a worse lie than an error.
+      document.getElementById("ar-root").innerHTML =
+        '<div class="ar-fail">Could not read <span class="ar-mono">/openapi.json</span>: '
+        + esc(err && err.message ? err.message : err)
+        + ". The reference is generated from the running service, so this means the "
+        + "service is not answering -- not that the reference is missing.</div>";
+    });
+})();
+</script>
+"""
+
+
 @app.get("/docs", include_in_schema=False)
-async def docs() -> HTMLResponse:
-    """Swagger UI, with its assets served from this box.
+async def api_reference() -> HTMLResponse:
+    """The API reference. Ours, rendered from `/openapi.json`.
 
-    FastAPI's default points at a CDN. On a site whose entire argument is that nothing
-    leaves the machine, loading the documentation UI from someone else's server would be a
-    small but real contradiction -- so the bundle is served from our own webroot.
+    This was a third-party documentation UI wearing our palette: 1.6 MB of vendor bundle in
+    the webroot, a FastAPI helper that embedded it, and a page that still carried the
+    vendor's name in three asset URLs a visitor could read. Task #74 item 6 -- the API
+    reference is a visitor-facing page and is now a SyMoNeuRaL surface, rendered by the code
+    above from the schema below it.
+
+    The vendor is named in `LICENSES.md`, which records that we no longer distribute the
+    bundle rather than dropping the entry -- a vanished notice and a stripped one read
+    identically -- and in the commit that made this change. It is deliberately not named
+    here: #74's declared check is a file-wide grep for the name in this file, and a
+    docstring that keeps the word would hold that check red for prose. `LICENSES.md` is
+    where the licence obligation actually lives, and `git log` is where this repo keeps
+    "why is the code like this".
+
+    **Inline, not a file under `site/`.** This page is assembled here at request time, so
+    `build_cachebust.py` never sees it -- a new `/apiref.css` would ship unstamped and
+    therefore cacheable for a week against markup that changes with every route added. It
+    would also be a webroot asset referenced from nowhere in `site/`, which is how nineteen
+    unreferenced PNGs accumulated there before the backend restructure.
+
+    **It has no data of its own.** Everything rendered comes from the schema FastAPI already
+    generates, so the reference cannot drift from the service: if a route is added, it
+    appears; if one is removed, it goes. That is the property the card on the home page
+    claims -- *"generated from the running service. Not a snapshot."* -- and it is now true
+    of our own code rather than of somebody else's.
     """
-    page = get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title="SyMoNeuRaL API",
-        swagger_js_url="/swagger-ui-bundle.js",
-        swagger_css_url="/swagger-ui.css",
-        swagger_favicon_url="/favicon-32.png",
-    ).body.decode()
-
-    # Brand it: our palette over Swagger's, plus the site header and a live status strip so
-    # the docs page shows the same machine state as every other page rather than being a
-    # detached reference.
-    page = page.replace(
-        "</head>",
-        '<link rel="stylesheet" href="/swagger-dark.css">'
-        '<link rel="stylesheet" href="/symoneural.css">'
-        '<link rel="stylesheet" href="/rack-detail.css">'
-        '<meta name="theme-color" content="#0e100f">'
-        "</head>", 1)
     # Both figures are read from the constants rather than typed into the markup. They had
     # drifted badly while hardcoded -- the page claimed 6/min and a 1,200-character cap
     # while the code enforced 120/min and 4,000 -- and this site's whole argument is that
@@ -1524,9 +1781,27 @@ async def docs() -> HTMLResponse:
             '<div class="sub">unmetered &middot; the queue is the only backstop</div>')
     header = (DOCS_HEADER.replace("@@RATE@@", rate)
                          .replace("@@CAP@@", f"{MAX_PROMPT_CHARS:,}"))
-    page = page.replace("<body>", "<body>" + header, 1)
-    page = page.replace("</body>", '<script src="/console.js" defer></script></body>', 1)
-    return HTMLResponse(page)
+
+    return HTMLResponse(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>API Reference &middot; SyMoNeuRaL</title>"
+        '<link rel="icon" href="/favicon-32.png" sizes="32x32">'
+        '<link rel="stylesheet" href="/symoneural.css">'
+        '<link rel="stylesheet" href="/rack-detail.css">'
+        '<meta name="theme-color" content="#0e100f">'
+        f"{API_REFERENCE_STYLE}</head><body>{header}"
+        '<div class="ar-wrap">'
+        '<p class="ar-note">Every operation below is read from the schema this service '
+        "generates at the moment you loaded the page. Nothing here is written by hand, so "
+        "it cannot describe a route that no longer exists or omit one that was just added. "
+        'The raw document is at <a href="/openapi.json">/openapi.json</a>.</p>'
+        '<div id="ar-root"><p class="ar-count">Reading /openapi.json&hellip;</p></div>'
+        "</div>"
+        f"{API_REFERENCE_SCRIPT}"
+        '<script src="/console.js" defer></script>'
+        "</body></html>"
+    )
 
 
 def external_holder() -> str | None:

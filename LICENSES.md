@@ -4,7 +4,7 @@ Every entry below was verified against what is actually installed and served on 
 not copied from an upstream README. Where a claim could not be verified it says so.
 
 **Last verified:** 2026-08-16.
-**Regenerate/re-verify** when models, engines or the vendored Swagger UI change.
+**Regenerate/re-verify** when models or engines change.
 
 ---
 
@@ -15,7 +15,7 @@ That gives two very different modes:
 
 | Mode | What leaves your control | Obligations |
 |---|---|---|
-| **Running symoneural.com** (a service) | only `site/` — HTML, CSS, JS, images | attribution for the vendored Swagger UI. Nothing else. |
+| **Running symoneural.com** (a service) | only `site/` — HTML, CSS, JS, images | attribution for hls.js. Nothing else. |
 | **Shipping a customer a server** | the whole stack: engines, weights, adapter | full attribution for everything in §2–§4 below |
 
 Debian packages on the box (FastAPI, uvicorn, SymPy, Pillow, certifi…) are the operator's
@@ -28,17 +28,22 @@ code, your adapter and your training corpus can be proprietary and closed. See �
 
 ## 1. Shipped to every visitor today
 
-### Swagger UI 5.17.14 — Apache-2.0
-`site/swagger-ui-bundle.js` (1.45 MB) and `site/swagger-ui.css`, served on `/docs`.
-Version identified by SHA-256 match against `swagger-ui-dist@5.17.14`, not by guesswork.
+### Swagger UI 5.17.14 — Apache-2.0 — **RETIRED 2026-08-21, no longer distributed**
+Was `site/swagger-ui-bundle.js` (1.45 MB) and `site/swagger-ui.css`, served on `/docs`, with
+`site/swagger-ui-LICENSE.txt` and `site/swagger-ui-NOTICE.txt`
+(`swagger-ui — Copyright 2020-2021 SmartBear Software Inc.`) shipped alongside. The bundle
+also embedded **core-js** (MIT) and **normalize.css v7.0.0** (MIT), both covered by that
+NOTICE.
 
-- **Attribution shipped:** `site/swagger-ui-LICENSE.txt`, `site/swagger-ui-NOTICE.txt`
-  (`swagger-ui — Copyright 2020-2021 SmartBear Software Inc.`)
-- The bundle's own banner points at `swagger-ui-bundle.js.LICENSE.txt`, which upstream does
-  **not** publish — it is a webpack/terser artifact. `LICENSE` + `NOTICE` from the dist package
-  is the correct and complete attribution.
-- The bundle embeds **core-js** (MIT) and **normalize.css v7.0.0** (MIT); both are covered by
-  the shipped NOTICE.
+`/docs` is now rendered by our own code in `backend/api.py` from the `openapi.json` this
+service already publishes (task #74 item 6). All five files were removed from the webroot,
+so nothing here is distributed any more and **the Apache-2.0 obligation no longer applies**.
+
+**Kept as an entry rather than deleted, on purpose.** You stop owing a notice when you stop
+distributing the work — but a notice that silently vanishes from this file is
+indistinguishable from one that was stripped while the work was still shipping, and the
+second is a licence violation. So the retirement is stated, with its date, and the next
+person auditing this file can tell which of the two happened without reading `git log`.
 
 ### hls.js — Apache-2.0
 `site/hls.js` (384 KB, the **light** build) and `site/hls-LICENSE.txt`, served on `/tuner.html`.
@@ -57,8 +62,10 @@ WASM blob that would then be part of what we distribute in `site/`, making the s
 GPL-encumbered. hls.js does the same job in 384 KB under a permissive licence.
 
 ### Our own site assets — proprietary
-`symoneural.css`, `rack-detail.css`, `swagger-dark.css`, `console.js`, `ui.js`, the generated
-HTML, and the `art-*.png` renders. © SymonSays LLC. All rights reserved.
+`symoneural.css`, `rack-detail.css`, `console.js`, `ui.js`, the generated HTML, and the
+`art-*.png` renders. © SymonSays LLC. All rights reserved. The API reference renderer at
+`/docs` is ours too, and is inline in `backend/api.py` rather than a webroot asset —
+`build_cachebust.py` cannot stamp a page assembled at request time.
 
 ---
 
@@ -217,7 +224,7 @@ recovered once disclosed. See the never-publish rule in `.claude/CLAUDE.md`.
 
 ## 8. Obligations by licence, in one place
 
-**Apache-2.0** (Qwen2.5, FLUX.1-schnell, T5-XXL, CLIP-L, **u2net**, Swagger UI, Caddy)
+**Apache-2.0** (Qwen2.5, FLUX.1-schnell, T5-XXL, CLIP-L, **u2net**, Caddy)
 - ship the licence text; preserve copyright, patent, trademark and attribution notices
 - include upstream's `NOTICE` file if there is one, and carry its contents forward
 - **state that you modified files, if you did** — quantising a model counts; say so
@@ -225,8 +232,11 @@ recovered once disclosed. See the never-publish rule in `.claude/CLAUDE.md`.
 - grants **no trademark rights**: build on Qwen and FLUX, do not brand as them
 
 **MIT** (llama.cpp, stable-diffusion.cpp, **whisper.cpp**, **Whisper ggml weights**, **rembg**,
-**onnxruntime**, **pymatting**, FastAPI, core-js, normalize.css, Pillow)
+**onnxruntime**, **pymatting**, FastAPI, Pillow)
 - reproduce the copyright line and the permission notice. That is the entire obligation.
+- **core-js** and **normalize.css** were on this line until 2026-08-21. Neither was ever a
+  direct dependency — both arrived inside the documentation-UI bundle described in §1, and
+  left with it when `/docs` became our own renderer.
 
 **CC BY-NC 4.0** — nothing in this stack, and that is deliberate
 - **`bria-rmbg-2.0` would have put it here.** It is non-commercial, it is the default many
@@ -250,7 +260,6 @@ recovered once disclosed. See the never-publish rule in `.claude/CLAUDE.md`.
       their `dist-info`, and `rembg`/`onnxruntime` texts present in `models/licenses/`
 - [ ] confirm the cut-out model in use is **`u2net`** or **`u2netp`** — never **`bria-rmbg-2.0`**,
       which is non-commercial. This is the Stickers equivalent of the schnell/dev trap below
-- [ ] `site/swagger-ui-LICENSE.txt` and `site/swagger-ui-NOTICE.txt` present in the webroot
 - [ ] this file included
 - [ ] modifications stated (quantisation, fine-tuning) for every Apache-2.0 component
 - [ ] confirm the image model is **schnell**, never **dev**
