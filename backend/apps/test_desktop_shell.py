@@ -30,6 +30,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import time
 import tokenize
 import unittest
 from pathlib import Path
@@ -112,21 +113,52 @@ class WindowSmokeTests(unittest.TestCase):
         win.start()
         win.term.grab_focus()
 
-        # `/permissions` and NOT `/exit`. The client exiting cleanly destroys the window --
-        # which is correct behaviour and is asserted separately below without a display -- and
-        # it took the scrollback with it before the first version of this test could read it.
-        GLib.timeout_add(1400, lambda: win.term.feed_child(b"/permissions\r") and False)
-
-        def finish():
+        def screen_now() -> str:
             out = win.term.get_text_format(Vte.Format.TEXT)
-            cls.screen = (out[0] if isinstance(out, tuple) else out) or ""
-            cls.pid = getattr(win, "pid", None)
-            cls.label = win.status.get_text()
-            Gtk.main_quit()
-            return False
+            return (out[0] if isinstance(out, tuple) else out) or ""
 
-        GLib.timeout_add(4200, finish)
+        # **Wait for each step rather than guessing how long it takes.** This drove the child
+        # at fixed delays -- type at 1400 ms, read at 4200 ms -- and that is a race, not a
+        # schedule: the client needs about 700 ms to print its banner on an idle box and
+        # longer on a busy one, so on a loaded machine the screen was sampled before the
+        # answer arrived. Measured 2026-08-21: four of five consecutive runs failed that way,
+        # and the same five passed with nothing changed but the timing. A window test that
+        # only passes when the machine is quiet reports load, not correctness.
+        #
+        # Every assertion below is unchanged and none is weakened. The deadline is still hard,
+        # so a client that never answers still fails -- it just fails after waiting
+        # for it rather than before. The common case also got faster, because this
+        # stops as soon as the text is there.
+        deadline = time.monotonic() + 30.0
+        state = {"typed": False}
+
+        def pump():
+            if time.monotonic() > deadline:
+                Gtk.main_quit()
+                return False
+            text = screen_now()
+            # `/permissions` and NOT `/exit`. The client exiting cleanly destroys the window --
+            # which is correct behaviour and is asserted separately below without a display --
+            # and it took the scrollback with it before the first version of this test could
+            # read it. Typed only once the banner proves the client is listening; typing into
+            # a child that has not finished starting drops the keystrokes silently.
+            if not state["typed"]:
+                if "/help for the commands" in text:
+                    win.term.feed_child(b"/permissions\r")
+                    state["typed"] = True
+                return True
+            if "permissions: auto ->" in text:
+                Gtk.main_quit()
+                return False
+            return True
+
+        GLib.timeout_add(100, pump)
         Gtk.main()
+        # Read once, after the loop stops, so every assertion sees the same instant -- and
+        # read BEFORE destroy(), which disposes the widgets and would return empty strings.
+        cls.screen = screen_now()
+        cls.pid = getattr(win, "pid", None)
+        cls.label = win.status.get_text()
         win.destroy()
 
     def test_the_child_is_spawned_and_the_client_greets_from_inside_the_window(self):
