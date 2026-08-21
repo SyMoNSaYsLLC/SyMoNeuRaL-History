@@ -1017,3 +1017,106 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: itself a lower bound. Neither is stable -- three runs of one file at
         note: temperature 0.2 gave 15, 21 and 22. It is a reading of one run, never a
         note: property of the file, and it must not be published as one.
+
+◻ #100 — The GPU lease tells the truth about itself: `resident` is a hint, and a contended card answers 503
+        owner: coder
+        check: exists backend/apps/test_governor_evict.py
+        check: exists scripts/SMOKE-governor-evict.md
+        check: exists backend/SMOKE-lease-503.md
+        check: ngrep """/backend/apps -- scripts/gpu-governor.sh
+        check: grep surface_pattern -- scripts/gpu-governor.sh
+
+        Folds A-R172 and A-R173. One defect class -- the lease reporting something the machine
+        cannot back up -- one file pair, one test file, so it is one task rather than two.
+
+        **R-172.** `run/resident` outlives the process it names, so `evict` reports killing what
+        was already gone. `a944fae` claimed to fix this and fixed the half that was already
+        honest: `image`, `sigil` and the `*` fallback call `pkill` directly and get a truthful
+        exit code, so `&& active=1` means something there. The two arms that call a helper
+        script cannot work that way, and one of them is the surface R-172 reproduced with:
+
+        - `bin/symoneural-cli:346` `cmd_stop_chat` ends `return 0` unconditionally.
+        - `scripts/symoneural-ui.sh:95-120` exits 0 on the not-running path.
+
+        So the governor logs `stopping 'comfy' to make room` over a marker with nothing behind
+        it, and the log -- the only record of an eviction -- cannot be read to find out whether
+        anything was freed. `status` at `gpu-governor.sh:276` still prints the marker with no
+        liveness check at all, which R-172 asks for in as many words.
+
+        The shape is prescribed by the ledger, not invented: *"`status` and `evict` both treat
+        the marker as a hint and the process table as the fact."* One `surface_pattern()` helper
+        returns the pattern each arm already hands to `pkill`; `evict` probes with `pgrep -f`
+        **before** the stop attempt and logs off that reading. Do not plumb exit codes out of
+        the helpers -- `cmd_stop_chat` returning 0 when nothing is running is arguably right for
+        a command named *stop*, and changing it would break its own callers.
+
+        **R-173.** A contended card reached the visitor as a bodyless 500, because the 503 was
+        raised inside the streaming generator, after `200 OK` had gone out. `a944fae` moved the
+        acquisition into the handler and that part is correct and stays. What came with it: the
+        RavenCalc `anticipate()` task is created *before* `__aenter__`, so a 503 from `hold()`
+        orphans it, never awaited.
+
+        **`gpu-governor.sh:204` is a regression from the same commit.** `"'"$ROOT"'/backend/apps"`
+        was collapsed to `"""/backend/apps"`; the arm raises `SyntaxError: unterminated
+        triple-quoted string literal` and always falls through to its pgid `pkill`. It is inert
+        today -- `run/miner.pid` does not exist, `pgrep -g -1` exits 1 and matches nothing, and
+        the miner surface stays dead until `SYMONEURAL_MINER_CMD` names a real binary -- but
+        `bash -n` passes over it, which is the part worth remembering: shell syntax checking
+        cannot see inside a `python3 -c` string, so the test asserts that string compiles.
+
+        note: 2026-08-21 coder -- the two SMOKE checks are here because the other three would
+        note: all have gone green over the broken code. `grep surface_pattern` passes while the
+        note: logic is still wrong, which is #94 verbatim. `SMOKE-lease-503.md` also settles a
+        note: hazard rather than a claim: whether a client disconnecting before the generator's
+        note: first `__anext__` leaks the lease. That turns on Starlette internals, so it is
+        note: measured -- open a chat request, abandon it unread, read `status` -- not asserted.
+
+◻ #101 — ssh and rdp: the forwards, and what actually closes them
+        owner: garrett
+        [ ]
+
+        A-R167, and he gated it himself: *"i should prob have you do the same for ssh and rdp
+        but we cant do that until we have the apple ssh and rdp application made"*. The gate is
+        recorded as a precondition on this task rather than as a reason to leave the assignment
+        uncarried -- there is no parked state, and this is what a number is for.
+
+        Two things in the ledger outlive the gate and are the reason this is not simply waiting.
+
+        **The gate is not what stands between him and closing those rows.** A WireGuard or
+        Tailscale tunnel closes all three forwards today with no application written. The Apple
+        app is a separate want, and answering it does not require answering this.
+
+        **The design does not transfer from R-166.** OBS avoids a tunnel because FastAPI can be
+        the client and re-publish a summary. There is no summary of an SSH session: ssh and rdp
+        need a real byte stream, so any such endpoint becomes the entire boundary for shell
+        access to this box, on the same origin as the public site. That argument has to be made
+        on its own terms, not inherited.
+
+        note: 2026-08-21 coder -- the live posture, read from `sshd -T` on 2026-08-21 and
+        note: reported to him in the same sitting: `port 22222`, `permitrootlogin yes`,
+        note: `passwordauthentication yes`. That is root login by password over an
+        note: internet-forwarded port, and rdp is listening on 28673 and forwarded as well.
+        note: `PermitRootLogin prohibit-password` and `PasswordAuthentication no` are his to
+        note: run and not mine: a lockout is not a risk to take on his behalf, and the key has
+        note: to be confirmed working in a second session before sshd is reloaded. Ticking the
+        note: box sets this to ready for review, deliberately not done.
+
+◻ #102 — Rotate the spent Studio token
+        owner: garrett
+        [ ]
+
+        A-R174. The live `SYMONEURAL_STUDIO_TOKEN` was displayed in an agent transcript, and
+        the rule R-168 produced is general: **a credential that has been displayed is spent.**
+        No value is written into the ledger, into this file, or into any commit message.
+
+        The fix is a new value into `/etc/symoneural/api.env` (root:root, 0600) and a service
+        restart. That is his because the file is root-owned and the credential is one he holds
+        -- two of the five `owner: garrett` categories -- and `a944fae` claimed to have done it
+        in its commit message while changing no file that could have.
+
+        note: 2026-08-21 coder -- I have not read the current value and will not. R-174 says it
+        note: directly: **do not read a whole process environment to answer a narrow question**,
+        note: and reading `/proc/<pid>/environ` to confirm a rotation would put the new secret
+        note: in a transcript exactly as the old one got there. The only thing needing checking
+        note: is whether the surface is up, and that is available unauthenticated:
+        note: `/api/studio/tools` answers 401 when Studio is on and 503 when it is off.
