@@ -171,6 +171,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: ngrep \nROW_OF_MODULE\s*= -- backend/apps/test_status_rack.py
         check: grep 8188 -- backend/apps/studio/registry.py
         check: exists ops/symoneural-deploy.service
+        check: grep GatewayUnitPathTests -- backend/apps/test_gateway_unit.py
         note: `grep tuner_router` used to stand here, and it has been REMOVED rather than kept.
         note: It was a good check for the file merge — the loose `grep tuner` passed on guide's
         note: docstring while tuner's exports were still missing — but it became an anti-check the
@@ -366,6 +367,63 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: browser suites import chromium from. Verified both figures before publishing.
         note: 2026-08-20 coder — nothing here changed a task percentage: this is all test
         note: and doc surface. The three remaining #73 FAILs belong to items 3, 4 and 6.
+        note: 2026-08-20 coder — ITEM 6, and it was live. Garrett asked whether the live
+        note: stack was still down and whether a command would bring most of it online. It was
+        note: down and the cause was one string. `712e15b` moved the Rust gateway crate to
+        note: `backend/apps/gateway/` with every other app; `ops/symoneural-gateway.service`
+        note: kept its ExecStart at `@@ROOT@@/symon-gateway/target/release/symon-gateway`, and
+        note: so did `scripts/install-gateway.sh`'s BIN. systemd reported `activating` forever
+        note: against a path with no binary at it, `ops/Caddyfile`'s `/api/*` hop to :8000 had
+        note: nothing to reach, and the PUBLIC api answered 502 from 13:50 today. Everything
+        note: else was healthy the whole time: `symoneural-api.service` active, `/api/status`
+        note: 200 on the loopback, all thirteen units reading correctly. The suite was green
+        note: throughout, because every suite here exercises `api.py` and nothing read that
+        note: unit. Repointed both files, started the binary by hand with the unit's own six
+        note: Environment= values, and measured through the public origin: `/api/status` 200,
+        note: `/overview` 200, `/api/ws` **101 Switching Protocols**, and 9/13 units ready —
+        note: chat image remix ravencalc train streamer coder project sigils. The four dark
+        note: ones are dark on purpose: miner and studio are env-gated off, `exp` is queued
+        note: (container up, nothing mounted), and `gateway` is the TRON chain-reading app in
+        note: `backend/apps/gateway/*.py` needing config — a DIFFERENT thing from the Rust
+        note: proxy in the same directory, which is a trap worth knowing about.
+        note: 2026-08-20 coder — chat and image are READY and CLAUDE.md still says they are
+        note: offline. #74's engine fork landed at `d6b7838`: `engines/symoneural-llm` and
+        note: `engines/symoneural-diffuse` are built and on disk, `backend/models/` holds the
+        note: gguf and the four FLUX files, and `apps/test_rack_probes.py` is **5 passed**, not
+        note: the three deliberate failures documented in CLAUDE.md. That doc paragraph is now
+        note: stale in the direction that matters least — it understates the project — but it is
+        note: still a figure carried past its tree. Routed to #76 rather than freelanced.
+        note: 2026-08-20 coder — a new guard, `backend/apps/test_gateway_unit.py`, 5 tests.
+        note: It does NOT assert the binary exists: `target/` is gitignored, so "crate present,
+        note: not built" is the honest state of a fresh clone and `install-gateway.sh` already
+        note: refuses there with the build command. What it asserts is the pair that actually
+        note: broke — ExecStart's directory holds a Cargo.toml whose package name IS the binary
+        note: launched, the installer's BIN equals the unit's ExecStart, Caddy's reverse_proxy
+        note: target equals SYMON_GATEWAY_BIND, and SYMON_API_UPSTREAM equals api.py's default
+        note: port. Every one of those lives between two files and is plausible in each alone.
+        note: Proven by breaking: the stale path back in fails 2 of 5, and moving the bind to
+        note: :8009 fails the Caddy pair. Both restored, 5 passed.
+        note: 2026-08-20 coder — the `__main__` block in test_streamer_migration.py sat ABOVE
+        note: `InvocableDocsTests`, so `python3 backend/apps/test_streamer_migration.py` ran
+        note: **9 tests** and never collected the guard — an invocation succeeding while doing
+        note: less than it says, committed inside the test written to catch exactly that. Moved
+        note: to the foot of the file and made to work rather than merely run: 11 tests, OK.
+        note: The path insert is worth recording because it is a fact about CLAUDE.md's own
+        note: command. There is no `__init__.py` and no pytest config anywhere under `backend/`,
+        note: so what puts `backend/` on sys.path is the **`-m`** in `python3 -m pytest`, which
+        note: prepends the cwd. Verified both ways: `cd backend && python3 -m pytest
+        note: apps/test_roster.py` is 13 passed, and the same line without `-m` is `Interrupted:
+        note: 1 error during collection`, zero tests run. That is the no-number-at-all failure
+        note: CLAUDE.md warns about, one flag away, and 34 test files carry a `__main__` block
+        note: that hits it. Dropping the block would have been the smaller change and the wrong
+        note: one: it is repo convention, and a convention that half-works is the thing to fix.
+        note: 2026-08-20 coder — `tests/streamer_guide.mjs` generates its own `app.py` and it
+        note: does NOT mount news, so it carries the same gap `project-harness.py` had. It is
+        note: 17/17 anyway and legitimately: it listens on `pageerror` only, and a 404 on a
+        note: fetch raises no page error. So the gap is latent rather than red, and it is a
+        note: reason to be careful reading that suite's green — it does not check the thing.
+        note: Left alone deliberately: adding a console-error assertion there is item 4's
+        note: acceptance work, not this pass's, and it would change what that suite measures.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder

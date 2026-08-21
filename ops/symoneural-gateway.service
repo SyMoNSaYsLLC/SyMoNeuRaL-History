@@ -24,7 +24,16 @@ WorkingDirectory=@@ROOT@@
 
 # The release binary, not debug. `cargo build --release` must have been run; the installer
 # checks for it and refuses rather than installing a unit that will crash-loop on ENOENT.
-ExecStart=@@ROOT@@/symon-gateway/target/release/symon-gateway
+#
+# The crate lives under `backend/apps/gateway/`, not at the repo root. It moved there in
+# `712e15b` with every other app -- Garrett: "all applications should be in /backend/apps" --
+# and this line did not move with it, which took the PUBLIC API down. The unit stayed
+# `enabled`, so systemd reported `activating` forever against a path with no binary at it,
+# Caddy's `/api/*` hop to :8000 had nothing to reach, and every visitor got a 502 while the
+# API itself was healthy on :8800 and every rack unit read `ready`. Nothing in any test went
+# red: the suites exercise `api.py`, and no check anywhere asserted that the string in this
+# ExecStart names a file that exists. That is what `test_gateway_unit.py` now does.
+ExecStart=@@ROOT@@/backend/apps/gateway/target/release/symon-gateway
 
 # --- environment -------------------------------------------------------------------------
 Environment=SYMON_GATEWAY_BIND=127.0.0.1:8000

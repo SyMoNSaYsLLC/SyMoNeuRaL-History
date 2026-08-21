@@ -11,7 +11,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 UNIT=/etc/systemd/system/symoneural-gateway.service
-BIN="$ROOT/symon-gateway/target/release/symon-gateway"
+# Under backend/apps/gateway/, with every other app. See the note in
+# ops/symoneural-gateway.service for what the stale spelling of this path cost.
+BIN="$ROOT/backend/apps/gateway/target/release/symon-gateway"
 
 [ "$(id -u)" -eq 0 ] || { echo "run me with sudo" >&2; exit 1; }
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
@@ -21,7 +23,7 @@ BIN="$ROOT/symon-gateway/target/release/symon-gateway"
 # out you forgot to build.
 if [ ! -x "$BIN" ]; then
   echo "gateway binary not found at $BIN" >&2
-  echo "build it first:  cd $ROOT/symon-gateway && cargo build --release" >&2
+  echo "build it first:  cd $ROOT/backend/apps/gateway && cargo build --release" >&2
   exit 1
 fi
 
