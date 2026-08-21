@@ -69,6 +69,16 @@ deliberately absent:
 already and their `unit_state()` is the honest answer. An override on top would be a second
 source of truth for the same LED.
 
+`live` is absent for the sharpest reason of the four, and it is worth stating because the row
+looks like an obvious candidate: **the override could not do what the button promises.** OBS
+holds its own recording session and keeps appending segments to
+`backend/output/live/` whatever this rack says; `apps/live/routes.py::status()` reads that
+directory and nothing else. So forcing the row offline would make it read "taken offline by
+operator" while the stream stayed genuinely watchable at `/livestack/live` — a false reading
+on the rack, which is precisely the `miner` argument above with a different mechanism. The
+surface's real switch is `SYMONEURAL_LIVE_ENABLED=0`, and it is the one togglable app that
+defaults on (see that function's docstring for why).
+
 ## The record persists, and says so
 
 The overrides live in `run/units.disabled.json` -- runtime state, next to the GPU mutex,

@@ -9,7 +9,7 @@ existed only in prose -- which is exactly the kind of number that drifts.
 `apps/test_studio_models.py`: importing the serving module builds every rate limiter, resolves
 the GPU governor and mounts `site/`.
 
-This is a tripwire, not a design constraint. A thirteenth surface is welcome; typing the new
+This is a tripwire, not a design constraint. A fifteenth surface is welcome; typing the new
 number here is the point, the way `test_the_router_count_is_unchanged` works for routers.
 
 **Green here is not proof the rack is live, and cannot be.** Everything below compares the
@@ -34,7 +34,7 @@ TREE = ast.parse(SOURCE)
 #: The rows, in the order `build_status()` builds them. Read from `/api/status` on the running
 #: API for the live truth; this is the source's own order and is what the comment must match.
 EXPECTED = ["chat", "image", "remix", "ravencalc", "train", "miner", "streamer", "coder",
-            "gateway", "project", "sigils", "studio", "exp"]
+            "gateway", "project", "sigils", "studio", "exp", "live"]
 
 
 #: There is deliberately NO module->row map here any more. There used to be one, holding a
@@ -98,7 +98,7 @@ def _row_id(call: ast.Call) -> str:
 
 
 class RackCountTests(unittest.TestCase):
-    def test_the_rack_is_thirteen_units(self):
+    def test_the_rack_is_fourteen_units(self):
         self.assertEqual(len(_unit_calls()), len(EXPECTED))
 
     def test_the_comment_above_the_list_says_the_same_number(self):

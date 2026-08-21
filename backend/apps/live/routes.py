@@ -61,6 +61,77 @@ def _public_scene() -> bool:
     return os.environ.get("SYMONEURAL_LIVE_PUBLIC_SCENE", "").strip() in ("1", "true", "yes")
 
 
+LABEL = "SyMoNeuRaL Live"
+
+
+#: What the row advertises. No bitrate and no latency figure: `README.md`'s own rule is that
+#: neither is published until one has been read off a real stream, and a rack row is exactly
+#: the place a projected number would get mistaken for a measurement.
+SPEC = "OBS Recording · HLS on disk · no media server"
+
+
+def status() -> dict:
+    """The rack unit, keys matching `api.py`'s `Unit` model.
+
+    Read at call time from the disk, every field of it. `state` is decided by what is
+    watchable, never by what OBS believes: `state()` above explains why the two are reported
+    side by side rather than reconciled, and the same argument applies harder to a rack row --
+    a row reading `busy` off a websocket frame while no playlist is growing would be a green
+    LED for a stream nobody can watch, which is the decorative-indicator failure this rack
+    does not have. So this function does not touch the bridge at all.
+
+    `busy` while a playlist is being appended to. That is this row's own work -- segments
+    leaving this box to whoever is watching -- and not somebody else's, which is the line
+    `apps/studio.status()` draws when it refuses to go `busy` for a render it merely ordered.
+
+    **`bus` is `net`, not `gpu`, and that is a claim about the governor rather than about
+    hardware.** OBS encodes with NVENC and does hold a slice of the card, but it holds it
+    outside `scripts/gpu-governor.sh` entirely: the governor cannot see that session, cannot
+    evict it, and does not count it against its 1500 MiB drain floor. Publishing `gpu` here
+    would put this row in the rack's "who holds the card" readout and imply the governor is
+    managing something it has never been told about. What this surface actually spends is
+    upstream bandwidth -- `README.md` sizes it at ~0.77 MB/s per visitor -- so `net` is the
+    honest bus, and `README.md`'s NVENC section is where the unmeasured GPU cost is recorded
+    as unmeasured.
+    """
+    from . import hls
+
+    if not enabled():
+        return {"id": "live", "label": LABEL, "slot": "1U", "state": "offline", "bus": "net",
+                "href": "/livestack/live", "spec": SPEC,
+                "detail": "switched off by SYMONEURAL_LIVE_ENABLED — unset it to switch back on"}
+
+    sessions = hls.scan()
+    current = next((s for s in sessions if s.state == "live" and s.servable), None)
+    watchable = sum(1 for s in sessions if s.state in ("finished", "abandoned") and s.servable)
+    unservable = sum(1 for s in sessions if not s.servable)
+
+    if current is not None:
+        state_ = "busy"
+        detail = (f"live now · {current.seconds:.0f} s in {current.segments} segments "
+                  f"· {watchable} recorded")
+    elif sessions:
+        state_ = "ready"
+        gb = sum(s.bytes for s in sessions) / 1_000_000_000
+        detail = f"{watchable} recording{'' if watchable == 1 else 's'} · {gb:.2f} GB on disk"
+    else:
+        # `ready`, not `queued`. Nothing is pending: the page works, the routes answer, and
+        # the directory is simply empty because OBS has not been pointed at it yet. `queued`
+        # would describe an intention, and `Unit.state` has no word for "correct and idle".
+        state_ = "ready"
+        detail = ("nothing recorded yet — point OBS's Recording output at "
+                  f"{hls.OUTPUT_DIR} (apps/live/README.md has the settings)")
+
+    if unservable:
+        # Front of the line, the way `exp` counts failed plugins: a name OBS cannot have
+        # served is the one thing here that needs a human, and burying it after the totals
+        # is how it stays unnoticed.
+        detail = f"{unservable} unservable name · " + detail
+
+    return {"id": "live", "label": LABEL, "slot": "1U", "state": state_, "bus": "net",
+            "href": "/livestack/live", "spec": SPEC, "detail": detail}
+
+
 @router.get("/state", summary="Is he live, what is on disk, and what OBS last reported")
 def state() -> dict:
     """One read of the directory plus the bridge's last reading.

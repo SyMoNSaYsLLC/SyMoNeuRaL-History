@@ -68,8 +68,8 @@ def _module_rows() -> dict:
 class RosterParsesTests(unittest.TestCase):
     def test_the_roster_reads_and_is_not_empty(self):
         rows = roster.rows()
-        self.assertEqual(len(rows), 13)
-        self.assertEqual(roster.slots(), 20)
+        self.assertEqual(len(rows), 14)
+        self.assertEqual(roster.slots(), 21)
 
     def test_a_malformed_row_raises_instead_of_being_skipped(self):
         """The failure mode that would make the roster a fourth disagreeing list.
@@ -120,7 +120,7 @@ class RosterMatchesApiTests(unittest.TestCase):
     def test_every_field_matches_the_module_that_publishes_the_row(self):
         published_rows = _module_rows()
         self.assertEqual(sorted(published_rows),
-                         ["exp", "project", "sigils", "streamer", "studio"],
+                         ["exp", "live", "project", "sigils", "streamer", "studio"],
                          "the set of rows api.py spreads from a module changed")
         for row in roster.rows():
             published = published_rows.get(row["id"])

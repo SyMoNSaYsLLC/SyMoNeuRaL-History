@@ -2040,9 +2040,9 @@ def build_status() -> Status:
             # is now in the Streamer unit's own detail line. See
             # `apps/streamer/routes.py::status()`.
             #
-            # The rack is therefore THIRTEEN units, in the order they are built below:
+            # The rack is therefore FOURTEEN units, in the order they are built below:
             # chat, image, remix, ravencalc, train, miner, streamer, coder, gateway, project,
-            # sigils, studio, exp. Eleven before `studio` and `exp` landed alongside their
+            # sigils, studio, exp, live. Eleven before `studio` and `exp` landed alongside their
             # pages -- and this comment said TWELVE for the change that added both, because a
             # number kept only in prose drifts. `apps/test_status_rack.py` now counts the
             # `Unit(...)` calls in this function with an AST walk, so the next mistake is a
@@ -2073,6 +2073,14 @@ def build_status() -> Status:
             # `degraded` in Unit.state, so a failed plugin is counted at the front of `detail`
             # rather than dropped.
             Unit(**exp.status()),
+            # SyMoNeuRaL Live. `busy` while a playlist is growing on disk and never from an
+            # obs-websocket frame -- `apps/live/routes.py::status()` has the argument, and it
+            # is the same one `studio` above makes for refusing to go `busy`. `bus="net"`
+            # rather than `gpu` is deliberate and is a claim about the GOVERNOR: OBS's NVENC
+            # session is held outside `gpu-governor.sh`, which cannot see it and does not
+            # count it against the drain floor, so putting this row in the rack's "who holds
+            # the card" readout would advertise management that does not exist.
+            Unit(**live.status()),
         ]),
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,

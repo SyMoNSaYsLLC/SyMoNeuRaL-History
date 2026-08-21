@@ -1,6 +1,6 @@
 # The rack roster
 
-The rack has **thirteen rows**, and this file is where they are written down. It exists
+The rack has **fourteen rows**, and this file is where they are written down. It exists
 because the roster was living in four places that could disagree — `backend/apps/` on disk,
 the hand-written `Unit(...)` rows in `api.py:build_status()`, `apps/controlboard`'s
 `TOGGLEABLE`, and `apps/test_status_rack.py`'s hand-typed `EXPECTED` — and three lists that
@@ -34,11 +34,23 @@ Read in the order `build_status()` emits them, which is the order the rack rende
 | sigils | SyMoNeuRaL Sigils | 1U | gpu | /sigils.html | backend/apps/sigils | yes |
 | studio | SyMoNeuRaL Studio | 1U | gpu | /studio | backend/apps/studio | no |
 | exp | SyMoNeuRaL Exp | 1U | cpu | /exp | backend/apps/studio/plugins/exp | no |
+| live | SyMoNeuRaL Live | 1U | net | /livestack/live | backend/apps/live | no |
 
-Thirteen rows, twenty rack units. The slot figures are what the one-screen budget is spent
-on; `.claude/HANDOVER.md` §0 has the viewport table and says fourteen rows fit everywhere.
+Fourteen rows, twenty-one rack units. The slot figures are what the one-screen budget is
+spent on; `.claude/HANDOVER.md` §0 has the viewport table and says fourteen rows fit
+everywhere -- so this row spends the last of the slack that table measured, and the next one
+has to be re-measured rather than assumed. Measure with a cloned `.unit`, never with
+`scrollHeight`.
 
 ### Things that column will mislead you about if you read it too fast
+
+**`bus` for `live` is `net` and this is the least obvious cell in the table.** OBS encodes
+with NVENC, so a stream genuinely does use the card -- but it uses it *outside*
+`scripts/gpu-governor.sh`, which cannot see the session, cannot evict it and does not count
+it against its drain floor. `gpu` here would enter this row in the rack's "who holds the
+card" readout and advertise management that does not exist. What the row actually spends is
+upstream bandwidth. `apps/live/routes.py::status()` and `apps/live/README.md`'s NVENC section
+carry the same reasoning, and the README records the GPU cost as **unmeasured**, which it is.
 
 **`bus` for `streamer` is `net` here and `cpu` in the module.** `apps/streamer.status()`
 returns `bus="cpu"` and `api.py` overrides it at the call site with
@@ -59,8 +71,11 @@ and its own test suite. Neither has an `__init__.py`, and a roster built by look
 **`toggle` is a cross-check, not the source.** The authority is `TOGGLEABLE` in
 `apps/controlboard/__init__.py`, which carries the reasoning for every exclusion:
 `train` because interrupting a fine-tune mid-epoch is destructive, `miner` because one row
-spans a GPU half and an ASIC half, and coder/gateway/project because they are already
-config-gated and an operator override would be a second source of truth for the same LED.
+spans a GPU half and an ASIC half, coder/gateway/project because they are already
+config-gated and an operator override would be a second source of truth for the same LED, and
+`live` because the override could not do what the button would promise -- OBS keeps writing
+segments whatever this rack says, so the row would read `taken offline by operator` while a
+stream stayed genuinely watchable.
 `test_roster.py` asserts the column and the tuple agree. Two hand-maintained copies and a
 test that they match is the point; deriving one from the other would delete the check.
 
