@@ -111,7 +111,14 @@ class Matcher:
                 for c in cand.split():
                     cu = urlparse(c.split(";")[0])
                     ck = (cu.netloc + cu.path).lower().rstrip("/")
-                    if ck and (ck == key or (len(ck) > 12 and ck in key)):
+                    # Both directions. Only `ck in key` was tested, which is the RARER
+                    # case: a recipe's SRC_URI is a release artefact UNDER the project
+                    # URL, so the queried key is a prefix of the candidate, not the
+                    # reverse. `xz` carries
+                    # `github.com/tukaani-project/xz/releases/download/v${PV}/...` and
+                    # was missed by a query for `github.com/tukaani-project/xz`.
+                    if ck and (ck == key or (len(ck) > 12 and ck in key)
+                               or (len(key) > 12 and key in ck)):
                         out.append(r["id"])
                         break
         return out

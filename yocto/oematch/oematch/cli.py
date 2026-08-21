@@ -43,6 +43,52 @@ def cmd_match(a):
         print("\n" + match.emit_yocto(res))
 
 
+def cmd_upstream(a):
+    """Which layer carries this upstream project? Answers a URL, not a file.
+
+    With no arguments it walks the curated `UPSTREAM_GROUPS` table and reports the
+    resolution rate against it, which is the one number that says whether this command
+    works. A rate is printed rather than a pass/fail because a miss here is usually a
+    real gap in the corpus -- no layer carries the project -- and that is an answer.
+    """
+    from . import upstream
+    con = db.connect(Path(a.db))
+    if con.execute("SELECT count(*) FROM recipes").fetchone()[0] == 0:
+        sys.exit("corpus empty — run `oematch build` or `oematch add <layer-dir>...` first")
+
+    rows = [(g, u) for g, u, _ in upstream.UPSTREAM_GROUPS] if not a.urls \
+        else [(None, u) for u in a.urls]
+
+    if a.json:
+        print(json.dumps([{"url": u, "expected_group": g,
+                           "matches": upstream.resolve(con, u, a.top)}
+                          for g, u in rows], indent=2))
+        return
+
+    ok = wrong = none = 0
+    for expect, url in rows:
+        res = upstream.resolve(con, url, a.top)
+        print(f"\n# {url}" + (f"   [expected: {expect}]" if expect else ""))
+        if not res:
+            print("    no layer carries this project")
+            none += 1
+            continue
+        for r in res:
+            mark = "*" if r["exact_pn"] else " "
+            print(f"  {mark} {r['pn']:26s} {r['pv'][:10]:10s} {r['layer']:22s} "
+                  f"{r['recipe_license'] or '-':18s} {r['why']}")
+        if expect is not None:
+            want = upstream.GROUP_LAYERS.get(expect, {expect})
+            if any(r["layer"] in want for r in res):
+                ok += 1
+            else:
+                wrong += 1
+                print(f"    ^ expected a recipe in {expect}, none of the above is")
+    if rows and rows[0][0] is not None:
+        print(f"\n{ok} in the expected group, {wrong} resolved elsewhere, "
+              f"{none} unresolved, of {len(rows)}")
+
+
 def cmd_stats(a):
     con = db.connect(Path(a.db))
     for r in con.execute("SELECT l.name, l.license, count(r.id) n FROM layers l LEFT JOIN recipes r ON r.layer_id=l.id GROUP BY l.id ORDER BY n DESC"):
@@ -76,6 +122,12 @@ def main(argv=None):
     m.add_argument("--json", action="store_true")
     m.add_argument("--emit", action="store_true", help="append bblayers + DEPENDS stub")
     m.set_defaults(fn=cmd_match)
+
+    up = sp.add_parser("upstream", help="which layer carries this upstream repo URL?")
+    up.add_argument("urls", nargs="*", help="repo URLs; empty means the curated set")
+    up.add_argument("--top", type=int, default=6)
+    up.add_argument("--json", action="store_true")
+    up.set_defaults(fn=cmd_upstream)
 
     st = sp.add_parser("stats", help="corpus summary")
     st.set_defaults(fn=cmd_stats)
