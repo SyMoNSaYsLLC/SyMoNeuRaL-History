@@ -170,7 +170,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep "/api/streamer" -- backend/api.py
         check: ngrep "/api/tuner" -- backend/api.py
         check: ngrep \nROW_OF_MODULE\s*= -- backend/apps/test_status_rack.py
-        check: grep 8188 -- backend/apps/studio/registry.py
+        check: grep ComfyPortAgreementTests -- backend/apps/studio/test_comfy_port.py
         check: exists ops/symoneural-deploy.service
         check: grep GatewayUnitPathTests -- backend/apps/test_gateway_unit.py
         check: grep FakeRootTests -- backend/apps/test_service_control.py
@@ -523,8 +523,8 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         **Updated 2026-08-20 at `597ec8c`, read from the disk, not carried forward: 21 of 24
         checks pass and these three do not.**
-        `grep 8188 -- backend/apps/studio/registry.py` — the ComfyUI port is still hard-coded
-        somewhere other than the registry that is supposed to own it.
+        `grep 8188 -- backend/apps/studio/registry.py` — RETIRED 2026-08-20 at `0cb59d0`; see
+        the note below. Replaced by `grep ComfyPortAgreementTests -- .../test_comfy_port.py`.
         `exists ops/symoneural-deploy.service` — nothing yet makes a staged page reach the
         webroot on its own, which is the whole reason a rename shipped to `site/` and stopped
         there.
@@ -540,8 +540,46 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         answered honestly out of a task percentage.
 
         check: exists docs/SERVER-READY.md
-        check: grep ^| docs/SERVER-READY.md -- docs/SERVER-READY.md
-        check: grep EveryRosterRowAnswersTests -- backend/tests/test_server_ready.py
+        check: grep \n\|\s*gateway\s*\| -- docs/SERVER-READY.md
+        check: grep EveryRosterRowAnswersTests -- backend/apps/test_server_ready.py
+
+        note: 2026-08-20 coder — three of this task's checks were replaced before any of them
+        note: was satisfied, because all three could have gone green without the work being
+        note: done. Same class as the two this block already retired (`grep tuner`, which
+        note: matched guide's docstring, and `grep "include_router"`, which matched prose).
+        note: (1) `grep ^| docs/SERVER-READY.md -- docs/SERVER-READY.md` was VACUOUS. run_check
+        note: hands the pattern to re.search verbatim, and `^|` is alternation with an empty
+        note: right-hand side, so it matches every string including "". Verified:
+        note: re.search("^| docs/SERVER-READY.md", "") is a match. A bare `touch` of the file
+        note: would have turned it green, and with `exists` beside it that is two of the three
+        note: for an empty file. Now `\n\|\s*gateway\s*\|`, which needs a real per-row table
+        note: line. Written with `\n` and not `^` deliberately: run_check does NOT pass re.M,
+        note: so `^` anchors to the start of the whole file — the same reason the
+        note: ROW_OF_MODULE check above is spelled with `\n`.
+        note: (2) `grep EveryRosterRowAnswersTests -- backend/tests/test_server_ready.py` named
+        note: a directory that does not exist AND that nothing collects. The suite runs as
+        note: `cd backend && pytest apps/ -q`; `backend/tests/` is not on that path, so the file
+        note: could have been created, the check flipped green, and the test never once
+        note: executed. Repointed at `backend/apps/`, which the documented invocation does
+        note: collect. Verified before repointing: `pytest tests/ -q --collect-only` reports
+        note: "no tests collected", and there is no pytest.ini/pyproject anywhere to add it.
+        note: (3) `grep 8188 -- backend/apps/studio/registry.py` was MIS-SPECIFIED. Its prose
+        note: said the ComfyUI port is "hard-coded somewhere other than the registry that is
+        note: supposed to own it" — but registry.py is the agent TOOL registry (signature
+        note: introspection, JSON Schema generation) and holds no addresses at all. Satisfying
+        note: it meant writing a port constant into a file with no business holding one, to
+        note: move a percentage. The module that owns the address is comfy.py, and it already
+        note: does it correctly: base_url() reads SYMONEURAL_COMFY_URL, then _HOST/_PORT, then
+        note: the constants, and api.py:87 promotes the legacy SYM_ spelling the shell accepts.
+        note: The real defect in that area is the one nothing was watching: comfy.py and
+        note: scripts/comfyui.sh each carry their own 8188, edited by different kinds of change
+        note: — the same two-files-one-value shape as the ExecStart path that took the public
+        note: API down. Drift there does not crash: comfyui.sh reports success and writes a
+        note: pidfile, and every render then fails `comfyui_unreachable`. Replaced by
+        note: apps/studio/test_comfy_port.py, 4 tests, green — and proven to measure something
+        note: by editing comfyui.sh to 8199 and watching it go red naming both ports, then
+        note: restoring. It carries its own vacuity guard: if either file is restructured so
+        note: the parse finds nothing, it raises rather than comparing two absences.
 
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder
