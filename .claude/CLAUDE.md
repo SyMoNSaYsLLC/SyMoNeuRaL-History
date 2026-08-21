@@ -83,6 +83,17 @@ minutes. A task with no checks reads `—`, never `0%`, because an unmeasured ta
 unstarted one. **Choose checks where 100% genuinely means done** — a check that can pass
 without the work being finished is worse than no check, since it will archive the task.
 
+**If the deliverable is a program that runs, one check must be something only a real run can
+turn green.** `exists`, `grep` and `ngrep` ask what is written on disk; none of them can ask
+whether the thing works. #94 shipped a desktop client whose eighteen checks all went green and
+whose chat surface was dead on arrival — a missing Tauri capability meant the page was never
+permitted to hear the stream it had asked for, so it rendered a turn and then nothing, with no
+error to read. The timer archived it two minutes later. #74 did the same at `87c4042` with two
+of seven items not started. The cheap fix is a stamped smoke record committed beside the code —
+`check: exists <dir>/SMOKE.md` — because that file cannot be written honestly without running
+the thing. Note that a `note:` explaining the checks are insufficient does **not** help:
+`archive_tasks.py` reads checks, not notes, and #94's note said exactly that and was ignored.
+
 At 100% `archive_tasks.py` moves the block to `review/CLOSED-TASKS.md` verbatim with a line
 saying what judged it finished. Nothing is deleted; the list stays a reading of what is left.
 
@@ -325,13 +336,24 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
-**1580 pass, 0 fail and 14 skip at `87c4042`, measured 2026-08-21 from `backend/` in
-122.01 s, with `--collect-only` collecting 1594 in 1.17 s; the two `--ignore`s are not optional
-and not a failure you introduced.** 1580 + 14 = 1594, which is the arithmetic that says nothing
-aborted. `backend/apps/remix` is **28/28 in 0.41 s** on the same tree, so this tree carries
-**1622 across the two invocations**.
+**1612 pass, 0 fail and 14 skip at `7079933`, measured 2026-08-21 from `backend/` in
+124.13 s, with `--collect-only` collecting 1626 in 1.17 s; the two `--ignore`s are not optional
+and not a failure you introduced.** 1612 + 14 = 1626, which is the arithmetic that says nothing
+aborted. `backend/apps/remix` is **28/28 in 0.42 s** on the same tree, so this tree carries
+**1654 across the two invocations**.
 
-The 16 over the reading below are attributable in full, which is the second time running and
+The 32 over the reading below are one file: `apps/test_desktop_client.py`, landed whole by
+`7079933` with #94's client. 1580 + 32 = 1612. Three of those 32 were written *after* the
+client had already been declared finished by its checks, and are the more useful part of the
+delta: `TheCapabilityGrantsExactlyWhatThePageUsesTests` exists because Tauri v2 gates its core
+plugins, the client shipped with no `capabilities/` directory, and so chat rendered its turn
+and then silently received nothing while every check on the task read green. See
+`desktop-client/SMOKE.md`.
+
+The reading before that was **1580 pass, 0 fail and 14 skip at `87c4042`**, measured
+2026-08-21 in 122.01 s with `--collect-only` collecting 1594, and `apps/remix` 28/28 in 0.41 s.
+
+The 16 over the reading below it are attributable in full, which is the second time running and
 still not what to expect: 9 are `apps/test_api_reference.py`, new at `ad9b9fa`; 4 are
 `apps/test_weight_names.py` going 10 → 14 at `f3ed5ab`; 3 are `apps/test_brand_boundary.py`
 going 9 → 12 at `6542932`. 9 + 4 + 3 = 16. `5299200` is the fourth commit in that range to
@@ -378,7 +400,7 @@ a path you excluded does not exist — so it stops excluding and you get a colle
 instead of a count. The ladder behind the figure, each read on the tree it names: **1085 at
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
 `0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
-`87c4042`**. Do not
+`87c4042`**, **1626 at `7079933`**. Do not
 attribute a jump to one task from these numbers alone: the 107 between `e81ffa4` and `74dee33`
 spans **25 commits** across most of two days' work, while the 29 from `74dee33` to `d3a4040` is
 a single commit. A count moves when tests land, not when a task closes. `df1d862` read 110.38 s

@@ -6,9 +6,17 @@ noticed that chat was completely broken. This file is the other half, and it exi
 that: **every reading below was taken by driving the actual window**, and the readings are
 stamped with the tree they were taken on rather than carried forward.
 
-**Measured 2026-08-21 on the tree committed as `709478d` plus the working changes that became
-the commit this file sits beside.** Chat, image and RavenCalc were each driven through the UI —
-not through `curl`, and not by reasoning about `api.py`.
+**Measured 2026-08-21 at `7079933`**, which is the commit this file was written for. Chat,
+image and RavenCalc were each driven through the UI — not through `curl`, and not by reasoning
+about `api.py`.
+
+One qualification, because the rule here is that a figure names the tree it was read on and
+this one has a seam in it: the **two RavenCalc timings were read before
+`capabilities/default.json` existed**, on the tree that was `709478d` plus the client. That
+file grants `core:event:allow-listen` and RavenCalc does not listen for events — it is a
+request and a reply — so it is unaffected, and the readings are left as taken rather than
+re-dated to `7079933`. Chat and image were both read after the grant landed, which is the only
+reason there is a chat reading at all.
 
 ## How it was driven, and why on a private display
 
