@@ -35,13 +35,43 @@ echo "  unit points at $ROOT"
 
 # Anything started by hand has to go, or two processes fight over port 8000.
 #
-# `-x -f` together, not `-f` alone: -f matches against the whole command line, which includes
-# the command line of anything that merely mentions the path -- an editor, a build, or the
-# shell running this very script. That is not hypothetical; a bare `pkill -f` on this path
-# killed the shell that invoked it during testing, which surfaced as an unexplained exit 144.
-# -x demands the full command line equal the pattern, and the gateway runs with no arguments.
-pkill -x -f "$BIN" 2>/dev/null || true
+# Matched on /proc/<pid>/exe -- the kernel's resolved path to the running image -- and NOT on
+# the command line. This used to be `pkill -x -f "$BIN"`, which missed the very case the line
+# above describes: a gateway started by hand from the repo root has the command line
+# `./backend/apps/gateway/target/release/symon-gateway`, and -x demands the pattern EQUAL the
+# command line, so an absolute pattern never matches a relative invocation. Found live on this
+# box, holding :8000 while the unit sat in a 203/EXEC restart loop.
+#
+# That miss is worse than it sounds, because it makes this script's own healthcheck lie: the
+# unit would fail to bind, crash-loop, and `curl /healthz` at the bottom would still return 200
+# -- answered by the orphan -- so the install reports success over a dead unit. A check that can
+# pass without the work being done is the failure mode this repo keeps producing.
+#
+# /proc/<pid>/exe cannot match an editor, a build, or the shell running this script, because
+# their executable is vim/cargo/bash. That was the reason for the original `-f`, and a bare
+# `pkill -f` on this path once killed the invoking shell (an unexplained exit 144); resolving
+# the image sidesteps both problems rather than trading one for the other.
+for pid in $(pgrep -x symon-gateway 2>/dev/null || true); do
+  # readlink needs root for another user's pid; we are root, checked above.
+  if [ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" = "$(readlink -f "$BIN")" ]; then
+    echo "  stopping hand-started gateway (pid $pid) holding the port"
+    kill "$pid" 2>/dev/null || true
+  fi
+done
 sleep 1
+
+# Whatever we killed, the port has to actually be free before systemctl tries to bind, or the
+# restart below fails on EADDRINUSE and Restart=always turns that into a crash loop.
+for _ in $(seq 20); do
+  ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:8000 ' || break
+  sleep 0.5
+done
+if ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:8000 '; then
+  echo "port 8000 is still held by something this script did not start:" >&2
+  ss -lntp 2>/dev/null | grep '127\.0\.0\.1:8000 ' >&2
+  echo "free it before installing, or the unit will crash-loop on EADDRINUSE" >&2
+  exit 1
+fi
 
 systemctl daemon-reload
 systemctl enable symoneural-gateway.service
@@ -59,6 +89,19 @@ if ! curl -sf --max-time 8 http://127.0.0.1:8000/healthz >/dev/null; then
   exit 1
 fi
 echo "gateway is answering on 127.0.0.1:8000"
+
+# ...but by WHOM. A 200 on /healthz says something is listening, not that this unit is. An
+# orphan answering here is precisely how :8000 stayed up for hours while the unit was in a
+# 203/EXEC loop and nothing went red. MainPID is the discriminating reading, so take it.
+MAINPID="$(systemctl show -p MainPID --value symoneural-gateway.service)"
+PORTPID="$(ss -lntpH 2>/dev/null | sed -n 's/.*127\.0\.0\.1:8000 .*pid=\([0-9]*\).*/\1/p' | head -1)"
+if [ -z "$MAINPID" ] || [ "$MAINPID" = "0" ] || [ "$MAINPID" != "$PORTPID" ]; then
+  echo "the unit is NOT the process serving :8000 (MainPID=$MAINPID, port held by pid=${PORTPID:-none})" >&2
+  echo "something outside systemd is answering; the unit is dead and the site will 502 on reboot" >&2
+  systemctl --no-pager --lines=20 status symoneural-gateway.service >&2 || true
+  exit 1
+fi
+echo "  and it is this unit serving it (MainPID $MAINPID)"
 
 if curl -sf --max-time 10 http://127.0.0.1:8000/api/status >/dev/null; then
   echo "and it can reach the API through /api/status"

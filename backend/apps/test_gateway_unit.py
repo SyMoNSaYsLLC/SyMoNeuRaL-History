@@ -68,6 +68,78 @@ class GatewayUnitPathTests(unittest.TestCase):
             "installer's refuse-rather-than-crash-loop guard guards the wrong file")
 
 
+INSTALLED = pathlib.Path("/etc/systemd/system/symoneural-gateway.service")
+
+
+def _exec_start_of(text: str) -> str | None:
+    for line in text.splitlines():
+        if line.startswith("ExecStart="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+def _installed_is_stale(installed_text: str, template_text: str, root: pathlib.Path):
+    """None if the installed unit matches the template, else why it does not.
+
+    Split out from the test so the comparison itself is exercised on every machine, not
+    only on one with the unit installed -- see the two tests below.
+    """
+    got = _exec_start_of(installed_text)
+    if got is None:
+        return "the installed unit has no ExecStart line at all"
+    want = (_exec_start_of(template_text) or "").replace("@@ROOT@@", str(root))
+    if got != want:
+        return (f"the INSTALLED unit launches {got!r} but the repo template says {want!r}; "
+                "the running box does not have the fix that is committed here")
+    return None
+
+
+class InstalledGatewayUnitTests(unittest.TestCase):
+    """The template being right is not the same as the box being right.
+
+    Everything above reads `ops/symoneural-gateway.service`, which is the file in git. That
+    is necessary and it is not sufficient: the unit systemd actually runs is the copy under
+    /etc, written by `install-gateway.sh`, and the two drift the moment somebody commits the
+    template without re-running the installer. That is not hypothetical either -- it is what
+    happened AFTER the four-hour outage in this file's docstring was diagnosed. `88bf9b3`
+    corrected the template, every test above went green on it, and nobody ran the installer,
+    so /etc kept the pre-`712e15b` path and the unit sat in `activating (auto-restart)` with
+    `status=203/EXEC` under `Restart=always`. :8000 was answered the whole time by a gateway
+    somebody had started by hand, so every probe of the live site passed. The fix was in the
+    repo and the outage was one reboot away, with a green suite either side of it.
+
+    Guarded on the file existing, because a fresh clone or CI has no installed unit and an
+    unconditional read there is an environment-dependent failure -- the exact thing this
+    file's docstring refuses to do. Green-by-skip where there is nothing installed; red
+    precisely on a box where what is deployed no longer matches what is committed.
+    """
+
+    def test_the_comparison_catches_a_stale_installed_unit(self):
+        """Runs everywhere, including where nothing is installed.
+
+        Without this, the check below is skip-only off this box, and a skipped test looks
+        exactly like a passing one in the count at the foot of `.claude/CLAUDE.md`.
+        """
+        stale = "[Service]\nExecStart=/srv/app/symon-gateway/target/release/symon-gateway\n"
+        template = "[Service]\nExecStart=@@ROOT@@/backend/apps/gateway/target/release/symon-gateway\n"
+        why = _installed_is_stale(stale, template, pathlib.Path("/srv/app"))
+        self.assertIsNotNone(why, "a stale installed ExecStart was reported as matching")
+        self.assertIn("symon-gateway/target", why)
+
+        fresh = "[Service]\nExecStart=/srv/app/backend/apps/gateway/target/release/symon-gateway\n"
+        self.assertIsNone(_installed_is_stale(fresh, template, pathlib.Path("/srv/app")))
+
+    @unittest.skipUnless(INSTALLED.is_file(), f"no unit installed at {INSTALLED}")
+    def test_installed_unit_matches_the_committed_template(self):
+        try:
+            installed_text = INSTALLED.read_text()
+        except PermissionError:  # pragma: no cover -- unit is 644, but do not fail on perms
+            self.skipTest(f"{INSTALLED} is not readable by this user")
+        why = _installed_is_stale(installed_text, UNIT.read_text(), ROOT)
+        self.assertIsNone(
+            why, f"{why}\n\nre-install it:  sudo ./scripts/install-gateway.sh")
+
+
 class GatewayHopTests(unittest.TestCase):
     """The Caddyfile's hop and the unit's bind are the same port, or the site is a 502.
 

@@ -3,7 +3,9 @@
 # time. systemd has no notion of a relative path, so this is the only way the unit can live in
 # a repo that gets cloned anywhere. Same shape as ops/symoneural-api.service.
 Description=SyMoNeuRaL HTTP gateway (routing, WebSocket relay, payload validation)
-Documentation=file://@@ROOT@@/symon-gateway/README.md
+# Same pre-712e15b path the ExecStart below carried; corrected in the same sweep. Harmless to
+# systemd, but a stale pointer here sends the next reader to a directory that is not there.
+Documentation=file://@@ROOT@@/backend/apps/gateway/README.md
 
 # The gateway proxies to the API and is useless without it, but it must not fail to start
 # because the API is down: a 502 from the gateway is a diagnosable answer, whereas a gateway
