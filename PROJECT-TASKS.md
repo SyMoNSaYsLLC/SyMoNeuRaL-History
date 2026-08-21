@@ -407,6 +407,20 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: `exists backend/apps/ravencalc/symbolic.py` check still holds and only what is
         note: behind that module changes.
 
+        note: 2026-08-21 coder — FIFTH instance of one-token-one-file on this task, found
+        note: while scoping #94. `sd-cli` — the upstream name item 1 renamed to
+        note: `symoneural-diffuse` — survives at backend/api.py:114, :375, :844 and :2389.
+        note: :375 is the one that matters: it is the `ImageRequest.size` Field description,
+        note: so it renders into the public API reference and a visitor reads it. The other
+        note: three are internal comments in the serving source and nobody has asked for
+        note: those to change. That asymmetry is exactly why this is NOT being added as a
+        note: check: `ngrep sd-cli -- backend/api.py` would fail on the three comments and
+        note: read red forever on work nobody wants done — the mirror image of the vacuous
+        note: check deleted above. A grep cannot tell a rendered Field description from a
+        note: comment; a test that reads the OpenAPI payload can. So this belongs in
+        note: NoUpstreamIdentifiersTests in backend/apps/test_brand_boundary.py, asserting
+        note: over app.openapi() rather than over the file text. Recorded here so it is not
+        note: lost, and deliberately left uncarried by a check until that test exists.
 ◻ #75 — Secrets, credentials and leak containment
         owner: coder
         Folds #37 #38 #39 #48. Read those blocks in
@@ -898,3 +912,82 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         resolve: backend/apps/test_build_progress.py -> backend/tests/test_build_progress.py
         check: maxcount 0 apps/reinforce/tests -- .claude/CLAUDE.md
         check: grep AppsRootIsApplicationsOnly -- backend/tests/test_roster.py
+
+◻ #94 — SyMoNeuRaL Desktop Client: a native window over the local API
+        owner: coder
+        Garrett, 2026-08-21: "Create a clean, lightweight Electron or Tauri shell that
+        connects to our local API backends (supporting chat, image generation, and
+        RavenCalc)... Ensure everything is written under our own clean licensing terms with
+        zero proprietary baggage."
+
+        **This is NOT desktop/shell.py and must not touch it.** That program already exists,
+        passes 15/15 in backend/apps/test_desktop_shell.py, and is a GTK3+VTE terminal window
+        around bin/symoneural-cli. Its governing test asserts the shell never speaks to the
+        API itself — `for forbidden in ("urllib", "requests", "httpx", "api_json", "/api/",
+        "WebSocket")` — because a web client would be a second implementation of the
+        permission gate, and approve() opens /dev/tty rather than reading stdin. A client that
+        calls /api/chat can therefore never make that file pass; they are two programs with
+        opposite architectures. Asked which he wanted, Garrett chose to keep both: shell.py
+        and its 15 tests untouched, this one a distinct program with its own test file.
+
+        **Tauri v2, not Electron, and no npm at all.** Tauri on Linux renders through the
+        system WebKitGTK rather than bundling a Chromium, which is the only reading of
+        "lightweight" that survives measurement. Verified present on this box before choosing:
+        webkit2gtk-4.1 2.52.5, javascriptcoregtk-4.1 2.52.5, libsoup-3.0 3.6.5, gtk+-3.0
+        3.24.49, glib-2.0 2.84.4, cargo/rustc 1.97.1, and crates.io resolving (a probe crate
+        added serde 1.0.229 and linked a binary — the earlier 403 was a bucket root and proved
+        nothing about the index). The scaffold is hand-written and built with plain `cargo
+        build`; tauri-build reads tauri.conf.json from build.rs, so the Tauri CLI is not
+        required and there is no package.json, no bundler and no node_modules. Frontend is
+        static HTML/CSS/JS under desktop-client/ui/, which is also what makes the checks below
+        greppable.
+
+        The four endpoints it drives, read from backend/api.py rather than assumed:
+        /api/chat is SSE, not JSON — each event {"delta": "..."} and a final {"done": true,
+        "tokens", "seconds", "tok_per_s", "model", "adapter"}. /api/image returns ImageResult
+        whose url is /api/gen/<name>, which is a second fetch. /api/ravencalc returns a
+        ravencalc/result/v1 document whose check.passed is THREE-valued.
+
+        The honesty rules are load-bearing here and are what most of the checks measure:
+        check.passed == null renders "unconfirmed", never a tick — null is reported, not
+        rounded up. tok_per_s is displayed as the server measured it and never recomputed
+        client-side. No text-overflow anywhere in the CSS; long content wraps or folds, per
+        the standing rule that an ellipsis is data loss with extra steps. Any connection
+        indicator reflects a real /api/status read — no decorative LEDs. And the client binds
+        127.0.0.1 only, which is why `ngrep 0\.0\.0\.0` is a check.
+
+        check: exists desktop-client/src-tauri/tauri.conf.json
+        check: exists desktop-client/src-tauri/Cargo.toml
+        check: exists desktop-client/src-tauri/src/main.rs
+        check: exists desktop-client/ui/index.html
+        check: exists desktop-client/ui/app.js
+        check: exists desktop-client/ui/app.css
+        check: exists desktop-client/README.md
+        check: exists desktop-client/LICENSE
+        check: exists backend/apps/test_desktop_client.py
+        check: grep /api/chat -- desktop-client/ui/app.js
+        check: grep /api/image -- desktop-client/ui/app.js
+        check: grep /api/gen/ -- desktop-client/ui/app.js
+        check: grep /api/ravencalc -- desktop-client/ui/app.js
+        check: grep /api/status -- desktop-client/ui/app.js
+        check: grep unconfirmed -- desktop-client/ui/app.js
+        check: grep tok_per_s -- desktop-client/ui/app.js
+        check: ngrep text-overflow -- desktop-client/ui/app.css
+        check: ngrep 0\.0\.0\.0 -- desktop-client/ui/app.js
+
+        note: 2026-08-21 coder — all 18 checks verified red before being declared, using
+        note: tools/build_progress.run_check itself rather than by eye. Worth knowing why the
+        note: two ngrep checks are honest rather than vacuous: run_check fails BOTH grep and
+        note: ngrep on a file that does not exist (build_progress.py:138-142), deliberately,
+        note: so a rename cannot reach 100% by deleting the file it was meant to edit. So
+        note: `ngrep text-overflow` is red now and goes green only once app.css exists AND
+        note: lacks the token. A check that would have been green from the start —
+        note: `absent desktop-client/package.json` — was considered and dropped for that
+        note: reason: it encodes a real constraint but measures no progress, so it belongs in
+        note: the test file, not here.
+        note: 2026-08-21 coder — what these checks deliberately do NOT measure: that the
+        note: thing compiles, launches, or renders. build_progress's vocabulary cannot run a
+        note: build, so `cargo build` passing is not expressible and 18/18 will read 100%
+        note: on a client that has never been opened. Do not treat the percentage as the
+        note: definition of done for this one; the reading to trust is a real window, and
+        note: `cd backend && python3 -m pytest apps/test_desktop_client.py -q`.
