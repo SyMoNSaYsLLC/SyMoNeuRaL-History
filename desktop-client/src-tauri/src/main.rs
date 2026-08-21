@@ -185,11 +185,45 @@ async fn api_chat(
 /// it is more specific than anything this side could say ("Chat surface is not available."
 /// tells you to switch a surface on; "HTTP 503" does not). A refused connection is the one
 /// case worth interpreting, because it has exactly one cause worth checking first.
+///
+/// `detail` is a string for an `HTTPException` and a **list of objects** for a validation
+/// failure, and reading only the string form is how this function came to answer a bare
+/// "HTTP 422" for the one status that always knows exactly what was wrong. Measured against
+/// the live API on 2026-08-21: an oversize prompt returns
+/// `[{"type":"string_too_long","loc":["body","prompt"],"msg":"String should have at most
+/// 100000 characters","input":"AAA..."}]`, and the window showed "HTTP 422" and nothing else.
+///
+/// `input` is deliberately never read. It echoes the rejected value back in full, so on the
+/// request most likely to be refused -- one refused for being too long -- quoting it would
+/// put the whole 100 kB on screen as an error message.
 fn describe(status: u16, body: &str) -> String {
-    let detail = serde_json::from_str::<serde_json::Value>(body)
-        .ok()
-        .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_owned));
-    match detail {
+    let parsed = serde_json::from_str::<serde_json::Value>(body).ok();
+    let message = match parsed.as_ref().and_then(|v| v.get("detail")) {
+        Some(serde_json::Value::String(text)) => Some(text.clone()),
+        Some(serde_json::Value::Array(items)) => {
+            let parts: Vec<String> = items
+                .iter()
+                .filter_map(|item| {
+                    let msg = item.get("msg")?.as_str()?;
+                    // `loc` names the field that was refused. Without it the reader is told
+                    // something is too long and not which of the four inputs it was.
+                    let field: Vec<&str> = item
+                        .get("loc")
+                        .and_then(|l| l.as_array())
+                        .map(|loc| loc.iter().filter_map(|p| p.as_str()).collect())
+                        .unwrap_or_default();
+                    if field.is_empty() {
+                        Some(msg.to_owned())
+                    } else {
+                        Some(format!("{} — {msg}", field.join(".")))
+                    }
+                })
+                .collect();
+            (!parts.is_empty()).then(|| parts.join("; "))
+        }
+        _ => None,
+    };
+    match message {
         Some(message) => format!("HTTP {status}: {message}"),
         None => format!("HTTP {status}"),
     }
@@ -239,5 +273,53 @@ mod tests {
             "HTTP 503: Chat surface is not available."
         );
         assert_eq!(describe(500, "not json at all"), "HTTP 500");
+    }
+
+    /// The 422 body is the shape this function used to fall through on, taken verbatim from
+    /// the live API rather than imagined. Before the array arm existed it read "HTTP 422",
+    /// which is true and useless: the reason was in the payload and was thrown away.
+    #[test]
+    fn a_validation_failure_says_which_field_and_why() {
+        let body = r#"{"detail":[{"type":"string_too_long","loc":["body","prompt"],
+            "msg":"String should have at most 100000 characters","input":"AAAA"}]}"#;
+        assert_eq!(
+            describe(422, body),
+            "HTTP 422: body.prompt — String should have at most 100000 characters"
+        );
+    }
+
+    /// `input` echoes the refused value in full. The request most likely to be refused is one
+    /// refused for length, so reading that field would answer a too-long prompt by printing
+    /// the too-long prompt. This asserts the field is not merely unused today but stays unused.
+    #[test]
+    fn the_rejected_value_is_never_quoted_back() {
+        let huge = "A".repeat(100_001);
+        let body = serde_json::json!({
+            "detail": [{"type": "string_too_long", "loc": ["body", "prompt"],
+                        "msg": "String should have at most 100000 characters",
+                        "input": huge}]
+        })
+        .to_string();
+        let rendered = describe(422, &body);
+        // Both halves, deliberately. Asserting only the absence of the echo would pass on a
+        // function that had stopped reading `detail` altogether -- a bare "HTTP 422" contains
+        // no "AAAA" either, and this test would then be green over the bug it exists to catch.
+        assert!(rendered.contains("at most 100000 characters"), "the reason was dropped: {rendered}");
+        assert!(!rendered.contains("AAAA"), "the refused value reached the message");
+        assert!(rendered.len() < 200, "error message was {} bytes", rendered.len());
+    }
+
+    /// Several fields can fail at once, and reporting only the first would send someone back
+    /// round the loop to be told about the second.
+    #[test]
+    fn every_refused_field_is_named() {
+        let body = r#"{"detail":[
+            {"loc":["body","temperature"],"msg":"Input should be less than or equal to 5"},
+            {"loc":["body","max_tokens"],"msg":"Input should be greater than or equal to 1"}]}"#;
+        assert_eq!(
+            describe(422, body),
+            "HTTP 422: body.temperature — Input should be less than or equal to 5; \
+             body.max_tokens — Input should be greater than or equal to 1"
+        );
     }
 }

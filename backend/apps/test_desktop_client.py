@@ -233,11 +233,23 @@ class NoSecondPermissionGateTests(unittest.TestCase):
     """The pty gate in `bin/symoneural-cli` is the only one, and stays the only one."""
 
     def test_neither_half_implements_a_gate(self):
+        # `pty` is a substring of `empty`, and this test went red for a `parts.is_empty()` in
+        # `describe()` -- the same trap as the MIT rule in `.claude/CLAUDE.md`, where most
+        # matches are limits/limited/submit/emits.
+        #
+        # The fix is to subtract the one English word that collides, NOT to switch to a word
+        # boundary. A boundary looks like the obvious answer and is the wrong one twice over:
+        # `\b/dev/tty` never matches at all (a boundary needs a word character on one side,
+        # and `/` is not one), and every real spelling of the thing being forbidden -- the
+        # `openpty` call, the `portable_pty` crate -- is *glued to* another word, so a
+        # boundary would skip precisely the cases worth catching while still reading as strict.
         for path in (APP_JS, MAIN_RS):
             code = strip_code(path.read_text())
             for forbidden in ("/dev/tty", "approve", "permission", "symoneural-cli", "pty"):
                 with self.subTest(file=path.name, forbidden=forbidden):
-                    self.assertNotIn(forbidden, code)
+                    haystack = code.replace("empty", "") if forbidden == "pty" else code
+                    self.assertNotIn(forbidden, haystack,
+                                     f"{forbidden} appears in {path.name}")
 
     def test_the_shell_is_not_touched_from_here(self):
         # The two programs share nothing. If this client ever grows a dependency on the GTK
@@ -289,6 +301,58 @@ class TheCapabilityGrantsExactlyWhatThePageUsesTests(unittest.TestCase):
                 for escape in ("http", "shell", "fs:", "opener", "process", "default"):
                     self.assertNotIn(escape, permission,
                                      f"{permission} is broader than listening for events")
+
+
+class TheScrollerLandsOnTheTranscriptTests(unittest.TestCase):
+    """`.transcript` declares `overflow-y: auto` and for a while it could never take effect.
+
+    `body` was `min-height: 100vh`, which lets the flex column grow past the viewport; every
+    child grows with it, so the transcript box was always exactly as tall as its content and
+    had nothing to scroll. The page scrolled instead. Measured with a 100 kB prompt: the
+    composer and the Send button went off the bottom of the window, and
+    `transcript.scrollTop = transcript.scrollHeight` -- the line in app.js that keeps a stream
+    in view -- was writing to an element that does not move.
+
+    Nothing was ever hidden, so this is not the truncation the house rule bars. It is the
+    subtler version: a scroller declared on one element and actually happening on another.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = APP_CSS.read_text()
+        cls.page = strip_code(APP_JS.read_text())
+
+    def test_the_page_height_is_bounded(self):
+        body = re.search(r"\nbody \{(.*?)\n\}", self.css, re.S)
+        self.assertIsNotNone(body, "no body rule")
+        self.assertIn("height: 100vh", body.group(1))
+        self.assertNotIn("min-height: 100vh", body.group(1),
+                         "min-height lets the column grow past the viewport again")
+
+    def test_the_flex_chain_can_shrink_below_its_content(self):
+        # `min-height: auto` is a flex item's default and refuses to shrink below content, so
+        # bounding the body alone buys nothing -- the chain overflows it from the inside.
+        for selector in ("main", ".panel"):
+            with self.subTest(selector=selector):
+                rule = re.search(rf"\n{re.escape(selector)} \{{(.*?)\}}", self.css, re.S)
+                self.assertIsNotNone(rule, f"no rule for {selector}")
+                self.assertIn("min-height: 0", rule.group(1))
+
+    def test_a_bounded_panel_can_still_reach_all_of_its_content(self):
+        # The image panel's content is a render at whatever size the model produced. Bounding
+        # the page without a scroller here would put the bottom of a tall PNG -- and the
+        # measurement block under it -- out of reach, which IS the data loss the rule bars.
+        rule = re.search(r"\n\.panel \{(.*?)\}", self.css, re.S)
+        self.assertIn("overflow-y: auto", rule.group(1))
+
+    def test_an_error_scrolls_itself_into_view(self):
+        # The transcript is scrolled on send and on each delta; an error arrives after both.
+        # Measured: a 422 rendered twelve wheel clicks below the fold, so the window showed a
+        # sent turn, no reply and no error -- which reads as "still thinking", not "refused".
+        body = re.search(r"function fail\((.*?)\n\}", self.page, re.S)
+        self.assertIsNotNone(body, "no fail()")
+        self.assertIn("scrollIntoView", body.group(1),
+                      "an error nobody scrolls to is an error nobody was shown")
 
 
 class HonestyRulesTests(unittest.TestCase):

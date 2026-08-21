@@ -75,12 +75,122 @@ needs at least one check that only a real run can turn green.* This file is that
 #94 — but it was written after the archiver had already acted, which is exactly one run too
 late.
 
+## Second run — the branches the first run never touched
+
+**Measured 2026-08-21 on `f6b053a` plus the fixes in the commit that carries this section.**
+Everything above was one happy turn per panel. That is the shape of smoke test that agrees with
+you: three panels, three successes, nothing exercised twice and nothing exercised wrong. This
+run drove the two branches that were left, and **both of them were broken** — neither in a way
+any check on #94, or any test in `test_desktop_client.py`, could have seen.
+
+### Multi-turn, which had never been run at all
+
+The `pendingUser` change decides *when* a turn joins `history`, and the only thing that can
+exercise it is a **second** turn. The first run drove one. The structural test asserts there is
+exactly one `history.push(` call site, which proves the shape of the fix and would pass just as
+happily against a `pendingUser` that is never read.
+
+Three turns, each answered from the transcript rather than from the prompt in front of it:
+
+| Turn | Asked | Answered | Reading |
+|---|---|---|---|
+| 1 | "my rig ID is RAVEN-41 … reply with only the word noted" | `Ravensnest-41` | 7 tokens · 0.15 s · 46.8 tok/s |
+| 2 | "What rig ID did I just give you?" | `Ravensnest-41` | 7 tokens · 0.1 s · 70.7 tok/s |
+| 3 | "In my first message, what single word did I ask you to reply with?" | `Noted.` | 3 tokens · 0.06 s · 48.5 tok/s |
+
+Turn 2 and turn 3 are deliberately different questions. Turn 2's answer is a string that appears
+nowhere in turn 2's own prompt, so it can only have come from the stored **assistant** half.
+Turn 3's answer appears nowhere in any assistant output — "noted" was only ever in turn 1's
+**user** half — so it is the one that proves the user role carried too, and carried in the right
+order. One of those two turns on its own would not have distinguished the halves.
+
+### A failed turn, which is what `pendingUser` exists for
+
+Driven with a 100,001-character prompt against `MAX_PROMPT_CHARS = 100_000`, so the API refuses
+it and the client takes the `catch` branch. Three things were true afterwards and all three
+needed checking:
+
+* the error rendered, **Send came back enabled** — no wedge;
+* the next turn still answered `Ravensnest-41` (7 tokens · 0.12 s · 59.3 tok/s), so the failed
+  turn left no half-written pair behind. That is the fix working, measured;
+* the message itself was wrong, and it is the reason this run was worth doing.
+
+### Three bugs this run found
+
+**1. Every validation error read "HTTP 422" and nothing else.** `describe()` in `main.rs` read
+`detail` as a string. FastAPI answers an `HTTPException` that way but answers a *validation*
+failure with `detail` as a **list of objects** — so the one status code that always knows
+exactly what is wrong was the one status code the window could say nothing about. It now reads
+`HTTP 422: body.prompt — String should have at most 100000 characters`. Three Rust tests cover
+it, and `input` is deliberately never read: it echoes the rejected value in full, so quoting it
+would answer a too-long prompt by printing the too-long prompt.
+
+**2. The transcript's scroller was on the wrong element.** `.transcript` declares
+`overflow-y: auto` and could never use it, because `body` was `min-height: 100vh` — the flex
+column is then free to grow past the viewport, every child grows with it, and the box is always
+exactly as tall as its content. The page scrolled instead. With one long turn the composer and
+the Send button went off the bottom of the window, and `transcript.scrollTop =
+transcript.scrollHeight` in `app.js` — the line that keeps a stream in view — was writing to an
+element that does not move. `height: 100vh` plus `min-height: 0` down the chain fixes it, and
+`.panel` gained `overflow-y: auto` in the same change: bounding the page without that would put
+the bottom of a tall render out of reach, which is the data loss the house rule bars. Verified
+after the fix on all three panels, including that the image panel still scrolls to its
+measurement block.
+
+**3. An error could render below the fold.** The transcript is scrolled on send and on each
+delta; an error arrives after both. The 422 above landed twelve wheel clicks down, so the window
+showed a sent turn, no reply and no error — which reads as *still thinking*, not as *refused*.
+`fail()` now calls `scrollIntoView`.
+
+None of these is a bug a reader would have found in the source. All three needed the program run.
+
+### Re-read on the same tree
+
+* `cargo test` — **6/6**. It was 3/3, and that figure had been taken **before**
+  `capabilities/default.json` and the window `label` existed, so it was carried, not measured.
+  Three of the six are new and cover `describe()`.
+* `apps/test_desktop_client.py` — **36 passed** (was 32).
+* RavenCalc, `simplify` of `x**2*sin(x)` — **0.0051 s (measured, CPU — no GPU lock taken)**,
+  `verified — subtracted the simplified form from the original`, `exact: no`, `engine sympy
+  1.13.3`.
+* Image, 768×768, 4 steps, seed 1497065716 — **11.37 s (measured, queue excluded)**, 461071
+  bytes, `SymonImage F1 q4_k`, `/api/gen/gen-1787307359933-1497065716.png`, decoded in the
+  window.
+
+### One test was wrong, and it went red for an innocent word
+
+`NoSecondPermissionGateTests` forbids the substring `pty` in either half. `pty` is inside
+`empty`, so a `parts.is_empty()` in the new `describe()` turned it red — the same trap as the
+`MIT` rule in `.claude/CLAUDE.md`, where most matches are limits/limited/submit/emits. The fix
+subtracts the colliding word rather than switching to a word boundary, and the reason is worth
+keeping: `\b/dev/tty` never matches at all, and every real spelling of the forbidden thing
+(`openpty`, `portable_pty`) is glued to another word, so a boundary would skip exactly the cases
+worth catching while still reading as strict. Checked against all five spellings.
+
+### Two more notes for whoever drives this next
+
+* **`pkill -f` and `pgrep -f` match their own wrapper.** Both killed the driving shell here
+  (exit 144), twice, including with the `[s]ymoneural-desktop` bracket trick — the script's
+  *other* lines still contain the literal path. Put the kill in its own invocation, or resolve
+  the pid through `/proc/<pid>/cmdline` and `kill` that.
+* A 100 kB prompt is ~900 rendered lines. `xdotool click --repeat 1200 --delay 2 5` reaches the
+  bottom; clicking one wheel event per process does not, and takes minutes.
+
 ## What is still not covered
 
 * Only the `deb` bundle target is configured, and no bundle has been built or installed. The
   readings above are all from `cargo run`, i.e. the dev binary.
 * No test drives the window automatically. The `xdotool` scripts that produced these readings
-  were throwaway; re-running them means writing them again from the recipe above.
+  were throwaway; re-running them means writing them again from the recipe above. Both runs
+  found a real bug, so the case for a sixth `tests/*.mjs` suite is now made by evidence rather
+  than by principle — but a Tauri window is not a browser page and `frontend.mjs`'s harness does
+  not reach it, so this is not a small piece of work and is not pretended to be one.
 * The API host and port are a compiled constant, so the client cannot be pointed at a spare-port
   instance without editing `main.rs` and rebuilding. Everything above was therefore measured
   against the **live service on :8800**, which is the one thing here that is not isolated.
+* The in-stream `{"error"}` frame — `api.py:2308`, emitted when the chat surface will not
+  start — is still only **read**, not driven. The `catch` branch above is the neighbouring path
+  and shares the guard that matters (`fail()` does not clear `streaming`, so `finally` always
+  re-enables the button), but driving the frame itself would mean taking the public API down,
+  and it is proxied to the internet by `ops/Caddyfile`. Recorded as read rather than claimed as
+  measured.

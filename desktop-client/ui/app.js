@@ -39,7 +39,14 @@ function field(parent, key, value) {
 }
 
 function fail(where, message) {
-  where.append(el("div", "err", String(message)));
+  const box = el("div", "err", String(message));
+  where.append(box);
+  // The transcript is only scrolled to the bottom when a turn is sent and on each delta, and
+  // an error arrives after both. Measured with a 100 kB prompt: the 422 rendered twelve wheel
+  // clicks below the fold, so the window showed a sent turn, no reply and no error -- which
+  // reads as "still thinking" rather than as "refused". An error nobody scrolls to is an
+  // error nobody was shown.
+  box.scrollIntoView({ block: "nearest" });
 }
 
 // ------------------------------------------------------------------ tabs

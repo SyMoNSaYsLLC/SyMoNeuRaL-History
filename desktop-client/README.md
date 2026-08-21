@@ -7,7 +7,7 @@ A native window over the local API: **chat**, **image generation** and **RavenCa
 cd desktop-client/src-tauri && cargo run          # dev
 cd desktop-client/src-tauri && cargo build --release
 cd backend && python3 -m pytest apps/test_desktop_client.py -q
-cd desktop-client/src-tauri && cargo test          # the Rust half's own three tests
+cd desktop-client/src-tauri && cargo test          # the Rust half's own tests: 6/6 at f6b053a
 ```
 
 The API has to be up for the window to show anything: `./scripts/symoneural.sh on`, or your
@@ -124,3 +124,14 @@ to read. `src-tauri/capabilities/default.json` is the fix and
 **`SMOKE.md` is the missing half of the evidence** — every panel driven in a real window, with
 the figures each one reported and the recipe for re-running it. Read that before trusting a
 percentage on this task.
+
+It has since been driven a second time, and the second run is the more useful one to read. The
+first drove one happy turn per panel; the second drove the branches that were left — a second
+chat turn, and a turn the API refuses — and **found a bug in each**. Every validation error in
+the window read "HTTP 422" and nothing else, because `describe()` read FastAPI's `detail` as a
+string when a validation failure sends a list; and `.transcript`'s `overflow-y: auto` could
+never engage, because `body` was `min-height: 100vh`, so one long turn pushed the composer and
+the Send button out of the window while the line that keeps a stream in view wrote to a box that
+does not scroll. Neither is visible in the source, and neither is reachable by a check that
+greps a file. A third one — an error rendering below the fold with nothing scrolling to it — was
+found in the course of confirming the second.
