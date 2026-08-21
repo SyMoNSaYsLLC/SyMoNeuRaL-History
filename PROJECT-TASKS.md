@@ -521,6 +521,28 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: import exp`. Same class of defect as the ExecStart path that took the public API
         note: down — a path that does not move with the code it names.
 
+        **Updated 2026-08-20 at `597ec8c`, read from the disk, not carried forward: 21 of 24
+        checks pass and these three do not.**
+        `grep 8188 -- backend/apps/studio/registry.py` — the ComfyUI port is still hard-coded
+        somewhere other than the registry that is supposed to own it.
+        `exists ops/symoneural-deploy.service` — nothing yet makes a staged page reach the
+        webroot on its own, which is the whole reason a rename shipped to `site/` and stopped
+        there.
+        `ngrep exp.status() -- backend/api.py` — Exp is still a rack row at `api.py:1783`
+        after being migrated into Studio, so the rack claims a unit that is a plugin.
+
+        **Upgraded, because the title promises something the checks never measured.** "Every
+        application online" is not proven by twenty-four greps for symbols; it is proven by
+        asking the running server what it serves. So this task now owes a reading: every row in
+        `ROSTER.md` answers on the address the roster gives for it, taken from a server started
+        on a spare port, with the result written down and stamped. That is also the report he
+        has been owed since he said "let me know when the server is complete" — which cannot be
+        answered honestly out of a task percentage.
+
+        check: exists docs/SERVER-READY.md
+        check: grep ^| docs/SERVER-READY.md -- docs/SERVER-READY.md
+        check: grep EveryRosterRowAnswersTests -- backend/tests/test_server_ready.py
+
 ◻ #74 — Rebrand everything that ships: engines, models, interface, naming system
         owner: coder
         Folds #20 #25 #27 #33 #40 #71. Read those blocks in
@@ -658,6 +680,27 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: ngrep "swagger" -- backend/api.py
         check: ngrep "SymPy" -- site/ravencalc.html
 
+        **Updated 2026-08-20 at `597ec8c`: 6 of 10 checks pass.** The four engine checks are
+        green — `api.py` names `symoneural-llm` and `symoneural-diffuse` and no longer names
+        either upstream engine — and so are the Swagger and SymPy ones. What is missing is the
+        written half: `backend/models/NAMES.md` and `backend/DEPENDENCIES.md` do not exist, so
+        the mapping from our name to the upstream it came from lives nowhere a reader can check.
+        A rebrand with no attribution table is the failure mode this task exists to avoid: the
+        Apache-2.0 notice for Qwen2.5-7B-Instruct is a licence condition, not a courtesy.
+
+        **Upgraded to cover the interface, which is where the next rebrand leak will come from.**
+        Porting `references/deepseek-harness`'s design tokens is now real work (#91), and every
+        variable in that file is named `--dsw-static-deepseek-450` and similar. Served CSS and
+        JS must not carry `dsw` or `deepseek` in any identifier, class name or comment, and the
+        grep that proves it belongs here rather than in the task doing the porting — a task that
+        renames things should not also be the task that certifies the renaming.
+
+        check: exists backend/models/NAMES.md
+        check: ngrep dsw- -- site/symoneural.css
+        check: ngrep deepseek -- site/ui.js
+        check: grep NoUpstreamIdentifiersTests -- backend/tests/test_brand_boundary.py
+
+
 ◻ #75 — Secrets, credentials and leak containment
         owner: coder
         Folds #37 #38 #39 #48. Read those blocks in
@@ -696,35 +739,6 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: one from the disk — a rotated key and a stale key look identical to a grep. The
         note: absence checks prove the files left the tree, which is the part a filesystem can
         note: judge. Do not add a check that reads a secret to prove it changed.
-
-◻ #76 — Close the audit, and anchor every published figure to a SHA
-        owner: coder
-        Folds #36 #41 #42 #47 #49 #50 #56 #67. Read those blocks in
-        `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
-
-        1. **The remaining audit items** (#47, #41). Items 7, 9, 10, 11, 12, 18, 19, then 15;
-           and item 26, where `gpu-governor.sh:200` labels a historical record as a live one.
-        2. **Reclassify every Garrett-only item** (#42) against the five categories — hardware,
-           credentials, third-party dashboard with no API, money, legal or business. The
-           standing rule is FIX, not FILE, and anything that fails all five categories comes
-           back to me. Report what moved rather than just moving it.
-        3. **A machine check per audit item** (#56), so the surface reports a reading instead
-           of a claim — the same discipline as the task percentages.
-        4. **Anchor every figure** (#67). Sweep `docs/` and `.claude/HANDOVER.md`; every
-           measured number gets the commit it was read on plus a label: measured, vendor, or
-           projected. Where the tree is no longer identifiable, re-measure or delete. **Never
-           carry a number forward and re-date it** — a published 1063 turned out never to have
-           been true of the commit beside it, and that is the exact defect this closes.
-        5. **Re-measure all four suites at the final HEAD** (#49) and write the result up
-           (#50, #36). The suite counts in `.claude/CLAUDE.md` are stale by construction after
-           the plugin restructure: they were read at `d3a4040`, before `backend/apps` moved,
-           and the `--ignore=apps/reinforce/tests` path no longer matches anything now that
-           reinforce lives under `studio/plugins/`. Re-read them and stamp the new SHA; do not
-           reprint 1229.
-
-        check: exists AUDIT-DONE-2026-08-19.md
-        check: grep ^check: -- AUDIT-SURFACE-2026-08-19.md
-        check: exists docs/FIGURES.md
 
 ◻ #77 — The task surface: a prompt becomes an assignment becomes a task, automatically
         owner: coder
@@ -874,6 +888,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists backend/apps/remix/playlist_export.py
         check: grep PlaylistExportTests -- backend/apps/test_playlist_export.py
 
+
 ◻ #83 — Remove SyMoNeuRaL Project completely; put a cowork inside SyMoNeuRaL Chat
         owner: coder
         R-161, which supersedes the first half of R-156. He looked at `/project` and said it "is
@@ -946,6 +961,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep MinerEmbeddedTests -- backend/apps/test_page_layout.py
         check: grep miner-instrument-first -- tests/frontend.mjs
 
+
 ◻ #86 — A page can ship to site/ and never reach the webroot, and nothing goes red
         owner: coder
         R-159. "symoneural streamer page cant be found". Reproduced from the public origin
@@ -968,30 +984,46 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists tools/check_deployed.py
         check: grep WebrootDriftTests -- backend/apps/test_check_deployed.py
 
-◻ #87 — SyMoNeuRaL Coder must open a terminal, not documentation.html
+◻ #87 — SyMoNeuRaL Coder: the browser surface first, the terminal inside it, at /live-stack/coder
         owner: coder
-        R-160. "symoneural coder takes you to symoneural.com/documentation.html; this should take
-        you to a terminal like what they have in /references/deepseek harness".
+        R-160, restated by him on 2026-08-20: "update task 87 to be browser then terminal url
+        should be symoneural.com/live-stack/coder". Order and address are both part of the
+        instruction and neither is negotiable — **browser then terminal**, and the surface lives
+        at `/live-stack/coder`, not at `/coder.html` and not at `/documentation.html`.
 
         `api.py:1724` gives the Coder row `href="/documentation.html"` — a page about the project
-        — so the one surface whose entire point is that you can use it hands you a manual instead.
-        `references/deepseek-harness`, plus the two saved `DeepSeek Harness*.mhtml` captures beside
-        it, are the reference for what it should hand you: a terminal in the browser.
+        — so the one surface whose entire point is that you can use it hands you a manual.
 
-        Reference only, and the rule has no exception here: "we cannot use code in references its
-        for reference only we must rebrand if we want to use it", and "i dont care if you rebrand,
-        recreate or write it completely from scratch". Read for behaviour; build ours.
+        **Two steps, in his order, and the first is not a stub.** The browser surface is the
+        deliverable: the page, its layout, its own HTML + JS + CSS per #81, reading as an
+        instrument per #91. The terminal is what goes inside it once the page it lives on is
+        real. Building the pty first and hanging a page off it is the inversion he has now told
+        me to stop doing twice.
 
-        Related to R-156's live half — the coder reachable from the browser with filesystem access
-        to this machine — and it inherits that entry's caution. `/api*` is proxied to the public
-        internet, so a browser terminal here is the most dangerous surface in this repo. It gets
-        built because he asked for it; where the gate lands is #88's decision, not this task's,
-        and whatever #88 decides, the two trade-secret training artefacts stay unreachable
-        through it.
+        **`live-stack`, hyphenated, is what he typed, and it is not what the code says.**
+        `api.py`'s `SECTION_PAGES`/`_section_route()` mount `/livestack`, and #81 is written
+        against that spelling. Serve his spelling — it is the address he will type — and keep
+        `/livestack/coder` answering as well rather than breaking every existing link on the
+        way past. Two routes to one page is not an alias in the Caddy sense the rules bar; the
+        rule there is that the web server does no routing, and this is FastAPI doing all of it.
+        Fix #81's title in the same commit so the two tasks do not name different addresses.
+
+        Reference only, and the rule has no exception here: "we cannot use code in references
+        its for reference only we must rebrand if we want to use it", and "i dont care if you
+        rebrand, recreate or write it completely from scratch". `references/deepseek-harness`
+        has `TerminalBlock` and `ansi.ts` under `packages/client/ui-primitives/src/`; read them
+        for behaviour and build ours. Exceed it, per his standing bar.
+
+        `/api*` is proxied to the public internet, so a browser terminal here is the most
+        dangerous surface in this repo. Where the gate lands is #88's decision, not this
+        task's, and whatever #88 decides, the two trade-secret training artefacts stay
+        unreachable through it.
 
         check: ngrep href="/documentation.html" -- backend/api.py
+        check: grep live-stack/coder -- backend/api.py
         check: exists site/coder.html
-        check: grep CoderTerminalTests -- backend/apps/test_coder_terminal.py
+        check: grep CoderSurfaceTests -- backend/apps/tests/test_coder_surface.py
+        check: grep coder-instrument-first -- tests/frontend.mjs
 
 ◻ #88 — No tokens while we are testing: take the token requirement off Studio
         owner: coder
@@ -1064,3 +1096,99 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         check: exists docs/client-parity.md
         check: grep parity -- bin/symoneural-cli
+◻ #91 — Every surface has to read as an instrument, starting with the control board
+        owner: coder
+        R-165, with a screenshot of /controlboard. "control board looks dumb and needs to be made
+        more professional. All of the applications need to be more professional. We have to be
+        better than comfyui, deepseek, playwright, llama.cpp, vllm and stablediffusion.cpp. Right
+        now it seems like you have just programmed bare minimum; that will not be tolerated."
+
+        The screenshot is the diagnosis: twenty tiles in two ragged rows, every one the same size
+        and weight, each with a number, a unit, an explanation and a footnote — and half of them
+        mostly empty, because a row's tile height is set by its longest sentence. Nothing grouped
+        (VRAM beside CUDA cores beside a projected H200 figure), nothing ranked (die temperature as
+        loud as chat decode), six tiles visibly blank where a value should be, and row two ending
+        in five tiles of white space. The heading says "Everything this machine is, on one screen"
+        and a visitor cannot tell at a glance what the machine is doing.
+
+        He named the cause correctly and it should be written down rather than argued with: a
+        uniform grid is the least work. That is what "bare minimum" means here.
+
+        **The bar, stated so it can be judged:** same data, grouped by what it answers and ranked
+        by what a visitor came for, with the long tail folded into `<details>`. Nothing on that
+        page may be dropped to make it look better — the LIVE / MEASURED / PROJECTED legend, every
+        footnote, and "we do not quote a number we have not either measured or shown the arithmetic
+        for" are the argument the site is making. No new gauge that is not a real reading, and no
+        `text-overflow`. A prettier board that loses a label is a downgrade.
+
+        The comparison set is the specification and all six are in `references/`, so "better than"
+        is measurable: read what each one's own surface does well, write it down in
+        `docs/surface-bar.md`, and beat it. Behaviour observed, nothing copied — same discipline as
+        #90. Control board first because he named it; then every application surface, which is
+        where this meets #84, #85 and #81.
+
+        check: exists docs/surface-bar.md
+        check: grep ControlBoardGroupTests -- backend/apps/test_page_layout.py
+        check: grep controlboard-grouped -- tests/frontend.mjs
+
+◻ #92 — Every published figure carries the SHA it was read on
+        owner: coder
+        What is left of #76 after he dropped it: "remove task 76 and simplify what this was
+        trying to accomplish". #76 folded eight old tasks and had grown into an audit of an
+        audit. One thing in it was load-bearing, so it is the whole task now.
+
+        **A number with no commit beside it cannot be checked, only believed.** A published
+        1063 turned out never to have been true of the commit it sat next to, because somebody
+        carried it forward and re-dated it. That is the defect. Every measured figure in
+        `docs/`, `.claude/CLAUDE.md` and `.claude/HANDOVER.md` gets the SHA it was read on and
+        a label — measured, vendor, or projected. Where the tree is no longer identifiable,
+        re-measure or delete it; never re-date it.
+
+        `tools/check_figures.py` is what makes this stay true rather than be true once: it
+        reads those files, finds figures with no SHA within reach, and names them. A rule that
+        is only written down is a rule that drifts.
+
+        check: exists tools/check_figures.py
+        check: grep UnstampedFigureTests -- backend/tests/test_check_figures.py
+        check: grep ^| docs/FIGURES.md -- docs/FIGURES.md
+
+◻ #93 — backend/apps: named after the surface it serves, and no test files in its root
+        owner: coder
+        Garrett, 2026-08-20, having listed the directory: "these are not named correctly and i
+        did not ask for test_* in this folder there is a special place for python test".
+
+        Two faults, both visible in that one `ls`.
+
+        1. **The names do not match the rack.** `backend/apps/ROSTER.md` says the row is
+           `miner`, the directory is `cryptominer`; the row is `train`, the code is under
+           `api.py` and the docs say Reinforce. `asicminer` and `cryptominer` sit beside each
+           other as if they were two products. `capture`, `licensing`, `voice` and `accounts`
+           are not rows at all. The roster exists precisely so four lists cannot disagree, and
+           the directory is one of the four. Rename so the directory name IS the roster id,
+           and reconcile `apps/roster.py`, `api.py`'s `build_status()`, `controlboard`'s
+           `TOGGLEABLE` and the roster test in the same commit.
+        2. **22 `test_*.py` files are loose in `backend/apps/`.** The repo already has the
+           right shape and uses it twice: `apps/remix/tests/` and
+           `apps/studio/plugins/reinforce/tests/`. So per-app suites go to
+           `backend/apps/<app>/tests/`, and the cross-app ones — `test_build_progress.py`,
+           `test_symoneural_cli.py`, `test_roster.py`, `test_desktop_shell.py` and the rest —
+           go to `backend/tests/`. `backend/apps/` holds applications.
+
+        **The hazard here is silent and this repo has already been bitten by it.** The
+        documented invocation is `cd backend && python3 -m pytest apps/ -q
+        --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests`. Move the
+        files and `apps/` stops being the right target, while pytest says nothing about an
+        `--ignore` path that matches nothing — it just stops excluding, and you get a
+        collection error where a count used to be. So the invocation in `.claude/CLAUDE.md`
+        changes in the same commit as the move, and the count is re-measured and stamped, not
+        carried across. Same trap as #92.
+
+        Do not move a test and leave its `__main__` block behind: 34 of these files carry one
+        that already cannot import `apps.*` when run as a script, and a move changes the path
+        it would need.
+
+        resolve: backend/apps/cryptominer -> backend/apps/miner
+        resolve: backend/apps/test_roster.py -> backend/tests/test_roster.py
+        resolve: backend/apps/test_build_progress.py -> backend/tests/test_build_progress.py
+        check: maxcount 0 apps/reinforce/tests -- .claude/CLAUDE.md
+        check: grep AppsRootIsApplicationsOnly -- backend/tests/test_roster.py
