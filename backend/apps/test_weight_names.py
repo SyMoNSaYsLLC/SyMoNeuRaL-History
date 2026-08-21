@@ -184,5 +184,61 @@ class NoForeignNamesInCode(unittest.TestCase):
         self.assertEqual(offenders, [], "upstream weight filenames still in source")
 
 
+class NamesDocumentAgreesWithManifest(unittest.TestCase):
+    """`backend/models/NAMES.md` is the reader's copy of the manifest, and must stay one.
+
+    Task #74 item 3 asks for a table "mapping each SyMoNeuRaL name to its upstream model and
+    licence", because that table is what attribution is rendered from. Two copies of the same
+    facts is exactly the arrangement this repo has been bitten by before -- three files once
+    claimed to describe current state and agents acted on the stale one -- so the second copy
+    only earns its place if drifting from the first is a test failure.
+
+    Asserted in both directions on purpose. Missing a row is the obvious failure: a weight
+    gets added to the manifest, nobody updates the prose, and the site renders attribution
+    for ten of eleven artefacts. The reverse matters as much and is less obvious -- a row
+    here for something no longer in the manifest is an attribution claim about bytes that are
+    not on this box, which is the same species of untruth as a decorative status LED.
+
+    It does not assert the prose, only the table. NAMES.md carries reasoning the JSON has no
+    place for, including a section recording that three entries have no licence text on disk;
+    pinning the whole document would make writing that down a test failure.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = json.loads(MANIFEST.read_text())
+        cls.names = (MODELS / "NAMES.md").read_text(encoding="utf-8")
+
+    def test_the_document_exists_and_is_not_a_stub(self):
+        # The declared check on #74 is `grep upstream -- backend/models/NAMES.md`, which a
+        # one-line file satisfies -- and a task that archives on a stub is worse than one that
+        # never closed. This is the floor that word-count check cannot express.
+        self.assertGreater(len(self.names), 2000, "NAMES.md is too short to be the table")
+        self.assertIn("upstream", self.names.lower())
+
+    def test_every_manifest_entry_appears_with_its_upstream_and_licence(self):
+        missing = []
+        for w in self.doc["weights"]:
+            basename = w["path"].rsplit("/", 1)[-1]
+            for field in (basename, w["upstream_repo"], w["upstream_file"], w["license"]):
+                if field and field not in self.names:
+                    missing.append(f"{basename}: {field!r}")
+        self.assertEqual(missing, [], "NAMES.md has drifted from PROVENANCE.json")
+
+    def test_no_house_name_in_the_document_is_absent_from_the_manifest(self):
+        recorded = {w["path"].rsplit("/", 1)[-1] for w in self.doc["weights"]}
+        # Only names that look like a weight we placed. The document also names the three
+        # documented exemptions (`u2net.onnx`, the `hf/` cache, the licence texts), and those
+        # are correctly absent from the manifest -- that is what makes them exemptions.
+        cited = set(re.findall(r"`(symon[a-z0-9._-]+\.(?:gguf|safetensors|bin))`", self.names))
+        stale = sorted(cited - recorded)
+        self.assertEqual(stale, [], "NAMES.md attributes a weight that is not in the manifest")
+
+    def test_the_exemptions_are_explained_here_too(self):
+        """A reader who only opens NAMES.md must still learn why three names are foreign."""
+        for path in EXEMPT:
+            self.assertIn(path.rsplit("/", 1)[-1], self.names, f"{path} unexplained in NAMES.md")
+
+
 if __name__ == "__main__":
     unittest.main()

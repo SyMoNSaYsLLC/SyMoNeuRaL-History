@@ -3,10 +3,18 @@
 # `backend/models/` would make the `!` below unreachable. `backend/models/*` excludes every
 # child exactly the same way while leaving the parent visible enough to re-include one file.
 backend/models/*
-# The one committed file under models/. It records which upstream artefact each house-named
-# weight came from, which is the only place that mapping exists -- the weights themselves are
-# 40 GB and are fetched, so if the manifest is not in git it is not anywhere.
+# The committed files under models/. Neither is a weight; both are the record of what the
+# weights are, and the rule above is about 40 GB of fetched binaries.
+#
+# PROVENANCE.json records which upstream artefact each house-named weight came from, which
+# is the only place that mapping exists -- the weights themselves are fetched, so if the
+# manifest is not in git it is not anywhere.
 !backend/models/PROVENANCE.json
+# NAMES.md is the same mapping written for a person rather than for fetch-models.sh, and it
+# is where attribution is rendered from. Apache-2.0 and MIT let us rename what we
+# redistribute and do not let us drop the notice, so this file is a licence obligation, not
+# documentation -- untracking it is the one way to lose the notice without deleting it.
+!backend/models/NAMES.md
 
 # ---- Vendored third-party checkouts (each carries its own .git) ----
 cuda-samples/
