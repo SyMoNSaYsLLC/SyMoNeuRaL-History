@@ -57,3 +57,20 @@ sudo apt install ../oematch_0.1.0_all.deb
 - SWH / GitHub code-search backends for file-hash and string lookups beyond the OE corpus
 - `.rpm`, `.ipk`, AppImage (squashfs) extraction
 - per-recipe `FILES`/`RPROVIDES` expansion so sonames resolve without the static map
+
+## Tests
+
+```bash
+cd yocto/oematch
+python3 -m unittest discover -s oematch/tests -t .          # 49, no corpus needed
+OEMATCH_TEST_CORPUS=1 python3 -m unittest discover -s oematch/tests -t .
+```
+
+The suite lives **inside** the package, which looks wrong and is not: pybuild runs
+`unittest discover` from `.pybuild/cpython3_*/build`, a directory holding only what the
+package installs, so a top-level `tests/` is never copied there. The 0.1.0 build reported
+`Ran 0 tests in 0.000s / NO TESTS RAN` with a suite sitting beside setup.
+
+The corpus-backed rows are opt-in via `OEMATCH_TEST_CORPUS=1` and deliberately excluded
+from `dh_auto_test`: they are a claim about 479 cloned layers, and a package build that
+fails because an upstream layer moved a recipe is a build broken by somebody else's commit.

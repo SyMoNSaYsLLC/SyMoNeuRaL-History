@@ -84,15 +84,39 @@ def clone_or_update(vcs_url, dest: Path, branch):
 INCLUDE_RE = re.compile(r"^\s*(?:require|include)\s+(\S+)\s*$", re.M)
 
 
-def _resolve_include(spec, recipe_dir: Path, layer_root: Path):
+def _filename_vars(path: Path):
+    """The variables bitbake derives from a recipe's own filename.
+
+    `boost_1.90.0.bb` fixes PN and PV before any line of it is read, so
+    `require boost-${PV}.inc` is not an unresolvable reference -- it is one this tool can
+    resolve from the same place bitbake does. boost's HOMEPAGE and LICENSE are in that
+    file and nowhere else, so skipping it left the recipe blank. BP and BPN are included
+    because recipes use them interchangeably with PN here; BPN strips the packaging
+    prefixes, which is what `nativesdk-` and `-native` recipes require their shared .inc
+    under.
+    """
+    stem = path.stem
+    pn, pv = (stem.split("_", 1) + [""])[:2] if "_" in stem else (stem, "")
+    bpn = re.sub(r"^(nativesdk-|cross-canadian-)", "", pn)
+    bpn = re.sub(r"-(native|cross|initial|nativesdk|crosssdk|cross-canadian)$", "", bpn)
+    return {"PN": pn, "PV": pv, "BPN": bpn, "BP": f"{bpn}-{pv}" if pv else bpn}
+
+
+_VAR_REF_RE = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
+
+
+def _resolve_include(spec, recipe_dir: Path, layer_root: Path, fvars=None):
     """Where a `require`/`include` line points, or None.
 
     bitbake resolves these against BBPATH, which this tool does not have. The two places
     that actually matter are the recipe's own directory (`require nginx.inc`) and the
-    layer root (`require recipes-kernel/linux/linux-yocto.inc`), so both are tried. A
-    ${VAR} anywhere in the path is unresolvable without bitbake and is skipped rather
-    than guessed at.
+    layer root (`require recipes-kernel/linux/linux-yocto.inc`), so both are tried.
+
+    `${PV}` and friends are substituted from the filename (see `_filename_vars`); any
+    OTHER ${VAR} needs bitbake's datastore and is skipped rather than guessed at.
     """
+    if fvars:
+        spec = _VAR_REF_RE.sub(lambda m: fvars.get(m.group(1), m.group(0)), spec)
     if "${" in spec:
         return None
     for base in (recipe_dir, layer_root):
@@ -108,7 +132,7 @@ def _resolve_include(spec, recipe_dir: Path, layer_root: Path):
     return None
 
 
-def _read_with_includes(path: Path, layer_root, depth=0, seen=None):
+def _read_with_includes(path: Path, layer_root, depth=0, seen=None, fvars=None):
     """Recipe text with its `require`/`include` files appended.
 
     Without this, every recipe using the common .bb/.inc split carries NO metadata at
@@ -121,16 +145,17 @@ def _read_with_includes(path: Path, layer_root, depth=0, seen=None):
     which is the direction bitbake resolves them in.
     """
     seen = seen if seen is not None else {path.resolve()}
+    fvars = fvars if fvars is not None else _filename_vars(path)
     text = path.read_text(errors="replace")
     if depth >= 4:
         return text
     for spec in INCLUDE_RE.findall(text):
-        inc = _resolve_include(spec, path.parent, layer_root)
+        inc = _resolve_include(spec, path.parent, layer_root, fvars)
         if inc is None or inc.resolve() in seen:
             continue
         seen.add(inc.resolve())
         try:
-            text += "\n" + _read_with_includes(inc, layer_root, depth + 1, seen)
+            text += "\n" + _read_with_includes(inc, layer_root, depth + 1, seen, fvars)
         except OSError:
             continue
     return text
