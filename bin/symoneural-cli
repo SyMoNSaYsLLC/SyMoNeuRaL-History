@@ -1464,6 +1464,78 @@ def agent_namespace(args, session: str, query: str, cont: bool) -> argparse.Name
         allow_tool=list(args.allow_tool or []))
 
 
+# ---------------------------------------------------------------------------------------
+# the launch dashboard
+# ---------------------------------------------------------------------------------------
+def repo_version() -> str:
+    """The short commit this tree is on, or `dev` -- read from `.git`, never via subprocess.
+
+    A splash that shells out to `git` on every launch pays a process for a decoration, and on
+    a box where `git` is missing it prints a traceback instead of a session. Reading the two
+    files directly is cheaper and cannot fail loudly: anything unexpected is `dev`.
+    """
+    try:
+        head = (ROOT / ".git" / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            ref = (ROOT / ".git" / head[5:]).read_text(encoding="utf-8").strip()
+            return ref[:8]
+        return head[:8] or "dev"
+    except OSError:
+        return "dev"
+
+
+def gate_row() -> tuple[str, str]:
+    """What the gate will actually do to the next turn, and the colour to say it in.
+
+    THREE states, not two, and the third is why this function exists. #88's resolution added
+    a loopback-only bypass (`gate.local_bypass`), so "no token" stopped meaning "no turns".
+    The splash said `a turn will not` unconditionally, which became false for a local operator
+    the moment that landed -- a status line that is wrong about a gate is worse than no status
+    line, because it is the line somebody trusts instead of testing.
+
+    The token's VALUE is never read here and never printed anywhere. Only whether one exists.
+    """
+    if studio_token():
+        return "token exported -- remote callers must present it too", GREEN
+    if (os.environ.get("SYMONEURAL_STUDIO_LOCAL_BYPASS") == "1"
+            and os.environ.get("SYMONEURAL_STUDIO_ENABLED") == "1"):
+        return "local-only -- bypass on for loopback, remote blocked", GREEN
+    return ("no token -- /status and /tools work, a turn will not; export "
+            "SYMONEURAL_STUDIO_TOKEN or set SYMONEURAL_STUDIO_LOCAL_BYPASS=1"), AMBER
+
+
+def splash_lines(url: str, session: str, cwd: str, permissions: str,
+                 depth: int = 0) -> list[str]:
+    """The launch dashboard, as a list of rendered lines.
+
+    Pure on purpose: a renderer that prints cannot be asserted on without capturing stdout,
+    and the one thing that most needs asserting here is a NEGATIVE -- that no token value can
+    appear in the output. `SplashTests` checks that against the returned list.
+
+    **There are deliberately no `Working:` / `Needs input:` / `Completed:` sections.** This
+    client has no job queue to read them from, and printing three empty headers would be a
+    decorative status -- the exact failure `.claude/CLAUDE.md` and the rack rules forbid, one
+    layer down. They belong here the day there is a queue behind them and not before.
+    """
+    gate, gate_colour = gate_row()
+    rows = [
+        f"{c('SyMoNeuRaL Code', BOLD)}  {c('local session', DIM)}",
+        c(f"  version      {repo_version()}", DIM),
+        c(f"  mode         local owner/dev", DIM),
+        c(f"  api          {url}", DIM),
+        c(f"  cwd          {cwd}", DIM),
+        c(f"  session      {session}", DIM),
+        f"  {c('gate', DIM)}         {c(gate, gate_colour)}",
+        c(f"  permissions  {permissions}", DIM),
+    ]
+    if depth:
+        rows.append(c(f"  thread       {depth} message{'s' if depth != 1 else ''}", DIM))
+    rows.append("")
+    rows.append(c("  /help  /status  /permissions  /exit", DIM))
+    rows.append("")
+    return rows
+
+
 def cmd_repl(args) -> int:
     """An interactive session over the local stack.
 
@@ -1489,14 +1561,13 @@ def cmd_repl(args) -> int:
     session = args.session or session_id()
     turns = 0
 
-    print(f"{c('SyMoNeuRaL Code', BOLD)}  {c('interactive session', DIM)}")
-    print(c(f"  api      {args.url}", DIM))
-    print(c(f"  session  {session}  ->  {transcript_path(session).name}", DIM))
-    print(c(f"  cwd      {Path.cwd()}", DIM))
-    if not studio_token():
-        print(c("  token    not set -- /status and /tools work; a turn will not. "
-                "Export SYMONEURAL_STUDIO_TOKEN.", AMBER))
-    print(c("  /help for the commands, /exit to leave\n", DIM))
+    # The transcript FILENAME is deliberately not on the splash any more -- it is a debug
+    # detail, it is derivable from the session id, and `/session` prints it in full. Six rows
+    # of bootstrap text was the complaint this splash answers.
+    for row in splash_lines(args.url, session, str(Path.cwd()),
+                            args.permissions or "auto",
+                            len(transcript_read(transcript_path(session)))):
+        print(row)
 
     while True:
         depth = len(transcript_read(transcript_path(session)))

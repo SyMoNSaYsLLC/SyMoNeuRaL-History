@@ -240,7 +240,7 @@ reads ride the tokenless-read precedent and must wait on the #88 posture decisio
 per-model license/provenance enforcement is proven for exactly one model (rembg) — the check
 must fail on an *uncovered* model, red-first, before "provenance-before-ready" is claimed.
 
-### Phase 4.8 — SyMoNeuRaL Therapist (R-179, spec at docs/specs/therapist-spec.md)
+### Phase 4.8 — SyMoNeuRaL Sentinel (R-179, spec at docs/specs/symoneural-sentinel-spec.md)
 
 A model-facing supervisor between a client and a target model: shadow the context, score the
 draft before it becomes durable history (drift, contradiction, unsupported claims, entropy),

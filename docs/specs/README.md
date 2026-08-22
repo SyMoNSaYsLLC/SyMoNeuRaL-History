@@ -56,6 +56,7 @@ indexing them here; treat an unlisted file as unreviewed by this README rather t
 | `symoneural-marketplace.md` | Sellable workflows/adapters/packs. FUTURE, and gated on Studio having a plugin contract at all — a marketplace for an extension point with no contract is a shop with no shelves | FUTURE |
 | `symoneural-appliance.md` | The signed offline local-AI box. Blocked on a build that has never run, so its licence manifest is **not yet producible** rather than missing — plus three weights that cannot legally travel | FUTURE/AUDIT |
 | `symoneural-trust-report.md` | The customer-facing compliance render. FUTURE because it renders rather than generates, and its governing rule is that it must never render a field it does not have | FUTURE/AUDIT |
+| `symoneural-sentinel-spec.md` | R-179's model-supervision surface — interceptor, evaluator, intervention ladder, session audit. **Renamed from `therapist-spec.md` 2026-08-22**: the old name needed a production disclaimer denying healthcare, and a name that needs a denial attached is the wrong name, so the disclaimer and the clinic aliases are deleted rather than reworded | FUTURE/AUDIT |
 
 ## What is worth acting on, and what was verified independently
 

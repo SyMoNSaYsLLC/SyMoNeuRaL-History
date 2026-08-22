@@ -84,7 +84,7 @@ sellable units — not just raw generation.
 all (`symoneural-studio-upgrade-scope.md` §1.3: *define the interface before migrating tenants*).
 **A marketplace for an extension point that has no contract is a shop with no shelves.**
 
-The long-term product surfaces the brief names — Parameters, MoE, Therapist, Reinforce, Exp, Generic
+The long-term product surfaces the brief names — Parameters, MoE, Sentinel, Reinforce, Exp, Generic
 contracts — each have their own spec, and each is AUDIT or FUTURE.
 
 ## 5. Local AI appliance / embedded edge
@@ -103,7 +103,7 @@ data, and all nine recipes carrying `LICENSE` and `LIC_FILES_CHKSUM`.
 
 | Module | Classification | Spec |
 |---|---|---|
-| **Therapist** — output supervision, drift/contradiction detection, append-only intervention audit | FUTURE/AUDIT | `docs/specs/therapist-spec.md` (exists) |
+| **Sentinel** — output supervision, drift/contradiction detection, append-only intervention audit | FUTURE/AUDIT | `docs/specs/symoneural-sentinel-spec.md` (exists) |
 | **Provenance** — model/runtime/data/build provenance | **PROD direction**, AUDIT implementation | `docs/ops/PROVENANCE.md` |
 | **Meter** — token/job/credit metering | **BUILT / AUDIT**, disabled by default | `accounts/meter.py`; `symoneural-commercial-mode.md` §1 |
 | **Entitlements** — what an account/token may run | AUDIT | `docs/specs/symoneural-entitlements.md` |
@@ -112,7 +112,7 @@ data, and all nine recipes carrying `LICENSE` and `LIC_FILES_CHKSUM`.
 | **Trust Report** | FUTURE/AUDIT | `docs/specs/symoneural-trust-report.md` |
 | **Local Agent** | AUDIT/FUTURE | `symoneural-cloud-local-targets.md` §2 |
 
-**Therapist is the one worth flagging as commercially interesting**, because "audited AI output" is
+**Sentinel is the one worth flagging as commercially interesting**, because "audited AI output" is
 a claim almost nobody can make honestly, and this repo's habit of labelling every figure is the
 cultural prerequisite for it. It remains FUTURE.
 

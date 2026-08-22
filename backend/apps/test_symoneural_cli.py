@@ -765,6 +765,132 @@ class TokenGateTests(unittest.TestCase):
         self.assertEqual(out + err, "", "a successful gate check must be silent")
 
 
+class SplashTests(unittest.TestCase):
+    """The launch dashboard, and the one assertion that matters most is a negative.
+
+    `splash_lines` is pure so this can check the OUTPUT rather than the terminal: the token's
+    value must not be able to reach it. A renderer that prints cannot be asserted on without
+    capturing stdout, and "no secret in the output" is exactly the property worth a test.
+    """
+
+    GATE_KEYS = ("SYMONEURAL_STUDIO_TOKEN", "SYMONEURAL_STUDIO_LOCAL_BYPASS",
+                 "SYMONEURAL_STUDIO_ENABLED")
+    SECRET = "s3cret-value-that-must-never-be-printed"
+
+    def _render(self, **env):
+        kw = {k: None for k in self.GATE_KEYS}
+        kw.update(env)
+        with env_patch(**kw):
+            cli = load_cli()
+            return cli.splash_lines("http://127.0.0.1:8800", "sess-1",
+                                    "/home/google/Symoneural", "auto", 3)
+
+    def _plain(self, rows):
+        return re.sub(r"\033\[[0-9]*m", "", "\n".join(rows))
+
+    # -- the negative --------------------------------------------------------------------
+
+    def test_the_token_value_never_reaches_the_output(self):
+        """The whole point. `studio_token()` returns the secret, so a splash that formats it
+        by accident would leak it into every terminal, every screenshot and every asciinema
+        recording of a launch. The NAME may appear -- it is a hint -- the value may not."""
+        out = self._plain(self._render(SYMONEURAL_STUDIO_TOKEN=self.SECRET))
+        self.assertNotIn(self.SECRET, out)
+        self.assertNotIn("s3cret", out)
+
+    def test_no_local_path_scheme_or_env_file_leaks(self):
+        """Three classes the security audit forbids in anything user-facing: editor URL
+        schemes, a `.env` path, and a raw secret. Checked in every gate state, because a
+        renderer with a branch can leak in one branch only."""
+        for env in ({}, {"SYMONEURAL_STUDIO_TOKEN": self.SECRET},
+                    {"SYMONEURAL_STUDIO_LOCAL_BYPASS": "1",
+                     "SYMONEURAL_STUDIO_ENABLED": "1"}):
+            out = self._plain(self._render(**env))
+            for forbidden in ("file://", "vscode://", "pycharm://", ".env"):
+                with self.subTest(env=sorted(env), forbidden=forbidden):
+                    self.assertNotIn(forbidden, out)
+
+    # -- the three gate states, which is what #88 changed ---------------------------------
+
+    def test_a_missing_token_is_a_short_warning_not_a_dump(self):
+        out = self._plain(self._render())
+        gate = line_with("gate", out)
+        self.assertIn("no token", gate)
+        self.assertIn("a turn will not", gate)
+        # one line, not a stack of them
+        self.assertEqual(len([ln for ln in out.splitlines() if "gate" in ln]), 1)
+
+    def test_the_local_bypass_state_says_local_only_and_remote_blocked(self):
+        """#88's resolution made "no token" stop meaning "no turns" for a loopback caller.
+        A splash that still said `a turn will not` would be confidently wrong, which is worse
+        than silent -- so the third state has to be its own row."""
+        out = self._plain(self._render(SYMONEURAL_STUDIO_LOCAL_BYPASS="1",
+                                       SYMONEURAL_STUDIO_ENABLED="1"))
+        gate = line_with("gate", out)
+        self.assertIn("local-only", gate)
+        self.assertIn("remote blocked", gate)
+        self.assertNotIn("a turn will not", gate)
+
+    def test_the_bypass_row_needs_the_switch_too(self):
+        """Mirrors gate.local_bypass: the flag alone is not the bypass. If the surface is not
+        switched on there is no bypass, so the splash must not promise one."""
+        out = self._plain(self._render(SYMONEURAL_STUDIO_LOCAL_BYPASS="1"))
+        self.assertIn("no token", line_with("gate", out))
+
+    def test_an_exported_token_says_remote_callers_still_need_it(self):
+        out = self._plain(self._render(SYMONEURAL_STUDIO_TOKEN=self.SECRET))
+        self.assertIn("token exported", line_with("gate", out))
+
+    # -- shape ---------------------------------------------------------------------------
+
+    def test_the_rows_a_dashboard_owes_an_operator_are_all_present(self):
+        out = self._plain(self._render())
+        for row in ("version", "mode", "api", "cwd", "session", "gate", "permissions"):
+            with self.subTest(row=row):
+                line_with(row, out)                     # raises if missing
+        self.assertIn("/help", out)
+        self.assertIn("/status", out)
+        self.assertIn("/exit", out)
+
+    def test_no_empty_queue_sections_are_printed(self):
+        """There is no job queue behind this client, so `Working:` / `Needs input:` /
+        `Completed:` headers would be three decorative rows. The rack rules forbid a status
+        that is not a reading; this is the same rule one layer down."""
+        out = self._plain(self._render())
+        for header in ("Working:", "Needs input:", "Completed:"):
+            with self.subTest(header=header):
+                self.assertNotIn(header, out)
+
+    def test_the_thread_row_appears_only_when_the_thread_has_messages(self):
+        with env_patch(**{k: None for k in self.GATE_KEYS}):
+            cli = load_cli()
+            empty = self._plain(cli.splash_lines("u", "s", "/c", "auto", 0))
+            one = self._plain(cli.splash_lines("u", "s", "/c", "auto", 1))
+            many = self._plain(cli.splash_lines("u", "s", "/c", "auto", 4))
+        self.assertNotIn("thread", empty)
+        self.assertIn("1 message", one)
+        self.assertIn("4 messages", many)              # plural agreement, not "1 messages"
+
+    def test_the_product_name_is_cased_exactly(self):
+        out = self._plain(self._render())
+        self.assertIn("SyMoNeuRaL Code", out)
+        for wrong in ("Symoneural Code", "SYMONEURAL Code", "symoneural code"):
+            with self.subTest(wrong=wrong):
+                self.assertNotIn(wrong, out)
+
+    def test_version_degrades_to_dev_rather_than_raising(self):
+        """`repo_version` reads `.git` directly. Pointed at a tree with no `.git` it must
+        answer `dev`, because a splash that raises is a client that will not open."""
+        cli = load_cli()
+        with tempfile.TemporaryDirectory() as td:
+            keep = cli.ROOT
+            try:
+                cli.ROOT = Path(td)
+                self.assertEqual(cli.repo_version(), "dev")
+            finally:
+                cli.ROOT = keep
+
+
 class ApiPlumbingTests(unittest.TestCase):
     """`api_open`/`api_json` against a faked `urllib.request.urlopen`.
 
