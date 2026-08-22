@@ -135,8 +135,31 @@ class CredentialContainmentTests(unittest.TestCase):
         output carries the secret it caught has published it into CI logs and commit messages.
         """
         examples = [p for p in _git("ls-files").split()
-                    if p.endswith(".example") or p.endswith(".env.example")]
+                    if (p.endswith(".example") or p.endswith(".env.example"))
+                    # `backend/vendor/` is third-party source #103 copied out of
+                    # `references/` under a read licence. Upstream's own templates are not
+                    # ours to edit, and editing one would be worse than leaving it: the whole
+                    # value of a vendored tree is that it matches the upstream commit recorded
+                    # in `backend/vendor/PROVENANCE.md`, and a locally-blanked line makes that
+                    # claim false while looking tidier.
+                    #
+                    # Caught by this test the moment `backend/vendor` became tracked, which is
+                    # exactly when it should have been:
+                    # `agent-sdk-workshop/.env.example` carries `ANTHROPIC_API_KEY=sk-ant-...`.
+                    # That is a placeholder, and the rule above deliberately cannot tell a
+                    # placeholder from a real key -- a rule that tried would eventually wave a
+                    # real one through. So the fix is to scope WHOSE templates this polices,
+                    # never to soften what it counts as a value.
+                    #
+                    # Third of three walkers pruned for this tree; `test_credential_header.py`
+                    # and `test_references_boundary.py` are the others, each for the same
+                    # reason and each recorded at its own prune.
+                    and not p.startswith("backend/vendor/")]
         self.assertTrue(examples, "expected at least one tracked *.example file")
+        self.assertTrue(
+            any(p.startswith(("backend/apps/", "ops/", "scripts/")) for p in examples),
+            "the vendor exclusion swallowed our own templates too; it must narrow whose "
+            "files are policed, not stop the rule policing anything")
         offenders = []
         for rel in examples:
             for lineno, line in enumerate((REPO / rel).read_text().splitlines(), 1):
