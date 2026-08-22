@@ -12,8 +12,14 @@ Read that module before adding a field here. The other two files in this directo
 `EXPORTS.md` and `MEASUREMENTS.md` — are rules in force; this one is a target.
 
 Consumers: `docs/specs/symoneural-studio-upgrade-scope.md`,
-`docs/specs/symoneural-studio-node-system.md`, and the planned
-`GET /api/studio/model-registry`.
+`docs/specs/symoneural-studio-node-system.md`,
+`docs/specs/symoneural-runtime-registry.md`, `docs/specs/symoneural-model-hot-swap.md`, and
+the planned `GET /api/models`.
+
+**This registry is not the runtime registry.** It answers *what can be served*;
+`docs/ops/RUNTIME-PROFILES.md` answers *what can serve it*. The join between them is the
+runtime router, and collapsing the two tables is the design error
+`symoneural-runtime-registry.md` §1 exists to prevent.
 
 ---
 
@@ -26,9 +32,11 @@ registry does not describe is a model Studio cannot offer, however present its f
 
 | Field | Notes |
 |---|---|
-| `id` | stable, ours |
+| `model_id` | stable, ours |
 | `display_name` | |
-| `family` | `flux`, `sdxl`, `llama`, … — the node system is family-aware |
+| `model_family` | **llm / image / asr / embedding / vision / audio / video** — the coarse family the router keys on |
+| `architecture_family` | `flux`, `sdxl`, `llama`, … — the specific lineage a node must match |
+| `format` | **gguf / safetensors / diffusers / onnx / bin** |
 | `task` | image, chat, audio, video, embedding, … |
 | `source` | Hugging Face, NGC, local internal, … |
 | `source_url` | |
@@ -38,13 +46,19 @@ registry does not describe is a model Studio cannot offer, however present its f
 | `precision` | |
 | `min_vram_gb` | derived, never typed in |
 | `recommended_vram_gb` | derived, never typed in |
-| `runtime_backends` | `comfy` \| `diffusers` \| `vllm` \| `local` |
-| `supported_targets` | `cloud` \| `local_customer` \| `local_owner_nvidia` |
+| `supported_runtimes` | `runtime_id`s from `docs/ops/RUNTIME-PROFILES.md` — not families, so a model cannot claim a runtime that is `absent` |
+| `supported_targets` | `cloud` \| `local_customer` \| `local_owner_nvidia` \| `auto` |
+| `local_path_or_source` | a local path **or** a managed source — never a public raw path |
+| `load_policy` | **`resident` / `on_demand` / `disabled`** |
+| `eviction_priority` | lower is evicted first. `train` is never evicted — `docs/ENGINEERING.md` |
 | `download_state` | present / absent / partial — and **absent is a state, not an error** |
 | `measured_or_vendor` | `measured` \| `vendor` \| `projected` |
 | `allowed_for_public_cloud` | |
 | `allowed_for_local_customer` | |
 | `allowed_for_owner_gpu` | |
+| `docs_href` | the model's own docs page |
+| `api_href` | the matching `/docs` operation |
+| `model_registry_href` | the canonical registry entry, for a node to link to |
 
 ## Rules
 
@@ -83,3 +97,18 @@ Family-specific behaviour for flux is fixed by `backend/apps/studio/workflows.py
 any registry row claiming this family inherits it: `cfg` is 1.0, the negative prompt is inert
 at cfg 1.0, raising cfg degrades rather than sharpens, and guidance is embedded conditioning
 rather than classifier-free.
+
+## LLM and ASR inventory on this box
+
+Measured 2026-08-22 at `41524770`; evidence in `docs/ops/BOX-REALITY-AUDIT.md` §8.
+
+**LLM — PROD inventory.** `backend/models/llm/`, six GGUF files, 39.64 GB:
+`symon-1.0-32b-q2_k_xl`, `-27b-q2_k_xl`, `-27b-vision-f16`, `-14b-q4_k_m`, `-7b-q4_k_m`,
+`-draft-0.5b-q4_k_m`. llama.cpp (`symoneural-llm`) is **built** and is the likely
+local/owner/customer runtime for them. **vLLM is a cloud candidate only — no service is
+running and this file does not claim one.**
+
+**ASR — inventory present, runtime absent.** `backend/models/whisper/symoneural-listen-base-en.bin`
+(148 MB) is real. `whisper.cpp` is **absent**: `contrib/` does not exist and there is no
+`whisper-cli` on this box. So the weights are current inventory and there is **no production
+ASR route to claim** — `apps/voice` already reports `offline` and names the missing path.

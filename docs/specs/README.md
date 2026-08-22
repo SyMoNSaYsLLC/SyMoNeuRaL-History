@@ -29,6 +29,8 @@ indexing them here; treat an unlisted file as unreviewed by this README rather t
 | `voice-spec.md` | SyMoNeuRaL Voice (§5 item 12) — the ASR half **measured** on the CPU build already on disk, which settles the governor question; TTS unmeasured and says why | proposed, nothing built |
 | `symoneural-studio-upgrade-scope.md` | Studio as a ComfyUI-shaped surface that SyMoNeuRaL owns: product modes, the four execution targets, the four compile targets, badges, security boundaries. Task #103. Its §2 answers the recorded reason the first canvas was deleted; §3.2 records that `/studio/editor/*` publicly proxies ComfyUI's own frontend **today**; §3.4-3.5 correct the packet's SDXL examples against the FLUX baseline actually on this disk | proposed direction-lock, nothing implemented |
 | `symoneural-studio-node-system.md` | The data half of #103 — node registry fields, the canonical graph schema, validator, target resolver, compiler, and the five-node MVP | implementation plan; **not** authorization to implement |
+| `symoneural-runtime-registry.md` | Task #104, the RuntimeOps half: the runtime registry (distinct from the model registry) and the runtime router that joins them. Carries the maturity ladder — of seven runtime families, two are built, one is source-only, four are absent | proposed, nothing implemented |
+| `symoneural-model-hot-swap.md` | Task #104 — hot swap as a controlled operation rather than manual process killing, and the six multi-model-serving mechanisms kept deliberately distinct | proposed, nothing implemented |
 
 ## What is worth acting on, and what was verified independently
 

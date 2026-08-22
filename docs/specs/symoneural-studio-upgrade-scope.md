@@ -6,7 +6,10 @@ authorized."* The reason it is written before any folder migration is his: *"so 
 migration does not erase the intended architecture."*
 
 Companion: `docs/specs/symoneural-studio-node-system.md` (registry, graph schema, validator,
-compiler). Contracts: `docs/ops/MODEL-REGISTRY.md`, `docs/ops/HARDWARE-PROFILES.md`.
+compiler). **RuntimeOps half, task #104:** `docs/specs/symoneural-runtime-registry.md`,
+`docs/specs/symoneural-model-hot-swap.md`. Contracts: `docs/ops/MODEL-REGISTRY.md`,
+`docs/ops/RUNTIME-PROFILES.md`, `docs/ops/HARDWARE-PROFILES.md`, `docs/ops/GPU-GOVERNOR.md`.
+Measured ground truth: `docs/ops/BOX-REALITY-AUDIT.md`.
 
 Read `docs/specs/README.md` first: files in this directory are arguments, not state.
 `.claude/HANDOVER.md` is the one state document.
@@ -47,6 +50,34 @@ resolver, queue/accounts/credits, and the local/cloud execution policy.
 **The product rule.** ComfyUI look: yes. ComfyUI workflow backend: yes, privately. Raw public
 ComfyUI admin surface: **no**. ComfyUI is a UX reference and a private runner; it is not the
 public product shell and not the product core.
+
+### 1.1 Studio is the surface. The core is ModelOps + RuntimeOps.
+
+Added 2026-08-22, and it generalises this whole scope beyond ComfyUI. **Studio is the visual
+surface.** The real core is:
+
+| Core component | Where it is specified |
+|---|---|
+| model registry | `docs/ops/MODEL-REGISTRY.md` |
+| **runtime registry** | `docs/specs/symoneural-runtime-registry.md` §2, `docs/ops/RUNTIME-PROFILES.md` |
+| target resolver / **runtime router** | §6 here; `symoneural-runtime-registry.md` §3 |
+| **hot swap manager** | `docs/specs/symoneural-model-hot-swap.md` |
+| **GPU governor** | `docs/ops/GPU-GOVERNOR.md`, and `docs/ENGINEERING.md` for the rules in force |
+| job queue | §5.1 here; `symoneural-model-hot-swap.md` §2 |
+| node / API / docs link contract | §9 here; node-system §2 |
+| **Backstage-style catalog direction** | §11 here |
+| **Nx-style future workspace direction** | §12 here |
+
+Consequences worth stating, because they change what "done" means:
+
+- **A model registry is not a runtime registry.** One answers *what can be served*, the other
+  *what can serve it*. The router joins them; collapsing the tables is the design error
+  `symoneural-runtime-registry.md` §1 exists to prevent.
+- **The graph surface is one client of this core, not its owner.** An LLM chat job, an ASR job
+  and a bare API call reach the same router without a canvas.
+- **Seven runtime families, at four different maturity levels today.** Two built, one
+  source-only, four absent — measured, in `BOX-REALITY-AUDIT.md` §8. **No document in this repo
+  may claim a runtime is running.**
 
 ---
 
@@ -476,7 +507,80 @@ Studio UI -> SyMoNeuRaL API -> validate -> resolve -> compile -> queue -> worker
 
 ---
 
-## 11. First implementation milestone
+## 11. Backstage-style catalog direction
+
+**Future direction. Do not install Backstage unless explicitly authorized.** Captured so the
+component boundaries are written down before a migration invents different ones.
+
+The value borrowed is the *shape*: every component, API and resource is an entity with an
+owner, a docs link and its dependencies — which is the same discipline §9's node/API/docs link
+contract applies one level down.
+
+**Components**
+
+```
+studio                        runtime-router               model-registry
+hardware-router               gpu-governor                 comfy-private-worker
+vllm-server                   llama-cpp-server             stable-diffusion-cpp-server
+whisper-cpp-server
+```
+
+**APIs**
+
+```
+studio-api        runtime-api        model-registry-api
+hardware-profile-api               jobs-api
+```
+
+**Resources**
+
+```
+rtx5070ti-16gb    backend-model-store    symoneural-queue    cloud-worker    local-agent
+```
+
+**A catalog entry must carry its maturity, or it lies by omission.** Four of those component
+entries — `vllm-server`, `whisper-cpp-server`, and any TensorRT/Triton entry — describe
+runtimes that are **absent** today (`BOX-REALITY-AUDIT.md` §8.2). A catalog that lists them
+without a level reads as an inventory of things that exist. `llama-cpp-server` and
+`stable-diffusion-cpp-server` are **built**; `comfy-private-worker` is **source-only**.
+
+---
+
+## 12. Nx-style future workspace direction
+
+**Future direction only. No folder migration now** — and this document exists precisely so a
+migration cannot quietly pick different boundaries.
+
+**Future apps**
+
+```
+apps/web       apps/api        apps/studio      apps/local-agent
+apps/worker-llm               apps/worker-image                apps/worker-asr
+```
+
+**Future libs**
+
+```
+libs/model-registry     libs/runtime-registry    libs/hardware-profiles
+libs/studio-graph       libs/openapi-client      libs/queue-contracts
+libs/gpu-governor       libs/backstage-catalog
+```
+
+**Three things to settle before any of this moves**, all of them findings rather than opinions:
+
+1. **`backend/apps/studio/plugins/*` and `custom_nodes/*` are still AUDIT** (audit §5). A
+   migration that relocates them before they are classified moves code nobody has decided to
+   keep — 112 tracked files in `plugins/` alone.
+2. **`libs/gpu-governor` would be the third home for governor knowledge**, after
+   `docs/ENGINEERING.md` (rules in force) and `scripts/gpu-governor.sh` (behaviour). That is
+   the second-state-document trap; the lib must *contain* the script's logic, not restate it.
+3. **The worker split assumes runtimes that mostly do not exist yet.** `apps/worker-asr` has no
+   `whisper.cpp` to wrap. Creating the directory does not create the capability, and an empty
+   worker app reads as a broken one.
+
+---
+
+## 13. First implementation milestone
 
 Small and measured, and **not authorized by this document.**
 
@@ -498,7 +602,7 @@ points at nothing.
 
 ---
 
-## 12. Acceptance for the direction-lock commit
+## 14. Acceptance for the direction-lock commit
 
 Stated here so it can be checked rather than asserted. This document states: Studio is a
 ComfyUI-style graph UI owned by SyMoNeuRaL (§1) · raw ComfyUI must not be publicly exposed
@@ -511,7 +615,7 @@ authorized (§5.3) · the badges are named (§8) · the node docs/API link contr
 Studio operations with stable operation ids (§9) · no implementation beyond spec and task
 unless explicitly authorized (header, §11).
 
-## 13. Not in this commit, and not a Studio question
+## 15. Not in this commit, and not a Studio question
 
 `review/symoneural-studio-upgrade-scope-2026-08-22/audit/INPUTS-INSPECTED.md` records that
 `symoneural.zip.part-00/01/02` concatenate to a 77-file, ~84 MB archive that left this box,

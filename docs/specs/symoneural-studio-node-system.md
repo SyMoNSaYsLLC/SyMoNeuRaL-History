@@ -5,7 +5,10 @@ Companion to `docs/specs/symoneural-studio-upgrade-scope.md`, which holds the pr
 direction, the execution targets and the security boundaries; this file holds the data
 structures.
 
-Contracts: `docs/ops/MODEL-REGISTRY.md`, `docs/ops/HARDWARE-PROFILES.md`.
+Contracts: `docs/ops/MODEL-REGISTRY.md`, `docs/ops/HARDWARE-PROFILES.md`,
+`docs/ops/RUNTIME-PROFILES.md`, `docs/ops/GPU-GOVERNOR.md`. Runtime side of the same
+architecture: `docs/specs/symoneural-runtime-registry.md`,
+`docs/specs/symoneural-model-hot-swap.md` (task #104).
 
 **Source.** Normalized from `review/symoneural-studio-upgrade-scope-2026-08-22/`, which is
 untracked (`.gitignore:166`). The packet's JSON and YAML are kept below as **field-shape
@@ -64,15 +67,33 @@ GET /api/studio/nodes/{node_type}
 | `model_family` | which families this node is valid for (scope spec §3.5) |
 | `hardware` | requirements; every figure **labelled** measured / vendor / projected |
 | `model_requirements` | resolved through the model registry |
+| `supported_runtimes` | `runtime_id`s that can execute this node (`docs/ops/RUNTIME-PROFILES.md`) |
+| `required_model_family` | llm / image / asr / embedding / vision / audio / video |
+| `required_model_format` | gguf / safetensors / diffusers / onnx / bin |
 | `hardware_badges` | the ten values in scope spec §8 |
+| `model_registry_href` | the model registry entry, where applicable |
+| `runtime_registry_href` | the runtime registry entry, where applicable |
 | `validation` | rules the validator enforces before a compile is attempted |
 
 `node_id` is an **instance** field, not a type field: stable within a graph, and the id that
 node-level errors quote.
 
-**Field names are the 2026-08-22 packet's**, which supersedes the first pass: `display_name`
-not `display`, `backends` not `supported_backends`. Recorded rather than swapped silently,
-because an implementer reading only the earlier message would build the wrong keys.
+**Field names, third pass — recorded, not swapped silently**, because three messages on
+2026-08-22 used different keys and an implementer reading only one of them builds the wrong
+object:
+
+| Canonical | Superseded spellings | From |
+|---|---|---|
+| `display_name` | `display` | pass 1 |
+| `backends` | `supported_backends` | pass 1 |
+| `supported_runtimes` | `runtime_candidates` (in the pass-3 example) | pass 3 |
+| `required_model_format` | `formats` (in the pass-3 example) | pass 3 |
+
+The pass-3 *field list* and its *example* disagreed with each other — the list says "supported
+runtimes" and "required model format", the JSON says `runtime_candidates` and `formats`. The
+list wins, because a list of field names is a schema statement and an example is an
+illustration. Both spellings are written down here so the disagreement is visible rather than
+silently resolved.
 
 ### The canonical node contract
 
@@ -175,6 +196,32 @@ nodes:
       label: projected
     hardware_badges: [CLOUD_RECOMMENDED, NEEDS_MODEL_DOWNLOAD]
 ```
+
+And a node from a different family entirely, showing the runtime fields — this is the pass-3
+example with its keys normalised to the canonical spellings above:
+
+```json
+{
+  "type": "llm.chat",
+  "display_name": "Chat Model",
+  "category": "llm/generation",
+  "docs_href": "/studio/docs/nodes/llm.chat",
+  "api_href": "/docs#/Runtime/resolve_model_runtime",
+  "openapi_operation_id": "resolve_model_runtime",
+  "supported_runtimes": ["symoneural-llm", "vllm-cloud"],
+  "runtime_registry_href": "/api/runtimes/symoneural-llm",
+  "required_model_family": "llm",
+  "required_model_format": ["gguf", "safetensors"],
+  "model_registry_href": "/api/models?family=llm",
+  "targets": ["cloud", "local_customer", "local_owner_nvidia"],
+  "hardware_badges": ["RUNS_LOCAL", "CLOUD_RECOMMENDED"]
+}
+```
+
+**`vllm-cloud` is `absent` on this box** (`BOX-REALITY-AUDIT.md` §8.2) and `symoneural-llm` is
+`built`. A node listing a runtime does **not** assert that runtime is running — the router
+refuses by maturity level and says which. That separation is what lets a node be written once
+and stay honest as the box changes.
 
 Two constraints on the `hardware` block, both from rules already in force:
 

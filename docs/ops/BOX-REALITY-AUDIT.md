@@ -400,3 +400,95 @@ code nobody has decided to keep.
   what is REMOVED is treating it as the thing customers get)
 - CPU fallback for image/GPU workloads — and the code already has none
 - stable `operation_id`s existing anywhere today — there are zero
+
+---
+
+## 8. Runtime inventory — added 2026-08-22 for the Studio/Runtime scope (#104)
+
+Requested so no spec can claim a runtime is running when it is not. **The maturity ladder is
+in `docs/ops/RUNTIME-PROFILES.md`**: `absent` / `source-only` / `built` / `running` /
+`measured`.
+
+### 8.1 What is running right now
+
+```
+:8800  python3         the FastAPI API
+:8000  symon-gateway   the OpenAI-compatible gateway
+```
+
+**The API is running. No model runtime is resident.** Nothing on 8188 (Comfy), no
+`symoneural-llm`, `symoneural-diffuse`, `whisper` or `vllm` process anywhere in `ps`. The
+governor agrees and is honest about the stale marker:
+
+```
+resident surface   image (not running -- stale marker)
+lock               free
+  of which compute 0 MiB
+vram free          14900 MiB
+```
+
+That distinction — API up, runtimes down — is load-bearing for `GPU-GOVERNOR.md`, and the
+`(not running -- stale marker)` string is R-172's fix working rather than a defect.
+
+### 8.2 The seven families, measured
+
+| Family | Level | Evidence |
+|---|---|---|
+| **llama.cpp** → `symoneural-llm` | **built** | `engines/symoneural-llm/build/bin/symoneural-llm` and `symoneural-llm-cli`, plus `libsymoneural_tensor_cuda.so.0.20.0` — **CUDA compiled in**. Not running. |
+| **stable-diffusion.cpp** → `symoneural-diffuse` | **built** | `engines/symoneural-diffuse/build/bin/symoneural-diffuse`. Not running. |
+| **ComfyUI** → `symoneural-ui` | **source-only** | `engines/symoneural-ui/main.py`, `folder_paths.py`, `custom_nodes/ComfyUI-GGUF`, `.venv` with `comfyui_frontend_package`. No build step needed, but nothing listening. |
+| **whisper.cpp** | **absent** | See §8.3 |
+| **vLLM** | **absent** | Not installed. The only references are `--rollout {transformers,vllm}` and `--vllm-base-url` in `plugins/reinforce/runner.py:280-281` — a trainer option pointing at an *external* server that does not exist here. |
+| **NVIDIA samples/tools** | **absent** | No `contrib/cuda-samples`. `references/` holds `apex`, `cosmos`, `cudf`, `cuml`, `DALI`, `DeepLearningExamples`, `FasterTransformer`, `nvidia-{aws,azure,gcp,oci}-samples` — INSPIRE_ONLY, and `test_references_boundary.py:70` already enforces that boundary in a test. |
+| **TensorRT-LLM / Triton** | **absent** | Nothing on disk. Future/AUDIT only. |
+
+**`bin/` holds no runtime binary.** It has `claude`, `symoneural-cli`, `symoneural-code`,
+`symoneural-discovery`. This is **not** a defect: the governor's kill anchors are *substrings* —
+`pkill -f 'bin/symoneural-llm'` (`gpu-governor.sh:272-273,281`) — which match the real path
+`engines/symoneural-llm/build/bin/symoneural-llm`. Recorded so a future reader does not "fix"
+a working anchor.
+
+### 8.3 REMOVED — `contrib/` does not exist, and two live things cite it
+
+`contrib/` is **not present at any depth**. Two consequences, both real:
+
+**1. `docs/ENGINEERING.md` gives a check that cannot run.** Its "Python environments" section
+pins the CUDA sample venv at exactly seven packages:
+
+```bash
+contrib/cuda-samples/python/.venv/bin/pip freeze | wc -l    # expect exactly 7
+```
+
+The path is absent, so the rule is unverifiable. Worth naming precisely because the passage is
+otherwise careful — it corrects an earlier, wronger version of itself in the same paragraph.
+**Not fixed here:** `ENGINEERING.md` is the authority document and is outside this scope's
+allowed file list.
+
+**2. `apps/voice` cannot transcribe, and mostly says so.** `WHISPER_CLI` lives under
+`contrib/`, and there is **no `whisper-cli` binary anywhere on this box**. The honest half is
+real and should be preserved: `asr.installed()` (`asr.py:103-114`) checks the binary, its
+executable bit, the weights and `ffmpeg`, and returns the exact missing path; `status()` then
+reports `state: offline` with that reason. The weights *are* present
+(`backend/models/whisper/symoneural-listen-base-en.bin`, 148 MB), so the inventory is real
+even though the runtime is not.
+
+**The dishonest half is two fields emitted unconditionally**, beside `available: false`, in
+`GET /api/voice/state` (`routes.py:107,117`):
+
+- `"engine": "whisper.cpp, CPU build (GGML_CUDA=OFF)"` — a claim about a build whose
+  `CMakeCache.txt` is not on disk to support it.
+- `"measured_ms_short_utterance": 650` — labelled *"Measured on this machine"* and carrying
+  **no SHA and no date**, describing a binary that is absent.
+
+That second one is the exact shape of the failure `.claude/CLAUDE.md` opens by warning about: a
+figure with no commit beside it, carried forward. **AUDIT, and the smallest honest fix is to
+gate both behind `ready`** — not to delete the measurement, which may well have been true when
+taken. Scope: this is `apps/voice`, not #104, and no code changed here.
+
+### 8.4 What this means for the ASR and LLM baselines
+
+- **ASR inventory: PROD (weights). ASR runtime: absent.** So there is no production ASR route
+  to claim, and the code already reports `offline` rather than pretending otherwise.
+- **LLM inventory: PROD.** Six GGUF files, 39.64 GB, in `backend/models/llm/`. llama.cpp
+  (`symoneural-llm`) is **built** and is the likely local/owner/customer runtime for them.
+- **vLLM: candidate only.** No running service, and this report does not claim one.

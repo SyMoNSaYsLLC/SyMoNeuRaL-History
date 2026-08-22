@@ -799,3 +799,81 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep StudioEditorNotPubliclyExposedTests -- backend/apps/studio/test_studio.py
         check: grep StudioHardwareBadgeTests -- backend/apps/studio/test_studio.py
         check: exists backend/apps/studio/SMOKE-graph-surface.md
+
+◻ #104 — SyMoNeuRaL ModelOps/RuntimeOps: runtime registry, router, hot swap, governor
+        owner: coder
+        2026-08-22, pre-migration scope alongside #103. "The Studio upgrade must generalize
+        beyond ComfyUI into a full SyMoNeuRaL ModelOps + RuntimeOps architecture." Studio is
+        the visual surface; the core is the model registry, the runtime registry, the target
+        resolver, the hot swap manager, the GPU governor, the job queue and the node/API/docs
+        link contract.
+
+        Split from #103 rather than folded into it. #103 is the graph surface; this is the
+        core underneath. They complete independently -- a runtime registry and hot swap can
+        land with no canvas, and a canvas can land on the runtimes that already exist -- so
+        one task whose 100% meant both would mean neither.
+
+        Specs: `docs/specs/symoneural-runtime-registry.md` (registry + router),
+        `docs/specs/symoneural-model-hot-swap.md` (residency operations and multi-model
+        serving). Contracts: `docs/ops/RUNTIME-PROFILES.md`, `docs/ops/GPU-GOVERNOR.md`,
+        and `docs/ops/MODEL-REGISTRY.md` extended with model_family/format/load_policy/
+        eviction_priority/hrefs.
+
+        **Two registries, not one.** The model registry answers what can be served; the runtime
+        registry answers what can serve it. The router joins them. Collapsing the tables either
+        duplicates every model per runtime or loses the difference, and it is the single most
+        likely way this design goes wrong.
+
+        **The maturity ladder is mandatory on every runtime claim** -- absent / source-only /
+        built / running / measured. Measured on this box at 41524770 and recorded in
+        `docs/ops/BOX-REALITY-AUDIT.md` §8: symoneural-llm (llama.cpp) and symoneural-diffuse
+        (stable-diffusion.cpp) are **built** with CUDA compiled in; symoneural-ui (Comfy) is
+        **source-only**; whisper.cpp, vLLM, TensorRT-LLM, Triton and the NVIDIA samples are
+        **absent**. The API is running (:8800, and the gateway on :8000) but **no model runtime
+        is resident** -- nothing on 8188. No document may claim otherwise.
+
+        Three findings from the runtime audit that change the work:
+
+        - `contrib/` **does not exist**, and two live things cite it. `docs/ENGINEERING.md`
+          gives a pinned-venv check at `contrib/cuda-samples/python/.venv/bin/pip` that cannot
+          run, and `apps/voice`'s whisper binary lives there. Voice is honest about
+          availability (`asr.installed()` names the missing path, `/state` reports offline) but
+          emits `"engine": "whisper.cpp, CPU build (GGML_CUDA=OFF)"` and
+          `"measured_ms_short_utterance": 650` unconditionally -- a measured figure with no SHA
+          and no date, about an absent binary. AUDIT; the fix is to gate both behind `ready`.
+        - `run/resident` reads `image` with no image process alive, and `gpu-governor.sh status`
+          **says so itself**: `image (not running -- stale marker)`. That is R-172's fix working.
+          The hot swap manager must reconcile residency against the process table rather than
+          trusting its own bookkeeping -- see `symoneural-model-hot-swap.md` §4.
+        - The planned `/api/hardware/*` and `/api/models` overlap #103's
+          `/api/studio/hardware/*` and `/api/studio/model-registry`. One of each, not both.
+          Same class of collision the audit already found at `GET /api/studio/nodes`, caught
+          before it was built this time.
+
+        Owner profile stays `rtx5070ti-16gb` -- the audit confirms RTX 5070 Ti / 16303 MiB /
+        driver 610.57.04 / CUDA 13.3. No CPU fallback for GPU workloads unless authorised
+        (the code has none today: all eight CPU-device sites are in `training/` and are
+        deliberate shard offload). VRAM admission mandatory. Large image + large LLM
+        concurrency is NOT assumed and multi-model residency must be measured before it is
+        called green -- `docs/ENGINEERING.md`: chat ~5 GB, image ~7 GB, QLoRA ~12 GB "cannot
+        coexist".
+
+        Backstage catalog and Nx workspace boundaries are captured in
+        `symoneural-studio-upgrade-scope.md` §11-12 as **future direction only**. Do not
+        install Backstage. Do not migrate folders. A catalog entry without a maturity level
+        reads as an inventory of things that exist, and four of the named components describe
+        runtimes that are absent.
+
+        No implementation, no deploy, no migration, no model downloads, no weight commits, no
+        .venv commits, and the current Studio files do not move. `.venv` was checked: 0 tracked
+        files, 0 repo-wide, ignored by `.gitignore:24`.
+
+        check: exists docs/specs/symoneural-runtime-registry.md
+        check: exists docs/specs/symoneural-model-hot-swap.md
+        check: exists docs/ops/RUNTIME-PROFILES.md
+        check: exists docs/ops/GPU-GOVERNOR.md
+        check: grep RuntimeRegistryMaturityTests -- backend/apps/studio/test_studio.py
+        check: grep RuntimeRouterDecisionTests -- backend/apps/studio/test_studio.py
+        check: grep HotSwapAdmissionTests -- backend/apps/studio/test_studio.py
+        check: grep HotSwapResidencyReconcileTests -- backend/apps/studio/test_studio.py
+        check: exists backend/apps/studio/SMOKE-hot-swap.md
