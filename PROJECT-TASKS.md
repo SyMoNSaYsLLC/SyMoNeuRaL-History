@@ -388,6 +388,39 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         check: ngrep SYMONEURAL_STUDIO_TOKEN=devtest -- tests/studio.mjs
         check: grep TokenNotRequiredTests -- backend/apps/studio/test_studio.py
+        note: 2026-08-22 coder — SECURITY AUDIT, BLOCKER-1 and BLOCKER-2. Read
+        note: docs/ops/SECURITY-AUDIT.md before writing any code for this task. Three facts
+        note: that are each fine alone and are not fine together: ops/Caddyfile:150 delegates
+        note: `/studio` AND `/studio/*` to the API, so the whole subtree is internet-facing --
+        note: not just /api; `/studio/editor/*` is a same-origin reverse proxy in front of
+        note: ComfyUI's own editor, whose catch-all at apps/studio/routes.py:878 forwards GET,
+        note: POST, PUT, PATCH, DELETE, HEAD and OPTIONS to 127.0.0.1:8188 plus a WebSocket at
+        note: :823, on a bare APIRouter() with no dependencies=; and the only thing in front of
+        note: it is `_guard` at :90-101, which is exactly the 401 this task removes. Drop the
+        note: token naively and ComfyUI's full editor API is unauthenticated on the public
+        note: internet. `_intercept_prompt` protects the GPU LEASE, not access.
+        note: The same double gate protects eight surfaces, not one: Studio (incl. the editor),
+        note: Reinforce /api/train (7 routes), Exp /api/exp (13), Project /api/project (19,
+        note: with POST/PATCH/DELETE), Coder, Miner, ASIC and Discovery. Removing the ASIC and
+        note: Miner tokens exposes rig control, the emulator and the network scanner -- the
+        note: scanner refuses non-private ranges (asicminer/__init__.py:129) so it cannot be
+        note: aimed at the internet, but a stranger could still enumerate and control hardware
+        note: on his LAN. Project's path containment is independent of its token, so the
+        note: training artefacts stay protected either way; what goes public is arbitrary
+        note: project mutation. The RISK TYPE DIFFERS PER SURFACE and must not be flattened into
+        note: "tokens off = everything leaked" -- Studio's editor is the worst case, ASIC is a
+        note: LAN not the internet, Reinforce is inert today because torch is not installed, Exp
+        note: gates mutations only, Coder's root and denylist are independent of its token, and
+        note: Discovery exposes nothing because it has no router. The per-surface table is in
+        note: docs/ops/SECURITY-AUDIT.md under BLOCKER-2; decide per surface, not in one sweep.
+        note: His complaint is legitimate and this note is not a refusal -- exporting a secret
+        note: to use your own site is the whole grievance. Four ways to satisfy it, and the
+        note: choice is his: (a) loopback-only instead of token-only, reusing _require_local,
+        note: which refuses proxy headers and cannot be widened; (b) exclude /studio/editor/*
+        note: from the drop, so product surfaces open and the raw vendor editor does not;
+        note: (c) remove Caddy's /studio/* delegation while testing; (d) accept the exposure
+        note: in writing, with a date. Do not pick one silently.
+
 ◻ #89 — SyMoNeuRaL Studio should mirror what DeepSeek Harness provides
         owner: coder
         R-163, second sentence. "Studio needs major work it should mirror what deepseek harness
