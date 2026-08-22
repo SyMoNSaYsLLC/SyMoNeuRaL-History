@@ -50,6 +50,12 @@ indexing them here; treat an unlisted file as unreviewed by this README rather t
 | `symoneural-sigils-scope.md` | Sticker/sigil generation, separate from Image. The rate-limit requirement is already satisfied *and tested* — `test_sigils.py` asserts the router throttles, and against the right surface. Exact output vocabulary: a PNG is not an SVG | PROD direction; nothing implemented |
 | `symoneural-streamer-scope.md` | The Tuner+Guide fold, already done: guide nested at `/api/streamer/guide` precisely so its readiness probe cannot resolve against Streamer's `/state` — the decorative-indicator failure, prevented by mount order | PROD direction; archive AUDIT |
 | `symoneural-live-scope.md` | Live, not Live Stack. "Absent OBS must not break boot" is enforced by the import graph — `hls.py` never imports `obs.py`, so a wrong password costs the telemetry line, not the video. Records why Live has no power switch | PROD where proven |
+| `symoneural-commercial-mode.md` | One switch (`SYMONEURAL_MODE`), default `free_offline`, **off**. Opens with the correction that **the meter already exists** — `accounts/meter.py` has balances, holds, a ledger and reserve-then-resolve, so the commercial work is connection and decision, not construction | mode DISABLED; Meter BUILT/AUDIT |
+| `symoneural-revenue-edge.md` | The five bets and which hooks already exist. Notes that `_RATE_SUGGESTED` is already a cost model in rate-limit clothing — and is not a price list | hooks disabled by default |
+| `symoneural-entitlements.md` | *May this identity run this?* — asked **before** the meter's *can they afford it?*, because a permission check after a debit is a refund waiting to happen. Flags an existing `gateway/entitlement.py` that must be read before a second one is written | AUDIT |
+| `symoneural-marketplace.md` | Sellable workflows/adapters/packs. FUTURE, and gated on Studio having a plugin contract at all — a marketplace for an extension point with no contract is a shop with no shelves | FUTURE |
+| `symoneural-appliance.md` | The signed offline local-AI box. Blocked on a build that has never run, so its licence manifest is **not yet producible** rather than missing — plus three weights that cannot legally travel | FUTURE/AUDIT |
+| `symoneural-trust-report.md` | The customer-facing compliance render. FUTURE because it renders rather than generates, and its governing rule is that it must never render a field it does not have | FUTURE/AUDIT |
 
 ## What is worth acting on, and what was verified independently
 
