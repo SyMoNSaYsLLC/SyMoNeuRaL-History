@@ -211,3 +211,15 @@ tests/node_modules/
 yocto/oematch_*.deb
 yocto/oematch_*.buildinfo
 yocto/oematch_*.changes
+
+# Adopted reference projects, staged for rebranding by `tools/index_references.py adopt`.
+# The provenance record is tracked; the copied tree is not -- `references/` is the
+# original and re-adopting is one command, so committing a second copy of somebody
+# else's tree buys nothing and quietly puts it under our history.
+# git will not re-include a file whose parent directory is excluded, so the directory
+# has to be un-excluded first and its contents excluded separately. Written out because
+# the obvious two-line form silently ignores the negation.
+incoming/*
+!incoming/*/
+incoming/*/*
+!incoming/*/PROVENANCE.md
