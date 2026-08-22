@@ -151,7 +151,12 @@ class NestedGuidePrefixTests(unittest.TestCase):
 
 
 class InvocableDocsTests(unittest.TestCase):
-    """Every command `.claude/CLAUDE.md` hands an agent has to be runnable.
+    """Every command `docs/ops/MEASUREMENTS.md` hands an agent has to be runnable.
+
+    The commanded suites lived in `.claude/CLAUDE.md` until 2026-08-22, when R-180 moved the
+    whole test-and-ladder section verbatim to `docs/ops/MEASUREMENTS.md`; this class was
+    repointed in the same commit, because a moved source with an unrepointed consumer is the
+    exact unpropagated-move failure it exists to catch.
 
     This lives with the migration because the migration is what broke it, and broke it in
     the one way a stale figure cannot be broken. CLAUDE.md told three sessions to run
@@ -176,14 +181,14 @@ class InvocableDocsTests(unittest.TestCase):
         return sorted({m for b in blocks for m in self._PATH.findall(b)})
 
     def test_every_test_file_claude_md_tells_you_to_run_exists(self):
-        paths = self._commanded_paths(".claude/CLAUDE.md")
+        paths = self._commanded_paths("docs/ops/MEASUREMENTS.md")
         self.assertTrue(paths, "no tests/ invocation found at all -- did the fences move?")
         root = pathlib.Path(__file__).resolve().parents[2]
         for rel in paths:
             with self.subTest(path=rel):
                 self.assertTrue((root / rel).is_file(),
-                                f"CLAUDE.md tells you to run {rel}, which does not exist; a "
-                                "command that cannot run reads as a broken suite")
+                                f"MEASUREMENTS.md tells you to run {rel}, which does not "
+                                "exist; a command that cannot run reads as a broken suite")
 
     #: The two suites this test knowingly does not hold, and why. Both are red for reasons
     #: that belong to task #74's acceptance work, not to the docs: `account.mjs` requests
@@ -225,11 +230,12 @@ class InvocableDocsTests(unittest.TestCase):
         broke it and nothing about it was hard to fix; it simply went unrun.
         """
         on_disk = self._browser_suites()
-        named = {rel.split("/")[-1] for rel in self._commanded_paths(".claude/CLAUDE.md")}
+        named = {rel.split("/")[-1]
+                 for rel in self._commanded_paths("docs/ops/MEASUREMENTS.md")}
         unnamed = on_disk - named - self.KNOWN_RED
         self.assertEqual(set(), unnamed,
-                         f"browser suites exist that CLAUDE.md never tells anyone to run: "
-                         f"{sorted(unnamed)}")
+                         f"browser suites exist that MEASUREMENTS.md never tells anyone to "
+                         f"run: {sorted(unnamed)}")
 
 if __name__ == "__main__":
     # This block lives at the END of the file, and that is not a style point. It used to sit
