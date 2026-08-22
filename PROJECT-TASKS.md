@@ -759,15 +759,39 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         `CheckpointLoaderSimple`, which has nothing to load here. Not authorised by this
         commit.
 
+        **`docs/ops/BOX-REALITY-AUDIT.md` is the gate before implementation OR migration.**
+        Garrett, 2026-08-22: the existing `backend/apps/studio` tree must be audited before
+        either. That report classifies it PROD / AUDIT / REMOVED against the actual box and
+        ends with eight things to fix first; three of them were not visible from the spec:
+
+        - `GET /api/studio/nodes` **already exists** (`routes.py:450`) and returns ComfyUI's
+          `/object_info` proxied -- the planned route of the same name returns OUR registry.
+          Same path, opposite meaning. Resolve before a node registry is written.
+        - **Zero `operation_id` declarations exist in the entire tracked tree.** 17 files carry
+          `tags=`; none carries an operation id. So every `api_href` in the node-system spec
+          points at nothing today. Smallest first increment.
+        - ~57 GB of weights under `diffusion_models`, `text_encoders`, `checkpoints`, `loras`
+          and `clip_vision` are referenced by **zero** files of our code, and
+          `vae/ae.safetensors` is a byte-identical duplicate of the baseline VAE (same md5).
+          Unclassified inventory is not capability, and a migration would move it blind.
+
+        `plugins/exp` and `plugins/reinforce` are still **AUDIT** in that report. A folder
+        migration that moves them before they are classified moves code nobody has decided to
+        keep. Confirmed by the audit and NOT to be assumed away: no SDXL is installed, the
+        whole `ComfyUI/` tree is absent (the render UI is `engines/symoneural-ui`), and there
+        is no CPU fallback in any serving path -- all eight CPU-device sites are in `training/`
+        and are deliberate offload, not fallback.
+
         No implementation beyond the spec until Garrett authorises it explicitly -- said four
-        times on 2026-08-22. The checks below are therefore expected to read low: three of ten
-        pass at 35704e74, and that is the honest reading of a task whose direction is captured
+        times on 2026-08-22. The checks below are therefore expected to read low: four of eleven
+        pass at a191dba7, and that is the honest reading of a task whose direction is captured
         and whose build has not started. The three that pass are the direction-lock documents
         themselves; every other check needs code that runs.
 
         check: exists docs/specs/symoneural-studio-upgrade-scope.md
         check: exists docs/specs/symoneural-studio-node-system.md
         check: exists docs/ops/HARDWARE-PROFILES.md
+        check: exists docs/ops/BOX-REALITY-AUDIT.md
         check: grep StudioGraphSchemaFrozenTests -- backend/apps/studio/test_studio.py
         check: grep StudioGraphCompileTargetTests -- backend/apps/studio/test_studio.py
         check: grep StudioTargetResolverTests -- backend/apps/studio/test_studio.py
