@@ -48,7 +48,7 @@ import os
 import time
 import typing
 
-import httpx
+from . import httpclient
 import websockets
 from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -284,7 +284,7 @@ async def _await_history(client: comfy.ComfyClient, prompt_id: str,
     while time.monotonic() < deadline:
         try:
             hist = await client.history(prompt_id)
-        except httpx.HTTPError:
+        except httpclient.HTTPError:
             hist = {}
         entry = (hist or {}).get(prompt_id)
         if entry:
@@ -458,7 +458,7 @@ async def nodes(request: Request, refresh: bool = False) -> Response:
     client = comfy.ComfyClient()
     try:
         catalogue = await client.object_info(refresh=refresh)
-    except httpx.HTTPError as exc:
+    except httpclient.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable", "url": comfy.base_url(),
                              "detail": f"{type(exc).__name__}: {exc}",
                              "fix": "scripts/symoneural-ui.sh start"}, status_code=503)
@@ -623,7 +623,7 @@ async def interrupt(request: Request) -> JSONResponse:
     client = comfy.ComfyClient()
     try:
         return JSONResponse({"interrupted": await client.interrupt()})
-    except httpx.HTTPError as exc:
+    except httpclient.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable",
                              "detail": f"{type(exc).__name__}: {exc}"}, status_code=503)
 
@@ -648,14 +648,14 @@ async def image(request: Request, filename: str, subfolder: str = "",
     client = comfy.ComfyClient()
     try:
         payload, content_type = await client.view(filename, subfolder, kind)
-    except httpx.HTTPStatusError as exc:
+    except httpclient.HTTPStatusError as exc:
         # ComfyUI answers 404 for a filename it cannot find; that is a real answer about the
         # render, not a failure of this proxy, so it is passed through as one.
         return JSONResponse({"error": "not_found", "filename": filename,
                              "subfolder": subfolder, "type": kind,
                              "upstream_status": exc.response.status_code},
                             status_code=exc.response.status_code)
-    except httpx.HTTPError as exc:
+    except httpclient.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable", "url": comfy.base_url(),
                              "detail": f"{type(exc).__name__}: {exc}",
                              "fix": "scripts/symoneural-ui.sh start"}, status_code=503)
@@ -713,7 +713,7 @@ async def events(ws: WebSocket) -> None:
 # ---------------------------------------------------------------------------
 # /studio/editor/*  --  the editor, reverse-proxied
 # ---------------------------------------------------------------------------
-#: Headers a proxy must not forward. `content-length` because httpx recomputes it and a stale
+#: Headers a proxy must not forward. `content-length` because the outbound client recomputes it and a stale
 #: value truncates the body; the rest are per-connection by RFC 9110 §7.6.1.
 _HOP_BY_HOP = frozenset({
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te",
@@ -725,7 +725,7 @@ _HOP_BY_HOP = frozenset({
 # `origin`, `referer` and the `sec-fetch-*` family: ComfyUI runs
 # `create_origin_only_middleware` (server.py:158) which compares the request's `Host` against
 # its `Origin` and answers **403** when they differ. Forwarded unchanged, those headers say
-# `Origin: http://127.0.0.1:8875` while httpx sets `Host: 127.0.0.1:8188`, so every asset the
+# `Origin: http://127.0.0.1:8875` while the outbound client sets `Host: 127.0.0.1:8188`, so every asset the
 # editor loaded came back 403 and the canvas never booted -- exactly the failure
 # `tests/studio.mjs` reported as seven `net::ERR_ABORTED` lines. Chrome reports an aborted
 # module load rather than the status, which is why this looked like an auth problem for
@@ -808,10 +808,10 @@ async def _forward(method: str, path: str, body: bytes | None,
                    headers: dict[str, str], params=None) -> Response:
     url = f"{comfy.base_url()}/{path.lstrip('/')}"
     try:
-        async with httpx.AsyncClient(timeout=300, follow_redirects=False) as c:
+        async with httpclient.AsyncClient(timeout=300, follow_redirects=False) as c:
             upstream = await c.request(method, url, content=body, headers=headers,
                                        params=params)
-    except httpx.HTTPError as exc:
+    except httpclient.HTTPError as exc:
         return JSONResponse({"error": "comfyui_unreachable", "url": url,
                              "detail": f"{type(exc).__name__}: {exc}",
                              "fix": "scripts/symoneural-ui.sh start"}, status_code=503)

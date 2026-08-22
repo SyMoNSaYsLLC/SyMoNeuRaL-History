@@ -94,15 +94,28 @@ verdict in one table, not a decision buried in code.
 | Package | Version | Licence | What it does | What replacing it would cost | Verdict |
 |---|---|---|---|---|---|
 | `fastapi`, `uvicorn` | as above | MIT / BSD-3-Clause | The app is mounted into the same ASGI app; these are the serving path's, re-declared. | — | **Keep** |
-| `httpx` | 0.28.1 | BSD-3-Clause | Outbound HTTP. 8 import sites across `remix` and `studio`. | An HTTP client with connection pooling, timeouts, TLS verification and redirect handling. The SSRF guard around it is already ours and is the part worth owning. | **Facade** — one module, `apps/*/http.py`, so the SSRF policy cannot be bypassed by importing the client directly |
+| `httpx` | 0.28.1 | BSD-3-Clause | Outbound HTTP. 8 import sites across `remix` and `studio`. | An HTTP client with connection pooling, timeouts, TLS verification and redirect handling. The SSRF guard around it is already ours and is the part worth owning. | **Facade** — DONE 2026-08-21: `apps/studio/httpclient.py`, `apps/remix/symoneural_dj/httpclient.py`. Not `http.py`; see below |
 | `pillow` | 12.3.0 (sigils venv) | MIT-CMU | Image decode/encode/resize for remix and sigils. | An image codec suite. Decoding attacker-supplied images is the highest-risk parsing on this box; a hand-rolled one is a vulnerability with a schedule. | **Keep** |
 | `python-dotenv` | 1.0.1 | BSD-3-Clause | Reads `.env` into the environment. Two import sites. | About forty lines. This is genuinely small enough to own, and owning it removes a dependency from two apps. | **Recreate** — smallest real win in this table |
+
+**The httpx facades are `httpclient.py`, not the `http.py` this table used to specify.**
+`apps/remix/pyproject.toml:44` sets `pythonpath = [".", "../.."]`, making `apps/remix` a
+`sys.path` root under its own pytest rootdir. A module named `http.py` at a `sys.path` root
+shadows the **stdlib** `http` package for everything imported beneath it — httpx included,
+since httpx imports `http`. The symptom is a collection error with no obvious cause in a
+suite unrelated to the file just added. A literal path in a table is followed exactly, so it
+is corrected here rather than annotated.
+
+`backend/apps/test_vendor_facade.py` enforces the three **Facade** verdicts by walking the
+tree and reading the AST, not by grepping a file list: `import httpx as _h` is a violation,
+`# httpx recomputes it` in a comment is not. `tools/prove_vendor_facade.py` is the red-first
+proof (7 breaks, 7 red, no residue); `backend/SMOKE-vendor-facade.md` is the run.
 
 ### `backend/apps/studio/requirements.txt`
 
 | Package | Version | Licence | What it does | What replacing it would cost | Verdict |
 |---|---|---|---|---|---|
-| `fastmcp` | 3.4.7 (studio venv) | Apache-2.0 | MCP server plumbing for the Studio agent's tool surface. | Implementing MCP. The protocol is someone else's spec and moves; tracking it is the cost, not the code. | **Facade** |
+| `fastmcp` | 3.4.7 (studio venv) | Apache-2.0 | MCP server plumbing for the Studio agent's tool surface. | Implementing MCP. The protocol is someone else's spec and moves; tracking it is the cost, not the code. | **Facade** — DONE 2026-08-21: `apps/studio/mcpframework.py` |
 
 Studio also imports `playwright`, `beautifulsoup4`, `websockets`, `pyyaml`, `numpy` and the
 CUDA stack without declaring them here — see *Undeclared imports*, below.

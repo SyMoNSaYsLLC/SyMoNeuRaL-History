@@ -71,11 +71,12 @@ LOG="${SYMONEURAL_GOVERNOR_LOG:-$RUN/governor.log}"
 # it is not a tenant, and three of those are measured on this box. It is set from the largest
 # of them plus headroom, not from a round number:
 #
-#   666 MiB   ComfyUI resident with its weights unloaded -- the state `POST /free` produces,
-#             and the reading `apps/studio/comfy.py` waits for. .claude/HANDOVER.md §1559 has
-#             the curve: 666 idle -> 13,114 peak -> 666 again, with 238 MiB being the card
-#             after the *process* exits. A floor under this would call a correctly-freed
-#             render engine an un-drained tenant, which is the old bug in a new unit.
+#   666 MiB   symoneural-ui resident with its weights unloaded -- the state `POST /free`
+#             produces, and the reading `apps/studio/comfy.py` waits for.
+#             .claude/HANDOVER.md §1559 has the curve: 666 idle -> 13,114 peak -> 666
+#             again, with 238 MiB being the card after the *process* exits. A floor
+#             under this would call a correctly-freed render engine an un-drained
+#             tenant, which is the old bug in a new unit.
 #   375 MiB   OBS's NVENC session while streaming (backend/apps/live/SMOKE.md).
 #   222 MiB   Garrett's own ComfyUI out of references/, holding a context and nothing else.
 #

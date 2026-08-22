@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
+from . import httpclient
 
 _SYSTEM_PROMPT = """You are the playlist generator for SyMoNeuRaL DJ, a product of Symon Says LLC.
 
@@ -116,7 +116,7 @@ class SymonClient:
         self.api_key = api_key or os.environ.get("SYMON_API_KEY", "")
         # Long: a 14B model writing twenty tracks with reasoning takes real time, and a timeout
         # tuned for a JSON API turns "still thinking" into "failed".
-        self._http = httpx.AsyncClient(timeout=timeout)
+        self._http = httpclient.AsyncClient(timeout=timeout)
 
     def _headers(self) -> dict[str, str]:
         headers = {"content-type": "application/json"}
@@ -141,7 +141,7 @@ class SymonClient:
                       # Above the measured floor: this model spends small budgets reasoning and
                       # returns empty content. Twenty tracks of JSON also needs the room.
                       "max_tokens": 4096, "temperature": 0.8})
-        except httpx.HTTPError as exc:
+        except httpclient.HTTPError as exc:
             raise PlaylistGenerationError(f"could not reach the SyMoNeuRaL server: {exc}") from exc
 
         if reply.status_code == 503:

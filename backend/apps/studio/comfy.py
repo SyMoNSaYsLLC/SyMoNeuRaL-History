@@ -65,7 +65,7 @@ import urllib.parse
 import uuid
 from typing import AsyncIterator
 
-import httpx
+from . import httpclient
 import websockets
 
 from . import workspace
@@ -200,11 +200,11 @@ async def lease(surface: str = "comfy", *, timeout: int = 300, free_after: bool 
     finally:
         if free_after:
             try:
-                async with httpx.AsyncClient(timeout=30) as c:
+                async with httpclient.AsyncClient(timeout=30) as c:
                     r = await c.post(f"{base_url()}/free",
                                      json={"unload_models": True, "free_memory": True})
                 record["freed"] = r.status_code == 200
-            except httpx.HTTPError as e:
+            except httpclient.HTTPError as e:
                 # ComfyUI being gone is a fine reason for /free to fail, and it means the
                 # memory is already coming back. Record it; do not raise out of a finally.
                 record["freed"] = False
@@ -250,12 +250,12 @@ class ComfyClient:
     async def alive(self) -> dict:
         """Is a server answering, and what is it. Never raises; absence is a reading."""
         try:
-            async with httpx.AsyncClient(timeout=5) as c:
+            async with httpclient.AsyncClient(timeout=5) as c:
                 r = await c.get(f"{self.url}/system_stats")
                 if r.status_code != 200:
                     return {"up": False, "url": self.url, "http_status": r.status_code}
                 return {"up": True, "url": self.url, "system": r.json()}
-        except httpx.HTTPError as e:
+        except httpclient.HTTPError as e:
             return {"up": False, "url": self.url, "detail": f"{type(e).__name__}: {e}"}
 
     # -- catalogue -----------------------------------------------------------
@@ -264,7 +264,7 @@ class ComfyClient:
         change while the server is up."""
         if self._object_info is not None and not refresh:
             return self._object_info
-        async with httpx.AsyncClient(timeout=120) as c:
+        async with httpclient.AsyncClient(timeout=120) as c:
             r = await c.get(f"{self.url}/object_info")
             r.raise_for_status()
             self._object_info = r.json()
@@ -283,7 +283,7 @@ class ComfyClient:
             body["extra_data"] = extra_data
         if front:
             body["front"] = True
-        async with httpx.AsyncClient(timeout=self.timeout) as c:
+        async with httpclient.AsyncClient(timeout=self.timeout) as c:
             r = await c.post(f"{self.url}/prompt", json=body)
         if r.status_code == 200:
             return {"ok": True, **r.json()}
@@ -294,7 +294,7 @@ class ComfyClient:
         return {"ok": False, "http_status": r.status_code, **payload}
 
     async def interrupt(self) -> bool:
-        async with httpx.AsyncClient(timeout=30) as c:
+        async with httpclient.AsyncClient(timeout=30) as c:
             r = await c.post(f"{self.url}/interrupt")
         return r.status_code == 200
 
@@ -368,7 +368,7 @@ class ComfyClient:
 
     # -- results -------------------------------------------------------------
     async def history(self, prompt_id: str) -> dict:
-        async with httpx.AsyncClient(timeout=self.timeout) as c:
+        async with httpclient.AsyncClient(timeout=self.timeout) as c:
             r = await c.get(f"{self.url}/history/{prompt_id}")
             r.raise_for_status()
             doc = r.json()
@@ -407,7 +407,7 @@ class ComfyClient:
     async def view(self, filename: str, subfolder: str = "",
                    type_: str = "output") -> tuple[bytes, str]:
         """Fetch one produced file. Returns (bytes, content-type)."""
-        async with httpx.AsyncClient(timeout=self.timeout) as c:
+        async with httpclient.AsyncClient(timeout=self.timeout) as c:
             r = await c.get(f"{self.url}/view",
                             params={"filename": filename, "subfolder": subfolder,
                                     "type": type_})
@@ -415,7 +415,7 @@ class ComfyClient:
             return r.content, r.headers.get("content-type", "application/octet-stream")
 
     async def free(self, unload_models: bool = True, free_memory: bool = True) -> bool:
-        async with httpx.AsyncClient(timeout=30) as c:
+        async with httpclient.AsyncClient(timeout=30) as c:
             r = await c.post(f"{self.url}/free",
                              json={"unload_models": unload_models,
                                    "free_memory": free_memory})

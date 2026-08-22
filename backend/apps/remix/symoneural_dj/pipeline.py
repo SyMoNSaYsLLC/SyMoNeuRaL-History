@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 
-import httpx
+from . import httpclient
 
 from . import cover
 from .jobs import TERMINAL_STATES, Job, JobJournal
@@ -42,7 +42,7 @@ async def run_job(
         job.fail(f"symon produced unusable output after one retry: {exc}")
     except SpotifyAuthError as exc:
         job.fail(str(exc))
-    except httpx.HTTPError as exc:
+    except httpclient.HTTPError as exc:
         job.fail(f"upstream call failed: {exc}")
     except Exception as exc:  # a bug — but the job must still land terminal
         job.fail(f"internal error: {exc!r}")

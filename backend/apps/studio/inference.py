@@ -41,7 +41,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
-import httpx
+from . import httpclient
 
 __all__ = ["Backend", "backends", "pick", "state", "OLLAMA_URL", "LLAMACPP_URL"]
 
@@ -64,19 +64,19 @@ class Backend:
         """Is something answering. `/v1/models` is the one path both backends serve and
         neither of them makes expensive."""
         try:
-            async with httpx.AsyncClient(timeout=timeout) as c:
+            async with httpclient.AsyncClient(timeout=timeout) as c:
                 r = await c.get(f"{self.base.rstrip('/')}/v1/models")
                 return r.status_code < 500
-        except httpx.HTTPError:
+        except httpclient.HTTPError:
             return False
 
     async def models(self, timeout: float = 5.0) -> list[str]:
         try:
-            async with httpx.AsyncClient(timeout=timeout) as c:
+            async with httpclient.AsyncClient(timeout=timeout) as c:
                 r = await c.get(f"{self.base.rstrip('/')}/v1/models")
                 r.raise_for_status()
                 doc = r.json()
-        except (httpx.HTTPError, ValueError):
+        except (httpclient.HTTPError, ValueError):
             return []
         return [m.get("id") for m in (doc.get("data") or []) if isinstance(m, dict)]
 
@@ -99,7 +99,7 @@ class Backend:
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
-        async with httpx.AsyncClient(timeout=timeout) as c:
+        async with httpclient.AsyncClient(timeout=timeout) as c:
             r = await c.post(self.chat_url, json=body)
         if r.status_code != 200:
             # Surface the server's own error text. A 400 from llama.cpp about an unsupported
@@ -134,7 +134,7 @@ class Backend:
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
-        async with httpx.AsyncClient(timeout=timeout) as c:
+        async with httpclient.AsyncClient(timeout=timeout) as c:
             async with c.stream("POST", self.chat_url, json=body) as r:
                 if r.status_code != 200:
                     detail = (await r.aread()).decode("utf-8", "replace")

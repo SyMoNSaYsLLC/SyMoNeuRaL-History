@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import httpx
+from .. import httpclient
 
 from .base import ConnectorAuthError, ConnectorError, PlaylistRef, Track
 
@@ -60,7 +60,7 @@ class YouTubeMusicClient:
         self.store = store or TokenStore(
             Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser()
             / "symoneural" / "dj" / "ytmusic_tokens.json")
-        self._http = http or httpx.AsyncClient(timeout=30.0)
+        self._http = http or httpclient.AsyncClient(timeout=30.0)
         self._states: dict[str, str] = {}
 
     @classmethod
@@ -81,7 +81,7 @@ class YouTubeMusicClient:
                 "YouTube Music is not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET")
         state = secrets.token_urlsafe(24)
         self._states[state] = listener
-        query = httpx.QueryParams({
+        query = httpclient.QueryParams({
             "client_id": self.client_id, "response_type": "code",
             "redirect_uri": self.redirect_uri, "scope": SCOPES, "state": state,
             # Without these two Google issues no refresh token on re-consent, and the link
@@ -128,7 +128,7 @@ class YouTubeMusicClient:
         self.store.put_user(listener, token)
         return token["access_token"]
 
-    async def _call(self, listener: str, method: str, path: str, **kw) -> httpx.Response:
+    async def _call(self, listener: str, method: str, path: str, **kw) -> httpclient.Response:
         headers = kw.pop("headers", {})
         headers["Authorization"] = f"Bearer {await self._bearer(listener)}"
         reply = await self._http.request(method, f"{API}{path}", headers=headers, **kw)

@@ -66,7 +66,10 @@ from apps.studio import gate, registry, workspace  # noqa: E402
 from apps.studio import tools_impl  # noqa: E402,F401  -- imported to register
 
 try:
-    from fastmcp import FastMCP
+    # The vendor name lives in `mcpframework.py` and nowhere else in this package
+    # (task #74 item 5). The facade does not catch this itself: the message below is
+    # the only place that can name the entrypoint to re-run, so it stays here.
+    from apps.studio.mcpframework import FastMCP  # noqa: E402
 except ImportError:  # pragma: no cover - the whole point of the message is that it is rare
     sys.exit(
         "fastmcp is not importable.\n"
