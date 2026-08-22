@@ -62,7 +62,7 @@ until provenance exists, because you cannot ship what you cannot describe.
 |---|---|
 | **`NOTICE.md`** | **does not exist** |
 | **`THIRD-PARTY-NOTICES.md`** | **does not exist** |
-| generated third-party notices | not generated; §8 of `LICENSES.md` is hand-maintained |
+| generated third-party notices | not generated; §8 of `LICENSES.md` is hand-maintained. **Partial exception:** each of the ten vendored trees retains its own `LICENSE` in-tree, which discharges that notice at the file level even though no aggregate notice exists |
 | SBOM | none produced. `docs/ops/SBOM.md` is the plan |
 | SLSA-style build provenance | not started |
 | per-model licence status table | `docs/ops/MODEL-LICENSES.md`, opened, incomplete |
@@ -105,10 +105,71 @@ should not be answered against a premise that has changed.
 
 - **`claude-code` — `© Anthropic PBC. All rights reserved.`**, use subject to Anthropic's
   Commercial Terms of Service. Status: **`proprietary-reference-only`.**
-- **`anthropic-sdk-python` — MIT.** Status: `permissive-ok` *legally*, and **still not vendored** —
-  `references/` is untracked on purpose and `LICENSES.md` governs what ships.
-- the remaining nine each carry a `LICENSE` file; **not individually read.** Status:
-  `unknown-blocked` until they are, which costs nothing because none is imported.
+- **`anthropic-sdk-python` — MIT.** Status: `permissive-ok`.
+- the remaining nine each carry a `LICENSE` file; **not individually read from the archive.**
+
+**CORRECTION 2026-08-22 — an earlier draft of this row said `anthropic-sdk-python` was "still not
+vendored". That was wrong, and it was wrong because I asserted it without looking.**
+
+**`backend/vendor/` is tracked: 15,297 files**, and it holds ten deliberately vendored third-party
+SDK trees. `backend/vendor/PROVENANCE.md` is the record, it is **generated** by
+`tools/index_references.py vendor`, and it says so in its own opening: *"Do not hand-edit: it is
+regenerated, and a hand-added row would be a claim nobody read a licence file to make."*
+
+| Vendored tree | Licence | Tracked files |
+|---|---|---|
+| `anthropics/agent-sdk-workshop` | Apache-2.0 | 73 |
+| `anthropics/anthropic-sdk-csharp` | MIT | 2,734 |
+| `anthropics/anthropic-sdk-go` | MIT | 332 |
+| `anthropics/anthropic-sdk-java` | MIT | 2,927 |
+| `anthropics/anthropic-sdk-php` | MIT | 2,231 |
+| `anthropics/anthropic-sdk-python` | MIT | 1,495 |
+| `anthropics/anthropic-sdk-ruby` | MIT | 3,827 |
+| `anthropics/anthropic-sdk-typescript` | MIT | 474 |
+| `anthropics/claude-agent-sdk-python` | MIT | 144 |
+| `openai/apps-sdk-ui` | MIT | 1,059 |
+
+Each is copied with its `.git` stripped, **its `LICENSE` kept**, build directories pruned, and **the
+upstream commit recorded** — which the record explains is the point: *"without it a vendored tree
+cannot be diffed against anything, updated deliberately, or checked against an advisory."*
+
+**And two were refused, which is the part that shows the rule is real:**
+
+- **`anthropics/claude-agent-sdk-demos` — NO licence file at all.** *"An absent licence is not a
+  permissive default. Without a grant the default is all rights reserved."*
+- **`anthropics/claude-agent-sdk-typescript` — ALL-RIGHTS-RESERVED.** Its `LICENSE.md` contains those
+  words and points at a commercial ToS.
+
+The record's own note on the second is the sharpest sentence in this audit and it belongs here:
+*"a rule keyed on 'has a LICENSE file' would have vendored it. The grant is what is matched, never
+the presence of the file, and never the copyright line, which is identical in an MIT file and in
+this one."*
+
+**So this correction cuts both ways.** My "not vendored" was false — ten trees are in the
+repository. And my `unknown-blocked` for "the remaining nine" was lazier than the repo already is:
+two of those names had already been read and classified, and one of them is **all-rights-reserved**,
+which is a materially different answer from "not yet read".
+
+**What the archive-versus-vendor distinction actually is**, stated so it is not conflated again:
+`references/symoneural code.tar.gz` is an **unimported reference archive** (§LA-2 above);
+`backend/vendor/` is a **separate, deliberate, licence-checked vendoring** drawn from `references/`
+directories whose name contains `sdk`. They overlap in subject and are not the same act. `claude-code`
+— all-rights-reserved — is in the archive and is **not** vendored, which is the rule working.
+
+**Guarded by tests.** `backend/apps/test_vendor_sdks.py` carries nine, including one worth naming:
+`test_gitignore_does_not_silently_swallow_vendored_files` asks **git itself** whether any file under
+a vendored tree is ignored, because `.gitignore` carries `*.log`, `*.key`, `*.safetensors`, `*.gguf`,
+`__pycache__/` and `**/.venv/` with no path anchor, and *"a tree that is 90% tracked reads as
+complete in `ls` and is not in the repository."* **Note for anyone running the suite:** a bare
+`pytest --collect-only` from `backend/` imports these trees and leaves `__pycache__` bytecode inside
+them, which fails that test until the bytecode is removed. Nothing is wrong with the repo when that
+happens — the canonical invocation in `docs/ops/MEASUREMENTS.md` scopes to `apps/` and does not
+import them.
+
+**Status change:** the ten vendored trees are `permissive-ok` / `notice-required` (nine MIT, one
+Apache-2.0), each with its `LICENSE` retained in-tree, which is what discharges the notice. **They
+are not `unknown-blocked`.** The two refused names are `proprietary-reference-only` and
+`unknown-blocked` respectively — and neither is in the tree.
 
 **Behaviour may be reimplemented. Source may not be copied.** Full reading:
 `docs/specs/symoneural-coder-project-cli-scope.md` §1, §5.
