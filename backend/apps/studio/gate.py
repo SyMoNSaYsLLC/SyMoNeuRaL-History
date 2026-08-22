@@ -18,11 +18,19 @@ from __future__ import annotations
 import hmac
 import os
 
-__all__ = ["enabled", "token_ok", "present_token", "ENV_ENABLED", "ENV_TOKEN", "HEADER",
-           "HEADER_LEGACY", "COOKIE", "COOKIE_LEGACY", "COOKIE_PATH"]
+__all__ = ["enabled", "switched_on", "token_ok", "present_token", "local_request",
+           "local_bypass",
+           "ENV_ENABLED", "ENV_TOKEN", "ENV_LOCAL_BYPASS", "HEADER",
+           "HEADER_LEGACY", "COOKIE", "COOKIE_LEGACY", "COOKIE_PATH",
+           "LOCAL_PEERS", "PROXY_HEADERS"]
 
 ENV_ENABLED = "SYMONEURAL_STUDIO_ENABLED"
 ENV_TOKEN = "SYMONEURAL_STUDIO_TOKEN"
+
+# The local-only development bypass. Narrow on purpose: it is read by `local_bypass()` and by
+# nothing else, it is spelled for one surface rather than for the box, and it is OFF unless it
+# is exactly "1". It does NOT exist to weaken the public gate -- see `local_bypass`.
+ENV_LOCAL_BYPASS = "SYMONEURAL_STUDIO_LOCAL_BYPASS"
 HEADER = "X-Symoneural-Token"
 
 # The name this header had until the rename, still accepted and deliberately second. Not
@@ -47,11 +55,28 @@ COOKIE_LEGACY = "sym_studio"
 COOKIE_PATH = "/studio/editor"
 
 
+def switched_on() -> bool:
+    """The structural switch ALONE -- is Studio meant to exist at all -- with no token involved.
+
+    Split out 2026-08-22 so the #88 local bypass can say what it means. `enabled()` is two
+    conditions wearing one name, and the bypass has to satisfy one of them and skip the other:
+    it may drop the SECRET, it must never drop the SWITCH. Reading `enabled()` there would have
+    left the friction in place (you would still need a token for it to be true), and reading
+    the raw environment there would have hidden the invariant in a string comparison. This is
+    the invariant, named.
+
+    `== "1"` and not truthiness, matching voice and asicminer.
+    """
+    return os.environ.get(ENV_ENABLED) == "1"
+
+
 def enabled() -> bool:
-    """Both, or the surface does not exist. `== "1"` and not truthiness, matching voice and
-    asicminer -- it reads like a boolean and is not one, and that is a confusion worth keeping
-    consistent rather than solving differently in each package."""
-    return os.environ.get(ENV_ENABLED) == "1" and bool(os.environ.get(ENV_TOKEN))
+    """Both, or the surface does not exist. Unchanged behaviour -- the switch AND a token.
+
+    This is the public gate and nothing about it moved. `switched_on()` is the first half,
+    factored out above; the `and` is still here.
+    """
+    return switched_on() and bool(os.environ.get(ENV_TOKEN))
 
 
 def token_ok(presented: str | None) -> bool:
@@ -126,3 +151,85 @@ def present_token(headers, query, cookies=None) -> str | None:
             if found:
                 return found
     return None
+
+
+# ---------------------------------------------------------------------------------------
+# the local-only development bypass
+# ---------------------------------------------------------------------------------------
+# Added 2026-08-22 as the chosen resolution of #88 / SECURITY-AUDIT BLOCKER-1. The complaint
+# it answers is real: Studio answers 503 unless both variables are set, so Garrett could not
+# open his own surface without first exporting a secret. The naive fix -- drop the token --
+# would have published ComfyUI's own editor to the internet, because `ops/Caddyfile` delegates
+# `/studio` AND `/studio/*`, and `/studio/editor/*` proxies that editor with a catch-all over
+# seven methods plus a WebSocket. So the friction comes off the LOCAL path only.
+#
+# Copied in shape, deliberately, from `api.py::_require_local`, which is the strictest local
+# test in this repo. Not imported from there: `api.py` imports this package, so the dependency
+# would be a cycle. The values are duplicated and that duplication is the point -- two
+# hand-maintained copies of a security constant, each with a test, beats one copy that a
+# refactor can widen for both at once.
+
+# Loopback only. `localhost` is here because a `TestClient` peer is not always numeric.
+LOCAL_PEERS = ("127.0.0.1", "::1", "localhost")
+
+# The belt to the peer check's braces. Caddy sets these on everything it proxies, so their
+# presence means the request crossed the reverse proxy even when the socket claims loopback --
+# which is exactly what a future `handle /studio*` change would produce, and exactly the case
+# the peer check alone would wave through.
+PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-real-ip")
+
+
+def local_request(peer: str | None, headers) -> bool:
+    """True only for a request that came from a process on this machine and did not cross a proxy.
+
+    Two conditions and both must hold, for the reason `_require_local` gives: the peer address
+    is the real check, and the forwarded headers catch the case where the socket says loopback
+    because a reverse proxy is the one connecting.
+
+    `headers` may be a plain dict or a Starlette `Headers`; both spellings of each name are
+    tried, because a dict is case-sensitive and `Headers` is not.
+    """
+    if (peer or "") not in LOCAL_PEERS:
+        return False
+    for name in PROXY_HEADERS:
+        if headers is None:
+            break
+        if name in headers or name.title() in headers:
+            return False
+    return True
+
+
+def local_bypass(peer: str | None, headers) -> bool:
+    """True when this request may skip the token -- local, explicitly switched on, off by default.
+
+    THREE conditions, all required:
+
+      1. `SYMONEURAL_STUDIO_LOCAL_BYPASS == "1"`  -- absent means no bypass, which is the default
+      2. `switched_on()`                          -- **Studio is still deliberately switched on**
+      3. `local_request(peer, headers)`           -- loopback, and not through a proxy
+
+    **The invariant, stated once: this bypasses token friction and NEVER the disabled state.**
+    A Studio that is switched off denies every caller, local or not, bypass flag or not --
+    condition 2 is what guarantees it, and `test_disabled_studio_refuses_even_with_the_bypass`
+    is what proves it. `local_bypass()` is not a master allow switch and must never become one.
+
+    **What this does not do, and each omission is load-bearing:**
+
+    It does not touch `enabled()`. A public request still meets the unchanged
+    `enabled()` + `token_ok()` pair, so with no token configured the public answer is 503 and
+    with one configured it is 401 -- both exactly as before. The bypass can only ever make the
+    LOCAL path easier; there is no argument to it that makes the public path easier.
+
+    It calls `switched_on()` rather than `enabled()`, and that is the whole point of the
+    function. `enabled()` is the switch AND a non-empty token, so calling it here would leave
+    the friction exactly where it was -- the operator would still have to invent a secret to
+    get past it. Condition 2 keeps the deliberate on/off switch and drops only the secret.
+
+    It is spelled for Studio alone. Miner, ASIC, Project, Coder, Exp, Reinforce and Discovery
+    each keep their own gate untouched, and no token variable is removed or shared.
+    """
+    if os.environ.get(ENV_LOCAL_BYPASS) != "1":
+        return False
+    if not switched_on():                       # never bypass the disabled state
+        return False
+    return local_request(peer, headers)

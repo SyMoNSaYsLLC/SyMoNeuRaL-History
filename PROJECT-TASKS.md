@@ -386,8 +386,49 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         than moved is `tests/studio.mjs`, which passes `SYMONEURAL_STUDIO_TOKEN=devtest` today and
         must pass with nothing set.
 
-        check: ngrep SYMONEURAL_STUDIO_TOKEN=devtest -- tests/studio.mjs
-        check: grep TokenNotRequiredTests -- backend/apps/studio/test_studio.py
+        check: grep local_bypass -- backend/apps/studio/gate.py
+        check: grep switched_on -- backend/apps/studio/gate.py
+        check: grep local_bypass -- backend/apps/studio/routes.py
+        check: grep token_ok -- backend/apps/studio/routes.py
+        check: grep StudioLocalBypassTests -- backend/apps/studio/test_studio.py
+        check: grep PER-SURFACE DECISION -- docs/ops/SECURITY-AUDIT.md
+        note: 2026-08-22 coder — CHOSEN PATH IMPLEMENTED, and the two original checks were
+        note: REPLACED rather than satisfied. They were `ngrep SYMONEURAL_STUDIO_TOKEN=devtest --
+        note: tests/studio.mjs` and `grep TokenNotRequiredTests -- .../test_studio.py`, and both
+        note: encoded one definition of done: the token requirement removed outright. Garrett
+        note: chose a different resolution on 2026-08-22 -- keep the public gate, add a
+        note: local-only bypass -- so those checks would now go green for work nobody wants
+        note: done. Recorded here rather than deleted quietly, because a rewritten check is a
+        note: changed definition of done and that is the kind of edit that should be visible.
+        note: tests/studio.mjs is deliberately UNTOUCHED for the same reason.
+        note: What was built: gate.local_bypass(peer, headers), true only when all three hold --
+        note: SYMONEURAL_STUDIO_LOCAL_BYPASS == "1" (absent means off, the default),
+        note: gate.switched_on(), and gate.local_request(peer, headers) which requires a
+        note: loopback peer AND no proxy header. Applied at three call sites in routes.py --
+        note: _guard, the /api/studio/events websocket, and the /studio/editor/ws websocket --
+        note: consulted FIRST and only ever returning early, so every line below it is
+        note: unchanged and the public path meets the same enabled() + token_ok() pair.
+        note: THE INVARIANT: it bypasses the SECRET, never the SWITCH. switched_on() was
+        note: factored out of enabled() to make that legible -- enabled() is the switch AND a
+        note: token, so calling it in the bypass would have left the friction exactly where it
+        note: was. A switched-off Studio denies every caller, local or not, flag or not.
+        note: Proven by sabotage rather than by assertion: removing the switched_on() guard
+        note: failed test_disabled_studio_refuses_even_with_the_bypass_flag and only that one;
+        note: removing the proxy-header rejection failed the two local_request tests. 402
+        note: passed across apps/studio/.
+        note: WHY THIS TASK IS STILL OPEN at 5/6. Its body says the instruction is standing and
+        note: "not Studio-only: everything, while testing" -- eight surfaces share the double
+        note: gate. Studio's half is done; Reinforce, Exp, Project, Coder, Miner, ASIC and
+        note: Discovery still carry it, and BLOCKER-2 is explicit that the risk type differs per
+        note: surface and they must be decided one at a time rather than in one sweep. The sixth
+        note: check greens when that per-surface decision is written into SECURITY-AUDIT.md
+        note: under a PER-SURFACE DECISION heading. Until then this task is not finished, and
+        note: it must not archive itself on the Studio half alone.
+        note: NOT closed by this work: HIGH-1. /studio/editor/* still proxies ComfyUI's own
+        note: editor to authenticated operators over a public hostname, and #103 records the
+        note: ordering that fixes it -- "#88 comes AFTER the raw editor is gone". That still
+        note: stands; this implementation makes the wait affordable, it does not replace it.
+        note: Caddy unchanged: /studio and /studio/* are still delegated.
         note: 2026-08-22 coder — SECURITY AUDIT, BLOCKER-1 and BLOCKER-2. Read
         note: docs/ops/SECURITY-AUDIT.md before writing any code for this task. Three facts
         note: that are each fine alone and are not fine together: ops/Caddyfile:150 delegates

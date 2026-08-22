@@ -4247,6 +4247,31 @@ to be built is already built. Those are the rows worth carrying forward:
 
 ### The one thing a fresh agent should read first
 
+**UPDATE 2026-08-22 — BLOCKER-1 has a chosen path and it is implemented.** Garrett picked
+*keep the public token gate, add a loopback-only bypass*. `gate.local_bypass(peer, headers)` is true
+only when all three hold: `SYMONEURAL_STUDIO_LOCAL_BYPASS == "1"` (absent means off, the default),
+`gate.switched_on()`, and `gate.local_request(peer, headers)` — a loopback peer **and** no proxy
+header. Applied at three call sites in `apps/studio/routes.py`, consulted first and only ever
+returning early, so the public path is byte-for-byte the gate it was.
+
+**The invariant: it bypasses the SECRET, never the SWITCH.** `switched_on()` was factored out of
+`enabled()` to make that legible — `enabled()` is the switch *and* a token, so calling it in the
+bypass would have left the friction in place. A switched-off Studio denies every caller. Proven by
+sabotage: removing the `switched_on()` guard failed exactly one test; removing the proxy-header
+rejection failed two. 402 passed across `apps/studio/`.
+
+**#88 stays OPEN at 5/6.** Its instruction was standing across eight surfaces and only Studio's half
+is done; the sixth check greens when the per-surface decision for the other seven is written into
+`SECURITY-AUDIT.md`. Its two original checks were **replaced, not satisfied** — they encoded
+"token removed outright", which is not what was chosen — and `tests/studio.mjs` is deliberately
+untouched.
+
+**HIGH-1 is NOT closed by this.** `/studio/editor/*` still proxies ComfyUI's own editor to
+authenticated operators over a public hostname, and #103's ordering still stands: *"#88 comes AFTER
+the raw editor is gone."* This makes the wait affordable; it does not replace it. **Caddy unchanged.**
+
+The original finding, kept because the reasoning is the reusable part:
+
 **`docs/ops/SECURITY-AUDIT.md`, BLOCKER-1.** Three facts that are each fine alone: `ops/Caddyfile:150`
 delegates `/studio` **and** `/studio/*`; `/studio/editor/*` proxies ComfyUI's own editor with a
 catch-all forwarding seven methods plus a WebSocket; and the only thing in front of it is `_guard`'s

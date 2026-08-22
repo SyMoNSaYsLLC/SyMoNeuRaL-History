@@ -35,7 +35,10 @@ puts the new secret in a transcript exactly as the old one got there.
 
 **Open task `◻ #88` asks for exactly that gate to be removed**, and not only for Studio. R-162:
 *"symoneural studio does not need to require SYM_STUDIO_TOKEN we are testing everything without
-keys and tokens."* The task text itself notes the scope: *"Standing, not Studio-only: everything,
+keys and tokens."* (His `SYM_STUDIO_TOKEN` is the pre-rename spelling; the variable is
+`SYMONEURAL_STUDIO_TOKEN` today. Both are written here on purpose — `apps/test_credential_header.py`
+has a tripwire that fails any file naming a legacy `SYM_*` variable without its modern spelling, and
+it caught this quote.) The task text itself notes the scope: *"Standing, not Studio-only: everything,
 while testing"*, and that *"the same double gate sits on Reinforce, Exp, Miner, ASIC and
 Discovery."*
 
@@ -57,8 +60,70 @@ without exporting a secret first. The resolution is a design decision and it is 
   the box at all.
 - **(d) accept the exposure explicitly**, in writing, with a date.
 
-**Recorded on #88 as a `note:` so the agent who picks it up sees it before writing code.** Not
-resolved here.
+### CHOSEN AND IMPLEMENTED 2026-08-22 — (a), narrowed to a local-only token bypass
+
+**Garrett chose:** keep `/studio/editor/*` token-gated for any public or non-loopback access, and
+add an explicit owner/local bypass for loopback only. **The public gate is not removed.**
+
+**The invariant, and it is the whole design:**
+
+> **The bypass drops the SECRET. It never drops the SWITCH.**
+
+`gate.local_bypass(peer, headers)` returns true only when **all three** hold:
+
+1. `SYMONEURAL_STUDIO_LOCAL_BYPASS == "1"` — **absent means off, which is the default**
+2. `gate.switched_on()` — Studio is still deliberately switched on
+3. `gate.local_request(peer, headers)` — peer in `LOCAL_PEERS` **and** no proxy header present
+
+**Why `switched_on()` and not `enabled()`.** `enabled()` is two conditions wearing one name — the
+switch **and** a non-empty token — so calling it in the bypass would have left the friction exactly
+where it was: the operator would still have to invent a secret to get past it. `switched_on()` was
+factored out for this, so the code states the invariant instead of hiding it in a string compare.
+**A switched-off Studio therefore denies every caller, local or not, bypass flag or not.**
+
+**Why the proxy-header check is not optional.** `ops/Caddyfile` sets `X-Forwarded-For` on everything
+it proxies, so a request that crossed the reverse proxy can present a loopback socket. The peer
+check alone would wave exactly that through — which is the case a future `handle /studio*` change
+would produce. `local_request` requires both, copied in shape from `api.py::_require_local`, the
+strictest local test in the repo. **Duplicated rather than imported, because `api.py` imports this
+package and the dependency would be a cycle** — and two hand-maintained copies each with a test beat
+one copy a refactor can widen for both at once.
+
+**Applied at three call sites, all in `apps/studio/routes.py`:** `_guard` (every `/api/studio/*` and
+`/studio/editor/*` HTTP path), the `/api/studio/events` WebSocket, and the `/studio/editor/ws`
+WebSocket. In each, the bypass is consulted **first** and can only return early — every line below
+it is unchanged, so the public path meets the same `enabled()` + `token_ok()` pair it met before.
+
+**Blast radius: Studio only.** The flag is spelled `SYMONEURAL_STUDIO_LOCAL_BYPASS`. **No token
+variable was removed and no tokens were collapsed** — Miner, ASIC, Project, Coder, Exp, Reinforce
+and Discovery keep their own `_ENABLED`/`_TOKEN` pairs untouched, which matters because BLOCKER-2
+records that the risk type differs per surface.
+
+**Proven by sabotage, not by assertion.** Two deliberate breakages were made and the right tests
+failed each time:
+
+| Sabotage | Test that caught it |
+|---|---|
+| removed the `switched_on()` guard (making it a master allow switch) | `test_disabled_studio_refuses_even_with_the_bypass_flag` — and **only** that one |
+| removed the proxy-header rejection | `test_a_loopback_peer_carrying_proxy_headers_is_refused` **and** `test_local_request_is_two_conditions_and_needs_both` |
+
+`StudioLocalBypassTests` in `apps/studio/test_studio.py` carries eleven cases. **402 passed** across
+`apps/studio/`.
+
+### What this does and does not close
+
+**BLOCKER-1 is reduced, not closed.** What it was about — *task #88 executed literally* — is now
+prevented: the naive token removal is no longer the path, and #88's checks were rewritten to match
+the decision so it cannot be greened by dropping the gate.
+
+**What remains open is HIGH-1**, and it is the more durable half: `/studio/editor/*` still proxies
+ComfyUI's own editor to authenticated operators over a public hostname. The bypass does not touch
+that. **#103 records the ordering that closes it** — *"#88 comes AFTER the raw editor is gone"* — and
+that ordering still stands. This implementation is what makes the wait affordable, not a substitute
+for it.
+
+**Caddy was not changed.** `/studio` and `/studio/*` are still delegated; the risk is documented, not
+altered.
 
 ### BLOCKER-2 — the same task would expose rig control and the network scanner
 

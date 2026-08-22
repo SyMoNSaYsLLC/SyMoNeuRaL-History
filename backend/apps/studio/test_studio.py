@@ -298,6 +298,144 @@ class GateTests(unittest.TestCase):
         self.assertIsNone(gate.present_token({}, {}))
 
 
+class StudioLocalBypassTests(unittest.TestCase):
+    """#88's chosen resolution, and the invariant it must never break.
+
+    The complaint #88 records is real -- Studio answered 503 unless a secret was exported, so
+    Garrett could not open his own surface. The naive fix was rejected because `ops/Caddyfile`
+    delegates `/studio` AND `/studio/*`, and `/studio/editor/*` proxies ComfyUI's own editor
+    over seven methods plus a WebSocket, so dropping the token would have published a ComfyUI
+    admin surface (`docs/ops/SECURITY-AUDIT.md` BLOCKER-1).
+
+    So the bypass drops **token friction on the local path only**, and the thing these tests
+    exist to pin is the sentence it must never violate:
+
+        it bypasses the SECRET, never the SWITCH.
+
+    `local_bypass()` is not a master allow switch. If a future change makes it one,
+    `test_disabled_studio_refuses_even_with_the_bypass_flag` is the test that fails.
+    """
+
+    KEYS = (gate.ENV_ENABLED, gate.ENV_TOKEN, gate.ENV_LOCAL_BYPASS)
+
+    def setUp(self):
+        import os
+        self._keep = {k: os.environ.get(k) for k in self.KEYS}
+
+    def tearDown(self):
+        import os
+        for k, v in self._keep.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+    def _env(self, **kw):
+        """Set exactly the three variables under test; absent means unset, not empty."""
+        import os
+        for key, val in ((gate.ENV_ENABLED, kw.get("enabled")),
+                         (gate.ENV_TOKEN, kw.get("token")),
+                         (gate.ENV_LOCAL_BYPASS, kw.get("bypass"))):
+            os.environ.pop(key, None)
+            if val is not None:
+                os.environ[key] = val
+
+    # -- the invariant -------------------------------------------------------------------
+
+    def test_disabled_studio_refuses_even_with_the_bypass_flag(self):
+        """The one that must never go green by accident.
+
+        Both spellings of off: the variable absent, and the variable explicitly "0". A bypass
+        that let either through would be a master allow switch, which is exactly what the
+        chosen #88 path is not.
+        """
+        for enabled_v in (None, "0", "true", "yes", "TRUE"):
+            with self.subTest(enabled=enabled_v):
+                self._env(enabled=enabled_v, bypass="1")
+                self.assertFalse(gate.local_bypass("127.0.0.1", {}))
+
+    def test_the_bypass_does_not_make_the_surface_enabled(self):
+        """`enabled()` is the public gate and the bypass must not move it.
+
+        Read separately from the route behaviour on purpose: if the bypass ever leaked into
+        `enabled()`, every public caller would be let in and only this assertion would say so.
+        """
+        self._env(enabled="1", bypass="1")           # switched on, no token, bypass on
+        self.assertTrue(gate.switched_on())
+        self.assertFalse(gate.enabled())             # still False: no token configured
+
+    # -- the bypass itself ---------------------------------------------------------------
+
+    def test_enabled_plus_bypass_plus_loopback_succeeds_without_a_token(self):
+        self._env(enabled="1", bypass="1")           # deliberately no token at all
+        for peer in gate.LOCAL_PEERS:
+            with self.subTest(peer=peer):
+                self.assertTrue(gate.local_bypass(peer, {}))
+
+    def test_a_remote_peer_is_refused_even_with_the_bypass_on(self):
+        self._env(enabled="1", bypass="1")
+        for peer in ("203.0.113.9", "10.0.0.4", "192.168.1.20", "::ffff:127.0.0.1", "", None):
+            with self.subTest(peer=peer):
+                self.assertFalse(gate.local_bypass(peer, {}))
+
+    def test_a_loopback_peer_carrying_proxy_headers_is_refused(self):
+        """The case the peer check alone waves through.
+
+        Caddy sets these on everything it proxies, so their presence means the request crossed
+        the reverse proxy even though the socket says loopback -- which is what a future
+        `handle /studio*` change would produce. Both spellings, because a plain dict is
+        case-sensitive where Starlette's `Headers` is not.
+        """
+        self._env(enabled="1", bypass="1")
+        for name in gate.PROXY_HEADERS:
+            for spelling in (name, name.title()):
+                with self.subTest(header=spelling):
+                    self.assertFalse(gate.local_bypass("127.0.0.1", {spelling: "1.2.3.4"}))
+
+    def test_without_the_flag_there_is_no_bypass(self):
+        """Default OFF. Absent is not empty and not "0" -- all three are no."""
+        for bypass_v in (None, "", "0", "true", "yes", "TRUE", "on"):
+            with self.subTest(bypass=bypass_v):
+                self._env(enabled="1", token="s3cret", bypass=bypass_v)
+                self.assertFalse(gate.local_bypass("127.0.0.1", {}))
+
+    def test_the_token_path_is_untouched_by_all_of_this(self):
+        """With no bypass configured the gate behaves exactly as it did before #88."""
+        self._env(enabled="1", token="s3cret")
+        self.assertTrue(gate.enabled())
+        self.assertTrue(gate.token_ok("s3cret"))
+        self.assertFalse(gate.token_ok("wrong"))
+        self.assertFalse(gate.token_ok(None))
+        self.assertFalse(gate.local_bypass("127.0.0.1", {}))
+
+    def test_a_valid_token_still_works_while_the_bypass_is_on(self):
+        """The bypass is additive. A remote caller with the right token is still let in by the
+        normal path, so switching it on cannot lock anybody out."""
+        self._env(enabled="1", token="s3cret", bypass="1")
+        self.assertFalse(gate.local_bypass("203.0.113.9", {}))   # bypass says no
+        self.assertTrue(gate.enabled())                          # and the token path says yes
+        self.assertTrue(gate.token_ok("s3cret"))
+
+    # -- the helper it is built on -------------------------------------------------------
+
+    def test_local_request_is_two_conditions_and_needs_both(self):
+        self.assertTrue(gate.local_request("127.0.0.1", {}))
+        self.assertFalse(gate.local_request("127.0.0.1", {"x-forwarded-for": "1.2.3.4"}))
+        self.assertFalse(gate.local_request("8.8.8.8", {}))
+        self.assertFalse(gate.local_request("8.8.8.8", {"x-forwarded-for": "1.2.3.4"}))
+
+    def test_the_bypass_is_spelled_for_studio_alone(self):
+        """No other surface's gate is reachable through this flag, and no token was collapsed.
+
+        The eight surfaces behind their own `_ENABLED`/`_TOKEN` pairs stay separate -- #88's
+        note records that the risk type differs per surface, so one flag must not answer for
+        all of them.
+        """
+        self.assertEqual(gate.ENV_LOCAL_BYPASS, "SYMONEURAL_STUDIO_LOCAL_BYPASS")
+        self.assertIn("STUDIO", gate.ENV_LOCAL_BYPASS)
+        self.assertEqual(gate.ENV_TOKEN, "SYMONEURAL_STUDIO_TOKEN")     # not removed
+        self.assertEqual(gate.ENV_ENABLED, "SYMONEURAL_STUDIO_ENABLED")  # not removed
+
+
 class WorkflowTests(unittest.TestCase):
     def test_schnell_parameters_are_schnells_and_not_stable_diffusions(self):
         g = workflows.get()

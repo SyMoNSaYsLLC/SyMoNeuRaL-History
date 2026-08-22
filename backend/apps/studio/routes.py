@@ -54,7 +54,8 @@ from fastapi import APIRouter, Query, Request, Response, WebSocket, WebSocketDis
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import agent, comfy, graph as graphmod, inference, registry, workflows, workspace
-from .gate import (COOKIE, COOKIE_LEGACY, COOKIE_PATH, HEADER, enabled, present_token,
+from .gate import (COOKIE, COOKIE_LEGACY, COOKIE_PATH, HEADER, enabled, local_bypass,
+                   present_token,
                    token_ok)
 from .tools_impl import host  # noqa: F401  (also completes tool registration)
 
@@ -90,7 +91,16 @@ class Denied(Exception):
 def _guard(request: Request) -> None:
     """503 when the surface is switched off, 401 when the token is wrong. Never 404 -- a 404
     here would be a lie about whether the route exists, and the operator debugging their own
-    environment variables is the person who suffers for it."""
+    environment variables is the person who suffers for it.
+
+    The local bypass is consulted FIRST and can only ever let a loopback request through. It
+    cannot loosen the public path: everything below this line is unchanged, so a request that
+    crossed Caddy meets the same `enabled()` + `token_ok()` pair it met before. See
+    `gate.local_bypass` for the three conditions and for why it calls `switched_on()` rather
+    than `enabled()` -- it may drop the secret, never the switch.
+    """
+    if local_bypass(request.client.host if request.client else None, request.headers):
+        return
     if not enabled():
         raise Denied(503, {
             "error": "studio_disabled",
@@ -679,14 +689,18 @@ async def events(ws: WebSocket) -> None:
     see there for why `send_json` alone was a crash on the first latent preview.
     """
     await ws.accept()
-    if not enabled():
-        await ws.send_json({"type": "error", "error": "studio_disabled"})
-        await ws.close(code=1008)
-        return
-    if not token_ok(present_token(ws.headers, ws.query_params, ws.cookies)):
-        await ws.send_json({"type": "error", "error": "bad_token"})
-        await ws.close(code=1008)
-        return
+    # The local bypass drops the token for a loopback caller and nothing else. It cannot
+    # reach the `studio_disabled` branch below -- `gate.local_bypass` requires `switched_on()`
+    # -- so a switched-off Studio still closes 1008 on every caller.
+    if not local_bypass(ws.client.host if ws.client else None, ws.headers):
+        if not enabled():
+            await ws.send_json({"type": "error", "error": "studio_disabled"})
+            await ws.close(code=1008)
+            return
+        if not token_ok(present_token(ws.headers, ws.query_params, ws.cookies)):
+            await ws.send_json({"type": "error", "error": "bad_token"})
+            await ws.close(code=1008)
+            return
 
     client = comfy.ComfyClient(client_id=ws.query_params.get("clientId") or None)
     try:
@@ -830,9 +844,14 @@ async def editor_socket(ws: WebSocket) -> None:
     every progress ring in the UI.
     """
     await ws.accept()
-    if not enabled() or not token_ok(present_token(ws.headers, ws.query_params, ws.cookies)):
-        await ws.close(code=1008)
-        return
+    # Same shape as `_guard` and the events socket: loopback may skip the token, a switched-off
+    # Studio closes regardless, and a request that crossed Caddy is refused because
+    # `local_request` rejects anything carrying proxy headers. This is the socket BLOCKER-1 is
+    # about, so the ordering here is load-bearing -- the bypass is a narrowing, never a widening.
+    if not local_bypass(ws.client.host if ws.client else None, ws.headers):
+        if not enabled() or not token_ok(present_token(ws.headers, ws.query_params, ws.cookies)):
+            await ws.close(code=1008)
+            return
 
     query = "&".join(f"{k}={v}" for k, v in ws.query_params.items() if k != "token")
     upstream_url = comfy.base_url().replace("http://", "ws://").replace("https://", "wss://")
