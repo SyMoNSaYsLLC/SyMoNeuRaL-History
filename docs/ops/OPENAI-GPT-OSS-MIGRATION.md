@@ -1,7 +1,7 @@
 # SyMoNeuRaL OpenAI 20B — the LLM candidate, and what has to be true before it runs
 
-**Opened 2026-08-22.** Docs and staging plan only. **Nothing downloaded. Nothing activated.
-Qwen unchanged and not deleted. No deploy.**
+**Opened 2026-08-22.** **Weights downloaded 2026-08-22 on Garrett's explicit authorization —
+see §3a. Nothing converted. Nothing activated. Qwen unchanged and not deleted. No deploy.**
 
 | | |
 |---|---|
@@ -10,7 +10,8 @@ Qwen unchanged and not deleted. No deploy.**
 | short name | **SyMon OpenAI 20B** |
 | upstream | **`openai/gpt-oss-20b`** |
 | status | **AUDIT / CANDIDATE** |
-| downloaded | **no** |
+| downloaded | **yes — 2026-08-22, 32 GiB staged, see §3a** |
+| converted | **no — this is the next gated step** |
 | active | **no** |
 
 ## 0. Scope, stated first because it is the thing most likely to be over-read
@@ -146,8 +147,8 @@ Writes `backend/models/staging/openai-gpt-oss-20b/STAGED-MANIFEST.json` and `ROL
 
 ```bash
 hf download openai/gpt-oss-20b \
-  --include "original/*" \
-  --local-dir backend/models/staging/openai-gpt-oss-20b/
+  --exclude "original/*" --exclude "metal/*" \
+  --local-dir backend/models/staging/openai-gpt-oss-20b/hf/
 ```
 
 > **Not `huggingface-cli`.** That entrypoint is **deprecated and no longer works**, and its
@@ -164,6 +165,68 @@ he says so.
 
 **Staging is gitignored** (`.gitignore:5`, `backend/models/*`), so neither the weights nor the
 staged manifest can be committed. Structural, not a promise.
+
+## 3a. What was actually downloaded — 2026-08-22, and the correction it forced
+
+**Two downloads happened, and the first one fetched the wrong thing.** Recording both, because the
+mistake is the useful part.
+
+| Tree | Bytes | Convertible? |
+|---|---|---|
+| `original/` | 13 GiB, single `model.safetensors` | **NO** |
+| **`hf/`** | **19 GiB, 3 shards + tokenizer** | **yes** |
+
+**Why `original/` cannot be converted** — three independent blockers, all found by reading the
+downloaded files *before* running the converter rather than after it failed:
+
+1. `original/config.json` has **no `architectures` key**, so `ModelBase` cannot dispatch to the
+   `@ModelBase.register("GptOssForCausalLM")` handler at all.
+2. Its tensors are named `block.0.attn.qkv.weight` — the **original OpenAI layout**. The converter
+   expects the HF names (`gate_up_proj`, `down_proj`).
+3. **No tokenizer.** `original/` ships weights only.
+
+> **The `--include "original/*"` in §3's printed command was wrong**, and it was wrong in a way
+> that costs 13 GiB to discover. `original/` is the OpenAI *reference* checkpoint, not the HF one.
+> The correct filter is `--exclude "original/*" --exclude "metal/*"`.
+
+**The root download, verified byte-exact against the HF API's reported sizes:**
+
+| File | Bytes |
+|---|---|
+| `model-00000-of-00002.safetensors` | 4,792,272,488 |
+| `model-00001-of-00002.safetensors` | 4,798,702,184 |
+| `model-00002-of-00002.safetensors` | 4,170,342,232 |
+| `tokenizer.json` | 27,868,174 |
+| `model.safetensors.index.json` | 36,355 — names **3 shards / 459 tensors**, all present |
+| `LICENSE` | 11,357 |
+
+All three conversion blockers are now closed: `architectures: ["GptOssForCausalLM"]`,
+`quant_method: mxfp4`, full tokenizer.
+
+### Two operational findings worth keeping
+
+**The download stalled, and an unauthenticated fetch is why.** Two shards sat idle 932 s and 669 s,
+2.81 GiB short. `hf auth whoami` → **not logged in**; no `HF_TOKEN`, no `HUGGINGFACE_HUB_TOKEN`, no
+`~/.cache/huggingface/token`. So every byte here came down anonymous, against a rate limit, which
+matches the warning the client printed. **Re-running `hf download` resumed from the `.incomplete`
+files** and moved 5,271 MiB in 60 s. Nothing was re-fetched from zero.
+
+**6,574,559,947 bytes of dead `.incomplete` files remain** under `hf/.cache/huggingface/download/`.
+The resume wrote into fresh temp files rather than continuing those two, so they are reclaimable —
+measured static over a 10 s window, with no writer process alive. **Not deleted**: no mode of this
+workflow deletes without authorization.
+
+### The corrected conversion command
+
+```bash
+training/.venv/bin/python3 engines/symoneural-llm/convert_hf_to_gguf.py \
+  backend/models/staging/openai-gpt-oss-20b/hf \
+  --outfile backend/models/staging/openai-gpt-oss-20b/symon-openai-20b.gguf \
+  --outtype auto
+```
+
+**Note the input path is `hf/`, not the staging root.** Pointed at the root, the converter would
+find `original/` and hit blocker 1.
 
 ## 4. The six activation gates
 

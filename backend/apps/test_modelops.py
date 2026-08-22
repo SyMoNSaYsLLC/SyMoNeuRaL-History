@@ -346,6 +346,66 @@ class StagingScriptRefusalTests(unittest.TestCase):
                                  "downloads nothing. Use `hf download`.")
         self.assertIn("hf download", SCRIPT.read_text(encoding="utf-8"))
 
+    def test_the_recorded_download_does_not_fetch_the_unconvertible_checkpoint(self):
+        """`original/` is the OpenAI reference checkpoint and CANNOT be converted: its
+        config.json has no `architectures` key, its tensors use the original layout
+        (`block.0.attn.qkv.weight`) rather than the HF names the converter expects, and it
+        ships no tokenizer. Measured 2026-08-22, by reading the files after 13 GiB had already
+        come down on the strength of this command.
+
+        This is the sibling of the dead-entrypoint test above, and the same lesson: that one
+        recorded a command that fetched nothing, this one recorded a command that fetched the
+        wrong 13 GiB. Both looked like they worked.
+        """
+        text = SCRIPT.read_text(encoding="utf-8")
+        dl = [ln for ln in text.splitlines() if "--include" in ln or "--exclude" in ln]
+        self.assertTrue(dl, "the download command records no filter at all")
+        # The script escapes its quotes for `say`, so compare with backslashes removed --
+        # otherwise the negative below silently cannot fire, which is how it read on the
+        # first draft of this test.
+        joined = "\n".join(dl).replace("\\", "")
+        self.assertNotIn('--include "original/*"', joined,
+                         "this fetches the unconvertible reference checkpoint")
+        self.assertIn("--exclude", joined,
+                      "the command must exclude original/ rather than target it")
+
+    def test_staging_twice_does_not_clobber_a_manifest_that_records_real_state(self):
+        """A real run, because this is a bug `grep` could not have found.
+
+        The stage mode used to write STAGED-MANIFEST.json unconditionally. Re-running it after
+        the download completed produced a fresh manifest asserting `"downloaded": false` over a
+        directory holding 32 GiB -- and the activation gates READ that file. So the failure mode
+        was not a lost field, it was a manifest that contradicted its own disk while looking
+        authoritative. Found 2026-08-22 by doing exactly this.
+
+        Skips when staging is absent: the tree is gitignored, so it does not exist on a fresh
+        clone, and a test that quietly passes on absence would be worse than one that says why.
+        """
+        manifest = ROOT / "backend/models/staging/openai-gpt-oss-20b/STAGED-MANIFEST.json"
+        if not manifest.is_file():
+            self.skipTest("no staged candidate on this box; nothing to protect")
+
+        before = manifest.read_bytes()
+        proc = subprocess.run([str(SCRIPT), "--stage-openai-gpt-oss-20b"],
+                              cwd=ROOT, capture_output=True, text=True, timeout=120)
+        after = manifest.read_bytes()
+
+        self.assertEqual(before, after,
+                         "re-staging rewrote a manifest that already recorded real state")
+        # The refusal is emitted by `warn`, which writes to stderr, so both streams matter.
+        self.assertIn("REFUSED", proc.stdout + proc.stderr,
+                      "it left the file alone but did not say so; a silent no-op is "
+                      "indistinguishable from a successful rewrite")
+
+    def test_the_manifest_never_asserts_downloaded_as_a_literal(self):
+        """`downloaded` must be derived from the disk, not written as a constant. A literal is
+        true only at the instant of first staging and false-but-authoritative forever after."""
+        src = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn('"downloaded": false', src,
+                         "a hardcoded false; read the disk instead")
+        self.assertNotIn('"downloaded": true', src,
+                         "a hardcoded true is worse -- it claims weights that may not be there")
+
     def test_no_mode_deletes_a_weight(self):
         """Structural, because the alternative is running a mode that might delete one. `rm`
         appears exactly once and only against the script's own staging scratch."""

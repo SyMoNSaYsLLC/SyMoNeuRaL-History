@@ -113,6 +113,22 @@ PLAN
 }
 
 # ---------------------------------------------------------------------------- staging
+# Read the staging directory and say what is there. Every line is a measurement; nothing here
+# is carried forward from a previous run, which is the whole point of it being a function
+# rather than a stored field.
+staged_disk_state() {
+  local dir="$1" st gg
+  st=$(find "$dir" -type f -name '*.safetensors' -printf '%s\n' 2>/dev/null | paste -sd+ | bc)
+  gg=$(find "$dir" -type f -name '*.gguf' -printf '%s\n' 2>/dev/null | paste -sd+ | bc)
+  say  "    safetensors:  $(find "$dir" -type f -name '*.safetensors' 2>/dev/null | wc -l) file(s), ${st:-0} bytes"
+  say  "    gguf:         $(find "$dir" -type f -name '*.gguf' 2>/dev/null | wc -l) file(s), ${gg:-0} bytes"
+  local inc
+  inc=$(find "$dir" -type f -name '*.incomplete' -printf '%s\n' 2>/dev/null | paste -sd+ | bc)
+  if [[ -n "$inc" && "$inc" != "0" ]]; then
+    warn "    incomplete:   ${inc} bytes of partial-download leftovers (reclaimable)"
+  fi
+}
+
 mode_stage_gpt_oss() {
   local dir="$STAGING_REL/openai-gpt-oss-20b"
   head_ "stage $CANDIDATE_ID  <-  $CANDIDATE_UPSTREAM"
@@ -125,6 +141,30 @@ mode_stage_gpt_oss() {
 
   mkdir -p "$dir"
 
+  # Refuse to overwrite a manifest that already exists. This mode used to clobber it
+  # unconditionally, and the damage was not the lost fields -- it was that the fresh copy
+  # claimed nothing had been downloaded onto a directory holding 32 GiB. A manifest that
+  # contradicts its own disk is worse than no manifest, because the activation gates READ it.
+  # Found 2026-08-22 by re-running this mode after the download completed.
+  if [[ -f "$dir/STAGED-MANIFEST.json" ]]; then
+    warn "  REFUSED: $dir/STAGED-MANIFEST.json already exists."
+    warn "  Not overwriting it. It may record a completed download, a licence, or a smoke"
+    warn "  result -- and a regenerated copy would assert the opposite of what is on disk."
+    dim  "  To deliberately start over, move the existing file aside first."
+    say ""
+    dim  "  Recording what is actually on disk instead:"
+    staged_disk_state "$dir"
+    return 0
+  fi
+
+  # Derived, not asserted: the downloaded flag is a reading of the disk. An earlier version
+  # wrote a constant here, which was accurate only at the instant of first staging.
+  local dl_bytes dl_flag gguf_flag
+  dl_bytes=$(find "$dir" -type f -name '*.safetensors' -printf '%s\n' 2>/dev/null | paste -sd+ | bc)
+  dl_bytes=${dl_bytes:-0}
+  [[ "$dl_bytes" -gt 0 ]] && dl_flag=true || dl_flag=false
+  [[ -n "$(find "$dir" -name '*.gguf' -print -quit 2>/dev/null)" ]] && gguf_flag=true || gguf_flag=false
+
   # The manifest is written BEFORE any download, so a half-finished fetch still leaves a
   # record of what was being attempted and where it came from.
   cat > "$dir/STAGED-MANIFEST.json" <<JSON
@@ -136,7 +176,9 @@ mode_stage_gpt_oss() {
   "local_dir": "$dir",
   "status": "AUDIT / CANDIDATE",
   "active_default": false,
-  "downloaded": false,
+  "downloaded": $dl_flag,
+  "downloaded_safetensors_bytes": $dl_bytes,
+  "gguf_present": $gguf_flag,
   "smoke_passed": false,
   "rollback_to": {
     "chat": "backend/models/llm/symon-1.0-7b-q4_k_m.gguf",
@@ -186,9 +228,18 @@ ROLL
   dim "  without downloading anything. A caller checking the exit code sees success and an"
   dim "  empty directory. Measured 2026-08-22 against hub 1.23.0. Use \`hf\` only."
   say ""
+  dim "  Do NOT narrow this to the reference-checkpoint subtree. That subtree CANNOT be"
+  dim "  converted: no \`architectures\` key in its config.json, tensors in the upstream project's"
+  dim "  own layout rather than the names the converter registers for, and no tokenizer at all."
+  dim "  It cost 13 GiB to learn that on 2026-08-22. Fetch the repo ROOT and exclude both"
+  dim "  platform-specific subtrees, exactly as below."
+  say ""
   say "    hf download $CANDIDATE_UPSTREAM \\"
-  say "      --include \"original/*\" \\"
-  say "      --local-dir $dir/"
+  say "      --exclude \"original/*\" --exclude \"metal/*\" \\"
+  say "      --local-dir $dir/hf/"
+  say ""
+  dim "  Target $dir/hf/ -- NOT the staging root. Pointed at the root, the converter finds"
+  dim "  original/ alongside the HF files and dispatches on the wrong one."
   say ""
   if [[ "${SYMONEURAL_MODELOPS_CONFIRM:-}" == "$CONFIRM_PHRASE" ]]; then
     warn "  SYMONEURAL_MODELOPS_CONFIRM is set, but this script still will not fetch."
