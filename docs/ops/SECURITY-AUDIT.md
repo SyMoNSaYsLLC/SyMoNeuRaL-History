@@ -135,6 +135,114 @@ The product rule is explicit: **ComfyUI look yes, ComfyUI workflow backend yes, 
 admin/product surface no.** Today an authenticated operator gets vendor UI at a SyMoNeuRaL URL.
 **Owner-accept it with a date, or scope its replacement.**
 
+### HIGH-2 — WebSocket origin posture unproven; severity of `/api/ws` depends on the mode
+
+> **Do not call a WebSocket route safe merely because its HTTP route family is gated.** A socket is
+> a separate handler with a separate handshake, and here each one gates itself.
+
+#### Three statements this finding must not be misread as
+
+Written as prohibitions because each is a plausible mis-summary of what follows:
+
+- **Do NOT say "all WebSockets are unauthenticated."** One of three is open; two are gated.
+- **Do NOT say `/api/studio/events` is missing token checks.** It has them. Verified below.
+- **Do NOT say `/studio/editor/ws` is missing token checks.** It has them. Verified below.
+
+**What is true across all three:** **no `Origin` check exists.** Measured —
+`grep -n 'origin\|Origin' backend/api.py` finds no request-origin handling. That matters more for
+sockets than for ordinary routes, because **a WebSocket handshake is not subject to CORS**: a
+third-party page can open one from a visitor's browser with no preflight to stop it.
+
+---
+
+#### 1. `/api/ws` — public, deliberately open, rate-limited. **Severity depends on the mode.**
+
+**Measured** (`api.py:2239`): accepts immediately (`await ws.accept()`) · joins the bus · sends a
+`welcome` frame · advertises `caps: ["rack", "chat", "ravencalc", "remix", "ping"]` · **no `Origin`
+check** · the active message path **does** carry a rate-limit check for GPU/CPU work —
+`check_rate(kind if kind in LIMITS else "chat", key)`, under the comment *"Everything below spends
+the GPU or the CPU, so it is rate limited exactly"*.
+
+**It is deliberately open, and it is still security-relevant, because it is not passive
+rack-only.** Those two facts sit together: a status feed that can also run chat, ravencalc and
+remix is a cost surface.
+
+| Mode | Severity |
+|---|---|
+| **free / offline demo** | **MEDIUM** — acceptable **only if the rate limiting and queue limits hold.** That is a condition, not an assumption, and it is what the tests below check |
+| **commercial / public** | **HIGH** — must be an explicit decision |
+
+**The commercial-mode decision, stated so it cannot be defaulted:** does `/api/ws` **stay open**,
+**gain origin checks**, or **require an account/session token**? One of those three, in writing.
+`docs/specs/symoneural-commercial-mode.md` is where the switch lives and this is one of its gates.
+
+**Required later tests** — documented only:
+
+- unauthenticated connect behaviour is **intentional** (asserted, not incidental)
+- active `chat` / `remix` / `ravencalc` messages over the socket **hit the rate limits**
+- **queue limits apply to WebSocket-originated GPU work**, not only to HTTP-originated
+- off-origin behaviour is tested, or intentionally documented as accepted
+- **malformed frames do not crash the server**
+- **`/api/ws` cannot bypass HTTP route gates** — the socket must not become a way round a gate the
+  equivalent HTTP route enforces
+
+---
+
+#### 2. `/api/studio/events` — enable-gated **and** token-gated. **VERIFY/HIGH, not a vulnerability.**
+
+**Measured** (`studio/routes.py:669-690`), in order: `accept()` → `if not enabled()` sends
+`{"type":"error","error":"studio_disabled"}` and **closes 1008** → `if not
+token_ok(present_token(ws.headers, ws.query_params, ws.cookies))` sends
+`{"type":"error","error":"bad_token"}` and **closes 1008**.
+
+**So it does not check only `enabled()`.** Recorded explicitly because an earlier partial read of
+this handler stopped before the token branch, and the difference between "enable-only" and "enable
+plus token" is the entire finding.
+
+**This is not a confirmed vulnerability.** It is **VERIFY/HIGH** — gated, but origin, rate and
+abuse behaviour are unverified, and that verification is required before commercial or public mode.
+
+**Required later tests:** disabled Studio closes with **1008** · bad or missing token closes with
+**1008** · a valid token connects · origin behaviour documented or tested · **no token value or
+local path leaks in a frame.**
+
+---
+
+#### 3. `/studio/editor/ws` — enable- and token-gated. **HIGH on origin and proxy posture.**
+
+**Measured** (`studio/routes.py:823-834`): `accept()` → `if not enabled() or not
+token_ok(present_token(ws.headers, ws.query_params, ws.cookies))` → **closes 1008** · then passes
+**`clientId` through untouched** to the upstream ComfyUI socket.
+
+**High sensitivity because it bridges the editor socket** to `127.0.0.1:8188`. The `clientId`
+pass-through is deliberate and load-bearing — the code records that substituting one *"would
+silently blank every progress ring in the UI"* — which is exactly why it needs a test rather than
+a reassurance.
+
+Its credential cookie is `HttpOnly`, `SameSite=Strict`, scoped to `/studio/editor`, and the
+recorded reason for `Strict` is this concern — *"nothing off-origin has any business loading the
+editor"*. **A real mitigation, but not an `Origin` check**: it depends on browser behaviour rather
+than server enforcement.
+
+**Relation to BLOCKER-1 is conditional and stated that way on purpose.** This socket is gated
+**today**, so it is BLOCKER-1's exposure only if #88 removes the token, or if the editor otherwise
+exposes raw ComfyUI or bypasses SyMoNeuRaL controls. **Not safe to expose commercially until
+tested.**
+
+**Required later tests:** missing token refused · bad token refused · valid token allowed ·
+off-origin behaviour tested · **`clientId` cannot be abused to cross-wire sessions** · **the editor
+proxy cannot bypass the queue, the governor, or policy boundaries** · **no local path or token
+leaks through a frame.**
+
+---
+
+**None of these tests is implemented, and no authorization to write them has been given.** They are
+documented so the work is scoped rather than remembered.
+
+**Close codes get asserted, not inferred**, for the reason `_guard` already gives about HTTP status:
+a wrong code *"would be a lie about whether the route exists, and the operator debugging their own
+environment variables is the person who suffers for it."*
+
 ### MEDIUM-1 — two different local-only checks, and the weaker one is not the one in front
 
 `_require_local` (`api.py:3299-3319`) is the strong check: **two conditions, both must hold** — the
@@ -222,33 +330,59 @@ which is how a first pass of this inventory reported 98):
 difference (page routes, aliases, and whether `api_route` catch-alls count once or per method).
 **Reconcile before either is published.**
 
-### WebSocket inventory — 3
+### WebSocket inventory — 3, with auth measured per route
 
-| Route | Notes |
-|---|---|
-| `/api/ws` | the rack/status feed. `rackpower.unit_for_frame` gates frames for powered-off units |
-| `/api/studio/events` | Studio event stream — `@router.websocket("/events")`, `routes.py:669` |
-| `/studio/editor/ws` | **the ComfyUI editor's own socket** — BLOCKER-1 |
+**Verified 2026-08-22 by reading each handler**, rather than left as "must be verified":
 
-**WebSocket auth must be deliberate**, and `/studio/editor/ws` is the one carrying BLOCKER-1's
-exposure.
+| Route | Auth posture, measured | Origin |
+|---|---|---|
+| `/api/ws` | **none by design** — `ws.accept()` then straight into the bus (`api.py:2239-2247`). It is the public rack/status + chat channel, the same posture as `POST /api/chat`. **GPU-spending frames ARE rate-limited**: `check_rate(kind if kind in LIMITS else "chat", key)`, with the comment *"Everything below spends the GPU or the CPU, so it is rate limited exactly"* | **not checked** — HIGH-2 |
+| `/api/studio/events` | **gated.** `accept()`, then `enabled()` → close 1008 `studio_disabled`, then `token_ok(present_token(headers, query_params, cookies))` → close 1008 `bad_token` (`studio/routes.py:669-690`) | not checked |
+| `/studio/editor/ws` | **gated.** `accept()`, then `if not enabled() or not token_ok(...)` → close 1008 (`studio/routes.py:823-834`) | not checked; **cookie is `SameSite=Strict`** |
 
-### Event/stream reads that are **not** WebSockets — 1
+**`/studio/editor/ws` is token-gated today** — so it is not currently an open socket. It is
+BLOCKER-1's exposure **only if #88 removes the token**, which is precisely why that finding is
+about the task rather than about the current state. Its credential cookie is `HttpOnly`,
+`SameSite=Strict` and scoped to `/studio/editor`, and the recorded reason for `Strict` is exactly
+this concern: *"nothing off-origin has any business loading the editor."*
+
+**`caps` on `/api/ws` advertises `["rack", "chat", "ravencalc", "remix", "ping"]`** — so the socket
+can drive GPU work, and the rate limiter is what stands between it and the queue.
+
+### Cursor-polled JSON event route — 1
 
 | Route | What it actually is |
 |---|---|
-| `GET /api/exp/events` | **cursor-polled JSON**, not SSE and not a socket. `exp/routes.py:156` — the page polls with the last `seq` it saw, and the docstring explains the choice: *"A sequence, not a timestamp: two events can share a millisecond, and a timestamp cursor either re-delivers them or drops one."* |
+| `GET /api/exp/events` | **cursor-polled JSON.** `exp/routes.py:156`, `?since=<seq>&limit=<n>`, returning `{"events": …, "seq": …, "buffered": …}`. The page polls with the last `seq` it saw. The docstring gives the reason: *"A sequence, not a timestamp: two events can share a millisecond, and a timestamp cursor either re-delivers them or drops one."* |
 
-**No SSE (`text/event-stream`) endpoint was found anywhere.** Recorded because a first pass of this
-inventory listed `GET /api/studio/events` as an SSE sibling of the WebSocket — **it does not
-exist.** `/api/studio/events` is a WebSocket only; the `GET /events` route belongs to **Exp**, and
-the mis-attribution came from a recursive glob over `apps/studio` picking up its own plugin tree.
-**Do not label a polling endpoint SSE, and do not put a socket and a poll in one row** — they have
-different auth, different failure modes and different metering needs.
+**It is a public-prefix event/READ route and is classified separately from Exp's mutations**, which
+are the part behind `ENV_ENABLED` + `ENV_TOKEN`. A read route and a mutation route on the same
+prefix do not share a verdict.
 
-**Metering note:** `GET /api/exp/events` is a **polling** endpoint, which is the same shape that
-made Sigils' `/state` and `/packs` worth covering router-wide (§E). Confirm Exp's polling route is
-metered rather than assuming the queue rations it — Exp is not GPU work, so nothing else does.
+### Four transports, four buckets — do not flatten them
+
+| Bucket | Present here |
+|---|---|
+| **WebSocket** | 3 routes, above |
+| **SSE / `text/event-stream`** | **none. No SSE endpoint exists anywhere in this repo** |
+| **`EventSource` client usage** | none, following from the above |
+| **cursor-polled JSON** | `GET /api/exp/events` |
+
+**They have different auth, different origin exposure, different failure modes and different
+metering needs**, so they get different rows. Two mis-classifications from earlier passes of this
+inventory are recorded rather than silently fixed:
+
+- a first pass listed `GET /api/studio/events` as an SSE sibling of the WebSocket. **That route
+  does not exist.** `/api/studio/events` is a WebSocket only; the `GET /events` belongs to **Exp**.
+  The mis-attribution came from a recursive glob over `apps/studio` picking up its own plugin tree
+  — the same glob error that inflated the router count to 98.
+- calling the Exp poll "SSE" would have implied a streaming connection with no per-request auth
+  check, when it is in fact an ordinary request-per-poll route.
+
+**Metering note:** `GET /api/exp/events` is a **polling** endpoint on a **non-GPU** surface, which
+is the exact shape that made Sigils' `/state` and `/packs` worth metering router-wide — and Exp is
+CPU work, so **the GPU queue does not ration it.** Confirm it is metered rather than assuming
+something else rations it.
 
 ### Write / control / admin routes — the set that must never be ungated
 
