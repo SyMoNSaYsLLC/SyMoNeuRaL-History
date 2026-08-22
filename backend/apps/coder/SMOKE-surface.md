@@ -177,4 +177,29 @@ and re-dating it — a figure with no SHA cannot be checked, only believed.
 
 ### Reproduced against a commit
 
-_(pending — see the commit that follows this file)_
+**61/61, `tests/frontend.mjs`, measured 2026-08-21 at `3998fc9` against
+`http://127.0.0.1:8875`.**
+
+This one carries a SHA and the readings above do not, and the difference is the whole point
+of the distinction. The figures above were taken from the working tree in the minutes before
+the commit — honest, and not reproducible by anybody else. This run was taken with
+`git status` clean at `3998fc9`, so it is a reading of that commit and a fresh checkout of it
+will produce the same thing.
+
+`.claude/CLAUDE.md` records what happens without that discipline: a published test count that
+was never true of the commit it sat beside, because somebody carried it forward and re-dated
+it. A number with no SHA cannot be checked, only believed.
+
+The thirteen coder assertions were identical across both runs, including
+`coder-instrument-first` at **100% of the panel visible, top = 211px**.
+
+Backend on the same tree: **1796 pass, 0 fail, 14 skip in 138.10 s**, `--collect-only`
+collecting **1810** — 1796 + 14 = 1810, which is the arithmetic that says nothing aborted —
+and `apps/remix` **28/28 in 0.43 s**. Run from `backend/`, not from the repo root.
+
+The 38 over the previous reading of 1758 are not all this task's, and the count is deliberately
+not attributed here: the 1758 was itself a working-tree figure that nobody could reproduce from
+git, so there is no honest per-file delta to draw against it. What this task added is countable
+on its own: **+12** `apps/coder/tests/test_coder_surface.py`, **+3** `apps/coder/test_coder.py`
+(47 → 50, the second-adapter leak), **+1** `apps/test_caddy_delegation.py` and **+1**
+`apps/test_deploy_routes.py`. Seventeen. Everything else in that gap landed elsewhere.
