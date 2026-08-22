@@ -1,0 +1,36 @@
+module Anthropic
+  module Models
+    type tool_choice =
+      Anthropic::ToolChoiceAuto
+      | Anthropic::ToolChoiceAny
+      | Anthropic::ToolChoiceTool
+      | Anthropic::ToolChoiceNone
+
+    module ToolChoice
+      extend Anthropic::Internal::Type::Union
+
+      def self?.variants: -> ::Array[Anthropic::Models::tool_choice]
+
+      def self.new:
+        (
+          type: :auto | "auto",
+          ?disable_parallel_tool_use: bool
+        ) -> Anthropic::ToolChoiceAuto
+        | (
+          type: :any | "any",
+          ?disable_parallel_tool_use: bool
+        ) -> Anthropic::ToolChoiceAny
+        | (
+          type: :tool | "tool",
+          name: String,
+          ?disable_parallel_tool_use: bool
+        ) -> Anthropic::ToolChoiceTool
+        | (type: :none | "none") -> Anthropic::ToolChoiceNone
+        | (
+          type: Symbol | String,
+          ?disable_parallel_tool_use: bool,
+          ?name: String
+        ) -> Anthropic::Models::tool_choice
+    end
+  end
+end

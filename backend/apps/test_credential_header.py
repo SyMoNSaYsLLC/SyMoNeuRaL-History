@@ -243,7 +243,18 @@ TRIPWIRE_EXEMPT = {
 }
 
 
-PRUNED_DIRS = {".venv", "node_modules", "contrib", "__pycache__", ".git", "site-packages"}
+PRUNED_DIRS = {".venv", "node_modules", "contrib", "__pycache__", ".git", "site-packages",
+               # `backend/vendor` -- the SDKs #103 copied out of references/. Third-party
+               # source we did not write and cannot rename, and the docstring below already
+               # argues the principle: prune vendored trees, do not exempt their files one
+               # at a time.
+               #
+               # Measured the way that docstring models, rather than asserted: with the ten
+               # vendored SDKs present the walk goes from **537 files to 2291**, and 1754 of
+               # those -- 77% -- are third-party. The header rule survives reading them
+               # today, which is the same luck the `.venv` note records; the next `git pull`
+               # of an SDK is a coin toss this test does not need to take.
+               "vendor"}
 
 # Names retired rather than renamed, so they have no `SYMONEURAL_` counterpart by design.
 # `SYM_FETCH_QWEN36` carried an upstream company name into our environment and was dropped;

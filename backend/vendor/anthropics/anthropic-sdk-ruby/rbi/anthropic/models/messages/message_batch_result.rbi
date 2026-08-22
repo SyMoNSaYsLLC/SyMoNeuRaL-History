@@ -1,0 +1,48 @@
+# typed: strong
+
+module Anthropic
+  module Models
+    MessageBatchResult = Messages::MessageBatchResult
+
+    module Messages
+      # Processing result for this request.
+      #
+      # Contains a Message output if processing was successful, an error response if
+      # processing failed, or the reason why processing was not attempted, such as
+      # cancellation or expiration.
+      module MessageBatchResult
+        extend Anthropic::Internal::Type::Union
+
+        Variants =
+          T.type_alias do
+            T.any(
+              Anthropic::Messages::MessageBatchSucceededResult,
+              Anthropic::Messages::MessageBatchErroredResult,
+              Anthropic::Messages::MessageBatchCanceledResult,
+              Anthropic::Messages::MessageBatchExpiredResult
+            )
+          end
+
+        sig do
+          override.returns(
+            T::Array[Anthropic::Messages::MessageBatchResult::Variants]
+          )
+        end
+        def self.variants
+        end
+
+        # Creates a new instance of the variant class whose `type` matches the given
+        # value, passing the remaining arguments to its constructor.
+        sig do
+          params(
+            type: T.any(Symbol, String),
+            message: Anthropic::Message::OrHash,
+            error: Anthropic::ErrorResponse::OrHash
+          ).returns(Anthropic::Messages::MessageBatchResult::Variants)
+        end
+        def self.new(type:, message: nil, error: nil)
+        end
+      end
+    end
+  end
+end

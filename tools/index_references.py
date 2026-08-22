@@ -31,6 +31,7 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -556,11 +557,248 @@ satisfy a rule about it would leave nothing to check.
     return 0
 
 
+# ---------------------------------------------------------------- vendoring SDKs (#103)
+
+VENDOR = REPO / "backend" / "vendor"
+
+# What counts as an SDK, stated as a rule rather than as a list of twelve names.
+#
+# A list would be right today and wrong the next time a repo is cloned into references/,
+# and nobody would find out -- the failure is silent in the direction that matters, because
+# a missing SDK looks exactly like an SDK that was never there. The rule is the directory
+# name, which is how every one of these is actually recognised by a person reading `ls`.
+#
+# It is deliberately loose. `agent-sdk-workshop` is a workshop and `apps-sdk-ui` is a UI
+# kit, and both are swept in; the manifest names everything it matched so an over-match is
+# visible and correctable rather than silent. An under-match would not be.
+def is_sdk(path: pathlib.Path) -> bool:
+    return "sdk" in path.name.lower()
+
+
+# The operative sentence of each licence family, not the copyright line above it. Reading
+# the first non-blank line gets `Copyright 2023 Anthropic, PBC.` from an MIT file and from
+# an all-rights-reserved file alike -- identical text, opposite meanings -- so the grant
+# itself has to be what is matched.
+GRANTS = (
+    ("MIT", "permission is hereby granted, free of charge"),
+    ("Apache-2.0", "apache license, version 2.0"),
+    ("BSD-3-Clause", "redistribution and use in source and binary forms"),
+    ("ISC", "permission to use, copy, modify, and/or distribute this software"),
+)
+RESERVED = "all rights reserved"
+
+
+def licence_grant(root: pathlib.Path) -> tuple[str, str, str]:
+    """(verdict, filename, evidence) read out of the shipped licence text.
+
+    #97's `TheProvenanceBuiltByARealExtractionTests` is the reason this returns evidence
+    rather than a bare verdict: a `license_determined` field that returned a hardcoded True
+    from the builder was invisible to every test that called the helpers directly, and one
+    of seven deliberate breaks stayed green. The quoted phrase is what makes the verdict
+    checkable by somebody who does not trust this function.
+    """
+    for name in LICENCE_FILES:
+        f = root / name
+        if not f.is_file():
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return "UNREADABLE", name, ""
+        low = text.lower()
+        for spdx, phrase in GRANTS:
+            if phrase in low:
+                return spdx, name, phrase
+        if RESERVED in low:
+            return "ALL-RIGHTS-RESERVED", name, RESERVED
+        return "UNRECOGNISED", name, ""
+    return "NONE", "", ""
+
+
+# Only these may be copied. Everything else is named in the manifest and left where it is.
+#
+# Absent a grant the default is all rights reserved -- "no LICENSE file" is not a permissive
+# default and must not be treated as one. `claude-agent-sdk-typescript` makes the point
+# sharper than any argument could: it DOES ship a licence, and that licence reserves every
+# right and points at a commercial ToS. A rule that keyed on "has a LICENSE file" would have
+# vendored it.
+VENDORABLE = {"MIT", "Apache-2.0", "BSD-3-Clause", "ISC"}
+
+
+def git_origin(root: pathlib.Path) -> tuple[str, str]:
+    """(remote url, short sha) for a reference checkout, read from its own .git.
+
+    Recorded because a vendored tree with no upstream coordinate cannot be diffed against
+    anything, updated deliberately, or checked for a security advisory. `adopt()` writes an
+    origin PATH, which says where on this disk it came from and nothing about which code it
+    is -- and this box's references/ is the only copy of that path in the world.
+    """
+    def run(*args: str) -> str:
+        try:
+            out = subprocess.run(["git", "-C", str(root), *args],
+                                 capture_output=True, text=True, timeout=30)
+            return out.stdout.strip() if out.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    return run("remote", "get-url", "origin"), run("rev-parse", "--short", "HEAD")
+
+
+def sdk_survey() -> list[dict]:
+    """Every SDK under references/, with its licence read and its upstream recorded.
+
+    Survey and copy are separate on purpose: this function decides nothing and writes
+    nothing, so the manifest can name what was refused as confidently as what was taken.
+    """
+    rows = []
+    for git in sorted(REFS.glob("*/*/.git")):
+        root = git.parent
+        if not is_sdk(root):
+            continue
+        verdict, lic_file, evidence = licence_grant(root)
+        url, sha = git_origin(root)
+        rows.append({
+            "rel": str(root.relative_to(REFS)),
+            "root": root,
+            "licence": verdict,
+            "licence_file": lic_file,
+            "evidence": evidence,
+            "url": url,
+            "sha": sha,
+            "vendored": verdict in VENDORABLE,
+        })
+    return rows
+
+
+def vendor_sdks() -> int:
+    """Copy every permissively licensed SDK into backend/vendor/, and write the manifest.
+
+    Idempotent: each destination is removed and rewritten from the source, so a second run
+    produces byte-identical trees and `git status` stays clean. That is the repo's standing
+    rule for generators -- run it twice and diff -- and it applies here because this is one.
+    """
+    rows = sdk_survey()
+    if not rows:
+        print("no SDKs found under references/", file=sys.stderr)
+        return 1
+
+    VENDOR.mkdir(parents=True, exist_ok=True)
+    for r in rows:
+        dst = VENDOR / r["rel"]
+        if not r["vendored"]:
+            # Never leave a stale copy of something that has since been reclassified.
+            if dst.exists():
+                shutil.rmtree(dst)
+            continue
+        if dst.exists():
+            shutil.rmtree(dst)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(r["root"], dst, symlinks=True,
+                        ignore=shutil.ignore_patterns(*PRUNE))
+        r["bytes"] = sum(f.stat().st_size for f in dst.rglob("*") if f.is_file())
+
+    (VENDOR / "PROVENANCE.md").write_text(_vendor_manifest(rows))
+    took = [r for r in rows if r["vendored"]]
+    left = [r for r in rows if not r["vendored"]]
+    for r in rows:
+        print(f"{'vendor' if r['vendored'] else 'REFUSE'}  {r['rel']:<44} "
+              f"{r['licence']:<21} {r['sha']}")
+    print(f"\n{len(took)} vendored, {len(left)} left in references/ "
+          f"-> {(VENDOR / 'PROVENANCE.md').relative_to(REPO)}")
+    return 0
+
+
+def _vendor_manifest(rows: list[dict]) -> str:
+    def table(rs):
+        if not rs:
+            return "_none_\n"
+        out = ["| repo | licence | upstream | commit |", "|---|---|---|---|"]
+        for r in rs:
+            url = f"[{r['url'].removesuffix('.git').split('/')[-1]}]({r['url']})" if r["url"] else "—"
+            out.append(f"| `{r['rel']}` | {r['licence']} | {url} | `{r['sha'] or '—'}` |")
+        return "\n".join(out) + "\n"
+
+    took = [r for r in rows if r["vendored"]]
+    left = [r for r in rows if not r["vendored"]]
+    refused = "\n".join(
+        f"- **`{r['rel']}`** — {r['licence']}. "
+        + (f"Its `{r['licence_file']}` contains *\"{r['evidence']}\"*."
+           if r["evidence"] else
+           (f"It ships `{r['licence_file']}` and no grant this tool recognises."
+            if r["licence_file"] else "It ships **no licence file at all**."))
+        for r in left) or "_none — every SDK found carried a grant._"
+
+    return f"""# backend/vendor — what is here, where it came from, and what was refused
+
+Written by `tools/index_references.py vendor`. Do not hand-edit: it is regenerated, and a
+hand-added row would be a claim nobody read a licence file to make.
+
+**{len(took)} vendored, {len(left)} refused**, out of {len(rows)} directories under
+`references/` whose name contains `sdk`.
+
+`references/` is `/references` in `.gitignore`, so none of this was version-controlled by us
+before. These copies are.
+
+## Vendored
+
+{table(took)}
+Each tree is copied with its `.git` stripped, its `LICENSE` kept, and the build/dependency
+directories in `PRUNE` left behind — `node_modules`, `target`, `dist`, `.venv` and the rest.
+The upstream commit above is the coordinate that makes a copy checkable; without it a
+vendored tree cannot be diffed against anything, updated deliberately, or checked against an
+advisory.
+
+## Refused, and why
+
+An absent licence is **not** a permissive default. Without a grant the default is all rights
+reserved, so these are named here rather than copied, and this record is the deliverable for
+them:
+
+{refused}
+
+`claude-agent-sdk-typescript` is the one to read twice. It *does* ship a licence, and that
+licence reserves every right and points at a commercial ToS — so a rule keyed on "has a
+LICENSE file" would have vendored it. The grant is what is matched, never the presence of the
+file, and never the copyright line, which is identical in an MIT file and in this one.
+
+Two of the refused are repos Garrett named directly when he asked for this. That is recorded
+rather than smoothed over: adopting unlicensed code is a decision for him to make knowingly,
+and this is where it would be written down if he ever makes it.
+
+## Vendoring is not installing
+
+Copying source gives provenance and version control. It does not give a dependency graph.
+`claude-agent-sdk-python` requires `anyio`, `sniffio`, `mcp` and `jsonschema`; none are on
+this box's system interpreter, and `.claude/CLAUDE.md` bars `pip install` there because that
+is the serving path — fastapi, uvicorn, pydantic and sympy are OS packages and there is no
+virtualenv in front of them.
+
+So importing anything here needs its own isolated venv. That rule is already written down
+(*"anything else that conflicts gets its own isolated venv"*) and `training/.venv` is the
+precedent. Building it is not part of #103; knowing it is required before anybody writes
+`import claude_agent_sdk` is.
+
+## Regenerating
+
+```bash
+python3 tools/index_references.py vendor      # idempotent -- run twice and diff
+git status --porcelain backend/vendor         # .gitignore has unanchored *.log, *.key, *.bak
+```
+
+That second line is not optional. `.gitignore` carries `*.log`, `*.bak`, `*.key`,
+`*.safetensors`, `*.gguf`, `__pycache__/` and `**/.venv/` with no path anchor, so each one
+silently swallows matching files *inside* a vendored tree. A tree that is 90% tracked reads
+as complete and is not.
+"""
+
+
 def main(argv: list[str]) -> int:
     if not REFS.is_dir():
         print(f"no references/ at {REFS}", file=sys.stderr)
         return 1
     skills = collect()
+
+    if len(argv) > 1 and argv[1] == "vendor":
+        return vendor_sdks()
 
     if len(argv) > 1 and argv[1] == "adopt":
         if len(argv) < 3:

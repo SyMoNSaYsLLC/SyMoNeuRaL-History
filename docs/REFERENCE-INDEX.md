@@ -422,16 +422,16 @@ nothing above the floor — that is a real answer, not a gap to paper over.
 | `nemoclaw-maintainer-normalize-title-tags` | `ENGINEERING` | 3.9 | Normalizes GitHub issue and PR titles by removing any bracketed [NemoClaw] tag case-insensitively, even when the tag appears later in the title. Use when cleaning issue t |
 | `cold-start-interview` | `anthropics/claude-for-legal` | 3.5 | House cold-start interview (request list + prior memo), or --new-deal for deal-specific context. Modular: identifies which practice areas apply (M&A, Board & Secretary, P |
 
-### #81 — /livestack/<name> for every application, and every app page static HTML + JS + CSS
+### #81 — /livestack/<name> and /live-stack/<name> for every application, and every app page static HTML + JS + CSS
 
 | skill | from | score | trigger |
 |---|---|---|---|
-| `plugin-new-frontend-system-support` | `backstage-master` | 8.9 | Add new frontend system support to an existing Backstage plugin while keeping the old system working. Use this skill for published or shared plugins that need to work in  |
+| `plugin-new-frontend-system-support` | `backstage-master` | 12.2 | Add new frontend system support to an existing Backstage plugin while keeping the old system working. Use this skill for published or shared plugins that need to work in  |
 | `app-frontend-system-migration` | `backstage-master` | 6.5 | Migrate a Backstage app from the old frontend system to the new one. Use this skill when converting an app to use the new extension-based frontend system, including the h |
+| `nemo-relay-instrument-typed-wrappers` | `skills` | 6.4 | Use this skill when adding NeMo Relay typed wrappers, domain types, or provider codecs while preserving JSON middleware semantics and caller-visible behavior. |
+| `first-run` | `anthropics/claude-quickstarts` | 6.2 | Guide a new user through their first computer-use agent run (env check, safe browser-only task, then open the trajectory viewer). |
 | `cuopt-routing-api-python` | `skills` | 5.7 | Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python. |
-| `first-run` | `anthropics/claude-quickstarts` | 5.3 | Guide a new user through their first computer-use agent run (env check, safe browser-only task, then open the trajectory viewer). |
-| `tres-ledger-link` | `anthropics/claude-plugins-community` | 5.0 | Build a TRES Finance dashboard ledger URL (Transactions tab) with a precise filter set — date range, wallets, assets, tags, status, amount, and more — so it can be shared |
-| `plugin-full-frontend-system-migration` | `backstage-master` | 4.9 | Fully migrate a Backstage plugin to the new frontend system, dropping all old system support. Use this skill for internal plugins that only need to run in a single app, o |
+| `aiq-research` | `skills` | 5.6 | Use when asked to run deep research or AI-Q research through a reachable NVIDIA AI-Q Blueprint backend. |
 
 ### #82 — symoneural-remix: export a playlist in a form YouTube Music and Spotify will take
 
@@ -487,17 +487,6 @@ nothing above the floor — that is a real answer, not a gap to paper over.
 | `nav-tieout` | `anthropics/financial-services` | 5.1 | Tie an LP statement to the fund's NAV pack — recompute the LP's capital account from the NAV components and flag any line that doesn't agree. Use before LP statements are |
 | `doca-public-knowledge-map` | `skills` | 4.8 | Use this skill when the user needs to locate authoritative information about NVIDIA DOCA without access to the source tree — finding the right docs.nvidia.com page for a  |
 | `nemoclaw-maintainer-verify-stale` | `ENGINEERING` | 4.6 | "Verifies whether stale NVIDIA/NemoClaw bug reports still reproduce on the newest exact release tag. Use when maintainers ask to verify stale issues, reproduce old bugs o |
-
-### #87 — SyMoNeuRaL Coder: the browser surface first, the terminal inside it, at /live-stack/coder
-
-| skill | from | score | trigger |
-|---|---|---|---|
-| `code-breaking-changes` | `openai/codex` | 12.6 | Breaking changes |
-| `zoom-apps-sdk` | `anthropics/knowledge-work-plugins` | 8.2 | Reference skill for Zoom Apps SDK. Use after routing to an in-client app workflow when building web apps that run inside Zoom meetings, webinars, the main client, or Zoom |
-| `nemo-relay-instrument-typed-wrappers` | `skills` | 7.9 | Use this skill when adding NeMo Relay typed wrappers, domain types, or provider codecs while preserving JSON middleware semantics and caller-visible behavior. |
-| `onboard-to-openapi-server` | `backstage-master` | 7.0 | Use this skill when the user wants to migrate an existing Backstage backend plugin's hand-written Express router to the typed OpenAPI tooling. Optionally, can also add ty |
-| `build-mcp-server` | `anthropics/claude-plugins-official` | 6.8 | This skill should be used when the user asks to "build an MCP server", "create an MCP", "make an MCP integration", "wrap an API for Claude", "expose tools to Claude", "ma |
-| `cuopt-routing-api-python` | `skills` | 6.6 | Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python. |
 
 ### #88 — No tokens while we are testing: take the token requirement off Studio
 
@@ -586,6 +575,17 @@ nothing above the floor — that is a real answer, not a gap to paper over.
 | `quickstart` | `anthropics/defending-code-reference-harness` | 5.8 | The front door for this repo. With no argument: a 30-second intro, then an offer to walk you through your first run on the canary target. With a question: answers it from |
 | `build-zoom-team-chat-app` | `anthropics/knowledge-work-plugins` | 5.5 | "Reference skill for Zoom Team Chat. Use after routing to a chat workflow when building user-scoped messaging integrations, chatbot experiences, rich cards, buttons, slas |
 | `dsh-trim-cot-leakage` | `deepseek-harness` | 5.4 | Use when auditing or fixing prose that reads like a leaked reasoning transcript — dead design-session citations such as (decision N), audit item codes, or §N of uncommitt |
+
+### #103 — The SDKs out of references/ and into backend/, with the licence read rather than assumed
+
+| skill | from | score | trigger |
+|---|---|---|---|
+| `holoscan-install-source` | `skills` | 8.0 | "Build Holoscan SDK from source via the in-tree ./run script. Use only when published packages don't meet the user's needs." |
+| `holoscan-install-wheel` | `skills` | 7.9 | "Install Holoscan SDK Python wheel via pip into a venv. Use for Python installs; not for native C++/apt or Conda installs." |
+| `trtllm-test-script-builder` | `TensorRT-LLM` | 6.9 | Build Slurm scripts or Docker commands for TensorRT-LLM workloads. Resolves all parameters (docker image, mounts, parallelism, MPI mode), generates the complete script fr |
+| `build-zoom-video-sdk-app` | `anthropics/knowledge-work-plugins` | 6.8 | Reference skill for Zoom Video SDK. Use after routing to a custom-session workflow when the user needs full control over the video experience rather than an actual Zoom m |
+| `privilege-log-review` | `anthropics/claude-for-legal` | 6.8 | First-pass privilege log review — make the obvious privilege calls and flag the hard ones for attorney review without making close calls. Use when the user says "review t |
+| `build-test-cudf-java` | `cudf` | 6.4 | Build and test cudf Java bindings (cudf-java) inside a cudf devcontainer. Use when the user asks to build, compile, or test Java code in the cudf repository. |
 
 ### #101 — ssh and rdp: the forwards, and what actually closes them
 

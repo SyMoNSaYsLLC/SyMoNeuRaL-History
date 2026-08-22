@@ -35,7 +35,18 @@ SEARCH_DIRS = ("tests", "backend", "tools", "scripts", "engines", "ops")
 SUFFIXES = (".py", ".mjs", ".js", ".sh", ".cmake", ".txt", ".json")
 
 #: Skipped wholesale: installed trees and generated output are not ours to police here.
-SKIP_PARTS = {"node_modules", ".venv", "build", "__pycache__", "dist", ".git"}
+SKIP_PARTS = {"node_modules", ".venv", "build", "__pycache__", "dist", ".git",
+              # `backend/vendor` -- the SDKs #103 copied out of `references/` under a read
+              # licence. Third-party source, and this rule is about OUR code reaching into a
+              # read-only tree: a vendored file naming `contrib/llama.cpp/` would be neither
+              # a violation we caused nor one we could fix, and it would fire on a `git pull`
+              # of an upstream SDK.
+              #
+              # Measured rather than assumed: with the ten SDKs present this walk goes from
+              # 2926 files to 4646, 1720 of them (37%) third-party. `apps/test_vendor_sdks.py`
+              # is what polices the vendored trees, and it polices provenance, which is the
+              # thing about them that is actually ours.
+              "vendor"}
 
 #: Files allowed to name these paths, each with the reason. Documentation of a deleted path
 #: is how the next reader learns why it is deleted, so the files that explain the boundary
