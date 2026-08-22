@@ -65,3 +65,6 @@ def srepr(expression):
 
 def factorial(n):
     return sympy.factorial(n)
+
+def globals_dict():
+    return {name: obj for name, obj in vars(sympy).items() if not name.startswith('_')}

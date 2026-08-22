@@ -44,7 +44,7 @@ from typing import Any, Iterable
 
 import symbolic
 from sympy.parsing.sympy_parser import (  # Keep the parser direct until we wrap it
-    parse_expr, standard_transformations, implicit_multiplication_application
+    parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
 )
 
 REQUEST_SCHEMA_ID = "ravencalc/request/v1"
@@ -115,7 +115,7 @@ def _safe_globals() -> dict[str, Any]:
     stops Python from helpfully injecting the real builtins into the eval that `parse_expr`
     performs. Without that line `__import__` is one attribute lookup away.
     """
-    namespace = {name: obj for name, obj in vars(sympy).items() if not name.startswith("_")}
+    namespace = symbolic.globals_dict()
     namespace["__builtins__"] = {}
     return namespace
 
