@@ -212,13 +212,14 @@ class LivestackRouteTests(unittest.TestCase):
                         "python3 tools/build_cachebust.py.")
 
     def test_the_generated_head_carries_no_unsubstituted_placeholder(self):
-        """`@@PAGECSS@@` is new, and an unsubstituted placeholder is not a blank.
+        """An unsubstituted placeholder is not a blank -- it ships as literal text.
 
-        `page()` fills every `@@KEY@@` from its kwargs, so a page that passes no `css=` would
-        ship the literal text `@@PAGECSS@@` inside its `<head>` -- visible in view-source,
-        invisible on the rendered page, and served to every visitor. Checked across ALL of
-        `site/`, not just the livestack pages, because the placeholder lives in the shared
-        shell and the pages that do NOT use it are the ones at risk."""
+        The page-css link was a `@@PAGECSS@@` SHELL placeholder for one day, and the 0.5
+        re-measure retired it: `build_exp.py` and Studio's builder import the shared SHELL
+        with their own field dicts, and a placeholder they do not know is a red vacuity
+        guard on a correct page. It is an insertion in `page()` now. This test stays,
+        checking ALL of `site/` for any `@@KEY@@` that escaped substitution, because the
+        shell's placeholders are a contract with every generator that imports it."""
         for f in sorted(SITE.glob("*.html")):
             with self.subTest(page=f.name):
                 self.assertNotRegex(f.read_text(), r"@@[A-Z_]+@@",

@@ -38,7 +38,7 @@ SHELL = """<!doctype html>
 <title>@@TITLE@@</title>
 <meta name="description" content="@@DESC@@">
 <link rel="stylesheet" href="/symoneural.css">
-<link rel="stylesheet" href="/rack-detail.css">@@PAGECSS@@
+<link rel="stylesheet" href="/rack-detail.css">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -242,13 +242,15 @@ def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
                           + gpu_panel(gpu, surface or name, why) + body[j + 1:])
     stem = name[:-len(".html")] if name.endswith(".html") else name
 
-    # Substituted unconditionally, empty when the page has none. A placeholder left
-    # unsubstituted is not a blank -- it ships to the visitor as the literal text
-    # "@@PAGECSS@@" in the <head>, which is why this is not `kw.setdefault`.
-    kw["pagecss"] = ""
+    # The page's own stylesheet link is INSERTED after the shared sheets rather than living
+    # as a SHELL placeholder. It was `@@PAGECSS@@` in the shell for one day, and the 0.5
+    # re-measure caught why that cannot work: `tools/build_exp.py` and Studio's builder
+    # import this SHELL and substitute their own field dicts, which know nothing of a new
+    # placeholder -- their own `assert "@@" not in html_out` vacuity guards went red on
+    # correct pages. A placeholder in a shared shell is a contract with every consumer;
+    # an insertion here is a contract with nobody.
     if css:
         (SITE / f"{stem}.css").write_text(css)
-        kw["pagecss"] = f'\n<link rel="stylesheet" href="/{stem}.css">'
         print(f"  {stem}.css")
     if js:
         (SITE / f"{stem}.js").write_text(js)
@@ -258,6 +260,11 @@ def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
     html = SHELL.replace("@@NAV@@", NAV)
     for key, value in kw.items():
         html = html.replace(f"@@{key.upper()}@@", value)
+    if css:
+        shared = '<link rel="stylesheet" href="/rack-detail.css">'
+        assert shared in html, "the shared stylesheet line moved; the css insertion is lost"
+        html = html.replace(
+            shared, f'{shared}\n<link rel="stylesheet" href="/{stem}.css">', 1)
     (SITE / name).write_text(html)
     print(f"  {name}")
 

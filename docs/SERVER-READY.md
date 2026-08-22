@@ -44,15 +44,21 @@ the row renders on the rack, straight out of `/api/status`.
 | miner | /miner.html | 200 | /api/gpuminer/status | 503 | offline | 503 | offline |
 | streamer | /streamer.html | 200 | /api/streamer/state | 200 | ready | 200 | ready |
 | coder | /documentation.html | 200 | no route by design | - | offline | - | ready |
-| gateway | /gateway.html | 200 | /api/gateway/state | 503 | offline | 200 | offline |
 | project | /project.html | 200 | /api/project/state | 503 | offline | 200 | ready |
 | sigils | /sigils.html | 200 | /api/sigils/state | 200 | ready | 200 | ready |
 | studio | /studio | 200 | /api/studio/state | 200 | offline | 200 | offline |
 | exp | /exp | 200 | /api/exp/state | 200 | queued | 200 | queued |
 | live | /livestack/live | 200 | /api/live/state | 200 | ready | 200 | ready |
 
-**All fourteen roster rows answer 200 on their own href, in both environments.** That is the
-sentence #73 asked for, and it is now measured rather than believed.
+**All thirteen roster rows answer 200 on their own href, in both environments.** That is the
+sentence #73 asked for, and it is now measured rather than believed. It said fourteen until
+2026-08-22: `gateway` was folded into the miner row as a third `sub` (R-175, commit
+`c779e2cb`), so it left this table when it left the roster. Its readings did not vanish —
+`/gateway.html` still answers 200 and still renders its state out of `/api/status`'s miner
+`sub` list, and `/api/gateway/state` still answers 503-with-its-switch-name off and 200 on.
+The two gateway cells this table used to carry (page 200 / api 503→200) were readings of
+exactly that behaviour and were true when taken; they now live in the miner row's story
+rather than in a row of their own.
 
 **`live` is the one row whose two `state` columns are identical for a reason that is not a
 defect** — read the `train` section below before assuming otherwise, because that row is
