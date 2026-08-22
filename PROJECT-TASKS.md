@@ -125,6 +125,22 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: absent backend/apps/cryptominer/miner.env
         check: exists scripts/symoneural-credentials
         check: exists tools/rotate_secrets.sh
+        check: exists scripts/SMOKE-credentials.md
+        note: 2026-08-22 coder -- the SMOKE check above was added BEFORE any work started, and
+        note: it is the check that stops this task archiving itself. The other four all go green
+        note: on a `mv` plus two new files, and item 1 says the order that matters out loud:
+        note: "Rotate, then untrack -- untracking a key that is still valid moves it out of
+        note: sight without making it harmless." So four-of-four is reachable with every
+        note: credential still live, which is #94's failure exactly. SMOKE-credentials.md cannot
+        note: be written honestly without a rotation having happened, and it must name what was
+        note: NOT rotated: SPOTIFY_CLIENT_ID/SECRET are third-party-dashboard credentials, one
+        note: of the five owner:garrett categories, so this task cannot legitimately reach 100%
+        note: on coder work alone and needs a [ ] handoff for the Spotify half.
+        note: 2026-08-22 garrett -- PAUSED at 0/4. "Pause before committing #75 if it changes
+        note: Remix/DJ naming or credentials." Containment may DOCUMENT the current secret
+        note: names; it may not rename app modules, tokens or routes. The DJ -> Remix rename is
+        note: recorded as AUDIT.md Q12 and is not a task until he scopes it. Nothing was read,
+        note: moved or renamed: both .env files are still on disk at mode 600 and untracked.
         note: There is no check here for "the keys were actually rotated" and there cannot be
         note: one from the disk — a rotated key and a stale key look identical to a grep. The
         note: absence checks prove the files left the tree, which is the part a filesystem can
@@ -804,6 +820,8 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists docs/ops/HARDWARE-PROFILES.md
         check: exists docs/ops/BOX-REALITY-AUDIT.md
         check: exists docs/ops/REPOSITORY-PURPOSE.md
+        check: exists docs/specs/symoneural-application-lab.md
+        check: exists docs/specs/symoneural-platform-targets.md
         check: grep StudioGraphSchemaFrozenTests -- backend/apps/studio/test_studio.py
         check: grep StudioGraphCompileTargetTests -- backend/apps/studio/test_studio.py
         check: grep StudioTargetResolverTests -- backend/apps/studio/test_studio.py

@@ -535,3 +535,141 @@ purpose now recorded in `docs/ops/REPOSITORY-PURPOSE.md`, and predating it.
 **Both are flagged, not fixed.** `.claude/CLAUDE.md` is the rulebook and is outside this
 commit's allowed files; a one-line table entry would close the first and a clause would close
 the second. Garrett's call.
+
+---
+
+## 10. Application-lab classification — added 2026-08-22 for the pre-migration scope
+
+Requested so a migration cannot decide how many applications this repo has by counting
+directories. The inventory (what each area is for, and the archive mapped to it) is
+`docs/specs/symoneural-application-lab.md` §3; **the verdicts are here**, because
+`REPOSITORY-PURPOSE.md` §2 names this file as their only home.
+
+**What was measured, and what was not.** Tracked-file counts come from `git ls-files` on
+2026-08-22; rack rows from `backend/api.py`. **No archive was opened, and no application's
+behaviour was exercised for this section** — so a verdict below rests on presence, tests and
+rack state, and where that is not enough to judge, the row says so instead of guessing. That
+limit is the honest form of this table; a `PROD` awarded on a file count would be the same
+defect as a test count carried forward without a SHA.
+
+### 10.1 Website — AUDIT (upgrade needed)
+
+`site/` — 111 tracked files, and the deploy path is real (`scripts/deploy.sh`,
+`symoneural-deploy.service`). AUDIT is not a doubt about whether it serves; it serves. It is
+Garrett's judgement that the public surface needs a major upgrade — identity, signup, credits,
+Studio entry, app discovery, gallery, hardware options. **Not scoped, not started.**
+
+One measured hazard already has a task: **#86** — *"a page can ship to `site/` and never reach
+the webroot, and nothing goes red."* A website upgrade on top of a publish path that can
+silently not-publish would be built on sand, so #86 is a prerequisite rather than a parallel
+concern.
+
+### 10.2 Exp and Reinforce — AUDIT, and already inside Studio
+
+- `backend/apps/studio/plugins/reinforce/` — **76 tracked files**
+- `backend/apps/studio/plugins/exp/` — **28 tracked files**
+
+**The location is already correct.** Both are Studio plugins on disk, which corrects the
+brief's premise that Reinforce is "a disconnected side plugin". What is separate is the Live
+Stack row: `backend/api.py:2013` carries `Unit(id="train", label="SyMoNeuRaL Reinforce")` as its
+own unit. That is allowed during transition — see `symoneural-studio-upgrade-scope.md` §1.2.
+
+**Why still AUDIT.** Reinforce ships real machinery — `rewards.py`, `rollout.py`, `runner.py`,
+`presets.py`, `registry.py`, `dataset_guard.py`, `bench/` — and §8 of this file already records
+that **torch is not installed on this box**, which `scripts/enable-surfaces.sh:216` gives as the
+reason the surface is not armed: *"an arm would green a training surface whose every run
+fails."* So the code is present and the training path is not exercisable here. `#95` is the open
+task about what `train` reports when Reinforce is off.
+
+Exp is AUDIT for a different reason: it is a plugin *framework* (`loader.py`, `registry.py`,
+`gate.py`, `fiber.py`, `trace.py`) whose DeepSeek-harness comparison is **task #89**, currently
+50%. The harness itself is outside this repo.
+
+### 10.3 Project and CLI — AUDIT, and Project carries an unresolved conflict
+
+- `backend/apps/project/` — **5 tracked files**
+- `bin/symoneural-cli` — **1 tracked file**, with two test modules:
+  `backend/apps/test_symoneural_cli.py`, `backend/apps/test_cli_upgrade.py`
+
+Both map to the same archive, `references/symoneural code.tar.gz` (71 MiB, unopened), which is
+**AUDIT until inspected**.
+
+**Project's verdict is deliberately withheld.** Open task **#83** would delete
+`backend/apps/project` outright (`check: absent backend/apps/project`), while the pre-migration
+scope §19 asks the migration to preserve Project as a coworker app. Classifying it here would
+settle a conflict that is Garrett's to settle. The conflict is written up in
+`symoneural-application-lab.md` §5; until he answers, **Project is unclassified and neither
+preserved nor deleted on any document's authority.**
+
+CLI is AUDIT on scope, not on function: audit item 7 already asks *"how much of
+`bin/symoneural-cli` needs tests?"* (`AUDIT.md` Q8), and the brief's command list — registry
+inspection, model load/unload/switch, job submit/status, hardware probe — is almost entirely
+beyond what one tracked file plus two test modules can be doing today.
+
+### 10.4 RavenCalc — PROD direction, current implementation AUDIT before migration
+
+`backend/apps/ravencalc/` — 5 tracked files, plus `backend/apps/test_ravencalc.py` and
+`tools/prove_ravencalc_steps.py`. First-class rack row at `backend/api.py:1974`:
+`Unit(id="ravencalc", label="SyMoNeuRaL RavenCalc", slot="1U", state="ready")` — the only
+`state="ready"` written as a literal rather than derived from a GPU probe, which is itself the
+CPU-only claim expressed in code.
+
+**A carve-out this file has to state explicitly.** §2.2 and §7 record **"no CPU fallback in any
+GPU serving path"** as PROD. **That rule does not touch RavenCalc.** It prohibits a GPU workload
+being silently downgraded to CPU; RavenCalc is not a GPU workload. Its CPU use is **by design,
+not a fallback**, and it is the reason the surface stays available while Chat, Image, Remix,
+Studio or Miner hold the card. Without this paragraph a future audit reads §7 and marks
+RavenCalc's CPU path as a violation of the very rule it is unrelated to.
+
+Reference archive `references/simpy.tar.gz` (3.8 MiB) is **AUDIT until inspected** and must not
+replace the working route. Open task **#84** owns the page layout.
+
+### 10.5 Streamer — AUDIT
+
+`backend/apps/streamer/` — 14 tracked, `backend/apps/live/` — 9, `backend/apps/capture/` — 3,
+with `backend/apps/test_streamer_migration.py` and `backend/apps/live/obs.py`. Three in-tree
+packages plausibly in scope for one "Streamer" area, which is itself the audit question: **the
+boundary between them is not established** and this section does not invent one.
+
+Reference archive `references/IPTV/symoneural streamer.tar.gz` (271 MiB) — **AUDIT until
+inspected**, and the largest of the five by a wide margin.
+
+### 10.6 Miner — AUDIT / overhaul
+
+`backend/apps/cryptominer/` — 21 tracked (GPU), `backend/apps/asicminer/` — 7 (ASIC), each with
+its own tests. Rack row `backend/api.py:2041` is a **6U unit with three subunits**: `gpuminer`,
+`asicminer` and `gateway` — so the current rack model does fold Gateway under Miner.
+
+**The GPU half cannot run as shipped.** §8.3 of this file already records the cause: `contrib/`
+does not exist, so `contrib/kawpowminer/` is a dead path and `SYMONEURAL_MINER_CMD` in
+`miner.env.example` points at nothing. R-176 calls for a full overhaul across GPU, Antminer,
+Whatsminer, Bitfury/Braiins and emulators. The detailed scope, including what the public page
+may and may not claim, is `docs/specs/symoneural-miner-scope.md`.
+
+Reference archive is **ambiguous** — two files match `miner.tar.gz` — see
+`symoneural-application-lab.md` §2. **AUDIT until inspected**, and not to be imported.
+
+### 10.7 Embedded — split verdict: `yocto/oematch/` in-tree, archive AUDIT
+
+**This is the row that must not be collapsed.** `yocto/oematch/` is **21 tracked files, in-tree
+and depended on**: it is the licence-detection tool the #97 spec-mediated pipeline calls, and
+`.gitignore` carries three `yocto/oematch_*.deb` rules for its Debian build products. #97 also
+recorded a real defect in it and the fix — oematch answers `unsupported artifact` for a single
+`.c` file, so a GPL-3.0-or-later header reported `copyleft: false` until the file's own header
+became the primary signal.
+
+So the in-tree tool has standing. What is **AUDIT until inspected** is
+`references/oematch.tar.gz` — **16,617 bytes**, the smallest reference of the five, plus a
+differently-named `references/ENGINEERING/oematch-0.1.0-src.tar.gz`.
+
+**No Yocto, embedded-Linux, firmware or appliance implementation is authorized**, and the
+twelve `meta-symoneural-*` layers remain what §9 measured them as: parsing, with no image and
+no SDK ever built from them.
+
+### 10.8 What this section changes
+
+**Nothing in §1–§9.** No earlier verdict is revised, and this section adds no PROD claim: the
+one PROD-adjacent row (10.4) is marked *PROD direction, implementation AUDIT*, and the one
+genuinely in-tree-and-depended-on artefact (10.7) was already reachable through #97. Two rows
+withhold a verdict on purpose — Project, pending Garrett's answer on the #83 conflict, and the
+Streamer package boundary.

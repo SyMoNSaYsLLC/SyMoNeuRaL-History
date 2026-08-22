@@ -31,6 +31,8 @@ indexing them here; treat an unlisted file as unreviewed by this README rather t
 | `symoneural-studio-node-system.md` | The data half of #103 — node registry fields, the canonical graph schema, validator, target resolver, compiler, and the five-node MVP | implementation plan; **not** authorization to implement |
 | `symoneural-runtime-registry.md` | Task #104, the RuntimeOps half: the runtime registry (distinct from the model registry) and the runtime router that joins them. Carries the maturity ladder — of seven runtime families, two are built, one is source-only, four are absent | proposed, nothing implemented |
 | `symoneural-model-hot-swap.md` | Task #104 — hot swap as a controlled operation rather than manual process killing, and the six multi-model-serving mechanisms kept deliberately distinct | proposed, nothing implemented |
+| `symoneural-application-lab.md` | The pre-migration inventory: ten application areas, the five reference archives located and sized on disk with their contents deliberately unopened, and the resolved §19-vs-#83 conflict over SyMoNeuRaL Project. Verdicts are **not** here — they point into `BOX-REALITY-AUDIT.md` §10 | inventory + direction; nothing implemented, no archive imported |
+| `symoneural-platform-targets.md` | What a platform target *is* in SyMoNeuRaL terms — the ten-row platform contract, and Linux/Apple/Android/Windows as direction only. Deliberately contains neither the gate (`GUARDRAILS.md`) nor the measured per-platform state (`REPOSITORY-PURPOSE.md`) | direction only; **no platform or toolchain build authorized** |
 
 ## What is worth acting on, and what was verified independently
 

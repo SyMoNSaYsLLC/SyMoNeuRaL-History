@@ -81,6 +81,114 @@ Consequences worth stating, because they change what "done" means:
 
 ---
 
+### 1.2 Studio family — Reinforce and Exp, and what Studio exposes
+
+Added 2026-08-22 from Garrett's pre-migration scope, §4, and his follow-up on what Studio
+should expose. **Direction and permission boundary only — nothing here is implemented, and no
+file moves on account of it.**
+
+#### The family
+
+| Surface | Role in the family | Where the code is today (measured, `git ls-files`) |
+|---|---|---|
+| **Studio** | the graph / workflow surface | `backend/apps/studio/` — 145 tracked files |
+| **Reinforce** | Studio-family **LoRA / adaptation / reinforcement / training** area | `backend/apps/studio/plugins/reinforce/` — **76 tracked files** |
+| **Exp** | Studio-family **experience-plugin** surface | `backend/apps/studio/plugins/exp/` — **28 tracked files** |
+
+**The correction the measurement forces.** The brief asks that *"Reinforce should not remain a
+disconnected side plugin."* On this disk it is not one: both Reinforce and Exp are already
+`backend/apps/studio/plugins/*`. What is separate is the **Live Stack row**, not the location of
+the code. So the deliverable here is the grouping being written down — not a move.
+
+**The Live Stack may keep showing them as separate units,** because that is the current
+observable state: each is a distinct running or queued unit that can be tested on its own. That
+is allowed and stays allowed through audit and transition. **Studio being offline does not make
+Reinforce or Exp unrelated to Studio.**
+
+**What the migration must not do:** it must not treat the separate rows as licence to split
+Reinforce or Exp off permanently as unrelated applications.
+
+**Exp's reference posture.** Exp uses the **DeepSeek harness as reference and inspiration
+only.** Its code is not to be copied without a licence and security review. The harness is not
+in this repository — it is `/home/google/Downloads/deepseek-harness-master.zip` — and **task #89
+already owns that comparison**; this section opens no parallel track.
+
+#### What Studio exposes
+
+Three capability tiers, and the third is gated. This is the part that must be settled before
+implementation, because it is a permission boundary and retrofitting one of those is how a
+public surface ends up able to overwrite a weight file.
+
+**1. Model selection — an ordinary Studio feature.** A node names a runtime, a model and a
+target, and the resolver (§6) decides whether that combination is allowed here:
+
+```
+Chat Model node
+  runtime: vLLM | llama.cpp
+  model:   symon-1.0-7b-q4_k_m
+  target:  cloud | local_owner_nvidia | local_customer
+```
+
+Nothing privileged: this is model routing, and every value is validated against the model
+registry and the runtime registry rather than accepted from the graph.
+
+**2. LoRA / adapter control — Studio, through Reinforce.** This is what Reinforce *is*, and the
+surface it owns:
+
+```
+Studio
+└── Reinforce
+      ├── LoRA training
+      ├── LoRA attach / detach
+      ├── adapter stack
+      ├── reward / feedback loops
+      ├── evals
+      ├── merge / export
+      └── publish-to-model-registry
+```
+
+Some of that machinery already exists in-tree — `rewards.py`, `rollout.py`, `runner.py`,
+`presets.py`, `registry.py`, `dataset_guard.py`, `bench/` — which is why Reinforce is the right
+home rather than a new surface. **Existing is not the same as proven:** what those modules
+actually do on this box is `BOX-REALITY-AUDIT.md`'s question, not this document's.
+
+**3. Base model weight changes — allowed, but owner/admin only.** The gate is the point of this
+tier.
+
+| Operation | Owner / admin | Public user |
+|---|---|---|
+| fine-tune | yes | no |
+| quantize | yes | no |
+| convert | yes | no |
+| merge LoRA into base | yes | no |
+| export GGUF / safetensors | yes | no |
+| register a new model **version** | yes | no |
+| mutate a production base weight in place | — | **never** |
+| overwrite an existing model file | — | **never** |
+| write an arbitrary path | — | **never** |
+| run arbitrary training code | — | **never** |
+
+The four `never` rows are not "public users lack the permission" — **nothing in this system does
+them.** They are absent operations rather than restricted ones, and that distinction is what
+makes the boundary enforceable: a permission check can be misconfigured, a code path that does
+not exist cannot be.
+
+Two consequences that follow directly:
+
+- **New version, never in-place.** Every authorized weight-producing operation *registers a new
+  model version*; it does not edit the model it derived from. `MODEL-REGISTRY.md`'s per-entry
+  `provenance/license reference` is what makes that auditable, and an in-place mutation would
+  destroy the provenance of the thing it overwrote.
+- **The current baseline is a protected input.** The four `backend/models/image/` FLUX/Schnell
+  files are PROD (`BOX-REALITY-AUDIT.md` §1.1). They are read by these operations and are not a
+  legal write target for any of them.
+
+**Not authorized by this section:** no node system, no Reinforce refactor, no weight operation,
+no permission code, and no file movement. `PROJECT-TASKS.md` #103 and #104 carry the
+implementation, and each already requires a `SMOKE-*.md` that only a real run can write.
+
+---
+
 ## 2. Why this time is different — the argument this scope has to win
 
 **A node canvas for this page was already built and deleted.** Roughly a thousand lines:
