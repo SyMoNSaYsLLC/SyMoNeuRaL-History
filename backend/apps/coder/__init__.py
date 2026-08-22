@@ -260,7 +260,30 @@ DENY_SEGMENTS: tuple[tuple[str, ...], ...] = (
     # not documentation. docs/symoneural-manual.md is the manual and is publishable.
     ("training", "corpus.jsonl"),
     ("training", "build_dataset.py"),
+    # Two entries, and the second one is a glob. This was `adapter` alone, matching a path
+    # SEGMENT exactly, so `training/adapter` was denied and
+    # `training/adapter-qwen36` -- a second real LoRA, 200 MB of weights beside a config
+    # naming its rank, alpha and target modules -- was served. Measured 2026-08-21 through
+    # /local/coder/file: `adapter_config.json` and `README.md` both came back 200 with their
+    # contents. Only the weights themselves were refused, and NOT by this list: the
+    # safetensors blob is over MAX_READ_BYTES and is not UTF-8, so it was stopped by a size
+    # cap and a decode error. That is protection by accident, and it expires the day somebody
+    # trains a smaller adapter.
+    #
+    # .claude/CLAUDE.md names `training/adapter/` weights as one of the artefacts protected
+    # only by not being public, and task #87 is explicit that the trade-secret training
+    # artefacts stay unreachable through this surface whatever else changes. A rule that
+    # covers the instance and not the class does not do that.
+    #
+    # `adapter-*` and NOT `adapter*`, which is what this was written as first.
+    # `test_a_neighbour_of_a_denied_path_is_still_allowed` immediately went red on
+    # `training/adapters.md` -- ordinary publishable prose, eaten by a wildcard that was one
+    # character too greedy. That test exists because "the denylist must not be so broad it
+    # eats ordinary work", and a denylist nobody can work alongside gets switched off, which
+    # protects nothing. The hyphen is what separates a family of directories from a word
+    # that merely starts the same way.
     ("training", "adapter"),
+    ("training", "adapter-*"),
     # --- the GPU mutex. `mkdir run/gpu.lock.d` IS the lock; there is nothing else. An
     # agent that can delete it hands the card to two tenants at once, which is not a
     # deadlock but a silent OOM at step 0 that looks like a CUDA fault (HANDOVER §5).
@@ -282,6 +305,33 @@ DENY_NAME_GLOBS: tuple[str, ...] = (
     ".env.*",
 )
 
+# Weight files are secret when WE trained them and public when we downloaded them, so the
+# extension alone cannot decide it. `.claude/CLAUDE.md` is unambiguous on both halves: the
+# adapter weights are protected "only by not being public", and the rest of the stack is
+# "off-the-shelf and permissively licensed, so nothing here is protected by a licence."
+#
+# This started as `*.safetensors`/`*.gguf` in DENY_NAME_GLOBS above, matched anywhere. That
+# is wrong in a way worth recording, because it looks strictly safer and is not: it would
+# report every public model under `backend/models/` -- Qwen, FLUX, whatever is fetched by
+# `scripts/fetch-models.sh` -- as `refused, matches the denied pattern *.gguf`. On a page
+# whose entire claim is that its readings are real, that is a false reading of a licence
+# status, and it would train the operator to read "refused" as noise. The one thing a
+# denylist cannot afford is to cry wolf, for the same reason `scripts/deploy.sh` says it
+# about its own reference check.
+WEIGHT_SUFFIXES: tuple[str, ...] = (".safetensors", ".gguf")
+SECRET_WEIGHT_TREE = "training"
+
+
+def _is_our_trained_weights(resolved: pathlib.Path) -> bool:
+    """A weight file somewhere under `training/`, which is where ours are produced.
+
+    Not a substring test on the whole path: `SECRET_WEIGHT_TREE in str(resolved)` would also
+    match `/home/google/retraining-notes/x.gguf` and any directory that merely contains the
+    word. Path parts are compared as parts.
+    """
+    return (resolved.suffix in WEIGHT_SUFFIXES
+            and SECRET_WEIGHT_TREE in resolved.parts)
+
 
 def _denied_reason(resolved: pathlib.Path) -> str | None:
     """Why this resolved path is off limits, or None. Runs AFTER resolve(), always."""
@@ -289,8 +339,15 @@ def _denied_reason(resolved: pathlib.Path) -> str | None:
     for run in DENY_SEGMENTS:
         n = len(run)
         for i in range(len(parts) - n + 1):
-            if parts[i:i + n] == run:
+            # fnmatch per segment rather than `==`, so a run may name a family of
+            # directories. An entry with no wildcard in it behaves exactly as it did before:
+            # fnmatch on a pattern containing none of `*?[` is an equality test.
+            if all(fnmatch.fnmatch(have, want)
+                   for have, want in zip(parts[i:i + n], run)):
                 return f"{'/'.join(run)} is denied — see backend/apps/coder/README.md"
+    if _is_our_trained_weights(resolved):
+        return (f"{resolved.name} is weights we trained — see backend/apps/coder/README.md. "
+                f"Public model weights outside {SECRET_WEIGHT_TREE}/ are not denied.")
     name = resolved.name
     for pat in DENY_NAME_GLOBS:
         if fnmatch.fnmatch(name, pat):

@@ -239,6 +239,60 @@ class TestDenylist(Base):
             r = coder.read_file(rel, **self.auth())
             self.assertTrue(r["ok"], f"{rel} was denied and should not be: {r.get('error')}")
 
+    def test_a_second_adapter_directory_is_denied_like_the_first(self):
+        """The 2026-08-21 leak, pinned by the shape that caused it rather than by one name.
+
+        `DENY_SEGMENTS` matched path segments with `==`, so `training/adapter` was denied and
+        `training/adapter-qwen36` -- a real 200 MB LoRA sitting beside it in this repo -- was
+        served. Measured through the live `/local/coder/file` mount before the fix:
+        `adapter_config.json` (the rank, the alpha, the target modules) and `README.md` both
+        came back 200 with their contents.
+
+        The weights blob itself was refused at the same moment, which is the part that makes
+        this worth a test rather than a one-line fix: it was refused for being over
+        MAX_READ_BYTES and not being UTF-8. Neither of those is a secrecy rule. A smaller
+        adapter would have been handed over whole, and the surface would have looked exactly
+        as correct as it did that morning."""
+        for rel in ("training/adapter-qwen36/adapter_config.json",
+                    "training/adapter-qwen36/README.md",
+                    "training/adapter/adapter_model.safetensors"):
+            p = self.ws / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("secret\n")
+            r = coder.read_file(rel, **self.auth())
+            self.assertFalse(r["ok"], f"{rel} was served and is ours")
+
+    def test_public_model_weights_are_not_denied(self):
+        """The other half, and the reason the weight rule is scoped to `training/`.
+
+        This was written first as `*.safetensors`/`*.gguf` in DENY_NAME_GLOBS, matched
+        anywhere -- which reports every off-the-shelf model under `backend/models/` as
+        refused. `.claude/CLAUDE.md` says the stack is "off-the-shelf and permissively
+        licensed, so nothing here is protected by a licence", so that is a false statement
+        about a licence, rendered on a page whose whole argument is that its readings are
+        real. A denylist that cries wolf gets read as noise, and then the entries that matter
+        get read as noise too."""
+        for rel in ("backend/models/qwen2.5-7b-instruct-q4_k_m.gguf",
+                    "backend/models/flux/flux1-schnell.safetensors",
+                    "models/whatever.gguf"):
+            p = self.ws / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("public weights\n")
+            r = coder.read_file(rel, **self.auth())
+            self.assertTrue(r["ok"], f"{rel} was denied: {r.get('error')}")
+
+    def test_our_weights_are_denied_wherever_they_sit_under_training(self):
+        """A checkpoint written mid-run is the same asset as the finished adapter.
+
+        `training/runs/<id>/` is where `train_lora.py` puts them, and nothing in
+        `DENY_SEGMENTS` names that directory. The weight rule tests the path parts rather
+        than a fixed run of segments for exactly this case."""
+        rel = "training/runs/20260818-1/checkpoint-200/adapter_model.safetensors"
+        p = self.ws / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("ours\n")
+        self.assertFalse(coder.read_file(rel, **self.auth())["ok"])
+
     def test_list_dir_flags_denied_entries_rather_than_hiding_them(self):
         """Silent omission is the decorative-dishonesty shape this repo argues against."""
         (self.ws / "training").mkdir()
