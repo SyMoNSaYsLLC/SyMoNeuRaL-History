@@ -145,10 +145,17 @@ Writes `backend/models/staging/openai-gpt-oss-20b/STAGED-MANIFEST.json` and `ROL
 **prints** the download command:
 
 ```bash
-huggingface-cli download openai/gpt-oss-20b \
+hf download openai/gpt-oss-20b \
   --include "original/*" \
   --local-dir backend/models/staging/openai-gpt-oss-20b/
 ```
+
+> **Not `huggingface-cli`.** That entrypoint is **deprecated and no longer works**, and its
+> failure mode is the one worth writing down: it prints a deprecation notice and **exits 0
+> without downloading anything.** A caller that checks the exit code sees success and an empty
+> directory. Found by running it — this document recorded the dead command until 2026-08-22,
+> when the first authorized download produced 12 KB and a zero exit. `hf` is the replacement
+> and is already installed. Measured against `huggingface_hub 1.23.0`.
 
 **It will not run it.** Even with `SYMONEURAL_MODELOPS_CONFIRM` set to the phrase, the script
 declines and says why: tens of GB onto a disk already holding **194 GB** should not be one

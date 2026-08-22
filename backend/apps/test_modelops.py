@@ -328,6 +328,24 @@ class StagingScriptRefusalTests(unittest.TestCase):
         self.assertIn("this script still will not fetch", src)
         self.assertNotIn("huggingface-cli download \"", src)      # never built as a live argv
 
+    def test_the_recorded_download_command_is_not_the_dead_entrypoint(self):
+        """`huggingface-cli` is deprecated and NO LONGER WORKS, and it fails in the worst way:
+        it prints a deprecation notice and **exits 0 without downloading anything.**
+
+        That is why this is a test rather than a fixed typo. The script and the migration doc
+        both recorded `huggingface-cli download` until 2026-08-22, when the first authorized
+        download produced 12 KB and a zero exit code — success by every signal a caller checks,
+        and an empty directory. A wrong command that fails loudly costs a minute; one that
+        succeeds silently costs the trust in every exit code around it.
+        """
+        for path in (SCRIPT, ROOT / "docs" / "ops" / "OPENAI-GPT-OSS-MIGRATION.md"):
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.name):
+                self.assertNotIn("huggingface-cli download", text,
+                                 "the dead entrypoint is recorded here; it exits 0 and "
+                                 "downloads nothing. Use `hf download`.")
+        self.assertIn("hf download", SCRIPT.read_text(encoding="utf-8"))
+
     def test_no_mode_deletes_a_weight(self):
         """Structural, because the alternative is running a mode that might delete one. `rm`
         appears exactly once and only against the script's own staging scratch."""
