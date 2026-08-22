@@ -354,6 +354,31 @@ cd backend && python3 -m pytest apps/ -q \
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
 
+**1818 pass, 0 fail and 14 skip at `ca0571b7`, measured 2026-08-22 from `backend/` in
+143.73 s, with `--collect-only` collecting 1832 in 1.24 s and `apps/remix` 28/28 in 0.44 s —
+1846 across the two invocations, and 1818 + 14 = 1832 is the arithmetic that says nothing
+aborted.** Unlike every recent rung this one carries no working-tree caveat: the run's
+post-commit `git status` was untracked-only, so the tree measured IS `ca0571b7`.
+
+This reading closes the no-SHA story below. `ce4fb27c` landed the ravencalc repair, so a
+clean checkout collects again and the ladder's hole (`49185b8`..`48dcaaf`) is bounded, not
+open-ended. The same commit range also caught the fold's stragglers the honest way: the
+first 0.5 run went **3 fail at `242a688d`** — two `PageTests` because #81's `@@PAGECSS@@`
+placeholder in `build_pages.SHELL` broke the generators that import that SHELL with their
+own field dicts (a placeholder in a shared shell is a contract with every consumer; it is
+an insertion in `page()` now), and one `RowCoverageTests` because `docs/SERVER-READY.md`
+still carried a gateway row for a rack that no longer has one. Fixed at `ca0571b7`, the
+commit this reading is true of.
+
+Of the 60 over the working-tree 1758, thirteen are 2026-08-22's and attributable in full
+per file: **+8** `apps/test_livestack_routes.py` (new at `1bccb765`, #81), **+3**
+`apps/test_deploy_routes.py` and **+1** `apps/test_caddy_delegation.py` (across `1bccb765`
+and `e71b51f7`), **+1** `apps/test_status_rack.py` (the FOLDED map, `c779e2cb`). The other
+47 span the twelve commits `41e6a905`..`2d2af124` from the sessions between — Coder (#87),
+the ravencalc show-your-work tests, the neglect measure — and are deliberately not
+attributed per file here: a count moves when tests land, and whoever needs that span
+attributed should diff `--collect-only` per file across it rather than believe a guess.
+
 **1758 pass, 0 fail and 14 skip, measured 2026-08-21 from `backend/` in 139.31 s, with
 `--collect-only` collecting 1772 in 1.24 s and `apps/remix` 28/28 in 0.43 s — and there is
 deliberately no SHA on that sentence, because there is no commit it is true of.** It is a
@@ -541,7 +566,7 @@ instead of a count. The ladder behind the figure, each read on the tree it names
 `df1d862`**, **1093 at `e81ffa4`**, **1200 at `74dee33`**, **1229 at `d3a4040`**, **1391 at
 `0c0f969`**, **1540 at `c847b64`**, **1569 at `2f97a3b`**, **1578 at `0d51b09`**, **1594 at
 `87c4042`**, **1626 at `7079933`**, **1639 at `79d139b`**, **1682 at `1224bf1`**, **1736 at
-`4d0d812`**, **1750 at `594efac`**, and then the ladder stops: `49185b8` onward collects
+`4d0d812`**, **1750 at `594efac`**, then a hole -- `49185b8` through `48dcaaf` collect **nothing** (no rung may be invented for them; `ce4fb27c` closed it by landing the ravencalc repair), then **1832 at `ca0571b7`** (2026-08-22). The pre-repair sentence stands: `49185b8` onward collects
 **nothing**, so there is no rung for `f63dd3e`, `95e02c5` or `48dcaaf` and none may be
 invented for them. Do not attribute a jump to one task from these numbers
 alone: the 107 between `e81ffa4` and `74dee33` spans **25 commits** across most of two days'
