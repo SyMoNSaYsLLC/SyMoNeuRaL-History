@@ -22,6 +22,19 @@ labelled; the same assumption in *code* is a defect, because code runs here or n
 | **PROD** | Proven working on this box, evidence cited |
 | **AUDIT** | Generic, scaffold, or unverified — needs a decision before it is relied on |
 | **REMOVED** | Wrong, dead, or contradicted by the actual box — do not assume |
+| **FUTURE** | Strategic direction. **Not implementation authorization** — docs and tasks only |
+
+**FUTURE was added 2026-08-22** as a fourth state, on Garrett's master future-proofing scope. It
+exists because AUDIT was carrying two different meanings: *"this is here and needs inspecting"*
+and *"this does not exist and is where we are going."* Those need different next actions — the
+first is inspected, the second is scoped — and conflating them is how a direction gets read as a
+backlog item.
+
+**PROD does not mean complete.** It means current or intended product direction that should be
+preserved, and it **still requires proof before anything claims READY**.
+
+**If uncertain, classify AUDIT and say what proof would promote it.** A verdict with no stated
+promotion path is an opinion.
 
 ## How this was measured
 
@@ -673,3 +686,116 @@ one PROD-adjacent row (10.4) is marked *PROD direction, implementation AUDIT*, a
 genuinely in-tree-and-depended-on artefact (10.7) was already reachable through #97. Two rows
 withhold a verdict on purpose — Project, pending Garrett's answer on the #83 conflict, and the
 Streamer package boundary.
+
+---
+
+## 11. The rest of the surface inventory — added 2026-08-22 for the master scope
+
+§10 covered the ten application areas. The master scope names more, and every one is recorded
+here so a migration cannot lose it. Same measurement limits as §10: tracked-file counts from
+`git ls-files` and rack rows from `backend/api.py`/`ROSTER.md` on 2026-08-22; **no behaviour was
+exercised for this section.**
+
+### 11.1 Harness — AUDIT, Studio-family tenant
+
+`harness/plugin-comfyui/` — **4 tracked files**, at the repo root rather than under Studio. So it
+exists, it is small, and it is not yet a Studio plugin.
+
+`docs/studio-harness-gap.md` is the live work here and it belongs to **#89** (50%): R-163,
+*"Studio needs major work it should mirror what deepseek harness provides."* That file's own
+framing is the discipline to keep — *"writing down, as a checklist of observable behaviour, what
+it gives a user that we do not. That list is the task; guessing at 'major work' is not."*
+
+**Migration is gated on the Studio plugin interface** (`symoneural-studio-upgrade-scope.md` §1.3).
+Do not build three special cases instead of one host.
+
+### 11.2 Discovery — AUDIT, Studio-family plugin
+
+`backend/apps/studio/plugins/discovery/` — **7 tracked files**, already registered in
+`plugins/__init__.py`'s `PLUGINS = ("discovery", "exp", "reinforce")`.
+
+**It has no router, no page and no rack row, and that is deliberate**, not an omission — its own
+`__init__.py` docstring says why, and `scripts/enable-surfaces.sh` records that there is *"nothing
+yet for the switch to switch."* Its credential file is named in `.gitignore` **before the file
+exists**, on purpose, so it cannot repeat `remix/.env`.
+
+**Not a top-level product.** Destination is Studio, and exact routes get classified after audit.
+
+### 11.3 News — PROD surface, deliberately not a rack row
+
+`backend/apps/news/` — **8 tracked files**. The site ticker; `site/ui.js` fetches
+`/api/news/ticker` on **every page load**, which is why `.claude/CLAUDE.md` records that any
+single-app browser harness must mount news.
+
+**It is not a Live Stack rack unit and must not become one.** It is a webpage ticker.
+
+**It makes no outbound request by default.** `apps/news/__init__.py:20-21` — setting
+`SYMONEURAL_NEWS_ENABLED=1` takes the box from *no outbound requests at all* to a periodic
+fetcher against eight third-party hosts, ~112 requests an hour. That is an **outbound-network
+decision, not a surface toggle**, and it is switched by hand in the order the package README
+gives. No *live* claim without a newest-headline or probe proof.
+
+### 11.4 Gateway and Settlement — folded in the rack, separate in the code
+
+`backend/apps/gateway/` — **25 tracked files**, and **settlement lives here**: `record.py`,
+`entitlement.py`, `store.py`, `test_settlement.py`. So the brief's *"destination: Gateway"* for
+Settlement is **already the case** and needs no move.
+
+Rack: folded under Miner as the `gateway` SubUnit, `bus="net"`. **Folded is not deleted** —
+`/gateway.html` still answers and owns its surface, and `apps/test_status_rack.py::FOLDED` asserts
+both halves. `ROSTER.md`'s reason for keeping the code where it is stands: *"thirteen modules of
+TRON settlement inside a mining package would be a rename dressed as an architecture."*
+
+Its LED *"had never been anything but grey, because there is no contract, no wallet and no key
+material"* — so **no claim without route and state proof**. There is **no wallet, no private key
+and no signing code** in the web process; the public half (`contract-signing.pub`) ships and the
+private half is gitignored three ways and chmodded 0600 by `issue.py`.
+
+**Billing and settlement are load-bearing and must not move silently.** Preserve the audit trail.
+
+### 11.5 Accounts, Credits, Metering — PROD direction
+
+`backend/apps/accounts/` — **5 tracked files**; `backend/apps/licensing/` — **4**.
+
+`accounts/module.py:18` documents `DJ_TOKEN` as the break-glass owner bearer — *"the same
+fail-safe shape as the engine's `VLLM_API_KEY`"* — and with it unset the app serves loopback
+peers only. That is why the DJ→Remix rename reaches a **second** app and is `AUDIT.md` **Q12**
+rather than a bulk find-and-replace.
+
+**A configured-but-unconsulted meter is red.** The mechanism and its trap are already in the
+code — see `symoneural-api-surface.md` §4. **No invented prices or plans.** Owner/admin gates
+explicit.
+
+### 11.6 RuntimeOps / ModelOps and the GPU governor — PROD architecture, staged
+
+Already owned: `symoneural-runtime-registry.md`, `docs/ops/MODEL-REGISTRY.md`,
+`docs/ops/RUNTIME-PROFILES.md`, `docs/ops/GPU-GOVERNOR.md`, `symoneural-model-hot-swap.md`.
+Recorded here only for inventory completeness, plus the one governor rule worth restating:
+
+**No `pkill`/`SIGSTOP` as fake arbitration.** Killing or freezing a process does not safely free
+CUDA memory, so arbitration is leases and admission, not signals. Miner's process-lifetime hold is
+the deliberate exception (`symoneural-miner-scope.md` §5).
+
+### 11.7 Local Agent — FUTURE
+
+**Does not exist.** No local-agent directory in this repo, measured 2026-08-22. Browser-only
+hardware detection is approximate; real detection needs a helper. Full treatment:
+`symoneural-cloud-local-targets.md` §2.
+
+### 11.8 Workers — PROD direction, implementation varies
+
+Chat, image, ASR, stream, miner and background jobs. **No worker readiness claim without process
+or test proof**, and the worker contract ties to the runtime registry, the job queue and the
+governor where relevant.
+
+### 11.9 One conflict recorded, not resolved silently
+
+The master scope's §2.10 says the CLI's *"interactive UX still missing unless implemented later"*,
+and its §2.8 says *"`backend/apps/coder` appears thin."* **Both were measured and both are
+different from that** — the interactive client, its nine slash commands, permission gating,
+`@file`, multiline, Ctrl-C and markdown streaming are all implemented, and `apps/coder` is 2,748
+lines with a stamped smoke record. Evidence and line numbers:
+`symoneural-coder-project-cli-scope.md` §3-4.
+
+**The measurements are kept over the brief**, per the rule at the head of this file. Recorded as a
+conflict rather than quietly overwritten so Garrett can see which way it was called.

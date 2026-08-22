@@ -189,6 +189,54 @@ implementation, and each already requires a `SMOKE-*.md` that only a real run ca
 
 ---
 
+### 1.3 Studio is a plugin host, and the interface comes before the tenants
+
+Added 2026-08-22. **The migration order is the deliverable of this section**, and it is a rule
+about sequence rather than about design:
+
+> **Define the Studio plugin interface first. Then migrate Exp, Reinforce, Harness and Discovery
+> into Studio. Do not migrate tenants into a host with no extension contract.**
+
+Garrett's phrasing of the failure it prevents: *"do not build three special cases instead of one
+plugin host."* Four tenants each wired in its own way is not a host — it is four forks of the
+same decision, and the fourth is the one that discovers the first three disagreed.
+
+**What exists today.** `backend/apps/studio/plugins/__init__.py` already has the beginnings of
+one: `PLUGINS = ("discovery", "exp", "reinforce")`, with `load()` refusing a name not in that
+tuple (*"add it there first"*), plus `missing()`, `describe()`, and `REQUIRED` / `RECOGNISED` /
+`OPTIONAL_PRESENT` sets. So there is a **registration list and a conformance check**, which is
+more than nothing and less than a contract: it says which plugins exist and what a plugin is
+missing, not what a plugin may *do* — no node contribution, no route contribution, no lifecycle,
+no capability declaration.
+
+**The four tenants, and where each stands** (`BOX-REALITY-AUDIT.md` §10.2, §11.1, §11.2):
+
+| Tenant | On disk | Gate |
+|---|---|---|
+| **Reinforce** | `plugins/reinforce/`, 76 tracked files | already inside Studio; torch absent, so the training path is not exercisable here |
+| **Exp** | `plugins/exp/`, 28 tracked files | already inside Studio; DeepSeek-harness comparison is **#89** |
+| **Discovery** | `plugins/discovery/`, 7 tracked files | registered, deliberately no router/page/row yet |
+| **Harness** | `harness/plugin-comfyui/`, 4 tracked files | **outside** Studio — the one that actually has to move |
+
+**Three of the four are already in the right directory.** So "migrate the tenants into Studio" is
+mostly *not* a file move — it is giving them an interface to be tenants *of*. Harness is the
+exception and it is four files.
+
+**What the interface has to carry** for the host to be worth having: node contributions (with the
+full contract from `symoneural-studio-node-system.md` §2) · route contributions and where they
+mount · declared capabilities and required runtimes · a lifecycle that can report *not available
+here* without failing the host · and **conformance that is tested**, since `missing()` already
+establishes the shape.
+
+**No arbitrary public custom Python nodes.** A plugin host that loads arbitrary code from a public
+surface is remote code execution with a friendly name. `custom_nodes/*` is AUDIT
+(`BOX-REALITY-AUDIT.md` §7) and the security boundaries in §10 here govern.
+
+**Nothing moves on this section's authority.** Tasks #103 and #104 carry the implementation, and
+each already requires a `SMOKE-*.md` that only a real run can write.
+
+---
+
 ## 2. Why this time is different — the argument this scope has to win
 
 **A node canvas for this page was already built and deleted.** Roughly a thousand lines:
