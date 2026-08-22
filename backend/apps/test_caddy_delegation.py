@@ -45,7 +45,10 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import sys
+import tempfile
 import unittest
+import unittest.mock
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 API = REPO / "backend" / "api.py"
@@ -60,8 +63,25 @@ def _api_page_paths() -> set[str]:
     `SECTION_PAGES` is registered in a `for` loop at the bottom of `api.py`, so a decorator-
     only scan silently misses all four section pages -- the very paths whose delegation block
     is the oldest one in the Caddyfile.
+
+    Full-line `#` comments are dropped before the scan, and that is not a tidiness measure.
+    This ran over the raw text until 2026-08-21, when a comment in `api.py` explaining to the
+    next person *which* decorator form these parsers read mentioned the pattern by name -- and
+    the extractor duly reported a page path called `/literal` that no route serves and no
+    Caddy block ever will. A guard that invents work is the *"check that cries wolf"*
+    `scripts/deploy.sh` warns about in its own comment, and this file's whole argument is that
+    a delegation failure is easy to miss; it stops being easy to miss only while every red
+    line here is real.
+
+    Dropping whole-comment lines and not every `#` is deliberate. A `#` inside a string
+    literal is not a comment, and stripping from the first one would silently truncate any
+    line containing a fragment identifier -- which is the same class of bug in the opposite
+    direction, and harder to see.
     """
-    src = API.read_text()
+    src = "\n".join(
+        "" if line.lstrip().startswith("#") else line
+        for line in API.read_text().splitlines()
+    )
     paths = {m.group(1) for m in
              re.finditer(r'@app\.(?:get|post)\(\s*"(/[^"{]*)"', src)}
 
@@ -133,6 +153,29 @@ class CaddyDelegationTests(unittest.TestCase):
         self.assertIn("/tuner.html", paths, "_RETIRED_PAGES not parsed out of api.py")
         exact, prefix = _caddy_matchers()
         self.assertTrue(exact and prefix, "no matchers parsed out of ops/Caddyfile")
+
+    def test_a_commented_out_route_is_not_reported_as_a_page(self):
+        """The 2026-08-21 false positive, pinned so the comment-stripping cannot be dropped.
+
+        `_api_page_paths` scanned raw text, so a `#` comment in `api.py` that merely *named*
+        the decorator form these parsers read produced a page path called `/literal` --
+        stranded, undeliverable, and completely fictional. It is the mirror of every other
+        bug this file records: those were real routes the guard could not see, this was a
+        route that did not exist and the guard could not stop seeing. Both end with somebody
+        deciding a red line here does not mean anything.
+
+        Asserted on a synthetic source rather than on `api.py`, so it keeps testing the rule
+        after the comment that caused it is reworded away."""
+        src = ('# @app.get("/ghost-in-a-comment")\n'
+               '@app.get("/genuinely-served")\n'
+               'async def real(): ...\n')
+        tmp = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory())) / "api.py"
+        tmp.write_text(src)
+        with unittest.mock.patch.object(sys.modules[__name__], "API", tmp):
+            found = _api_page_paths()
+        self.assertIn("/genuinely-served", found, "the decorator scan stopped working")
+        self.assertNotIn("/ghost-in-a-comment", found,
+                         "a path named inside a # comment was reported as a served route")
 
     def test_every_api_page_path_reaches_the_api(self):
         """The invariant. A path api.py serves, with no file to mask it, must be delegated."""
