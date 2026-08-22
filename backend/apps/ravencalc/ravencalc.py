@@ -42,6 +42,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+import steps as derivation_steps
 import symbolic
 from sympy.parsing.sympy_parser import (  # Keep the parser direct until we wrap it
     parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
@@ -237,6 +238,11 @@ class Request:
     at: dict[str, str] = field(default_factory=dict)
     digits: int = 0
     assume: dict[str, Any] = field(default_factory=dict)
+    #: Ask for the derivation as well as the answer. Off by default: every existing
+    #: caller's result document must be byte-identical to what it was before this field
+    #: existed, and a step list appearing unasked-for in symonsaymath's output would be a
+    #: silent change to a contract other code parses.
+    steps: bool = False
 
     def as_record(self) -> dict[str, Any]:
         """The document as it was understood, echoed back to the caller.
@@ -261,6 +267,8 @@ class Request:
             record["direction"] = self.direction
         if self.operation == "integrate" and self.lower:
             record["lower"], record["upper"] = self.lower, self.upper
+        if self.operation == "differentiate" and self.steps:
+            record["steps"] = True
         if self.operation == "evaluate":
             record["at"] = dict(self.at)
             if self.digits:
@@ -310,6 +318,19 @@ def validate_request(doc: Any) -> Request:
             if not str(doc.get(required, "")).strip():
                 problems.append(f"{operation} requires {required!r}")
 
+    want_steps = doc.get("steps", False)
+    if not isinstance(want_steps, bool):
+        problems.append(f"steps must be true or false, got {want_steps!r}")
+        want_steps = False
+    elif want_steps and operation not in {"differentiate"}:
+        # Refused rather than ignored. A caller who asked for a derivation and got a
+        # result document with no `derivation` key has been told nothing, and will read
+        # the absence as "this expression has no interesting steps" instead of "this
+        # operation cannot produce them".
+        problems.append(
+            f"steps are available for differentiate, not {operation!r} -- "
+            "the other operations have no rule-by-rule derivation to show")
+
     order = doc.get("order", 1)
     if not isinstance(order, int) or isinstance(order, bool) or not 1 <= order <= 12:
         problems.append(f"order must be an integer between 1 and 12, got {order!r}")
@@ -352,7 +373,7 @@ def validate_request(doc: Any) -> Request:
         set(doc)
         - {
             "schema", "operation", "expression", "variable", "order", "point",
-            "direction", "lower", "upper", "at", "digits", "assume",
+            "direction", "lower", "upper", "at", "digits", "assume", "steps",
         }
     )
     if unknown:
@@ -376,6 +397,7 @@ def validate_request(doc: Any) -> Request:
         at={k: v for k, v in at.items()},
         digits=digits,
         assume=assume,
+        steps=want_steps,
     )
 
 
@@ -524,6 +546,14 @@ def run_request(doc: Any) -> dict[str, Any]:
 
     result, check, note = _compute(request, expression, symbols, variable)
 
+    derivation = None
+    if request.steps and variable is not None:
+        # Computed from the same parsed expression and the same Symbol object the answer
+        # was computed from. Re-parsing here would be the bug this file already documents
+        # for `variable`: Symbol('x', real=True) and Symbol('x') are different symbols,
+        # and a derivation built on the wrong one narrates a different question.
+        derivation = derivation_steps.steps_for_derivative(expression, variable, request.order)
+
     return {
         "schema": RESULT_SCHEMA_ID,
         "ok": True,
@@ -537,6 +567,7 @@ def run_request(doc: Any) -> dict[str, Any]:
         "note": note,
         "assumed": _assumed(symbols),
         "engine": f"RavenCalc (symbolic core {symbolic.version()})",
+        **({"derivation": derivation} if derivation is not None else {}),
     }
 
 

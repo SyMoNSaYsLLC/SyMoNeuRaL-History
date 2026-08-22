@@ -24,6 +24,24 @@ try:
 except AttributeError:
     Boolean = Any
 
+# Expression node types. `steps.py` asks what KIND of node it is looking at in order to
+# name the rule that applies to it, and that question cannot be answered without the
+# classes. Bound, not wrapped: they are used with isinstance and .args, which no wrapper
+# could improve on.
+Add = sympy.Add
+Mul = sympy.Mul
+Pow = sympy.Pow
+Function = sympy.Function
+AppliedUndef = sympy.core.function.AppliedUndef
+Number = sympy.Number
+S = sympy.S
+
+
+def is_constant(expression, variable) -> bool:
+    """True when `variable` does not occur in `expression`."""
+    return variable not in expression.free_symbols
+
+
 # Engine metadata
 def version() -> str:
     return sympy.__version__
