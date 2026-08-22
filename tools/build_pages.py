@@ -1116,11 +1116,16 @@ MINER_BODY = """    <div class="pgwrap">
         <div class="head" id="mghead"><s id="mgdot"></s>SyMoNeuRaL Miner &mdash; GPU, Ravencoin
           <span class="grow" id="mgstate">reading&hellip;</span></div>
         <div class="body" id="mgbody">
-          <p class="mg-lede">KawPow on the RTX 5070 Ti described on the home page, through
-            the same GPU governor every other surface queues on. Every figure below is read
-            from the running miner or from <code>nvidia-smi</code>; when the miner is not
-            running there is no figure, and the row says so rather than showing a last-known
-            value.</p>
+          <p class="mg-lede">The <b>intended</b> KawPow path for the RTX 5070 Ti described on
+            the home page, through the same GPU governor every other surface queues on. It is
+            <b>offline unless configured</b>: <code>SYMONEURAL_MINING_ENABLED=1</code>,
+            <code>SYMONEURAL_MINER_CMD</code> and <code>SYMONEURAL_MINER_TOKEN</code> all have
+            to be set, and the engine work is <b>incomplete</b> &mdash; there is no
+            <code>symoneural-miner</code> in this tree and the build script that produced the
+            binary behind the benchmark is not tracked here. So this half reports <i>offline /
+            engine missing</i> rather than a hashrate. When a miner <i>is</i> running, every
+            figure below is read from it or from <code>nvidia-smi</code>; when it is not, there
+            is no figure, and the row says so rather than showing a last-known value.</p>
 
           <!-- Public rows first. Both come from GET /api/status, which every visitor can
                read, and both are produced by cryptominer.unit_state() -- so this card and
@@ -1252,14 +1257,21 @@ MINER_BODY = """    <div class="pgwrap">
 
       <aside class="side">
         <div class="callout">
-          <h3>Measured, and earning nothing</h3>
+          <h3>A benchmark from August, not current telemetry</h3>
           <p><b>52.3 &ndash; 53.2 MH/s</b> on KawPow &mdash; <b>measured</b> on this machine
             across four runs, RTX 5070 Ti at a 300&nbsp;W limit, driver 610.57.04,
-            <code>kawpowminer 1.2.4</code>, 2026-08-17. The miner&rsquo;s own summary for the
-            longest run reads <code>Max 53.209880 Mh Mean 53.026032 Mh</code>. A short run
+            <code>kawpowminer 1.2.4</code>, <b>2026-08-17</b>. The miner&rsquo;s own summary for
+            the longest run reads <code>Max 53.209880 Mh Mean 53.026032 Mh</code>. A short run
             reads lower because its mean includes spin-up, not because the card slowed down.
             The spread across runs is quoted rather than the best figure and <b>no cause has
             been established for it</b>.</p>
+          <p><b>This tree cannot reproduce it.</b> The figures came from somebody
+            else&rsquo;s binary, and the script that built it &mdash;
+            <code>contrib/build-kawpowminer.sh</code> &mdash; <b>is not tracked in this
+            repository</b>, so a clone has no path from source to a running miner. Read the
+            numbers as <b>provenance</b>: evidence of what this card did once, on a dated run,
+            with a named binary. They are not a claim about what the surface does now, and
+            nothing on this page reports them as live telemetry.</p>
           <p>All four were <b>benchmarks against no pool</b>. A miner with nowhere to submit
             a share earns nothing whatever its hashrate says, so the surface reports
             hashrate and income as two separate claims &mdash; and publishes no income
@@ -1272,10 +1284,12 @@ MINER_BODY = """    <div class="pgwrap">
           <p>The rack lists <b>one</b> SyMoNeuRaL Miner. Under it are two halves that fail
             independently, so this page gives each its own card and its own status chip
             rather than averaging them into a single light.</p>
-          <p><b>GPU &middot; Ravencoin</b> is the card in this box &mdash; KawPow on the RTX
-            5070 Ti, and the only thing here that has ever hashed. It is also the only half
-            that takes the GPU, which is why the merged row reports <i>busy</i> whenever it
-            is running: that is a fact every other surface on this machine feels.</p>
+          <p><b>GPU &middot; Ravencoin</b> is the card in this box &mdash; the intended
+            KawPow path for the RTX 5070 Ti, and the only half of this surface that has ever
+            hashed, on the dated 2026-08-17 benchmark above. It is also the only half that
+            takes the GPU, which is why the merged row reports <i>busy</i> whenever it is
+            running: that is a fact every other surface on this machine feels. The engine work
+            is <b>incomplete</b>, so it is <i>offline</i> here rather than hashing.</p>
           <p><b>ASIC &middot; Antminer + MicroBT</b> reads rigs on your own network, and
             carries a firmware emulator and a network scanner &mdash; the two parts that do
             real work with <i>no rig attached</i>. It reports offline here because none is
@@ -5903,17 +5917,19 @@ def main() -> int:
              "queue and then fail &mdash; which is why it is started by hand and stopped by "
              "hand.",
          title="SyMoNeuRaL Miner — the GPU in this box, and ASIC rigs on your network",
-         desc="KawPow on the RTX 5070 Ti, plus an operator panel for Antminer and MicroBT "
-              "rigs. Measured readings only, and a benchmark says it is a benchmark.",
+         desc="The GPU + ASIC operator surface for mining experiments and hardware control. "
+              "Measured readings only, and a benchmark says it is a benchmark.",
          icon="/terminal-64.png", eyebrow="Operator surface · GPU + ASIC",
          heading="Mining hardware, read the same way as the card.",
-         lede="Two units answer here. SyMoNeuRaL Miner runs KawPow on the RTX 5070 Ti in "
-              "this room, through the same governor every other surface queues on, and it "
-              "is the only thing here that has ever hashed. SyMoNeuRaL ASIC below is the "
-              "operator panel for Antminer and MicroBT rigs on your own network — plus a "
-              "firmware emulator and a network scanner, which work with no rig attached. No "
-              "rigs are attached to this machine, so it reports offline, which is the "
-              "reading rather than a placeholder.",
+         lede="SyMoNeuRaL Miner is the GPU + ASIC operator surface for mining experiments "
+              "and hardware control. Two units answer here. The GPU half is the intended "
+              "KawPow path for the RTX 5070 Ti in this room, through the same governor every "
+              "other surface queues on; it is offline unless configured, and the engine work "
+              "is incomplete, so it reports offline rather than a hashrate. SyMoNeuRaL ASIC "
+              "below is the operator panel for Antminer and MicroBT rigs on your own network "
+              "— plus a firmware emulator and a network scanner, which work with no rig "
+              "attached. No rigs are attached to this machine, so it reports offline, which "
+              "is the reading rather than a placeholder.",
          body=MINER_BODY, script=MINER_JS)
 
     # `gpu=False, surface="Gateway"` for the same reason streamer.html passes it: this is a
