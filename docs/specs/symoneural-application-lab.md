@@ -41,12 +41,22 @@ standing, or discard working code because an archive next to it is unreviewed.
 ## 2. Archive references — measured on disk, contents unopened
 
 Every archive Garrett's brief names, located by exact filename on 2026-08-22. **Sizes, paths
-and mtimes are measurements. Contents are not** — nothing below was extracted, listed, or
-read, and no purpose in §3 is inferred from an archive.
+and mtimes are measurements.** Four of the five have **not** been opened — nothing was
+extracted, listed or read, and no purpose in §3 is inferred from them.
+
+**The exception is `@symoneural code.tar.gz`, and only because Garrett authorized it by name**
+later on 2026-08-22: *"list archive contents · identify Project/CLI/Coder-relevant files ·
+compare against current `bin/symoneural-cli` · compare against `backend/apps/coder` · extract
+requirements."* It was **listed, not extracted**, and the finding changed the premise of the
+work it was reference for: it contains **no SyMoNeuRaL code at all** — 3,598 entries across
+eleven third-party Anthropic projects, zero first-party files. Full reading:
+`docs/specs/symoneural-coder-project-cli-scope.md` §1. It remains **AUDIT**: listing is not a
+per-file review, and nothing is imported.
 
 | Brief calls it | Path on disk | Size | Tracked? |
 |---|---|---|---|
 | `@symoneural code.tar.gz` | `references/symoneural code.tar.gz` | 74,707,050 B (71 MiB) | no — `.gitignore:68` `/references` |
+| ^ **listed 2026-08-22** | 3,598 entries · 11 third-party Anthropic projects · **0 first-party files** | see coder/project/cli scope §1 | not imported |
 | `@simpy.tar.gz` | `references/simpy.tar.gz` | 4,002,603 B (3.8 MiB) | no — same rule |
 | `@symoneural streamer.tar.gz` | `references/IPTV/symoneural streamer.tar.gz` | 284,011,213 B (271 MiB) | no — same rule |
 | `@miner.tar.gz` | **ambiguous — see below** | — | no — same rule |
