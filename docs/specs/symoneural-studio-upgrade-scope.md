@@ -519,10 +519,17 @@ contract applies one level down.
 **Components**
 
 ```
-studio                        runtime-router               model-registry
-hardware-router               gpu-governor                 comfy-private-worker
-vllm-server                   llama-cpp-server             stable-diffusion-cpp-server
+symoneural-api        symoneural-studio      runtime-router        model-registry
+hardware-router       gpu-governor           comfy-private-worker  application-lab
+vllm-server           llama-cpp-server       stable-diffusion-cpp-server
 whisper-cpp-server
+platform-linux        platform-apple         platform-android      platform-windows
+```
+
+**Systems**
+
+```
+symoneural-server     symoneural-studio      symoneural-platform-targets
 ```
 
 **APIs**
@@ -535,14 +542,28 @@ hardware-profile-api               jobs-api
 **Resources**
 
 ```
-rtx5070ti-16gb    backend-model-store    symoneural-queue    cloud-worker    local-agent
+linux-host              rtx5070ti-16gb          backend-model-store
+symoneural-queue        cloud-worker            local-agent
+apple-darwin-sdks       windows-mingw-yocto-candidate            android-sdk-candidate
 ```
 
-**A catalog entry must carry its maturity, or it lies by omission.** Four of those component
-entries — `vllm-server`, `whisper-cpp-server`, and any TensorRT/Triton entry — describe
-runtimes that are **absent** today (`BOX-REALITY-AUDIT.md` §8.2). A catalog that lists them
-without a level reads as an inventory of things that exist. `llama-cpp-server` and
-`stable-diffusion-cpp-server` are **built**; `comfy-private-worker` is **source-only**.
+`application-lab` and the four `platform-*` components are what stop the catalog from
+describing a single web app. `docs/ops/REPOSITORY-PURPOSE.md` is the entity these all hang off:
+this repo is the backend/server **proving ground**, applications are **incubated** here before
+promotion, and promotion is gated by `GUARDRAILS.md`.
+
+**A catalog entry must carry its maturity, or it lies by omission.** `vllm-server`,
+`whisper-cpp-server` and any TensorRT/Triton entry describe runtimes that are **absent** today
+(`BOX-REALITY-AUDIT.md` §8.2); `llama-cpp-server` and `stable-diffusion-cpp-server` are
+**built**; `comfy-private-worker` is **source-only**. A catalog listing them without a level
+reads as an inventory of things that exist.
+
+The same applies to the platform resources, and harder (`BOX-REALITY-AUDIT.md` §9):
+`apple-darwin-sdks` is **real** — 3.2 GiB extracted — but `xtool` cannot load `libxadi.so` and
+`swift` is not on PATH, so nothing builds for Apple today. `windows-mingw-yocto-candidate` is
+named a *candidate* because upstream `meta-mingw` is absent. `android-sdk-candidate` has no
+toolchain behind it whatsoever. `linux-host` is the only platform resource that is currently
+`running` — it is this box.
 
 ---
 
@@ -556,6 +577,9 @@ migration cannot quietly pick different boundaries.
 ```
 apps/web       apps/api        apps/studio      apps/local-agent
 apps/worker-llm               apps/worker-image                apps/worker-asr
+apps/apps-lab                 -- incubated applications, classified PROD/AUDIT/REMOVED
+apps/platform-linux           apps/platform-apple
+apps/platform-android         apps/platform-windows
 ```
 
 **Future libs**
@@ -564,7 +588,13 @@ apps/worker-llm               apps/worker-image                apps/worker-asr
 libs/model-registry     libs/runtime-registry    libs/hardware-profiles
 libs/studio-graph       libs/openapi-client      libs/queue-contracts
 libs/gpu-governor       libs/backstage-catalog
+libs/platform-contracts libs/app-contracts
 ```
+
+`apps/apps-lab` and the four `apps/platform-*` directories exist in this list for one reason:
+**a migration must not collapse this repo into a single web app.** It is the SyMoNeuRaL
+backend/server proving ground, applications are incubated here before promotion, and the
+concepts that must survive intact are listed in `docs/ops/REPOSITORY-PURPOSE.md`.
 
 **Three things to settle before any of this moves**, all of them findings rather than opinions:
 
@@ -577,6 +607,11 @@ libs/gpu-governor       libs/backstage-catalog
 3. **The worker split assumes runtimes that mostly do not exist yet.** `apps/worker-asr` has no
    `whisper.cpp` to wrap. Creating the directory does not create the capability, and an empty
    worker app reads as a broken one.
+4. **The four `apps/platform-*` directories are gated by `GUARDRAILS.md`, not by this list.**
+   All four native platforms are individually held; the browser API is the only cleared build
+   surface, and no platform build starts on inference. Creating the directories early would
+   present gated work as cleared — the specific failure `GUARDRAILS.md` says "no numbered tasks
+   exist for the four" to avoid. **Toolchains are the carve-out and are not held.**
 
 ---
 

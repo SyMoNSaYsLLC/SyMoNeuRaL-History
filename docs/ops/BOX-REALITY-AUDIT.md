@@ -492,3 +492,46 @@ taken. Scope: this is `apps/voice`, not #104, and no code changed here.
 - **LLM inventory: PROD.** Six GGUF files, 39.64 GB, in `backend/models/llm/`. llama.cpp
   (`symoneural-llm`) is **built** and is the likely local/owner/customer runtime for them.
 - **vLLM: candidate only.** No running service, and this report does not claim one.
+
+---
+
+## 9. Platform targets — added 2026-08-22 for the repository-purpose scope
+
+`docs/ops/REPOSITORY-PURPOSE.md` records what this repo is for; this section is the evidence
+under its platform table. **The gate is `GUARDRAILS.md`** ("The platform build order") — all
+four native platforms individually held, browser API the only cleared surface — and is not
+restated here. The reachability matrix is `yocto/README.md`, dated and honest.
+
+Measured 2026-08-22 at `b97dc5ad`.
+
+| Target | Level | Evidence |
+|---|---|---|
+| **Linux** | **PROD** as the proving-ground host; **AUDIT** as a build target | This box. `yocto/` is 70 tracked files, twelve `meta-symoneural-*` layers; `bitbake -p` exit 0 at `11dc426`, but `yocto/README.md` states plainly: **"No image and no SDK has ever been built from these layers."** |
+| **Apple** | **AUDIT** — SDKs present, toolchain not exercisable | `~/.swiftpm/swift-sdks/darwin.artifactbundle` exists (3.2 GiB, MacOSX26.5 / iPhoneOS26.5 / iPhoneSimulator26.5, path pinned in `yocto/meta-symoneural-darwin/conf/include/darwin-sdk.inc:23`). `xtool` present at `~/.local/bin/xtool` (128 MB, 2026-07-25) but **fails to run**: `error while loading shared libraries: libxadi.so`. **`swift` is not on PATH.** |
+| **Windows** | **AUDIT** — candidate direction, blocked | `yocto/meta-symoneural-mingw` tracked, include parses. **Upstream `meta-mingw` absent** from `/home/google/yocto` (which holds bitbake, openembedded-core, meta-openembedded, meta-cryptocurrency, miner). Matches `yocto/README.md`'s own 2026-08-19 note. |
+| **Android** | **AUDIT** — future, not designed | **No toolchain of any kind.** No Android SDK, no Gradle, no NDK. `/usr/bin/adb` exists as an unrelated Debian package. Nothing tracked beyond incidental string matches. |
+
+### 9.1 Two corrections to the brief
+
+1. **"Swift setup exists with xtool" is half true.** The Darwin SDKs are genuinely pulled and
+   are the strongest piece of Apple evidence here. But `xtool` cannot load `libxadi.so` and the
+   Swift compiler is absent — so **nothing can be built for Apple today.** This is exactly the
+   case `GUARDRAILS.md` carves out when it says toolchains are not held and *"a toolchain that
+   has never been exercised is not ready."*
+2. **Android is further from designed than "likely SDK/Gradle/NDK" implies.** That names a
+   plausible route, not a partial one: there is no Android tooling on this box at all.
+
+### 9.2 A routing gap in the rules themselves
+
+**`GUARDRAILS.md` is not referenced by either `CLAUDE.md`.** The root pointer imports
+`.claude/CLAUDE.md`, whose where-to-look table lists the rules, state, engineering,
+measurements and exports files — but not the document that holds the **agent's write boundary
+and the platform gate**. It is reachable only by noticing it in the root listing.
+
+Related: `.claude/CLAUDE.md`'s opening line describes this repo as "the public site, the live
+API behind it, the CUDA engine, and the engineering manual" — narrower than the proving-ground
+purpose now recorded in `docs/ops/REPOSITORY-PURPOSE.md`, and predating it.
+
+**Both are flagged, not fixed.** `.claude/CLAUDE.md` is the rulebook and is outside this
+commit's allowed files; a one-line table entry would close the first and a clause would close
+the second. Garrett's call.

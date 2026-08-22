@@ -788,10 +788,22 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         and whose build has not started. The three that pass are the direction-lock documents
         themselves; every other check needs code that runs.
 
+        note: 2026-08-22 coder -- repository purpose captured in
+        note: `docs/ops/REPOSITORY-PURPOSE.md`, and it gates this work. This repo is the
+        note: SyMoNeuRaL backend/server **proving ground**: applications are incubated and
+        note: classified here (PROD/AUDIT/REMOVED) before promotion to Linux, Apple, Android
+        note: or Windows. Garrett's seven-rule stack is the migration gate, rule 7 being "no
+        note: folder migration until 1-6 are captured cleanly". A migration must NOT treat
+        note: this repo as only a frontend app, only a backend API, only a ComfyUI wrapper or
+        note: only a single model server. The platform gate itself lives in `GUARDRAILS.md`
+        note: and is not restated: all four native platforms are individually held and only
+        note: Garrett naming one clears it. Toolchains are the carve-out and are not held.
+
         check: exists docs/specs/symoneural-studio-upgrade-scope.md
         check: exists docs/specs/symoneural-studio-node-system.md
         check: exists docs/ops/HARDWARE-PROFILES.md
         check: exists docs/ops/BOX-REALITY-AUDIT.md
+        check: exists docs/ops/REPOSITORY-PURPOSE.md
         check: grep StudioGraphSchemaFrozenTests -- backend/apps/studio/test_studio.py
         check: grep StudioGraphCompileTargetTests -- backend/apps/studio/test_studio.py
         check: grep StudioTargetResolverTests -- backend/apps/studio/test_studio.py
@@ -867,6 +879,17 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         No implementation, no deploy, no migration, no model downloads, no weight commits, no
         .venv commits, and the current Studio files do not move. `.venv` was checked: 0 tracked
         files, 0 repo-wide, ignored by `.gitignore:24`.
+
+        note: 2026-08-22 coder -- repository purpose captured in
+        note: `docs/ops/REPOSITORY-PURPOSE.md`, and it gates this work. This repo is the
+        note: SyMoNeuRaL backend/server **proving ground**: applications are incubated and
+        note: classified here (PROD/AUDIT/REMOVED) before promotion to Linux, Apple, Android
+        note: or Windows. Garrett's seven-rule stack is the migration gate, rule 7 being "no
+        note: folder migration until 1-6 are captured cleanly". A migration must NOT treat
+        note: this repo as only a frontend app, only a backend API, only a ComfyUI wrapper or
+        note: only a single model server. The platform gate itself lives in `GUARDRAILS.md`
+        note: and is not restated: all four native platforms are individually held and only
+        note: Garrett naming one clears it. Toolchains are the carve-out and are not held.
 
         check: exists docs/specs/symoneural-runtime-registry.md
         check: exists docs/specs/symoneural-model-hot-swap.md
