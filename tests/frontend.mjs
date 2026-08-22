@@ -661,6 +661,72 @@ try {
          dense.every(d => !d.missing && d.t3 > 20.5 && d.t7 > 10.8 && d.fits),
          dense.map(d => `${d.slug}@1990x970 --t3=${d.t3}px --t7=${d.t7}px over=${d.over}px`).join('  '));
 
+  // ---- #81: the clean address, the old address, and a page that actually runs ----
+  //
+  // Three spellings of one page and they must all answer: `/livestack/image` is the address
+  // #81 asks for, `/live-stack/image` is the one Garrett typed for Coder (R-160) and is
+  // served beside it, and `/image.html` is the published link that must not start 404ing --
+  // #81 is explicit that the clean URLs "are an addition, not a redirect".
+  //
+  // THE ASSERTION THAT MATTERS IS THE LAST ONE, and it is here rather than in
+  // apps/test_livestack_routes.py because nothing that reads the disk can make it. Splitting
+  // the page into html + js + css moved the behaviour into a DEFERRED external file, and the
+  // shared `$`, `status()` and `api()` helpers stayed inline in the shell. If that ordering
+  // is ever inverted -- the page script loaded without `defer`, or the shared block moved
+  // after it -- image.js throws `$ is not defined` on its first line and every control on the
+  // page goes dead, while the markup renders perfectly and every file check stays green.
+  //
+  // That is #94's failure exactly: eighteen green checks over a chat surface that was dead on
+  // arrival, archived by the timer two minutes later. So this drives a real control and reads
+  // a value only the page's own script can have written.
+  for (const addr of ['/livestack/image', '/live-stack/image', '/image.html']) {
+    const resp = await page.goto(BASE + addr, { waitUntil: 'networkidle' });
+    const st = resp ? resp.status() : 0;
+    // Not a redirect, at either clean address: the URL in the bar must still be the one
+    // that was typed. api.py serves the same file at all three and redirects none of them.
+    const settled = page.url().replace(BASE, '');
+    record(`the image page answers at ${addr}`,
+           st === 200 && settled === addr && await page.$('#form') !== null,
+           `HTTP ${st}, settled at ${settled}`);
+  }
+
+  // `imgSplit`, not `split`: there is already a top-level `const split = []` in the
+  // one-screen budget block above, and a second top-level `const` of the same name is a
+  // module-level SyntaxError -- the file does not parse, no assertion runs, and node
+  // reports it as a failure of the whole suite rather than of this block. That is the
+  // `.bar` / `.live` / `.card` collision this repo has hit five times in CSS, arriving in
+  // JS, where it is louder but no less avoidable: do not reach for a generic name here.
+  const imgSplit = await page.evaluate(async () => {
+    const ref = sel => document.querySelector(sel)?.getAttribute(sel.startsWith('link') ? 'href' : 'src') || '';
+    const css = ref('link[href*="/image.css"]');
+    const js = ref('script[src*="/image.js"]');
+    // Both must be FETCHABLE, not merely referenced. A stamped `?v=` pointing at a file the
+    // deploy did not ship is a 404 that no amount of reading the HTML would show.
+    const okCss = css ? (await fetch(css, { cache: 'no-store' })).ok : false;
+    const okJs = js ? (await fetch(js, { cache: 'no-store' })).ok : false;
+
+    // The run-only half. Drive the steps slider and read the label back: only image.js
+    // binds that listener, and it can only bind it if `$` was already defined when the
+    // deferred file ran.
+    const steps = document.getElementById('steps');
+    const before = document.getElementById('stepsv')?.textContent;
+    steps.value = '7';
+    steps.dispatchEvent(new Event('input', { bubbles: true }));
+    const after = document.getElementById('stepsv')?.textContent;
+
+    return { css, js, okCss, okJs, before, after,
+             inline: [...document.querySelectorAll('script:not([src])')]
+                       .some(s => s.textContent.includes('form.addEventListener')) };
+  });
+  record('the image page is split into html + js + css and both assets load',
+         Boolean(imgSplit.css) && Boolean(imgSplit.js) && imgSplit.okCss && imgSplit.okJs,
+         `css=${imgSplit.css || 'ABSENT'} (${imgSplit.okCss ? 'ok' : 'FAILED'}) ` +
+         `js=${imgSplit.js || 'ABSENT'} (${imgSplit.okJs ? 'ok' : 'FAILED'})`);
+  record('the deferred page script ran and bound its controls',
+         imgSplit.after === '7' && imgSplit.before !== '7' && !imgSplit.inline,
+         `stepsv "${imgSplit.before}" -> "${imgSplit.after}"` +
+         (imgSplit.inline ? ' -- AND the handler is still inline as well, so it binds twice' : ''));
+
   // ---- the GPU panel beside a prompt carries a real reading ---------------
   // The rule this exists for: no decorative indicators. A panel that renders its layout but
   // never receives data is exactly the fake gauge the site argues against, and it looks

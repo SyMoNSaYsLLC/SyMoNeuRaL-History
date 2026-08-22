@@ -3095,9 +3095,17 @@ async def exp_page() -> FileResponse:
     return FileResponse(f, media_type="text/html")
 
 
+@app.get("/live-stack/live", include_in_schema=False)
 @app.get("/livestack/live", include_in_schema=False)
 async def live_page() -> FileResponse:
     """SyMoNeuRaL Live, at the address he asked every app to be at.
+
+    BOTH spellings, added 2026-08-22 with #81's image work. This page was born at
+    `/livestack/live` alone, before `/live-stack/coder` established that the hyphenated
+    form is served too -- so it was the one application on the rack reachable at one
+    spelling, which #81's own title says it should not be: *"/livestack/<name> **and**
+    /live-stack/<name> for every application"*. Found by the twin-spelling assertion in
+    `apps/test_deploy_routes.py`, not by anyone typing the address.
 
     *"Applications from the live stack url as https://symoneural.com/chat.html for example.
     They all need to be as such https://symoneural.com/livestack/chat"* — so this one is born
@@ -3146,16 +3154,33 @@ async def live_page() -> FileResponse:
 # without ever asking the API) and `apps/test_deploy_routes.py` (does deploy.sh's reference
 # check know this is a route and not a missing file). Both parse `@app.get("/literal")`.
 #
-# A loop is invisible to both. `SECTION_PAGES` is registered in a loop and needed bespoke AST
-# support in the delegation test to be seen at all -- its docstring says a decorator-only scan
-# *"silently misses all four section pages -- the very paths whose delegation block is the
-# oldest one in the Caddyfile."* Writing a third registration form would mean teaching two
-# parsers about it, and the failure if I forgot is silent in exactly the way this repo has
-# now been bitten by five times: a route that answers perfectly on 127.0.0.1:8800 and 404s at
-# the address he types, with a green suite either way.
+# A loop is invisible to both unless they are taught about it. `SECTION_PAGES` is registered
+# in a loop and needed bespoke AST support in the delegation test to be seen at all -- its
+# docstring says a decorator-only scan *"silently misses all four section pages -- the very
+# paths whose delegation block is the oldest one in the Caddyfile."*
 #
 # So the paths are literals here, both guards see them for free, and the delegation test went
 # red for both of them until `@coder` was added to ops/Caddyfile. That red was the point.
+#
+# THAT ARGUMENT WAS RIGHT FOR ONE PAGE AND IS WRONG FOR TEN. It stood here until 2026-08-22
+# reading *"writing a third registration form would mean teaching two parsers about it, and
+# the failure if I forgot is silent"* -- and the conclusion drawn from it, literals only, is
+# the one that does not survive #81 growing to every application on the rack. Garrett,
+# 2026-08-22: *"Do not duplicate literal decorators for every app if #81 is going to grow to
+# all rack apps. That will drift. The parser should learn the route declaration pattern."*
+#
+# He is describing the failure the literal form actually has. Twenty decorators over ten
+# pages is twenty chances to type one spelling and not the other, and a page reachable at
+# `/livestack/x` but not `/live-stack/x` is the same 404-at-the-address-he-types this whole
+# block is about -- arriving from the opposite direction, and with no red line anywhere,
+# because a missing decorator is not a broken one. `LIVESTACK_PAGES` below makes both
+# spellings of both addresses a property of one dict entry, so they cannot disagree.
+#
+# The cost is real and is paid once, in the same commit, not deferred: both parsers were
+# taught the form, and each carries a named assertion that it can SEE this dict rather than
+# a general vacuity guard over the whole set. `test_deploy_routes.py` records why that
+# distinction matters -- its own vacuity guard passed on a non-empty set that contained no
+# two-segment path at all, while `/livestack/live` went undeployable.
 
 
 @app.get("/live-stack/coder", include_in_schema=False)
@@ -3178,6 +3203,56 @@ async def coder_page() -> FileResponse:
                                    "hand-authored static page with no generator; "
                                    "restore it with git checkout -- site/coder.html")
     return FileResponse(f, media_type="text/html")
+
+
+# ---- /livestack/<name> for the generated surface pages ------------------------------------
+#
+# R-154, #81: *"the https://symoneural.com/image.html needs to be updated to
+# https://symoneural.com/livestack/image"*, then *"apply this to all applications."*
+#
+# Keys are the application name; values are the file `tools/build_pages.py` writes. Each
+# entry serves BOTH spellings -- `/livestack/<name>` and `/live-stack/<name>` -- for the
+# reason the Coder block above gives at length: he typed the hyphen, every other application
+# on the rack does not, and a surface reachable at only one of them is a 404 waiting for
+# whoever types the other. Neither redirects to the other and neither is canonical.
+#
+# `.html` KEEPS WORKING AND THAT IS THE POINT, not a courtesy. `/image.html` is published and
+# shared; `site/` is mounted at `/` below, so the file answers at its own name for anything
+# that already links it, and #81 is explicit that these clean URLs "are an addition, not a
+# redirect" -- the same words `SECTION_PAGES` uses. A 404 on a link that used to work is the
+# one failure this site cannot afford, and a redirect is not the cheap alternative it looks
+# like: `/livestack/live`'s docstring above records that one would break a `<video>`
+# mid-playlist, since the player resolves segment URIs against the manifest it was handed.
+#
+# Coder and Live are deliberately NOT folded in here. Both are hand-authored tracked pages
+# with no generator, so their 404s say `git checkout` -- and `_livestack_route` below says
+# `run python3 tools/build_pages.py`, which is true of this dict and false of them. That is
+# the same distinction `/studio` and `/exp` were given their own routes for: a 404 naming the
+# wrong generator sends the next person to the wrong file.
+#
+# Declared BEFORE the StaticFiles mount below, for the same reason every route here is.
+LIVESTACK_PAGES = {
+    "image": "image.html",
+}
+
+
+def _livestack_route(filename: str):
+    async def page() -> FileResponse:
+        f = SITE / filename
+        if not f.is_file():
+            raise HTTPException(status_code=404,
+                                detail=f"{filename} has not been generated; "
+                                       "run python3 tools/build_pages.py")
+        return FileResponse(f, media_type="text/html")
+    return page
+
+
+for _name, _file in LIVESTACK_PAGES.items():
+    _route = _livestack_route(_file)
+    # Two registrations, one entry. The pair cannot drift apart because neither is written
+    # down separately -- which is the whole reason this is a dict and not ten decorators.
+    app.get(f"/livestack/{_name}", include_in_schema=False)(_route)
+    app.get(f"/live-stack/{_name}", include_in_schema=False)(_route)
 
 
 # ---- /local: this box only, never the internet ------------------------------------------

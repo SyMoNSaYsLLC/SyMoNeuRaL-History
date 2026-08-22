@@ -38,7 +38,7 @@ SHELL = """<!doctype html>
 <title>@@TITLE@@</title>
 <meta name="description" content="@@DESC@@">
 <link rel="stylesheet" href="/symoneural.css">
-<link rel="stylesheet" href="/rack-detail.css">
+<link rel="stylesheet" href="/rack-detail.css">@@PAGECSS@@
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -199,7 +199,7 @@ def gpu_panel(uses_gpu: bool, surface: str, why: str = "") -> str:
 
 
 def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
-         **kw) -> None:
+         css: str = "", js: str = "", **kw) -> None:
     """Render one surface page.
 
     `gpu` places the live GPU panel at the top of the page's aside -- beside the prompt,
@@ -207,6 +207,31 @@ def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
     for a surface that does not use the card: the panel still appears, because the card is
     shared and its state is worth seeing, but it says plainly that this page does not wait
     for it. Omit entirely for a page with no prompt.
+
+    `css` and `js` are the page's OWN stylesheet and behaviour. They are written out as
+    `site/<stem>.css` and `site/<stem>.js` and referenced from the shell, rather than
+    inlined into the markup -- #81: *"the image html should be static with [js] and css"*,
+    scoped by him one minute later to *"apply this to all applications."*
+
+    Three things about that split are load-bearing and none of them is style:
+
+      * **The files are WRITTEN BY THIS GENERATOR, beside the markup they belong to.**
+        `site/image.html` is generated. A hand-edited `site/image.js` sitting next to a
+        generated page is a second source of truth for one surface, and the next
+        `python3 tools/build_pages.py` would revert half of it and leave the other half --
+        which is the drift `.claude/CLAUDE.md` bans second state documents to prevent.
+      * **`defer`, and the shared helpers above stay inline.** `$`, `status()` and `api()`
+        are declared in the shell's own inline block, which runs at parse time; a deferred
+        external script runs after the document is parsed, so it sees all three. That
+        ordering is the same one `console.js` and `ui.js` have always relied on. An
+        external file that ran BEFORE them would find `$` undefined and fail on its first
+        line, silently, with a rendered page.
+      * **`tools/build_cachebust.py` has to run afterwards.** It stamps `?v=<hash>` onto
+        these references the same way it stamps `/symoneural.css`. The CALC_BODY comment
+        below argues for inline CSS on the grounds that *"an inline block cannot be served
+        stale against new markup"* -- true, and the stamper is the other answer to it. What
+        is NOT an answer is an unstamped external file, which is exactly the week-old-CSS
+        failure that comment is about. Regenerate, stamp, then read `git status`.
     """
     if gpu is not None:
         body = kw.get("body", "")
@@ -215,6 +240,21 @@ def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
             j = body.find(">", i)
             kw["body"] = (body[:j + 1] + "\n        "
                           + gpu_panel(gpu, surface or name, why) + body[j + 1:])
+    stem = name[:-len(".html")] if name.endswith(".html") else name
+
+    # Substituted unconditionally, empty when the page has none. A placeholder left
+    # unsubstituted is not a blank -- it ships to the visitor as the literal text
+    # "@@PAGECSS@@" in the <head>, which is why this is not `kw.setdefault`.
+    kw["pagecss"] = ""
+    if css:
+        (SITE / f"{stem}.css").write_text(css)
+        kw["pagecss"] = f'\n<link rel="stylesheet" href="/{stem}.css">'
+        print(f"  {stem}.css")
+    if js:
+        (SITE / f"{stem}.js").write_text(js)
+        kw["script"] = f'<script src="/{stem}.js" defer></script>'
+        print(f"  {stem}.js")
+
     html = SHELL.replace("@@NAV@@", NAV)
     for key, value in kw.items():
         html = html.replace(f"@@{key.upper()}@@", value)
@@ -492,8 +532,8 @@ IMAGE_BODY = """    <div class="pgwrap">
           <span class="grow">idle</span></div>
         <div class="body">
           <div class="shots" id="shots">
-            <div class="shot" style="grid-column:1/-1;border-style:dashed">
-              <div class="cap" style="border-top:0;text-align:center;padding:40px 20px">
+            <div class="shot im-empty">
+              <div class="cap im-empty-cap">
                 Describe something and press Generate. FLUX.1-schnell, four steps, rendered on
                 the card in this machine.
               </div>
@@ -533,7 +573,55 @@ IMAGE_BODY = """    <div class="pgwrap">
       </aside>
     </div>"""
 
-IMAGE_JS = """<script>
+# ---------------------------------------------------------------- image: css
+#
+# EVERY class here is prefixed `im-` and every rule is a class, never an element or a
+# generic name. `.bar`, `.live`, `.card` and `#console .sub` have each been defined a
+# second time in this codebase and each time the second definition silently ate the first.
+# The CALC_BODY comment below states the same rule for the keypad; it applies with more
+# force here, because this file is a separate stylesheet and a collision would be even
+# further from the markup that suffers it.
+#
+# These rules were `style="..."` attributes until #81 -- four of them in the markup and,
+# worse, three built by string concatenation inside the render handler. There is no
+# `text-overflow` rule here and none may be added: `.claude/CLAUDE.md` bars ellipsis
+# outright, and a truncated caption would be hiding the seed, the step count and the
+# wall-clock, which are the only reason the caption exists.
+IMAGE_CSS = """/* SyMoNeuRaL Image -- the page's own rules. Generated by tools/build_pages.py.
+   Do not hand-edit: the next generator run overwrites this file. */
+
+/* The dashed "nothing rendered yet" tile, spanning the whole shot grid. */
+.im-empty { grid-column: 1 / -1; border-style: dashed; }
+.im-empty-cap { border-top: 0; text-align: center; padding: 40px 20px; }
+
+/* The square placeholder that stands in while the card is working. Its aspect-ratio is
+   what stops the grid reflowing when the real image replaces it. */
+.im-pending {
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  background: var(--panel2);
+  color: var(--faint);
+  font-size: 13px;
+}
+
+/* pre-line, because the caption is deliberately two lines: the prompt as typed, then the
+   measurements. Collapsing them would run the prompt into the seed. */
+.im-cap { white-space: pre-line; }
+.im-error { color: var(--amber); }
+"""
+
+# ---------------------------------------------------------------- image: js
+#
+# No <script> wrapper: `page(js=...)` writes this to site/image.js and the shell references
+# it with `defer`. See page()'s docstring for why deferred is correct here and why the
+# shared `$`/`status`/`api` helpers stay inline in the shell.
+IMAGE_JS = """// SyMoNeuRaL Image -- the page's own behaviour. Generated by tools/build_pages.py.
+// Do not hand-edit: the next generator run overwrites this file.
+//
+// Deferred, so the document is parsed before this runs and every element queried below
+// exists. `$`, `status()` and `api()` come from the shell's inline block, which runs at
+// parse time and therefore earlier than this file -- see tools/build_pages.py.
 const form = $('#form'), send = $('#send'), shots = $('#shots'), head = $('#ihead');
 let size = 768, first = true;
 $('#steps').addEventListener('input', e => $('#stepsv').textContent = e.target.value);
@@ -554,8 +642,7 @@ form.addEventListener('submit', async e => {
 
   const card = document.createElement('div');
   card.className = 'shot';
-  card.innerHTML = '<div style="aspect-ratio:1/1;display:grid;place-items:center;' +
-                   'background:var(--panel2);color:var(--faint);font-size:13px">rendering\\u2026</div>' +
+  card.innerHTML = '<div class="im-pending">rendering\\u2026</div>' +
                    '<div class="cap"></div>';
   $('.cap', card).textContent = prompt;
   if (first) { shots.innerHTML = ''; first = false; }
@@ -573,24 +660,23 @@ form.addEventListener('submit', async e => {
     const img = document.createElement('img');
     img.src = r.url; img.alt = prompt; img.loading = 'lazy';
     const cap = document.createElement('div');
-    cap.className = 'cap';
+    cap.className = 'cap im-cap';
     // The wall-clock is the point. It is what this card actually took, round trip included.
     cap.textContent = `${prompt}\\n${r.size}\\u00d7${r.size} \\u00b7 ${r.steps} steps \\u00b7 ` +
                       `seed ${r.seed} \\u00b7 ${r.seconds}s on the card \\u00b7 ${r.model}`;
-    cap.style.whiteSpace = 'pre-line';
     card.append(img, cap);
     $('#stat').textContent = `last render: ${r.seconds}s`;
   } catch (err) {
     card.innerHTML = '';
     const cap = document.createElement('div');
-    cap.className = 'cap'; cap.style.color = 'var(--amber)';
+    cap.className = 'cap im-error';
     cap.textContent = err.message;
     card.append(cap);
   } finally {
     send.disabled = false; status(head, 'idle', false);
   }
 });
-</script>"""
+"""
 
 # ---------------------------------------------------------------- calc
 #
@@ -5769,7 +5855,11 @@ def main() -> int:
          heading="Make it draw something.",
          lede="FLUX.1-schnell, quantized to q4_k and rendered on the card in this machine. "
               "Every image below prints the wall-clock it actually took.",
-         body=IMAGE_BODY, script=IMAGE_JS)
+         # `css=`/`js=` rather than `script=`: the first page split into static
+         # html + js + css per #81. The other surfaces follow one at a time, image
+         # first and all the way through -- *"a pattern proven on one page is worth
+         # more than nine half-migrations."*
+         body=IMAGE_BODY, css=IMAGE_CSS, js=IMAGE_JS)
 
     page("ravencalc.html", gpu=False, surface="RavenCalc",
          title="SyMoNeuRaL RavenCalc — exact mathematics",

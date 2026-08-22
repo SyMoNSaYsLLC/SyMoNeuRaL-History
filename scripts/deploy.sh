@@ -190,12 +190,19 @@ is_route() {
     docs|docs/*|openapi.json|api|api/*) return 0;;
     overview|livestack|controlboard|receipts) return 0;;
     studio|exp) return 0;;
-    livestack/live) return 0;;
+    livestack/live|live-stack/live) return 0;;
     # Both spellings of the Coder page. api.py serves one page at both and redirects
     # neither, so both are routes and neither is ever a file. `coder.html` deliberately
     # does NOT appear here -- the page IS a real file in the webroot and a missing one
     # must still be reported, which is the same asymmetry `livestack` documents above.
     live-stack/coder|livestack/coder) return 0;;
+    # #81's application pages, both spellings, from backend/api.py's LIVESTACK_PAGES.
+    # Listed EXACTLY and never as `livestack/*`: a wildcard would also exempt
+    # `livestack/image.html`, `livestack/anything.js` and every future typo'd reference
+    # under that prefix, and an exemption that over-matches stops the check catching a
+    # genuinely absent file -- which is the whole failure mode this function's comments
+    # keep returning to. apps/test_deploy_routes.py asserts both directions.
+    live-stack/image|livestack/image) return 0;;
     *) return 1;;
   esac
 }

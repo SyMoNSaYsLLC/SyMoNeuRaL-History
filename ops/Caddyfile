@@ -189,7 +189,11 @@ symoneural.com, www.symoneural.com {
 	#     arrives as ordinary segment GETs, not as a socket. Copying the directive across
 	#     from @studio would read as "this streams" to the next person, and it does not --
 	#     the streaming is HLS, which is precisely a design that needs no long-lived hop.
-	@live path /livestack/live
+	#   * BOTH spellings since 2026-08-22, like @coder. This block listed only
+	#     /livestack/live until #81 added the hyphenated twin in api.py -- at which point
+	#     apps/test_caddy_delegation.py went red naming /live-stack/live, which is the
+	#     third time that test has caught a delegation before a visitor did.
+	@live path /livestack/live /live-stack/live
 	handle @live {
 		reverse_proxy 127.0.0.1:8800
 	}
@@ -220,6 +224,33 @@ symoneural.com, www.symoneural.com {
 	# rejects proxy headers -- so this is the second of two locks, not the only one.
 	@coder path /live-stack/coder /livestack/coder
 	handle @coder {
+		reverse_proxy 127.0.0.1:8800
+	}
+
+	# SyMoNeuRaL Image at both spellings, and the first block here that is one entry of a
+	# LIST rather than a page of its own. #81 moves every application to
+	# /livestack/<name>, so this block grows a path pair per application and
+	# `backend/api.py`'s LIVESTACK_PAGES is the source both halves are read from --
+	# apps/test_caddy_delegation.py parses that dict and requires a matcher for both
+	# spellings of every key, so adding the next application makes this block go red
+	# rather than making the page 404.
+	#
+	# The sixth delegation added for the reason the five above each learned separately, and
+	# the reason has not changed: @sections matches `/livestack` EXACTLY, so it does not
+	# cover the child, and `handle { file_server }` below looks for
+	# /var/www/symoneural/livestack/image, does not find it, and 404s WITHOUT ASKING THE
+	# API -- while 127.0.0.1:8800 answers it perfectly.
+	#
+	#   * `path` EXACT, like @exp, @live and @coder. There is no subtree. `/image.html`,
+	#     `/image.css` and `/image.js` are ordinary files and must keep being served off
+	#     disk by `handle { file_server }` below -- a prefix here would claim the two new
+	#     assets #81 split out and proxy them through the API for no reason.
+	#   * No `flush_interval -1`. The page POSTs /api/image once and awaits one JSON reply;
+	#     it holds no stream open and opens no socket. That path is under /api and already
+	#     covered above. Copying the directive from @studio would read as "this streams" to
+	#     the next person, and it does not.
+	@livestackpages path /livestack/image /live-stack/image
+	handle @livestackpages {
 		reverse_proxy 127.0.0.1:8800
 	}
 

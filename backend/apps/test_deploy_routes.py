@@ -32,6 +32,7 @@ limiter, resolves the GPU governor and mounts `site/`. It is read as text, the s
 """
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 import subprocess
@@ -80,10 +81,54 @@ def _extensionless_page_routes() -> set[str]:
     Parameterised routes still fall out on their own: `{` is not in the class. `api/...` paths
     are now parsed too, and harmlessly -- nothing links them, so they never reach the
     intersection, and `is_route()` exempts `api/*` anyway.
+
+    `LIVESTACK_PAGES` is read as well, and a decorator-only scan cannot see it: #81 registers
+    every application page in a `for` loop, at both spellings, so a page added the ordinary
+    way from 2026-08-22 onward contributes NO decorator to match. That is the shape of hole
+    this function has already had once -- one path segment, `/livestack/live`, `MISSING` on a
+    deploy of a page answering 200 -- and the second time it would be worse, because the
+    allowlist below and this parser would be blind to the same entries in the same way, so
+    the intersection stays empty and `test_every_linked_api_route_is_known_to_the_deploy_check`
+    reports nothing wrong.
     """
-    return {m.group(1) for m in
-            re.finditer(r'@app\.get\(\s*"/([A-Za-z][\w/-]*)"', API.read_text())
-            if "." not in m.group(1)}
+    src = API.read_text()
+    routes = {m.group(1) for m in
+              re.finditer(r'@app\.get\(\s*"/([A-Za-z][\w/-]*)"', src)
+              if "." not in m.group(1)}
+
+    # Whole-line `#` comments dropped before the AST parse for the reason
+    # `test_caddy_delegation.py` documents at length: a comment that merely NAMES the
+    # declaration form these parsers read once produced a wholly fictional page path.
+    tree = ast.parse("\n".join(
+        "" if line.lstrip().startswith("#") else line for line in src.splitlines()))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "LIVESTACK_PAGES" for t in node.targets):
+            for key in node.value.keys:
+                routes.add(f"livestack/{key.value}")
+                routes.add(f"live-stack/{key.value}")
+    return routes
+
+
+def _livestack_names() -> list[str]:
+    """The keys of `LIVESTACK_PAGES` in api.py, and nothing else.
+
+    Deliberately separate from `_extensionless_page_routes()` above, which returns every
+    page route from every declaration form. The two are NOT interchangeable and treating
+    them as such is a real red-on-healthy-code failure this file has already produced: see
+    `test_every_livestack_page_is_not_reported_missing_at_either_spelling`.
+    """
+    src = "\n".join(
+        "" if line.lstrip().startswith("#") else line
+        for line in API.read_text().splitlines()
+    )
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "LIVESTACK_PAGES" for t in node.targets):
+            return [k.value for k in node.value.keys]
+    return []
 
 
 def _linked_extensionless() -> set[str]:
@@ -137,7 +182,7 @@ class ReferenceCheckTests(unittest.TestCase):
         self.assertTrue(_is_route("livestack/live"))
 
     def test_both_spellings_of_the_coder_page_are_not_reported_missing(self):
-        """#87's page, and the first route in this repo whose FIRST segment carries a hyphen.
+        r"""#87's page, and the first route in this repo whose FIRST segment carries a hyphen.
 
         `/live-stack/coder` is the address Garrett typed and `/livestack/coder` is the one
         every other application on the rack uses; api.py serves the same page at both and
@@ -156,6 +201,69 @@ class ReferenceCheckTests(unittest.TestCase):
                       "hyphen in the first path segment is no longer matched")
         self.assertIn("livestack/coder", routes)
 
+    def test_every_livestack_page_is_not_reported_missing_at_either_spelling(self):
+        """#81's pages, read off `LIVESTACK_PAGES` so this grows with the dict.
+
+        The third time this allowlist has had to learn a route, and the first where the
+        route is not written down as a literal anywhere -- so both halves are asserted: that
+        the parser above SEES the dict, and that `deploy.sh` exempts what it sees. Either one
+        alone passes while the deploy exits 1 for a page answering 200, which is the exact
+        outcome recorded for studio, exp and livestack/live in turn.
+
+        Hardcoding `image` here instead would test the page that happened to be migrated
+        first and stop testing the rule the moment a second one lands.
+
+        Read off the DICT, not off the route set by prefix. Filtering
+        `_extensionless_page_routes()` for `livestack/` looked equivalent and is not: it
+        also catches `livestack/live` and `livestack/coder`, which are literal decorators
+        and not dict entries. `/livestack/live` is deliberately served at ONE spelling --
+        #96 gave it no hyphenated twin -- so a prefix filter demanded a `/live-stack/live`
+        that has never existed and went red on correct code. A test that fails on a healthy
+        tree gets switched off, and then it protects nothing."""
+        names = _livestack_names()
+        self.assertTrue(names, "LIVESTACK_PAGES not parsed out of api.py -- see the "
+                               "docstring of _extensionless_page_routes")
+        routes = _extensionless_page_routes()
+        for name in names:
+            with self.subTest(name=name):
+                self.assertIn(f"livestack/{name}", routes,
+                              "api.py registers both spellings; the parser found neither")
+                self.assertIn(f"live-stack/{name}", routes,
+                              "api.py registers both spellings; the parser found only one")
+                self.assertTrue(_is_route(f"livestack/{name}"),
+                                f"deploy.sh reports livestack/{name} as a MISSING file")
+                self.assertTrue(_is_route(f"live-stack/{name}"),
+                                f"deploy.sh reports live-stack/{name} as a MISSING file")
+
+    def test_every_application_answers_at_both_spellings(self):
+        """#81's title, asserted as an invariant over ALL declaration forms.
+
+        *"/livestack/<name> AND /live-stack/<name> for every application"*. The two tests
+        above check the dict and the literals separately, and between them they let exactly
+        this through: `/livestack/live` shipped at ONE spelling for two days, because it was
+        born (#96) before `/live-stack/coder` (#87) established that the hyphenated form is
+        served too, and nothing compared the two lists afterwards.
+
+        The failure was invisible in the only way that matters -- `/livestack/live` answered
+        200, its Caddy matcher was present, its deploy exemption was present, and every test
+        in this file passed. A missing route is not a broken one. Nothing goes red; a
+        visitor types the other spelling and gets a 404.
+
+        `/live-stack/coder` leads for Coder and `/livestack/<name>` leads elsewhere, and
+        this asserts nothing about which is canonical -- only that neither is missing."""
+        routes = _extensionless_page_routes()
+        pairs = {r.split("/", 1)[1] for r in routes if r.startswith("livestack/")}
+        self.assertTrue(pairs, "no /livestack/<name> routes parsed out of api.py at all")
+        missing = sorted(n for n in pairs if f"live-stack/{n}" not in routes)
+        self.assertEqual(missing, [], (
+            f"api.py serves /livestack/{{{','.join(missing)}}} but not the hyphenated "
+            "spelling. #81 requires both for every application, and the half that is "
+            "missing 404s silently -- there is no red line anywhere else for this."))
+        for name in sorted(pairs):
+            with self.subTest(name=name):
+                self.assertTrue(_is_route(f"live-stack/{name}"),
+                                f"deploy.sh reports live-stack/{name} as a MISSING file")
+
     def test_every_linked_api_route_is_known_to_the_deploy_check(self):
         """A new surface that api.py serves and a page links must not fail the next deploy."""
         unknown = sorted(r for r in _linked_extensionless() & _extensionless_page_routes()
@@ -172,6 +280,14 @@ class ReferenceCheckTests(unittest.TestCase):
         for ref in ("studio.html", "exp.html", "studio.js", "studio-64.png",
                     "livestack.html", "live.html", "live.css", "livestack/live.html",
                     "coder.html", "coder.js", "coder.css", "livestack/coder.html",
+                    # #81's split. `livestack/image` is a route; these three are the files
+                    # that route serves and references, and a missing one has to be
+                    # reported. `image.css` and `image.js` are new as of #81 and are the
+                    # first assets in this repo whose STEM matches a route name -- an
+                    # exemption written as a prefix rather than an exact case would swallow
+                    # all three and the check would stop protecting the page it was widened
+                    # for.
+                    "image.html", "image.js", "image.css", "livestack/image.html",
                     "nonesuch"):
             with self.subTest(ref=ref):
                 self.assertFalse(_is_route(ref), f"{ref} is exempted; a missing one would pass")

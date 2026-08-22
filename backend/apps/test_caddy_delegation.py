@@ -93,6 +93,14 @@ def _api_page_paths() -> set[str]:
         if "SECTION_PAGES" in names:
             # keys are slugs -- the route is the slug with a leading slash
             paths |= {f"/{k.value}" for k in node.value.keys}
+        if "LIVESTACK_PAGES" in names:
+            # Keys are application names, and each one is registered at BOTH spellings by
+            # the loop in api.py. Emitting only `/livestack/<name>` here would leave the
+            # hyphenated half undelegated and unseen -- a page answering perfectly on
+            # 127.0.0.1:8800 and 404ing at the address Garrett actually types, which is the
+            # exact defect this whole file exists to catch, hiding inside the fix for it.
+            paths |= {f"/livestack/{k.value}" for k in node.value.keys}
+            paths |= {f"/live-stack/{k.value}" for k in node.value.keys}
         if "_RETIRED_PAGES" in names:
             # keys are already full paths
             paths |= {k.value for k in node.value.keys}
@@ -153,6 +161,43 @@ class CaddyDelegationTests(unittest.TestCase):
         self.assertIn("/tuner.html", paths, "_RETIRED_PAGES not parsed out of api.py")
         exact, prefix = _caddy_matchers()
         self.assertTrue(exact and prefix, "no matchers parsed out of ops/Caddyfile")
+
+    def test_both_spellings_of_every_livestack_page_are_extracted(self):
+        """#81's registration form, asserted by shape rather than by counting.
+
+        `LIVESTACK_PAGES` is the third declaration form in `api.py` and the first that turns
+        ONE dict entry into TWO routes. The assertion above would stay green if this parser
+        emitted `/livestack/image` and silently dropped `/live-stack/image` -- the set is
+        non-empty either way, and the invariant below would then never ask about the half
+        that was missing.
+
+        That is not a hypothetical shape of failure in this repo; it is a recorded one.
+        `apps/test_deploy_routes.py` carries the same guard for the same reason, written
+        after its vacuity check passed on a set of three routes and four hrefs that
+        contained no two-segment path at all, while `/livestack/live` was undeployable.
+
+        Read off the dict rather than hardcoded, so it keeps testing the rule as #81 grows
+        to the rest of the rack instead of testing whichever page happened to be first."""
+        src = "\n".join(
+            "" if line.lstrip().startswith("#") else line
+            for line in API.read_text().splitlines()
+        )
+        names: list[str] = []
+        for node in ast.walk(ast.parse(src)):
+            if isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "LIVESTACK_PAGES"
+                    for t in node.targets):
+                names = [k.value for k in node.value.keys]
+        self.assertTrue(names, "LIVESTACK_PAGES not found in api.py, or it is empty")
+
+        paths = _api_page_paths()
+        for name in names:
+            with self.subTest(name=name):
+                self.assertIn(f"/livestack/{name}", paths)
+                self.assertIn(f"/live-stack/{name}", paths,
+                              "the hyphenated spelling is registered by api.py's loop but "
+                              "this parser did not emit it -- it would go undelegated and "
+                              "404 at the address Garrett types, with this suite green")
 
     def test_a_commented_out_route_is_not_reported_as_a_page(self):
         """The 2026-08-21 false positive, pinned so the comment-stripping cannot be dropped.
