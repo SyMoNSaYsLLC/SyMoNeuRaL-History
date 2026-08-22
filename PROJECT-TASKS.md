@@ -233,7 +233,7 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: ngrep Make it draw something -- site/image.html
         check: ngrep talk to the box -- site/chat.html
 
-◻ #81 — /livestack/<name> for every application, and every app page static HTML + JS + CSS
+◻ #81 — /livestack/<name> and /live-stack/<name> for every application, and every app page static HTML + JS + CSS
         owner: coder
         R-154, and it absorbs the URL half of #73 item 4. "the https://symoneural.com/image.html
         needs to be updated to https://symoneural.com/livestack/image and the image html should be
@@ -254,6 +254,12 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         Do image first, all the way through, and only then repeat it — a pattern proven on one
         page is worth more than nine half-migrations.
 
+        note: 2026-08-21 coder — the title named only `/livestack/<name>` until #87 landed,
+        note: while #87 is titled `/live-stack/coder` because that is the spelling Garrett
+        note: typed. Two tasks naming different addresses for one rule is how a surface ends
+        note: up reachable at one of them; #87 asked for this to be fixed in its own commit
+        note: and it was. Both spellings are served, neither redirects to the other, and both
+        note: need their own matcher in ops/Caddyfile — see @coder there for the pattern.
         check: grep LIVESTACK_PAGES -- backend/api.py
         check: grep LivestackRouteTests -- backend/apps/test_livestack_routes.py
         check: exists site/image.js
@@ -373,47 +379,6 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
         check: exists tools/check_deployed.py
         check: grep WebrootDriftTests -- backend/apps/test_check_deployed.py
-
-◻ #87 — SyMoNeuRaL Coder: the browser surface first, the terminal inside it, at /live-stack/coder
-        owner: coder
-        R-160, restated by him on 2026-08-20: "update task 87 to be browser then terminal url
-        should be symoneural.com/live-stack/coder". Order and address are both part of the
-        instruction and neither is negotiable — **browser then terminal**, and the surface lives
-        at `/live-stack/coder`, not at `/coder.html` and not at `/documentation.html`.
-
-        `api.py:1724` gives the Coder row `href="/documentation.html"` — a page about the project
-        — so the one surface whose entire point is that you can use it hands you a manual.
-
-        **Two steps, in his order, and the first is not a stub.** The browser surface is the
-        deliverable: the page, its layout, its own HTML + JS + CSS per #81, reading as an
-        instrument per #91. The terminal is what goes inside it once the page it lives on is
-        real. Building the pty first and hanging a page off it is the inversion he has now told
-        me to stop doing twice.
-
-        **`live-stack`, hyphenated, is what he typed, and it is not what the code says.**
-        `api.py`'s `SECTION_PAGES`/`_section_route()` mount `/livestack`, and #81 is written
-        against that spelling. Serve his spelling — it is the address he will type — and keep
-        `/livestack/coder` answering as well rather than breaking every existing link on the
-        way past. Two routes to one page is not an alias in the Caddy sense the rules bar; the
-        rule there is that the web server does no routing, and this is FastAPI doing all of it.
-        Fix #81's title in the same commit so the two tasks do not name different addresses.
-
-        Reference only, and the rule has no exception here: "we cannot use code in references
-        its for reference only we must rebrand if we want to use it", and "i dont care if you
-        rebrand, recreate or write it completely from scratch". `references/deepseek-harness`
-        has `TerminalBlock` and `ansi.ts` under `packages/client/ui-primitives/src/`; read them
-        for behaviour and build ours. Exceed it, per his standing bar.
-
-        `/api*` is proxied to the public internet, so a browser terminal here is the most
-        dangerous surface in this repo. Where the gate lands is #88's decision, not this
-        task's, and whatever #88 decides, the two trade-secret training artefacts stay
-        unreachable through it.
-
-        check: ngrep href="/documentation.html" -- backend/api.py
-        check: grep live-stack/coder -- backend/api.py
-        check: exists site/coder.html
-        check: grep CoderSurfaceTests -- backend/apps/tests/test_coder_surface.py
-        check: grep coder-instrument-first -- tests/frontend.mjs
 
 ◻ #88 — No tokens while we are testing: take the token requirement off Studio
         owner: coder

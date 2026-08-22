@@ -191,6 +191,11 @@ is_route() {
     overview|livestack|controlboard|receipts) return 0;;
     studio|exp) return 0;;
     livestack/live) return 0;;
+    # Both spellings of the Coder page. api.py serves one page at both and redirects
+    # neither, so both are routes and neither is ever a file. `coder.html` deliberately
+    # does NOT appear here -- the page IS a real file in the webroot and a missing one
+    # must still be reported, which is the same asymmetry `livestack` documents above.
+    live-stack/coder|livestack/coder) return 0;;
     *) return 1;;
   esac
 }

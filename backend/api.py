@@ -2053,18 +2053,24 @@ def build_status() -> Status:
             Unit(**{**streamer.status(), "bus": "net"}),
             # The developer surface. It appears on the rack as a peer because Garrett asked
             # for it there -- "it will be symoneural coder and in the live stack just like
-            # the other agents" -- but note what it is NOT: it holds no weights, takes no
-            # GPU lease, and deliberately has NO HTTP route. It is imported and driven from
-            # the desktop session.
+            # the other agents" -- and it holds no weights and takes no GPU lease. `bus="cpu"`
+            # is the honest bus: it is file I/O and subprocesses.
             #
-            # That is not timidity, it is the conclusion already recorded in HANDOVER §2g:
-            # an agent that can develop the site is arbitrary code execution on the box
-            # serving the public internet, and `ops/Caddyfile` delegates the whole `/api/*`
-            # subtree, so an `/api/coder/...` route would be publicly reachable the instant
-            # it existed. `bus="cpu"` is the honest bus: it is file I/O and subprocesses.
+            # This comment used to end *"and deliberately has NO HTTP route"*, and the href
+            # beside it was `/documentation.html` -- the one surface whose entire point is
+            # that you can use it handing the visitor a manual instead. #87 gave it a page.
+            #
+            # WHAT DID NOT CHANGE is the conclusion recorded in HANDOVER §2g, because it was
+            # about `/api/`, not about routes in general: an agent that can develop the site
+            # is arbitrary code execution on the box serving the public internet, and
+            # `ops/Caddyfile` delegates the whole `/api/*` subtree, so an `/api/coder/...`
+            # route would be publicly reachable the instant it existed. There is still no
+            # such route and there must not be one. The page reads from `/local/coder/*`,
+            # which Caddy does not delegate and `_require_local` refuses off-box anyway, and
+            # that mount is read-only -- see its banner further down this file.
             Unit(id="coder", label="SyMoNeuRaL Coder", slot="1U",
-                 state=coder_state, bus="cpu", href="/documentation.html",
-                 spec="local workspace agent · no route",
+                 state=coder_state, bus="cpu", href="/live-stack/coder",
+                 spec="local workspace agent · reads over /local, never /api",
                  detail=coder_detail),
             # Designed, not deployed: no contract, no wallet, no daemon, no key material.
             Unit(id="gateway", label="SyMoNeuRaL Gateway", slot="1U",
@@ -3120,6 +3126,60 @@ async def live_page() -> FileResponse:
     return FileResponse(f, media_type="text/html")
 
 
+# The Coder page, at both spellings of the address he named.
+#
+# R-160, restated 2026-08-20: *"update task 87 to be browser then terminal url should be
+# symoneural.com/live-stack/coder"*. The hyphen is his, so it is served exactly as typed and
+# leads. `/livestack/coder` answers as well, because every other application on the rack
+# lives under `/livestack/<name>` (#81) and both spellings appear in this repo's own prose --
+# a surface reachable at only one of them is a 404 waiting for whoever types the other.
+#
+# NEITHER of them is a redirect, and neither is canonical over the other. `/livestack/live`
+# above gives the general reason a page route here does not redirect; the specific one is
+# that a redirect would make the address in the operator's URL bar disagree with the address
+# they typed, which is precisely the confusion two spellings already threaten.
+
+# Registered as two ordinary decorators and NOT as a `for` loop over a tuple, which is what
+# this was written as first. The reason is not style. Two tests read the page routes out of
+# THIS FILE AS TEXT rather than by importing it -- `apps/test_caddy_delegation.py` (is every
+# page path delegated by ops/Caddyfile, or does Caddy's final `handle { file_server }` 404 it
+# without ever asking the API) and `apps/test_deploy_routes.py` (does deploy.sh's reference
+# check know this is a route and not a missing file). Both parse `@app.get("/literal")`.
+#
+# A loop is invisible to both. `SECTION_PAGES` is registered in a loop and needed bespoke AST
+# support in the delegation test to be seen at all -- its docstring says a decorator-only scan
+# *"silently misses all four section pages -- the very paths whose delegation block is the
+# oldest one in the Caddyfile."* Writing a third registration form would mean teaching two
+# parsers about it, and the failure if I forgot is silent in exactly the way this repo has
+# now been bitten by five times: a route that answers perfectly on 127.0.0.1:8800 and 404s at
+# the address he types, with a green suite either way.
+#
+# So the paths are literals here, both guards see them for free, and the delegation test went
+# red for both of them until `@coder` was added to ops/Caddyfile. That red was the point.
+
+
+@app.get("/live-stack/coder", include_in_schema=False)
+@app.get("/livestack/coder", include_in_schema=False)
+async def coder_page() -> FileResponse:
+    """SyMoNeuRaL Coder: the browser surface.
+
+    Hand-authored and tracked, exactly like `site/live.html`, so the 404 below sends the
+    next person to `git checkout` rather than to a generator. There is no
+    `tools/build_coder.py` and there is not meant to be -- *"Make sure to update the
+    applications to be static with js css and html"*. Naming a generator that does not
+    exist is the failure `/studio`'s docstring exists to avoid, arriving one page later.
+
+    Declared above the StaticFiles mount, for the same reason every route here is.
+    """
+    f = SITE / "coder.html"
+    if not f.is_file():
+        raise HTTPException(status_code=404,
+                            detail="site/coder.html is missing. It is a tracked, "
+                                   "hand-authored static page with no generator; "
+                                   "restore it with git checkout -- site/coder.html")
+    return FileResponse(f, media_type="text/html")
+
+
 # ---- /local: this box only, never the internet ------------------------------------------
 #
 # Two routes that serve and edit the progress page's assignment list. Garrett, 2026-08-20:
@@ -3297,6 +3357,126 @@ async def local_progress(request: Request) -> FileResponse:
     # no-store: the page is regenerated every two minutes by symoneural-progress.timer, and a
     # cached copy of a status page is worse than no status page.
     return FileResponse(f, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+# ---- /local/coder: the Coder surface's reads, and the prefix that is the whole safety case
+#
+# `backend/apps/coder/__init__.py` is 972 lines of file I/O, subprocess execution and a
+# rollback store, and until this commit it had no route at all. The rack row said so in as
+# many words -- *"deliberately has NO HTTP route. It is imported and driven from the desktop
+# session"* -- and that judgement is not being reversed here, it is being restated: an
+# `/api/coder/...` endpoint is arbitrary file read on the public internet the instant it
+# exists, because `ops/Caddyfile` delegates the whole `/api/*` subtree.
+#
+# What changed is the prefix, not the risk assessment. `/local/*` matches no `handle` block
+# in ops/Caddyfile, so it falls through to `handle { file_server }`, is looked up in
+# /var/www/symoneural, and 404s from disk without this process ever being asked. That is the
+# same reasoning `/local/intake` is already built on, and `backend/apps/test_caddy_delegation.py`
+# deliberately excludes `/local/*` from the paths it requires a delegation for -- so this
+# mount is consistent with what is already enforced rather than an exception carved out of it.
+#
+# And, as the `/local` banner above says of itself: the guard does not trust that config
+# file. `_require_local` checks the peer address and refuses proxy headers, so if somebody
+# adds a `handle /local*` block a year from now these routes go dead rather than public.
+#
+# THREE THINGS THIS MOUNT DELIBERATELY DOES NOT DO
+#
+#   1. It is READ-ONLY. `write_file`, `patch_file`, `delete_file`, `restore` and `run` are
+#      not mounted. #87 is *"browser then terminal"* and says the order is not negotiable;
+#      where the gate for the write half lands is #88's decision, not this task's.
+#   2. It does not report what it refused as absent. `list_dir` flags denied entries instead
+#      of omitting them -- its own docstring argues for that -- and the page renders the
+#      flag. A tree that silently hides `training/corpus.jsonl` would be the decorative
+#      dishonesty this site exists to argue against, and would also teach an operator that
+#      the denylist is not there.
+#   3. It does not weaken `coder`'s own gates. Every call below goes through
+#      `coder.authorize()`, so the surface stays OFF unless SYMONEURAL_CODER_ENABLED=1 and a
+#      token are both set, and the page renders that refusal as a reading rather than
+#      spinning forever.
+#
+# WHY THE TOKEN COMES FROM THIS PROCESS AND IS NEVER SENT TO THE PAGE
+# `coder.token_ok()` exists to stop a caller who reached the module over a network. These
+# routes are already past `_require_local`, which is a *stricter* peer test than
+# `coder.peer_ok()`: it refuses proxy headers outright and cannot be widened by
+# SYMONEURAL_CODER_ALLOW_REMOTE. The alternative is a browser page that holds the token,
+# which means the token in a URL, in localStorage, or committed into this repo's own HTML.
+# R-174's finding is that a credential which has been displayed is spent. So it is read
+# narrowly, used in-process, and never crosses to the client.
+
+
+def _coder_token() -> str | None:
+    """The one variable, by name.
+
+    `os.environ.get`, never a sweep -- R-174: *"do not read a whole process environment to
+    answer a narrow question."*
+    """
+    return os.environ.get("SYMONEURAL_CODER_TOKEN")
+
+
+def _coder_read(request: Request, fn, **kw) -> JSONResponse:
+    """Run one `coder` read as this box and hand its own dict back verbatim.
+
+    `coder` reports a refusal as `{"ok": false, "error": ...}` under a 200, and that shape is
+    preserved rather than translated into an HTTP status. The page has to render a refusal as
+    an instrument reading -- *which gate said no* -- and an HTTP error code puts that sentence
+    where `fetch()` makes it awkward to read and where an intermediary is free to replace it
+    with its own. The transport succeeded; the answer is "no", and those are different facts.
+
+    The peer is the real one off the socket, not a literal: `_require_local` has already
+    established it is loopback, and passing what was actually observed means `coder`'s own
+    gate is evaluating the same thing this route evaluated.
+    """
+    _require_local(request)
+    peer = request.client.host if request.client else ""
+    return JSONResponse(fn(token=_coder_token(), peer=peer, **kw),
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/local/coder/status", include_in_schema=False)
+async def local_coder_status(request: Request) -> JSONResponse:
+    """What the surface is, plus each gate separately.
+
+    `authorize()` returns the FIRST refusal and stops, which is right for an answer and
+    useless for an instrument: an operator reading "surface disabled" cannot tell whether the
+    token is also missing, so turning the flag on would just move them to the next refusal.
+    The three predicates are read individually here so the page can show all three at once
+    and say what to set. They are booleans about configuration -- no value is disclosed.
+    """
+    _require_local(request)
+    peer = request.client.host if request.client else ""
+    body = coder.status(token=_coder_token(), peer=peer)
+    body["gates"] = {
+        "enabled": coder.enabled(),
+        "token_set": bool(_coder_token()),
+        "peer_loopback": coder.peer_is_loopback(peer),
+        "allow_remote": coder.allow_remote(),
+    }
+    # A property of THIS MOUNT, not of the module: `coder` can write and can run processes,
+    # and the page says so rather than implying the capability does not exist.
+    body["mount"] = {"read_only": True, "prefix": "/local/coder", "peer": peer}
+    return JSONResponse(body, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/local/coder/ls", include_in_schema=False)
+async def local_coder_ls(request: Request, path: str = ".",
+                         recursive: bool = False) -> JSONResponse:
+    return _coder_read(request, coder.list_dir, path=path, recursive=recursive)
+
+
+@app.get("/local/coder/file", include_in_schema=False)
+async def local_coder_file(request: Request, path: str) -> JSONResponse:
+    return _coder_read(request, coder.read_file, path=path)
+
+
+@app.get("/local/coder/history", include_in_schema=False)
+async def local_coder_history(request: Request, path: str) -> JSONResponse:
+    return _coder_read(request, coder.history, path=path)
+
+
+@app.get("/local/coder/journal", include_in_schema=False)
+async def local_coder_journal(request: Request, n: int = 50) -> JSONResponse:
+    """The audit trail. Gated like every other read -- it names paths."""
+    return _coder_read(request, coder.journal_tail, n=max(1, min(500, n)))
 
 
 @app.get("/", include_in_schema=False)

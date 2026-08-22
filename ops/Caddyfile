@@ -194,6 +194,35 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# SyMoNeuRaL Coder at BOTH spellings of one address. The fifth delegation added for the
+	# reason the four above each learned separately, and the first to be caught by
+	# apps/test_caddy_delegation.py before it ever reached the internet rather than after --
+	# that test went red naming both paths, which is the whole return on writing it.
+	#
+	#   * TWO exact paths, not a prefix, and not one canonical spelling with a redirect.
+	#     `/live-stack/coder` is what Garrett typed and leads; `/livestack/coder` matches
+	#     every other application on the rack. backend/api.py serves one page at both and
+	#     redirects neither, so the address in the operator's URL bar keeps agreeing with the
+	#     address they typed. @sections matches `/livestack` EXACTLY and so covers neither.
+	#   * No subtree, like @exp and @live. The page's own CSS and JS are ordinary files and
+	#     must keep being served off disk by `handle { file_server }` below.
+	#   * No `flush_interval -1`. site/coder.js polls; it holds no stream open and opens no
+	#     socket. Copying that directive across from @studio would read as "this streams" to
+	#     the next person, and it does not.
+	#
+	# WHAT IS DELIBERATELY ABSENT FROM THIS BLOCK IS THE WHOLE SAFETY CASE, so it is written
+	# here as well as in api.py. The page's reads live at `/local/coder/*`, and there is no
+	# matcher for them and must never be one. `/local/*` falls through to file_server, is
+	# looked up in /var/www/symoneural, and 404s from disk without this process being asked.
+	# `backend/apps/coder/__init__.py` executes subprocesses and reads arbitrary workspace
+	# files; a `handle /local*` block here would put that on the public internet in one line.
+	# api.py's `_require_local` refuses the request anyway -- it checks the socket peer and
+	# rejects proxy headers -- so this is the second of two locks, not the only one.
+	@coder path /live-stack/coder /livestack/coder
+	handle @coder {
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# The two retired page names. `backend/api.py` redirects /tuner.html -> /streamer.html
 	# and /tuner-watch.html -> /streamer-watch.html, and its comment states why they get a
 	# redirect when /api/tuner/* deliberately does not: *"a bookmark is permanent"* and,

@@ -1049,6 +1049,167 @@ try {
                     : `animation=${m.name}, ${m.shown} lane shown, overflow-x=${m.scrollable}`);
   }
 
+  // ---- coder: the developer surface at /live-stack/coder --------------------
+  //
+  // Placed BEFORE the image block on purpose. That one takes the card for a real render and
+  // can sit for four minutes; a failure here would otherwise be reported long after the
+  // information that explains it has scrolled past.
+  //
+  // Every assertion below is checked against what /local/coder/status ACTUALLY ANSWERED on
+  // this instance, not against an assumed configuration. The surface ships switched off, so
+  // both branches are real states -- and a test that quietly passed whenever it found the
+  // surface disabled would be the vacuous check this repo has retired before.
+  for (const spelling of ['/live-stack/coder', '/livestack/coder']) {
+    await page.goto(BASE + spelling, { waitUntil: 'networkidle' });
+    record(`coder page answers at ${spelling}`,
+           await page.$('#cd-grid') !== null, spelling);
+  }
+
+  // What the box says about itself, read from inside the page so it goes through exactly the
+  // same origin and the same peer the JS used.
+  const cdApi = await page.evaluate(async () => {
+    try {
+      const r = await fetch('/local/coder/status', { cache: 'no-store' });
+      const t = await r.text();
+      let d = null; try { d = JSON.parse(t); } catch (e) {}
+      return { status: r.status, ok: d && d.ok === true, gates: (d && d.gates) || null };
+    } catch (e) { return { status: 0, ok: false, gates: null }; }
+  });
+
+  // coder-instrument-first: the readings must be IN the first viewport, measured as the area
+  // actually visible there rather than as the block's own height.
+  //
+  // #99 is why. Studio's editor sat under `height:min(78vh,760px)` as the fourth block down
+  // the page; at 1440x1000 its top was at y=962, so 38px of 1000 were visible -- 4% of it --
+  // and a height assertion passed throughout, because 78vh of 1000px really is 760px. Every
+  // check on that task read green and the person who asked for it had never seen the thing.
+  // Height is not visibility. This multiplies the on-screen width by the on-screen height.
+  const cdVis = await page.evaluate(() => {
+    const el = document.getElementById('cd-grid');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+    const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    return { shown: w * h, own: r.width * r.height, top: Math.round(r.top) };
+  });
+  record('coder-instrument-first: the readings are on the first screen',
+         !!cdVis && cdVis.own > 0 && cdVis.shown / cdVis.own > 0.9,
+         cdVis ? `${Math.round(100 * cdVis.shown / cdVis.own)}% of the panel visible, top=${cdVis.top}px`
+               : 'no #cd-grid');
+
+  // The gate panel must report every predicate, not just the first refusal -- that is the
+  // whole reason /local/coder/status reads them individually. An em dash left in a cell after
+  // the fetch resolved means the page never rendered the reading it was given.
+  const cdCells = await page.evaluate(() => {
+    const ids = ['cd-r-surface', 'cd-r-enabled', 'cd-r-token', 'cd-r-peer', 'cd-r-remote'];
+    const out = {};
+    ids.forEach(i => { out[i] = (document.getElementById(i)?.textContent || '').trim(); });
+    return out;
+  });
+  const cdUnread = Object.entries(cdCells).filter(([, v]) => v === '' || v === '—');
+  record('coder gate panel renders every gate, not just the first refusal',
+         cdApi.status !== 200 || cdUnread.length === 0,
+         cdApi.status !== 200 ? `status ${cdApi.status}, nothing to render`
+                              : `unread: ${cdUnread.map(e => e[0]).join(', ') || 'none'}`);
+
+  // A refusal is a reading. If the API said no, the page must SAY which gate said no --
+  // an empty tree with no explanation is the failure mode this panel exists to prevent.
+  if (cdApi.status === 200 && !cdApi.ok) {
+    const shown = await page.evaluate(() => {
+      const el = document.getElementById('cd-refuse');
+      return el && !el.hidden && el.getBoundingClientRect().height > 0
+        && (document.getElementById('cd-refuse-p')?.textContent || '').trim().length > 0;
+    });
+    record('coder renders a refusal as a reading rather than an empty tree', shown,
+           'surface refused; panel shown');
+  }
+
+  // The assertion this page exists for, and it only means anything when the surface answers.
+  if (cdApi.ok) {
+    await page.waitForFunction(() => document.querySelectorAll('#cd-list .cd-row').length > 0,
+                               { timeout: 15000 });
+    // Walk into training/ as a visitor does -- by clicking it, not by calling the API.
+    const clicked = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('#cd-list button.cd-name')]
+        .find(x => x.textContent.trim() === 'training/');
+      if (b) { b.click(); return true; }
+      return false;
+    });
+    record('coder tree navigates into a directory', clicked, 'clicked training/');
+
+    if (clicked) {
+      await page.waitForFunction(
+        () => (document.getElementById('cd-path')?.textContent || '').trim() === 'training',
+        { timeout: 15000 });
+
+      // A denied entry is LISTED and FLAGGED, never omitted. coder.list_dir's docstring
+      // commits to it -- "the operator should be able to see that training/corpus.jsonl
+      // exists and is refused, not be told it is not there" -- and a tree that quietly
+      // dropped it would be showing something that is not what is on the disk, which is the
+      // decorative dishonesty this whole site argues against.
+      //
+      // Visibility is measured, not inferred from the markup: a flag present in the DOM and
+      // collapsed to zero height is exactly as useless to an operator as no flag at all.
+      const deny = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('#cd-list .cd-row')];
+        const row = rows.find(r => (r.querySelector('.cd-name')?.textContent || '')
+                                     .trim().startsWith('corpus.jsonl'));
+        if (!row) return { found: false, rows: rows.length };
+        const flag = row.querySelector('.cd-deny');
+        const fr = flag && flag.getBoundingClientRect();
+        return {
+          found: true,
+          flagged: row.classList.contains('is-denied'),
+          visible: !!(fr && fr.width > 0 && fr.height > 0),
+          reason: (flag?.textContent || '').trim(),
+          // A refusal an operator cannot read is a refusal they cannot act on, so the
+          // reason must not be trimmed. Every ellipsis rule was removed from this site
+          // deliberately and this is the page where re-adding one would cost the most.
+          clipped: flag ? getComputedStyle(flag).textOverflow === 'ellipsis' : false,
+          openable: !!row.querySelector('button.cd-name'),
+        };
+      });
+      record('coder shows the denied corpus rather than hiding it',
+             deny.found && deny.flagged && deny.visible && !deny.clipped,
+             deny.found ? `${deny.reason.slice(0, 60)}` : `not listed among ${deny.rows} rows`);
+      // The trade-secret boundary, asserted from the page rather than from the module: a
+      // denied entry is shown, and offers no way to open it.
+      record('the denied corpus offers no control that would read it',
+             deny.found && deny.openable === false,
+             deny.found ? `openable=${deny.openable}` : 'not listed');
+
+      // And the module refuses it even when asked directly, which is what makes the absent
+      // button a second lock rather than the only one.
+      const direct = await page.evaluate(async () => {
+        const r = await fetch('/local/coder/file?path=' +
+                              encodeURIComponent('training/corpus.jsonl'), { cache: 'no-store' });
+        const d = await r.json().catch(() => null);
+        return { ok: d && d.ok === true, error: (d && d.error) || '' };
+      });
+      record('the corpus is refused by the API, not only by the page',
+             direct.ok === false, direct.error.slice(0, 60));
+    }
+  }
+
+  // No ellipsis anywhere on this page, at any width. `.claude/CLAUDE.md` bars it sitewide --
+  // the rack was cutting "built on Qwen2.5-7B-Instruct" down to "...7B-Ins...", and that
+  // attribution is an Apache-2.0 licence condition -- and it matters more here than anywhere
+  // else, because what this page renders IS paths and refusal reasons.
+  const cdClip = await page.evaluate(() =>
+    [...document.querySelectorAll('body *')]
+      .filter(e => getComputedStyle(e).textOverflow === 'ellipsis').length);
+  record('coder page trims no content with an ellipsis', cdClip === 0, `${cdClip} elements`);
+
+  for (const w of [1440, 1301, 390]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(120);
+    const over = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    record(`coder page does not overflow sideways at ${w}px`, over <= 0, `over=${over}px`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   // ---- calc ----------------------------------------------------------------
   await page.goto(BASE + '/ravencalc.html', { waitUntil: 'networkidle' });
   const calcBox = await page.$('input[type=text], textarea');

@@ -136,6 +136,26 @@ class ReferenceCheckTests(unittest.TestCase):
         the exemption was added, which is the discipline `deploy.sh`'s comment asks for."""
         self.assertTrue(_is_route("livestack/live"))
 
+    def test_both_spellings_of_the_coder_page_are_not_reported_missing(self):
+        """#87's page, and the first route in this repo whose FIRST segment carries a hyphen.
+
+        `/live-stack/coder` is the address Garrett typed and `/livestack/coder` is the one
+        every other application on the rack uses; api.py serves the same page at both and
+        redirects neither. Neither is a file, so `is_route()` has to know both or the next
+        deploy exits non-zero for a page answering 200 -- which is what this file records
+        happening to studio, exp and livestack/live in turn.
+
+        The hyphen is the part worth asserting rather than assuming: `_extensionless_page_routes`
+        matches `[A-Za-z][\w/-]*`, and `\w` does not include `-`. It is in the class
+        explicitly, and this is the first path that depends on it being there."""
+        self.assertTrue(_is_route("live-stack/coder"))
+        self.assertTrue(_is_route("livestack/coder"))
+        routes = _extensionless_page_routes()
+        self.assertIn("live-stack/coder", routes,
+                      "api.py serves /live-stack/coder but the parser did not find it -- a "
+                      "hyphen in the first path segment is no longer matched")
+        self.assertIn("livestack/coder", routes)
+
     def test_every_linked_api_route_is_known_to_the_deploy_check(self):
         """A new surface that api.py serves and a page links must not fail the next deploy."""
         unknown = sorted(r for r in _linked_extensionless() & _extensionless_page_routes()
@@ -151,6 +171,7 @@ class ReferenceCheckTests(unittest.TestCase):
         `livestack` is the documented asymmetry: the route is exempt, the file is not."""
         for ref in ("studio.html", "exp.html", "studio.js", "studio-64.png",
                     "livestack.html", "live.html", "live.css", "livestack/live.html",
+                    "coder.html", "coder.js", "coder.css", "livestack/coder.html",
                     "nonesuch"):
             with self.subTest(ref=ref):
                 self.assertFalse(_is_route(ref), f"{ref} is exempted; a missing one would pass")
