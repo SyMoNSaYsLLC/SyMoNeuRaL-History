@@ -1,4 +1,9 @@
-/* SyMoNeuRaL Coder — the browser surface at /live-stack/coder.
+/* SyMoNeuRaL Coder — the browser surface at /livestack/coder.
+ *
+ * Also answers at /live-stack/coder, which is the spelling R-160 asked for and led until
+ * 2026-08-22. Both still serve and neither redirects; the unhyphenated one is now the only
+ * form this site publishes. The old one is kept because this repo's own documents still
+ * name it, not because anyone outside this machine has it -- the surface is local-only.
  *
  * EVERY selector in here is prefixed `cd-`, and that is not a style preference. Three separate
  * bugs in this repo came from generic class names colliding across components: `.bar` collapsed

@@ -264,6 +264,53 @@ class ReferenceCheckTests(unittest.TestCase):
                 self.assertTrue(_is_route(f"live-stack/{name}"),
                                 f"deploy.sh reports live-stack/{name} as a MISSING file")
 
+    def test_nothing_published_carries_the_hyphenated_spelling(self):
+        """2026-08-22: one address in front of a person, two answering.
+
+        Garrett: *"we need to get rid of live-stack i believe its only livestack"*. Taken
+        as a publishing decision, not a routing one.
+
+        NOT for the bookmark reason, and that correction is his: *"anyone holding that URL
+        loses it -- the one failure CLAUDE.md says the site can't afford -- that is not
+        true"*. It is not. `/live-stack/coder` landed 2026-08-20 on a surface whose reads
+        are `/local/coder/*`, refused off-box by peer address, so there is no public
+        audience holding it. `/tuner.html` and `/image.html` are what that argument is
+        about; borrowing it here inflated a cheap decision into a principled one.
+
+        The real reason the routes stay is smaller and checkable: this repo's own documents
+        still name that spelling -- R-160, `apps/coder/SMOKE-surface.md`, #81's title -- so
+        somebody reading them will type it, and answering costs one path in a matcher. If
+        those documents are ever rewritten, deleting the routes becomes free and this test
+        is the only thing that has to change with them.
+
+        So the routes stay and `test_every_application_answers_at_both_spellings` still
+        requires them; what is asserted HERE is that no page, no rack tile and no printed
+        instruction shows it.
+
+        This is the assertion that stops the decision rotting. Without it the hyphen comes
+        back the first time somebody copies an old href, and nothing anywhere goes red --
+        the page would work perfectly at an address the site said it would stop using.
+
+        `site/*.html` is checked as well as the rack, because the rack tile is generated
+        from `api.py` while the static pages are not, and only one of those two is covered
+        by reading `api.py`."""
+        rack_hrefs = re.findall(r'href="(/live-stack/[\w-]+)"', API.read_text())
+        self.assertEqual(rack_hrefs, [], (
+            f"api.py publishes {rack_hrefs} on the rack. The route may keep answering, but "
+            "the tile must link /livestack/<name> -- that is the whole of the 2026-08-22 "
+            "decision."))
+
+        site = REPO / "site"
+        offenders = sorted(
+            f"{p.name}:{m}"
+            for p in list(site.glob("*.html")) + list(site.glob("*.js"))
+            for m in re.findall(r'["\'](?:https?://[^"\']*)?(/live-stack/[\w-]+)', p.read_text())
+        )
+        self.assertEqual(offenders, [], (
+            f"these published files hand out the hyphenated spelling: {offenders}. It still "
+            "answers, so nothing will look broken -- which is exactly why this is a test and "
+            "not a convention."))
+
     def test_every_linked_api_route_is_known_to_the_deploy_check(self):
         """A new surface that api.py serves and a page links must not fail the next deploy."""
         unknown = sorted(r for r in _linked_extensionless() & _extensionless_page_routes()

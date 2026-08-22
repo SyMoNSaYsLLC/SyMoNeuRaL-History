@@ -1115,7 +1115,14 @@ try {
                     : `animation=${m.name}, ${m.shown} lane shown, overflow-x=${m.scrollable}`);
   }
 
-  // ---- coder: the developer surface at /live-stack/coder --------------------
+  // ---- coder: the developer surface at /livestack/coder ---------------------
+  //
+  // BOTH spellings are still asserted and both must answer 200. Since 2026-08-22 only
+  // `/livestack/coder` is published -- the rack tile and the page's own printed
+  // instruction use it -- while `/live-stack/coder` keeps answering because R-160 and
+  // apps/coder/SMOKE-surface.md still name it, so a reader of those will type it. Not
+  // because a bookmark would break: this surface is local-only and has no public
+  // audience. Publishing changed; routing did not.
   //
   // Placed BEFORE the image block on purpose. That one takes the card for a real render and
   // can sit for four minutes; a failure here would otherwise be reported long after the

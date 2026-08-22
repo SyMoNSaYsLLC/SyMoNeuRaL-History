@@ -143,7 +143,10 @@
                'machine. From the public site the tree, the files and the journal are all ' +
                'unreachable, and that is the intended behaviour rather than an outage.',
                'To use it, open it on the machine itself at ' +
-               'http://127.0.0.1:8800/live-stack/coder');
+               // /livestack/coder, not /live-stack/coder. Both are served and neither
+               // redirects, but 2026-08-22 made the unhyphenated form the ONLY one this
+               // site publishes -- one spelling in front of a person, two answering.
+               'http://127.0.0.1:8800/livestack/coder');
         return;
       }
 

@@ -2068,8 +2068,18 @@ def build_status() -> Status:
             # such route and there must not be one. The page reads from `/local/coder/*`,
             # which Caddy does not delegate and `_require_local` refuses off-box anyway, and
             # that mount is read-only -- see its banner further down this file.
+            # `/livestack/coder`, not `/live-stack/coder`. The hyphenated form is R-160's
+            # spelling and led until 2026-08-22, when Garrett asked for one published
+            # address: *"we need to get rid of live-stack i believe its only livestack"*.
+            # Both routes still answer and neither redirects -- what changed is which one
+            # this site puts in front of a person. NOT because a bookmark would break: this
+            # surface reads from `/local/coder/*`, which is refused off-box, so there is no
+            # public audience holding the old address, and he said so directly. The routes
+            # stay because R-160, `apps/coder/SMOKE-surface.md` and #81's title still name
+            # that spelling, so a reader of those will type it.
+            # `apps/test_deploy_routes.py` asserts nothing published carries the hyphen.
             Unit(id="coder", label="SyMoNeuRaL Coder", slot="1U",
-                 state=coder_state, bus="cpu", href="/live-stack/coder",
+                 state=coder_state, bus="cpu", href="/livestack/coder",
                  spec="local workspace agent · reads over /local, never /api",
                  detail=coder_detail),
             # Designed, not deployed: no contract, no wallet, no daemon, no key material.
