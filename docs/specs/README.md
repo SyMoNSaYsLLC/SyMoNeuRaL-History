@@ -27,6 +27,8 @@ indexing them here; treat an unlisted file as unreviewed by this README rather t
 | `symon-ml-review.md` | Review of the SyMoN_ML blueprint and the TRON licensing PoC | review; nothing implemented |
 | `miner-preemption.md` | The GPU miner yield protocol — why a live miner is never evicted, and the mechanism that would change it | **specified, deliberately not implemented — read its §7 first** |
 | `voice-spec.md` | SyMoNeuRaL Voice (§5 item 12) — the ASR half **measured** on the CPU build already on disk, which settles the governor question; TTS unmeasured and says why | proposed, nothing built |
+| `symoneural-studio-upgrade-scope.md` | Studio as a ComfyUI-shaped surface that SyMoNeuRaL owns: product modes, the four execution targets, the four compile targets, badges, security boundaries. Task #103. Its §2 answers the recorded reason the first canvas was deleted; §3.2 records that `/studio/editor/*` publicly proxies ComfyUI's own frontend **today**; §3.4-3.5 correct the packet's SDXL examples against the FLUX baseline actually on this disk | proposed direction-lock, nothing implemented |
+| `symoneural-studio-node-system.md` | The data half of #103 — node registry fields, the canonical graph schema, validator, target resolver, compiler, and the five-node MVP | implementation plan; **not** authorization to implement |
 
 ## What is worth acting on, and what was verified independently
 

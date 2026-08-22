@@ -670,3 +670,108 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: in a transcript exactly as the old one got there. The only thing needing checking
         note: is whether the surface is up, and that is available unauthenticated:
         note: `/api/studio/tools` answers 401 when Studio is on and 503 when it is off.
+
+◻ #103 — SyMoNeuRaL Studio Upgrade / Graph Surface: a ComfyUI-shaped Studio that we own
+        owner: coder
+        2026-08-22. "SyMoNeuRaL Studio should look and feel like ComfyUI ... But SyMoNeuRaL
+        Studio must not simply expose raw ComfyUI as the product." The direction is captured in
+        `docs/specs/symoneural-studio-upgrade-scope.md` (product, targets, boundaries) and
+        `docs/specs/symoneural-studio-node-system.md` (registry, schema, validator, compiler),
+        with contracts in `docs/ops/MODEL-REGISTRY.md` and `docs/ops/HARDWARE-PROFILES.md`.
+        Read the scope spec before writing anything, and its §2 before a single line of canvas.
+
+        Normalized from the scope packet at
+        `review/symoneural-studio-upgrade-scope-2026-08-22/`, which is untracked and stays
+        that way (`.gitignore:166`). Nothing under `review/`, no transcript history, no
+        archive and no weights entered this commit.
+
+        The product rule: ComfyUI look yes, ComfyUI workflow backend yes, raw public ComfyUI
+        admin surface no. Ours: graph UI, workflow schema, model registry, hardware detector,
+        queue/accounts/credits. ComfyUI is an optional runner; Diffusers, vLLM, local and
+        cloud runners are allowed later.
+
+        **§2 is the gate on this task, not a preamble.** A node canvas for this page was
+        already built and deleted -- ~1000 lines, snap-to-grid, SVG wires, port-type checking
+        -- and the recorded reason (`tools/build_studio.py:13-22`, called "the largest single
+        decision in this app") is still true: a replica of ComfyUI's editor inherits every
+        upstream node change as a bug. The only thing that justifies rebuilding is that our
+        schema has compile targets upstream's format structurally cannot reach. Any node type
+        that only ever compiles to Comfy is a node ComfyUI's own editor should have drawn.
+
+        Not starting from zero. `apps/studio/graph.py` (308 lines) is already the compile
+        target in one-target form, with three live callers and no page; freezing its document
+        format is the first deliverable and is real work. `workflows.py` is the seed of the
+        templates, `comfy.py` is the runner bridge, and `plugins/reinforce/registry.py` is the
+        model-registry concept already implemented. The badge engine EXTENDS its `plan_fit()`
+        to diffusion weights -- that function is LLM-only today (`GGUF_DIR = MODELS_DIR/"llm"`,
+        `arch_from_config` raises for anything that is not a causal LM), so no check and no
+        page may imply the diffusion arithmetic already exists.
+
+        Two product modes, scope §4, and they share one execution path: Simple mode keeps the
+        original single-input principle (one text box; SyMon builds the graph behind it), Graph
+        mode is the Comfy-like canvas, and generated-graph mode is the bridge -- prompt to
+        SyMon-built graph to editable graph to validated job to result.
+
+        Four execution targets, scope §5, a field on every job rather than four systems: CLOUD
+        (our GPU; the customer never touches raw ComfyUI, CUDA, filesystem or card; allowlist,
+        admission check, gallery, credits hook later), LOCAL_CUSTOMER (unknown hardware -- the
+        browser can only ever be **approximate**, a local helper is what makes a reading
+        **measured**, and conflating the two in the UI is the labelling failure this repo
+        already bans), LOCAL_OWNER_NVIDIA (profile `rtx5070ti-16gb`, known not guessed, same
+        queue contract, no silent CPU fallback, and NOT a raw GPU endpoint), and AUTO, which is
+        resolved once and recorded on the job rather than being a fourth place to run.
+
+        Scope §6 is one resolver: graph + requested target + detected profile + registry
+        metadata in, and status / chosen backend / badges / **reason** out. §7 fixes the
+        SyMoNeuRaL graph as the canonical save format and names the four compile targets --
+        Comfy API JSON, Diffusers job, vLLM job, local hardware job -- with a backend payload
+        never being the save format. §8 is **ten** badges, superseding the seven named earlier
+        the same day (`NEEDS_VRAM`, `NEEDS_CUDA`, `NEEDS_QUEUE` were added). §9 names the ten
+        planned `/api/studio/*` routes and the docs/API hyperlink contract.
+
+        Model families, scope §3.5 -- the correction that matters most before implementation.
+        The node system is **family-aware**, and SDXL/FLUX/Diffusers/Comfy/vLLM are all
+        supportable later, but the baseline on this box is the FLUX/Schnell-style stack in
+        `backend/models/image/` (unet q4_k, t5 q8_0, clip, vae). `ComfyUI/models/checkpoints/`
+        is **absent** and there is no SDXL here, so the first spec requires neither, implies
+        neither, and downloads nothing. The packet's illustrations said `sdxl-base`,
+        `steps: 25`, `cfg: 7`; all three are corrected in the node-system spec. For flux, from
+        `workflows.py:31-35, 71`: cfg is 1.0, the negative prompt is inert at cfg 1.0, raising
+        cfg degrades rather than sharpens, and guidance is embedded conditioning. A `negative`
+        port on a flux sampler is therefore a control that cannot reach the engine, which is
+        barred by the same rule #79 turns on.
+
+        The smallest useful first increment, and it is in scope §9: Studio's routers are bare
+        `APIRouter()` twice (`routes.py:63-64`) with no `tags=` and no `operation_id`, so there
+        is no Studio group in Swagger and nothing for `api_href` to point at. `/docs` itself is
+        real and public already -- hand-registered at `api.py:1808`, which is why the
+        `FastAPI(...)` call sets `docs_url=None`.
+
+        Ordering that is not negotiable: the raw editor at `/studio/editor/*` is proxied to
+        the public internet by `ops/Caddyfile:150` and gated only by the operator token, whose
+        own module says that is "not a cleared posture". So #88 (take the token off Studio)
+        comes AFTER the raw editor is gone, or removing the token publishes a ComfyUI admin
+        surface. #89 is the plugin host; this surface is one plugin inside it, not a rival.
+
+        The MVP is five nodes -- `image.model_loader`, `image.prompt`, `image.sampler`,
+        `image.vae_decode`, `image.output` -- bound to the GGUF loaders `workflows.py` already
+        enumerates (`UnetLoaderGGUF`, `DualCLIPLoaderGGUF`, `VAELoader`), not
+        `CheckpointLoaderSimple`, which has nothing to load here. Not authorised by this
+        commit.
+
+        No implementation beyond the spec until Garrett authorises it explicitly -- said four
+        times on 2026-08-22. The checks below are therefore expected to read low: three of ten
+        pass at 35704e74, and that is the honest reading of a task whose direction is captured
+        and whose build has not started. The three that pass are the direction-lock documents
+        themselves; every other check needs code that runs.
+
+        check: exists docs/specs/symoneural-studio-upgrade-scope.md
+        check: exists docs/specs/symoneural-studio-node-system.md
+        check: exists docs/ops/HARDWARE-PROFILES.md
+        check: grep StudioGraphSchemaFrozenTests -- backend/apps/studio/test_studio.py
+        check: grep StudioGraphCompileTargetTests -- backend/apps/studio/test_studio.py
+        check: grep StudioTargetResolverTests -- backend/apps/studio/test_studio.py
+        check: grep StudioNodeContractDocsLinkTests -- backend/apps/studio/test_studio.py
+        check: grep StudioEditorNotPubliclyExposedTests -- backend/apps/studio/test_studio.py
+        check: grep StudioHardwareBadgeTests -- backend/apps/studio/test_studio.py
+        check: exists backend/apps/studio/SMOKE-graph-surface.md
