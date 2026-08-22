@@ -1,7 +1,7 @@
 # SyMoNeuRaL OpenAI 20B — the LLM candidate, and what has to be true before it runs
 
-**Opened 2026-08-22.** **Weights downloaded 2026-08-22 on Garrett's explicit authorization —
-see §3a. Nothing converted. Nothing activated. Qwen unchanged and not deleted. No deploy.**
+**Opened 2026-08-22.** **Weights downloaded and converted 2026-08-22 on Garrett's explicit
+authorization — see §3a, §3b. Nothing smoked. Nothing activated. Qwen unchanged and not deleted. No deploy.**
 
 | | |
 |---|---|
@@ -11,7 +11,8 @@ see §3a. Nothing converted. Nothing activated. Qwen unchanged and not deleted. 
 | upstream | **`openai/gpt-oss-20b`** |
 | status | **AUDIT / CANDIDATE** |
 | downloaded | **yes — 2026-08-22, 32 GiB staged, see §3a** |
-| converted | **no — this is the next gated step** |
+| converted | **yes — 12.85 GiB GGUF, MXFP4 preserved, see §3b** |
+| smoked | **no — awaiting RUN GPT-OSS SMOKE** |
 | active | **no** |
 
 ## 0. Scope, stated first because it is the thing most likely to be over-read
@@ -37,10 +38,12 @@ see §3a. Nothing converted. Nothing activated. Qwen unchanged and not deleted. 
 **Qwen remains active and is not deleted.** It becomes `rollback` **only** after a smoke record
 exists and Garrett approves activation — two conditions, not one.
 
-## 2. The runtime gate — ANSWERED 2026-08-22. Verdict: **NEEDS CONVERSION**
+## 2. The runtime gate — ANSWERED 2026-08-22. Verdict was **NEEDS CONVERSION**; now **DONE**
 
-**Everything required is present in this tree. A conversion step is required because upstream
-ships safetensors and the engine consumes GGUF.** That is the whole of the verdict.
+**Everything required is present in this tree. A conversion step was required because upstream
+ships safetensors and the engine consumes GGUF.** That conversion **ran on 2026-08-22 and
+succeeded** — §3b. This section is kept as the pre-conversion analysis it was, because it is what
+the decision was made on; the rows below describe **upstream**, not this disk.
 
 ### What upstream actually ships — read from the HF API, not from memory
 
@@ -48,7 +51,7 @@ ships safetensors and the engine consumes GGUF.** That is the whole of the verdi
 |---|---|
 | `original/model.safetensors` | **13,761,300,984 B = 12.81 GiB**, single file |
 | top-level shards | `model-0000{0,1,2}-of-00002.safetensors` — **13,761,316,904 B = 12.81 GiB** total |
-| GGUF in the repo | **none** |
+| GGUF in the **upstream repo** | **none** — which is why a conversion step existed at all |
 | parameters | 21,511,953,984 |
 | quantisation | **MXFP4**, with attention, router and embedding/output head **not** converted |
 | licence | **Apache-2.0** |
@@ -91,16 +94,18 @@ them, and it is supported in-tree.
 
 **Disk — re-measured 2026-08-22 after the download, because the pre-download projection was
 already wrong.** The projection said ~26 GiB peak on the assumption of one 12.81 GiB download.
-**Two trees were fetched** (§3a), so staging is **32 GiB** before any GGUF exists:
+**Two trees were fetched** (§3a) and the GGUF has since been written (§3b), so the real total is
+**~45 GiB**, not 26 — and all four items below are **retained on Garrett's instruction** until
+live smoke passes and the activation decision is made:
 
 | | |
 |---|---|
 | `original/` (unconvertible, retained) | 13 GiB |
 | `hf/` (convertible) | 19 GiB |
 | dead `.incomplete` leftovers, reclaimable | 6,574,559,947 B |
-| GGUF still to come | ~13 GiB if MXFP4 is preserved |
-| **peak, both trees kept** | **~45 GiB** |
-| available on `/home`, which holds the models | **793 GB** |
+| **GGUF, written 2026-08-22** | **12.85 GiB** (13,792,638,592 B) |
+| **total staged now** | **~45 GiB** — all four retained on instruction |
+| available on `/home` before → after conversion | **793 GB → 780 GB** |
 
 **Disk is still not a constraint**, but note the mount: `df /` reports **277 GB** and is the
 *wrong* filesystem. `backend/models` lives on `/home` (`/dev/nvme0n1p5`, 1.4T). A capacity check
@@ -274,6 +279,64 @@ bf16 in this fork, the conversion *succeeds*, exits 0, and writes an inflated mo
 stop a 40 GiB write, and the failure would surface as a smoke OOM — which reads as *"the candidate
 is incompatible"* rather than *"the file is three times the size it should be."* That is the exact
 misdiagnosis the `-c 8192` note in §2a exists to prevent, arriving by a different route.
+
+## 3b. Conversion — RUN 2026-08-22. **MXFP4 preserved.**
+
+```bash
+training/.venv/bin/python3 engines/symoneural-llm/convert_hf_to_gguf.py \
+  backend/models/staging/openai-gpt-oss-20b/hf \
+  --outfile backend/models/staging/openai-gpt-oss-20b/symon-openai-20b.gguf \
+  --outtype auto
+```
+
+| | |
+|---|---|
+| output | `backend/models/staging/openai-gpt-oss-20b/symon-openai-20b.gguf` |
+| **bytes** | **13,792,638,592 = 12.85 GiB** |
+| tensors | **459** — matching the safetensors index exactly |
+| architecture | **`gpt-oss`** — the name `llama-arch.cpp:121` registers |
+| **file type** | **38 = `MOSTLY_MXFP4_MOE`** |
+| tensor types | **72 MXFP4**, 98 BF16, 289 F32 |
+| geometry | 24 blocks, 32 experts, 4 used, 131072 context |
+| tokenizer | gpt2 BPE + Harmony chat template, both embedded |
+| disk | 793 GB → **780 GB** free |
+| write rate | ~446 MB/s, 31 s |
+
+### The size gate passed, and here is why `--outtype auto` was safe after all
+
+**`--help` describes `auto` as "the highest-fidelity 16-bit float type", which reads exactly like
+the inflation risk.** It is not, and the reason is worth recording because the flag name actively
+misleads here:
+
+- `conversion/gpt_oss.py:18-21` — **`dequant_model()` returns early when `_is_mxfp4`.**
+- `repack_mxfp4()` adds tensors with **`raw_dtype=GGMLQuantizationType.MXFP4`**, which bypasses
+  the outtype quantiser entirely.
+
+So `--outtype` only governs the tensors that were **never** MXFP4 — attention, router, embeddings,
+which upstream ships as BF16 and which appear in the output as 98 BF16 tensors. **The 72 quantised
+expert tensors are untouched by it.**
+
+**Three independent confirmations, not one:**
+
+1. **The converter's own `--dry-run`** printed `n_tensors = 459, total_size = 13.8G` *before writing
+   a byte*. That check cost seconds and would have caught a 40 GiB plan for free — it is the right
+   first move for any future candidate.
+2. **Zero `is not in MXFP4` warnings** in the log, against **72 `Repacked ... MXFP4` lines**.
+3. **The written file parsed back** with `gguf-py`'s own reader: `file_type 38`, 72 MXFP4 tensors.
+
+> **Size alone would not have been proof.** 12.85 GiB is consistent with MXFP4 *and* with several
+> other outcomes; `file_type 38` plus 72 MXFP4 tensors is what actually settles it. The size gate
+> was the cheap screen, not the verdict.
+
+### Isolated smoke — dry run now passes
+
+`--smoke-candidate symon-openai-20b --dry-run` was **exit 5, `FAIL no .gguf`** before conversion and
+is now **exit 0**, finding both the candidate and engine `build 296, commit 2246ab7`.
+
+**The VRAM question is still open and only a live run answers it.** 12.85 GiB of weights = 13,160
+MiB against a **16,303 MiB** card with ~972 MiB used at idle — roughly **2,200 MiB** left for KV and
+compute buffers at `-c 8192 -np 1`. Plausible, and **not measured.** That is the whole reason
+`SMOKE-PASSED.txt` is gate 2.
 
 ## 4. The six activation gates
 
