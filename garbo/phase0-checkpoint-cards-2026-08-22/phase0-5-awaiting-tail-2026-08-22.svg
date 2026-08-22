@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="980" viewBox="0 0 1680 980" role="img" aria-labelledby="title desc">
+  <title id="title">SyMoNeuRaL Phase 0.5 — Awaiting Re-measure Tail</title>
+  <desc id="desc">The Phase 0.5 capture block is accepted. No command drift. Pending input is the Phase 0.5 tail from /tmp/phase0-5-remeasure.log.</desc>
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .panel { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 18; }
+      .greenPanel { fill: #112418; stroke: #3fb950; stroke-width: 3; rx: 18; }
+      .amberPanel { fill: #2b2111; stroke: #d29922; stroke-width: 3; rx: 18; }
+      .redPanel { fill: #261b1b; stroke: #f85149; stroke-width: 2; rx: 18; }
+      .bluePanel { fill: #101d2b; stroke: #58a6ff; stroke-width: 2; rx: 18; }
+      .title { fill: #f0f6fc; font: 700 36px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .subtitle { fill: #8b949e; font: 500 18px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .heading { fill: #f0f6fc; font: 700 24px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .body { fill: #c9d1d9; font: 500 17px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .muted { fill: #8b949e; font: 500 15px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .green { fill: #3fb950; font: 700 16px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .yellow { fill: #d29922; font: 700 16px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .red { fill: #f85149; font: 700 16px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .blue { fill: #58a6ff; font: 700 16px system-ui, -apple-system, Segoe UI, sans-serif; }
+      .mono { fill: #c9d1d9; font: 600 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .monoSmall { fill: #c9d1d9; font: 600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .line { stroke: #30363d; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #8b949e; stroke-width: 2; stroke-dasharray: 8 8; fill: none; marker-end: url(#arrow); }
+      .pillGreen { fill: #14301d; stroke: #3fb950; stroke-width: 1; rx: 12; }
+      .pillAmber { fill: #332a16; stroke: #d29922; stroke-width: 1; rx: 12; }
+      .pillBlue { fill: #10243a; stroke: #58a6ff; stroke-width: 1; rx: 12; }
+      .pillRed { fill: #351b1b; stroke: #f85149; stroke-width: 1; rx: 12; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#30363d"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1680" height="980"/>
+
+  <text class="title" x="60" y="68">SyMoNeuRaL Phase 0.5 — Awaiting Tail</text>
+  <text class="subtitle" x="60" y="100">Snapshot: 2026-08-22 09:53 EDT · capture block accepted · no command drift</text>
+
+  <rect class="greenPanel" x="60" y="130" width="1560" height="135"/>
+  <text class="heading" x="90" y="172">Completed before this checkpoint</text>
+  <text class="body" x="90" y="206">Gateway fold verification, A/B/C commits, and Commit A message repair are green.</text>
+  <text class="mono" x="90" y="236">Final repaired chain: A c779e2cb · B 294564e9 · C/HEAD 242a688d</text>
+  <rect class="pillGreen" x="1380" y="156" width="180" height="38"/>
+  <text class="green" x="1408" y="181">REPAIR CLOSED</text>
+
+  <rect class="amberPanel" x="60" y="300" width="1560" height="150"/>
+  <text class="heading" x="90" y="342">Current pending input</text>
+  <text class="body" x="90" y="376">Run the accepted Phase 0.5 capture block and paste the output under the tail marker.</text>
+  <text class="mono" x="90" y="410">/tmp/phase0-5-remeasure.log · marker: THE 0.5 TAIL — paste from here down</text>
+  <rect class="pillAmber" x="1330" y="327" width="230" height="38"/>
+  <text class="yellow" x="1355" y="352">PENDING 0.5 TAIL</text>
+
+  <path class="line" d="M840 450 L840 490"/>
+
+  <rect class="bluePanel" x="60" y="490" width="500" height="245"/>
+  <text class="heading" x="90" y="530">Accepted command rules</text>
+  <text class="blue" x="90" y="563">NO DRIFT</text>
+  <text class="monoSmall" x="90" y="596">cd /home/google/Symoneural</text>
+  <text class="monoSmall" x="90" y="620">cd backend before backend pytest</text>
+  <text class="monoSmall" x="90" y="644">ignore reinforce plugin tests</text>
+  <text class="monoSmall" x="90" y="668">ignore backend/apps/remix tests</text>
+  <text class="monoSmall" x="90" y="692">run apps/remix separately</text>
+  <text class="muted" x="90" y="720">collect-only is the abort-check.</text>
+
+  <rect class="bluePanel" x="590" y="490" width="500" height="245"/>
+  <text class="heading" x="620" y="530">0.5 classification keys</text>
+  <text class="blue" x="620" y="563">GREEN ONLY IF PRESENT</text>
+  <text class="monoSmall" x="620" y="596">HEAD = 242a688d</text>
+  <text class="monoSmall" x="620" y="620">backend apps pytest passed</text>
+  <text class="monoSmall" x="620" y="644">collect-only count printed</text>
+  <text class="monoSmall" x="620" y="668">remix pytest passed</text>
+  <text class="monoSmall" x="620" y="692">real times printed</text>
+  <text class="monoSmall" x="620" y="716">residue unchanged · 0 failed</text>
+
+  <rect class="panel" x="1120" y="490" width="500" height="245"/>
+  <text class="heading" x="1150" y="530">Green path after tail</text>
+  <text class="body" x="1150" y="563">Write CLAUDE.md ladder entry.</text>
+  <text class="monoSmall" x="1150" y="596">stamp final HEAD SHA</text>
+  <text class="monoSmall" x="1150" y="620">stamp backend apps count</text>
+  <text class="monoSmall" x="1150" y="644">stamp collect-only count</text>
+  <text class="monoSmall" x="1150" y="668">stamp remix count</text>
+  <text class="monoSmall" x="1150" y="692">stamp real timings</text>
+  <text class="muted" x="1150" y="720">Then Phase 0.6 hygiene.</text>
+
+  <path class="dash" d="M840 735 L840 775"/>
+
+  <rect class="redPanel" x="60" y="775" width="1560" height="115"/>
+  <text class="heading" x="90" y="815">Hold boundaries</text>
+  <text class="red" x="90" y="848">DO NOT START:</text>
+  <text class="body" x="215" y="848">deploy · Phase 1 · docs/specs commit · zip movement · safety-branch deletion</text>
+  <text class="muted" x="215" y="876">Those wait for 0.5 green and Phase 0.6 hygiene.</text>
+
+  <rect class="panel" x="60" y="915" width="1560" height="42"/>
+  <text class="yellow" x="90" y="942">CURRENT STATE:</text>
+  <text class="body" x="220" y="942">holding for Phase 0.5 re-measure tail only</text>
+</svg>
