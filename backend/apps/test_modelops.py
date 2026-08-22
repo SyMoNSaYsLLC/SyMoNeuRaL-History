@@ -397,14 +397,51 @@ class StagingScriptRefusalTests(unittest.TestCase):
                       "it left the file alone but did not say so; a silent no-op is "
                       "indistinguishable from a successful rewrite")
 
+    def test_the_refusal_path_still_restores_a_missing_rollback_note(self):
+        """The no-clobber guard returns early, which nearly created a dead end: ROLLBACK.md is
+        activation gate 3, and the only mode that writes it would refuse before reaching the
+        write. So a deleted ROLLBACK.md would fail activation with no way to regenerate it.
+
+        Safe to regenerate because ROLLBACK.md is built from constants -- it records nothing
+        measured or decided, unlike the manifest sitting beside it. That asymmetry is the whole
+        reason one is rewritten here and the other is refused.
+        """
+        staging = ROOT / "backend/models/staging/openai-gpt-oss-20b"
+        roll, manifest = staging / "ROLLBACK.md", staging / "STAGED-MANIFEST.json"
+        if not manifest.is_file():
+            self.skipTest("no staged candidate on this box")
+
+        original = roll.read_bytes() if roll.is_file() else None
+        manifest_before = manifest.read_bytes()
+        try:
+            if roll.is_file():
+                roll.unlink()
+            subprocess.run([str(SCRIPT), "--stage-openai-gpt-oss-20b"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=120)
+            self.assertTrue(roll.is_file(), "gate 3's file was not restored")
+            self.assertEqual(manifest.read_bytes(), manifest_before,
+                             "restoring the rollback note must not touch the manifest")
+        finally:
+            if original is not None:
+                roll.write_bytes(original)
+
     def test_the_manifest_never_asserts_downloaded_as_a_literal(self):
-        """`downloaded` must be derived from the disk, not written as a constant. A literal is
-        true only at the instant of first staging and false-but-authoritative forever after."""
-        src = SCRIPT.read_text(encoding="utf-8")
-        self.assertNotIn('"downloaded": false', src,
-                         "a hardcoded false; read the disk instead")
-        self.assertNotIn('"downloaded": true', src,
-                         "a hardcoded true is worse -- it claims weights that may not be there")
+        """The downloaded flag must be derived from the disk, not written as a constant. A
+        constant is accurate only at the instant of first staging, and authoritative-but-wrong
+        forever after -- which matters because the activation gates read this file.
+
+        Scoped to executable lines, NOT the whole file. Three times in one session my own
+        explanatory prose collided with a test of this kind, and a check that forbids a string
+        from appearing in a *comment* is a trap laid for whoever next tries to document the
+        thing. The teeth are in the emitted JSON; the prose is free to quote it.
+        """
+        code = [ln for ln in SCRIPT.read_text(encoding="utf-8").splitlines()
+                if not ln.lstrip().startswith("#")]
+        emitted = "\n".join(code)
+        for literal in ('"downloaded": false', '"downloaded": true'):
+            with self.subTest(literal=literal):
+                self.assertNotIn(literal, emitted,
+                                 "hardcoded; measure the staging tree instead")
 
     def test_no_mode_deletes_a_weight(self):
         """Structural, because the alternative is running a mode that might delete one. `rm`

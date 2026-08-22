@@ -113,6 +113,35 @@ PLAN
 }
 
 # ---------------------------------------------------------------------------- staging
+# ROLLBACK.md is written from constants only -- nothing here is measured or decided, which
+# is why it is safe to regenerate on a path that refuses to touch the manifest.
+write_rollback_note() {
+  local dir="$1"
+  cat > "$dir/ROLLBACK.md" <<'ROLL'
+# Rollback — SyMoNeuRaL OpenAI 20B candidate
+
+**The rollback is that nothing was removed.** Staging does not touch the active default, so
+the previous model is not "restored" — it never stopped being the one in use.
+
+The active chat default is set in **`backend/api.py`**:
+
+    CHAT_MODEL = MODELS / "llm" / "symon-1.0-7b-q4_k_m.gguf"
+    DRAFT_MODEL = MODELS / "llm" / "symon-1.0-draft-0.5b-q4_k_m.gguf"
+
+## If a promotion has been applied and you want it undone
+
+1. `scripts/modelops/symoneural-modelops-stage.sh --rollback` — restores
+   `backend/api.py` from the `.modelops-backup` written at promotion time.
+2. Restart the API. A file swap is not live until the process re-reads it.
+3. Confirm with `/api/status` that `model` reads the Qwen file again.
+
+## What rollback does NOT do
+
+It does not delete the candidate, and it does not delete the Qwen weights — **no mode of this
+script deletes a weight file.** Disk is cheaper than a model you cannot get back.
+ROLL
+}
+
 # Read the staging directory and say what is there. Every line is a measurement; nothing here
 # is carried forward from a previous run, which is the whole point of it being a function
 # rather than a stored field.
@@ -152,6 +181,14 @@ mode_stage_gpt_oss() {
     warn "  result -- and a regenerated copy would assert the opposite of what is on disk."
     dim  "  To deliberately start over, move the existing file aside first."
     say ""
+    # ROLLBACK.md is regenerated even on the refusal path. It is derived entirely from
+    # constants in this script -- it records nothing that was measured or decided -- so
+    # rewriting it destroys no state, whereas its ABSENCE fails activation gate 3 with no
+    # obvious way back: the only mode that writes it would refuse before reaching the write.
+    if [[ ! -f "$dir/ROLLBACK.md" ]]; then
+      write_rollback_note "$dir"
+      dim  "  ROLLBACK.md was missing -- rewritten (it holds no measured state)."
+    fi
     dim  "  Recording what is actually on disk instead:"
     staged_disk_state "$dir"
     return 0
@@ -192,29 +229,7 @@ mode_stage_gpt_oss() {
 }
 JSON
 
-  cat > "$dir/ROLLBACK.md" <<'ROLL'
-# Rollback — SyMoNeuRaL OpenAI 20B candidate
-
-**The rollback is that nothing was removed.** Staging does not touch the active default, so
-the previous model is not "restored" — it never stopped being the one in use.
-
-The active chat default is set in **`backend/api.py`**:
-
-    CHAT_MODEL = MODELS / "llm" / "symon-1.0-7b-q4_k_m.gguf"
-    DRAFT_MODEL = MODELS / "llm" / "symon-1.0-draft-0.5b-q4_k_m.gguf"
-
-## If a promotion has been applied and you want it undone
-
-1. `scripts/modelops/symoneural-modelops-stage.sh --rollback` — restores
-   `backend/api.py` from the `.modelops-backup` written at promotion time.
-2. Restart the API. A file swap is not live until the process re-reads it.
-3. Confirm with `/api/status` that `model` reads the Qwen file again.
-
-## What rollback does NOT do
-
-It does not delete the candidate, and it does not delete the Qwen weights — **no mode of this
-script deletes a weight file.** Disk is cheaper than a model you cannot get back.
-ROLL
+  write_rollback_note "$dir"
 
   say ""
   dim "  wrote $dir/STAGED-MANIFEST.json"

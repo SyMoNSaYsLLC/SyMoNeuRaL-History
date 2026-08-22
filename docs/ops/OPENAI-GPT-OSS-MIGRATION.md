@@ -89,9 +89,22 @@ them, and it is supported in-tree.
 
 ### Footprints — measured, not projected
 
-**Disk.** 12.81 GiB download + a GGUF output of roughly the same order = **~26 GiB peak** if both
-are kept. **825 GB available** (`df`), so disk is not a constraint. `backend/models` is already
-194 GB.
+**Disk — re-measured 2026-08-22 after the download, because the pre-download projection was
+already wrong.** The projection said ~26 GiB peak on the assumption of one 12.81 GiB download.
+**Two trees were fetched** (§3a), so staging is **32 GiB** before any GGUF exists:
+
+| | |
+|---|---|
+| `original/` (unconvertible, retained) | 13 GiB |
+| `hf/` (convertible) | 19 GiB |
+| dead `.incomplete` leftovers, reclaimable | 6,574,559,947 B |
+| GGUF still to come | ~13 GiB if MXFP4 is preserved |
+| **peak, both trees kept** | **~45 GiB** |
+| available on `/home`, which holds the models | **793 GB** |
+
+**Disk is still not a constraint**, but note the mount: `df /` reports **277 GB** and is the
+*wrong* filesystem. `backend/models` lives on `/home` (`/dev/nvme0n1p5`, 1.4T). A capacity check
+run against `/` would be off by a factor of three in the reassuring direction.
 
 **VRAM — and this is the finding that changes the smoke command.** The card is **16,303 MiB**,
 972 MiB used at idle. The production launch argv is `-c 65536 -cb -np 2`, and the module's own
@@ -216,6 +229,24 @@ The resume wrote into fresh temp files rather than continuing those two, so they
 measured static over a 10 s window, with no writer process alive. **Not deleted**: no mode of this
 workflow deletes without authorization.
 
+### Shard integrity — because a resumed download can be the right length and the wrong bytes
+
+Two of the three shards were completed by **resuming from `.incomplete` files after a stall**, and
+a resume that appends onto a corrupt prefix produces a file of exactly the expected size. **Byte
+count is therefore not sufficient evidence here.** Each shard's safetensors header was parsed and
+its offsets checked — seconds of work, no torch required:
+
+| Shard | Header | Tensors | Last tensor ends | Payload | |
+|---|---|---|---|---|---|
+| `model-00000-of-00002` | 22,240 | 196 | 4,792,250,240 | 4,792,250,240 | ✅ |
+| `model-00001-of-00002` | 22,304 | 197 | 4,798,679,872 | 4,798,679,872 | ✅ |
+| `model-00002-of-00002` | 7,568 | 66 | 4,170,334,656 | 4,170,334,656 | ✅ |
+
+**459 tensors, matching `model.safetensors.index.json` exactly.** Dtypes are **`BF16` and `U8`** —
+and the `U8` is the load-bearing observation: **the MXFP4 blocks are still packed 4-bit in uint8,
+not dequantised.** If these read as all-BF16 the weights would already have been inflated upstream
+of us and the size projection below would be wrong.
+
 ### The corrected conversion command
 
 ```bash
@@ -227,6 +258,22 @@ training/.venv/bin/python3 engines/symoneural-llm/convert_hf_to_gguf.py \
 
 **Note the input path is `hf/`, not the staging root.** Pointed at the root, the converter would
 find `original/` and hit blocker 1.
+
+#### Judge the result by output size, not by the exit code
+
+`--outtype auto` is the untested part of that command. **MXFP4 preservation comes from
+`_is_mxfp4` short-circuiting `dequant_model()`, not from `--outtype`** — so if `auto` resolves to
+bf16 in this fork, the conversion *succeeds*, exits 0, and writes an inflated model.
+
+| Output size | Verdict |
+|---|---|
+| **~12–13 GiB** | **MXFP4 preserved — correct** |
+| ~40+ GiB | dequantised to bf16 — **wrong; redo with an explicit outtype** |
+
+**This has to be checked at conversion time, not at smoke time.** 793 GB free means disk will not
+stop a 40 GiB write, and the failure would surface as a smoke OOM — which reads as *"the candidate
+is incompatible"* rather than *"the file is three times the size it should be."* That is the exact
+misdiagnosis the `-c 8192` note in §2a exists to prevent, arriving by a different route.
 
 ## 4. The six activation gates
 
