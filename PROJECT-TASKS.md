@@ -1034,3 +1034,31 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: wants GGUF and gpt-oss ships MXFP4-quantised weights a stock llama.cpp build may not
         note: read. Read the upstream card BEFORE fetching; finding that out after the download is
         note: the avoidable version of the discovery.
+        note: 2026-08-22 coder — gpt-oss RUNTIME GATE ANSWERED. Verdict: NEEDS CONVERSION.
+        note: Everything required is in this tree; one conversion step stands between upstream's
+        note: format and the engine's. Measured, not recalled: upstream ships safetensors only
+        note: (original/model.safetensors 12.81 GiB, or three shards of the same total, NO GGUF)
+        note: and is Apache-2.0, read from the HF API. The engine (build 296, commit 2246ab7)
+        note: registers LLM_ARCH_OPENAI_MOE as "gpt-oss", carries the Harmony chat template, and
+        note: supports GGML_TYPE_MXFP4 = 39 on the CUDA path -- convert.cu, getrows.cu, MMQ.
+        note: conversion/gpt_oss.py is a real converter with repack_mxfp4(), which repacks the
+        note: 4-bit blocks rather than dequantising them; without that the GGUF would inflate to
+        note: bf16 and would not fit this card at all.
+        note: Conversion needs torch and the INTERPRETER MATTERS: /usr/bin/python3 has none,
+        note: training/.venv/bin/python3 has 2.11.0+cu128 with cuda available and sm_120
+        note: recognised. The isolated smoke needs no torch -- it is the C++ engine binary.
+        note: VRAM finding that changes the smoke command: 12.81 GiB of weights plus ~3.9 GiB of
+        note: KV at the production -c 65536 -np 2 is ~16.7 GiB on a 16,303 MiB card. It will NOT
+        note: fit at production context, so --smoke-candidate uses -c 8192 -np 1 and says why --
+        note: an OOM nobody predicted reads like an incompatible model rather than a greedy argv.
+        note: ISOLATED SMOKE added: --smoke-candidate <id>. Isolation is structural, not a flag.
+        note: It launches the engine directly against the candidate on port 8099, in its own
+        note: process, and never invokes the production API module -- the only thing that knows
+        note: the production defaults. So a fallback is not disabled, it is unreachable.
+        note: Garrett's sharpening is what the test now enforces: a function that cannot NAME the
+        note: fallback cannot load it. The forbidden symbols and filenames are absent from that
+        note: function's body entirely and the body explains isolation in neutral terms. My first
+        note: version allowed prose mentions and forbade only dereferences; his is stricter and
+        note: grep-verifiable, so it replaced mine.
+        note: Exit 5 with REFUSED on a missing candidate or engine. No adapter flag, no draft
+        note: model, own port. Nothing downloaded, no default changed, Qwen present and untouched.

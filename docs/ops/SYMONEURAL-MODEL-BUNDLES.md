@@ -122,8 +122,18 @@ upstream text is on disk. Serving locally is unaffected.
 
 ### 4.6 SyMoNeuRaL OpenAI 20B — `symon-openai-20b` — **CANDIDATE, not staged, not downloaded**
 
-See **`docs/ops/OPENAI-GPT-OSS-MIGRATION.md`**. Upstream `openai/gpt-oss-20b`. **Nothing has
-been fetched.** Qwen stays active until a smoke record exists *and* Garrett approves.
+See **`docs/ops/OPENAI-GPT-OSS-MIGRATION.md`**. Upstream `openai/gpt-oss-20b`, **Apache-2.0**.
+**Nothing has been fetched.** Qwen stays active until a smoke record exists *and* Garrett
+approves.
+
+**Runtime gate answered 2026-08-22: NEEDS CONVERSION.** The engine supports the architecture, the
+Harmony template and **MXFP4 on CUDA** (`GGML_TYPE_MXFP4 = 39`); upstream ships safetensors only,
+and `conversion/gpt_oss.py` converts them with `repack_mxfp4()` — repacking the 4-bit blocks
+rather than inflating them. Conversion needs `training/.venv/bin/python3` (torch 2.11.0+cu128);
+the smoke does not need torch at all.
+
+**It will not fit at the production context:** 12.81 GiB of weights plus ~3.9 GiB of KV at
+`-c 65536 -np 2` is ~16.7 GiB on a 16,303 MiB card. The isolated smoke uses `-c 8192 -np 1`.
 
 ### 4.7 Adapters — `training/`, protected, reported separately
 
@@ -190,6 +200,7 @@ status recorded.** Listed largest first, as measured.
 |---|---|
 | `--inventory` · `--dry-run` · `--smoke-plan` | **read-only** |
 | `--stage-openai-gpt-oss-20b` | writes a staging dir, manifest and rollback note. **Prints the download command; does not run it** |
+| `--smoke-candidate <id>` | runs the candidate **in isolation** — see below. Exit 5 if it cannot |
 | `--activate-candidate <id>` | **six gates**, all required |
 | `--rollback` | restores the backup; **never deletes a weight** |
 
@@ -197,6 +208,18 @@ status recorded.** Listed largest first, as measured.
 recorded · licence recorded (not `UNRECORDED`) · runtime compatibility recorded ·
 `SYMONEURAL_MODELOPS_APPROVE=<id>`. Any failure exits **3** and says REFUSED — *"a promotion path
 that exits 0 when it did not promote is the shape that lets a caller believe it worked."*
+
+**Isolated smoke: the fallback is unreachable, not disabled.** `--smoke-candidate` launches the
+engine binary directly against the candidate, on its own port, in its own process, and **never
+invokes the production API module** — the only thing that knows the production defaults. *A flag
+that disables a fallback can be wrong; a function that cannot name the fallback cannot load it*,
+and `test_the_smoke_mode_cannot_NAME_what_it_must_not_load` forbids the production symbols and
+filenames from appearing anywhere in that function's body. No adapter, no draft model, own port,
+nonzero exit on a missing candidate or engine, and it reports the model path, the engine path and
+the engine's own `--version`.
+
+**"Disabled for smoke" means disabled in the test path.** Not deleted, not moved, and the
+production default unchanged — asserted against the disk.
 
 **The smoke marker cannot be written honestly without a run.** `exists` and `grep` ask what is
 on disk; neither can ask whether a model works — the lesson `.claude/CLAUDE.md` draws from #94,

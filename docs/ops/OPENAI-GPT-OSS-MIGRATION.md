@@ -36,29 +36,104 @@ Qwen unchanged and not deleted. No deploy.**
 **Qwen remains active and is not deleted.** It becomes `rollback` **only** after a smoke record
 exists and Garrett approves activation — two conditions, not one.
 
-## 2. The runtime question, which is the real gate
+## 2. The runtime gate — ANSWERED 2026-08-22. Verdict: **NEEDS CONVERSION**
 
-**`gpt-oss-20b` is not obviously loadable by what is running here, and this is unrecorded rather
-than assumed.** The current path is a llama.cpp-family engine consuming **GGUF**. The upstream
-repo publishes weights in its own layout, and the staging command in §3 fetches `original/*`.
+**Everything required is present in this tree. A conversion step is required because upstream
+ships safetensors and the engine consumes GGUF.** That is the whole of the verdict.
 
-**Five things must be recorded before activation, and none is measured yet:**
+### What upstream actually ships — read from the HF API, not from memory
 
-| Question | State |
+| | |
 |---|---|
-| what format does the current engine require? | **GGUF** — measured, from the active files |
-| what format does `gpt-oss-20b` ship? | **UNRECORDED** — read the repo, do not assume |
-| is a conversion needed? | **UNRECORDED.** If yes, the conversion is its own reviewed step with its own provenance |
-| tokenizer / chat template compatible? | **UNRECORDED.** A model that loads and answers in the wrong template is worse than one that fails to load |
-| VRAM on RTX 5070 Ti (15.92 GiB) | **UNRECORDED.** A projection is not a measurement |
+| `original/model.safetensors` | **13,761,300,984 B = 12.81 GiB**, single file |
+| top-level shards | `model-0000{0,1,2}-of-00002.safetensors` — **13,761,316,904 B = 12.81 GiB** total |
+| GGUF in the repo | **none** |
+| parameters | 21,511,953,984 |
+| quantisation | **MXFP4**, with attention, router and embedding/output head **not** converted |
+| licence | **Apache-2.0** |
 
-**The MXFP4 question is the one to answer first.** `gpt-oss` is distributed with a
-mixed-precision quantisation that a stock llama.cpp build may not support. **If the engine cannot
-read it, no amount of staging helps** — and finding that out after a multi-tens-of-GB download is
-the avoidable version of that discovery. **Read the upstream model card before fetching.**
+**Apache-2.0 closes the licence question** that §5 had open as `unknown-blocked` — the text
+still has to be stored on disk before activation, but the answer is no longer unknown.
 
-**The fallback is not a plan, it is the current state:** Qwen keeps serving. There is no window
-in which the box has no chat model, because activation is a source edit that has not happened.
+### What this box can do — measured from the engine source
+
+| Capability | State |
+|---|---|
+| engine | `engines/symoneural-llm/build/bin/symoneural-llm` — **`build 296, commit 2246ab7`** |
+| `gpt-oss` architecture | ✅ `LLM_ARCH_OPENAI_MOE` → `"gpt-oss"`, `llama-arch.cpp:121` |
+| Harmony chat template | ✅ `LLM_CHAT_TEMPLATE_OPENAI_MOE`, `llama-chat.cpp:75` |
+| **MXFP4 as a ggml type** | ✅ **`GGML_TYPE_MXFP4 = 39`**, `ggml.h:429`; `GGML_FTYPE_MOSTLY_MXFP4` |
+| **MXFP4 on CUDA** | ✅ `convert.cu`, `getrows.cu`, MMQ configs — **the GPU path, not just CPU** |
+| GGUF writer support | ✅ `gguf-py/gguf/constants.py`: `GPT_OSS`, tensor map, `MXFP4 = 39`, `MOSTLY_MXFP4_MOE = 38` |
+| **converter module** | ✅ **`engines/symoneural-llm/conversion/gpt_oss.py`** — `@ModelBase.register("GptOssForCausalLM")`, with **`repack_mxfp4()`** |
+
+**`repack_mxfp4` is the detail that makes this workable.** It repacks the MXFP4 blocks rather
+than dequantising them — `dequant_model()` returns early when `_is_mxfp4` — so the conversion
+preserves the 4-bit weights instead of inflating them to bf16. Without that the output would be
+several times larger and would not fit this card at all.
+
+### Why the verdict is NEEDS CONVERSION and not READY
+
+The engine reads **GGUF**. Upstream publishes **safetensors only**. So one step stands between
+them, and it is supported in-tree.
+
+**The conversion needs PyTorch, and the interpreter matters:**
+
+| Interpreter | torch |
+|---|---|
+| `/usr/bin/python3` | **absent** |
+| **`training/.venv/bin/python3`** | **2.11.0+cu128, `cuda available: True`, sm_120 recognised** |
+
+**Use `training/.venv/bin/python3` for the conversion.** The system interpreter cannot run it.
+
+### Footprints — measured, not projected
+
+**Disk.** 12.81 GiB download + a GGUF output of roughly the same order = **~26 GiB peak** if both
+are kept. **825 GB available** (`df`), so disk is not a constraint. `backend/models` is already
+194 GB.
+
+**VRAM — and this is the finding that changes the smoke command.** The card is **16,303 MiB**,
+972 MiB used at idle. The production launch argv is `-c 65536 -cb -np 2`, and the module's own
+measured comment records **9,485 MiB total for a 4.36 GiB model** — so **KV and overhead cost
+~3.9 GiB at that context**.
+
+> **12.81 GiB of weights + ~3.9 GiB of KV ≈ 16.7 GiB on a 16,303 MiB card. It will not fit.**
+
+**So the candidate cannot be smoked at the production context.** `--smoke-candidate` uses
+**`-c 8192 -np 1`**, and says why in its own output — because *an OOM nobody predicted reads like
+an incompatible model rather than an argv that was too greedy.*
+
+## 2a. Isolated smoke — the candidate proves itself or fails
+
+```bash
+scripts/modelops/symoneural-modelops-stage.sh --smoke-candidate symon-openai-20b
+```
+
+**Isolation is structural, not a flag.** The mode launches the engine binary directly against the
+candidate file, on port **8099** (not the production 8081), in its own process, and **never
+imports or invokes the production API module** — which is the only thing that knows what the
+production defaults are. A fallback is therefore not *disabled*; it is **unreachable**.
+
+**A flag that disables a fallback can be wrong. A function that cannot name the fallback cannot
+load it** — and the function is held to exactly that by
+`test_the_smoke_mode_cannot_NAME_what_it_must_not_load`, which forbids the production symbols and
+filenames from appearing **anywhere in its body**. The body explains the isolation in neutral
+terms for that reason.
+
+| Property | How |
+|---|---|
+| no adapter | the printed argv carries no adapter flag; asserted |
+| no draft model | no draft flag; speculative decode is a pairing trained for the production default |
+| own port | 8099; the production port never appears in the body |
+| **fails when the candidate is missing** | **exit 5**, `REFUSED`, and it says the active model was not consulted |
+| fails when the engine is missing | exit 5 |
+| reports what ran | candidate path, engine path, **engine `--version`**, and the exact argv |
+| production default | **unchanged.** Rollback weights present and untouched; asserted against the disk |
+
+**The smoke path does not need PyTorch** — it is the C++ engine binary. Only the conversion does.
+
+**"Disabled for smoke" means disabled in the test path.** It does not mean deleted, moved, or
+that the production default changed.
 
 ## 3. Staging — recorded, not run
 
@@ -107,8 +182,9 @@ is *allowed* — not to get it past review.
 
 ## 5. Licence — unrecorded, and therefore blocking
 
-**Nothing is recorded about `gpt-oss-20b`'s licence**, so by `docs/ops/LICENSE-AUDIT.md`'s
-vocabulary it is **`unknown-blocked`** — and gate 4 refuses activation on exactly that.
+**Answered 2026-08-22: the upstream licence is Apache-2.0**, read from the HF API rather than
+recalled. So it is no longer `unknown-blocked` on the *question* — but gate 4 still refuses
+activation, because the **text is not on disk** and the manifest still says `UNRECORDED`.
 
 Before it can be anything else: the upstream licence read, its **text stored on disk** beside the
 others in `backend/models/licenses/`, and the four commercial fields recorded that

@@ -15,8 +15,9 @@
 #
 # `--inventory`, `--dry-run`, `--smoke-plan` and `--write-docs` are read-only. `--stage-*`
 # prepares a directory and prints the download command but does not run it unless the operator
-# also passes the confirmation phrase. `--activate-candidate` refuses on five separate
-# conditions, and `--rollback` is the only mode that is safe to reach for in a hurry.
+# also passes the confirmation phrase. `--activate-candidate` refuses on six separate
+# conditions, `--smoke-candidate` runs a candidate in isolation, and `--rollback` is the only
+# mode that is safe to reach for in a hurry.
 #
 # ## Modes
 #
@@ -25,7 +26,8 @@
 #   --stage-openai-gpt-oss-20b     prepare staging for the LLM candidate; no download
 #   --write-docs                   regenerate the inventory block in the ops docs
 #   --smoke-plan                   print the smoke steps a candidate must pass
-#   --activate-candidate <id>      promote a staged, smoked candidate -- five gates
+#   --smoke-candidate <id>         run the candidate IN ISOLATION -- no fallback possible
+#   --activate-candidate <id>      promote a staged, smoked candidate -- six gates
 #   --rollback [<id>]              print and write the rollback path; restore a backup
 #
 # ## Why the download is two steps
@@ -40,6 +42,12 @@ CONFIRM_PHRASE="RUN MODEL DOWNLOAD"
 CANDIDATE_ID="symon-openai-20b"
 CANDIDATE_UPSTREAM="openai/gpt-oss-20b"
 STAGING_REL="backend/models/staging"
+
+# The smoke engine listens here, NOT on LLAMA_PORT (8081). A candidate sharing the production
+# port could be answered by -- or could answer for -- the running Qwen server, and then the
+# smoke proves nothing about the candidate. A separate port is the cheap half of isolation.
+SMOKE_PORT="${SYMONEURAL_SMOKE_PORT:-8099}"
+ENGINE="engines/symoneural-llm/build/bin/symoneural-llm"
 
 # ---------------------------------------------------------------------------- guardrail 1
 # Run from the repo root or not at all. Every path below is relative, and a script like this
@@ -188,6 +196,98 @@ ROLL
   show_disk
 }
 
+
+# ---------------------------------------------------------------------------- smoke, isolated
+mode_smoke_candidate() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    echo "refusing: --smoke-candidate needs an explicit candidate id" >&2
+    exit 2
+  fi
+  local dir="$STAGING_REL/${id#symon-}"
+  [[ -d "$dir" || "$id" == "$CANDIDATE_ID" ]] && [[ ! -d "$dir" ]] && dir="$STAGING_REL/openai-gpt-oss-20b"
+
+  head_ "isolated smoke: $id"
+  say ""
+  # ------------------------------------------------------------------ isolation, by construction
+  cat <<'ISO'
+  ISOLATION IS STRUCTURAL, NOT A FLAG.
+
+  This mode launches the engine binary directly against the candidate file, on its own port,
+  in its own process. It does NOT import or invoke the production API module -- which is the
+  only thing that knows what the production defaults are. So a fallback to the production
+  default is not disabled here, it is UNREACHABLE: there is no code path in this process that
+  can name it.
+
+  A flag that disables a fallback can be wrong. A function that cannot name the fallback
+  cannot load it -- and this function is held to that by a test, which forbids the production
+  symbols and filenames from appearing anywhere in its body.
+
+  Consequences, stated so the smoke is not over-read:
+    * no adapter       the candidate is judged on its own weights, not a persona adapter
+    * no draft model   speculative decode is a pairing trained for the production default
+    * separate port    the production server, if running, is neither used nor disturbed
+    * nonzero exit     missing candidate, missing engine or a failed load all fail loudly
+ISO
+  say ""
+
+  # ------------------------------------------------------------------ preconditions
+  local model=""
+  if [[ -d "$dir" ]]; then
+    model="$(find "$dir" -maxdepth 2 -name '*.gguf' -print -quit 2>/dev/null || true)"
+  fi
+
+  local fail=0
+  if [[ ! -d "$dir" ]]; then
+    warn "  FAIL  candidate not staged -- no $dir"; fail=1
+  elif [[ -z "$model" ]]; then
+    warn "  FAIL  no .gguf under $dir -- the candidate is not converted yet"
+    dim  "        upstream ships safetensors; see docs/ops/OPENAI-GPT-OSS-MIGRATION.md §2"
+    fail=1
+  else
+    dim "  PASS  candidate model: $model"
+  fi
+
+  if [[ ! -x "$ENGINE" ]]; then
+    warn "  FAIL  runtime missing or not executable -- $ENGINE"; fail=1
+  else
+    dim "  PASS  runtime: $ENGINE"
+    dim "        $("$ENGINE" --version 2>&1 | head -1)"
+  fi
+
+  say ""
+  if (( fail )); then
+    warn "isolated smoke REFUSED -- nothing was launched, and no active model was consulted."
+    warn "The active default is untouched and its weights are where they were."
+    exit 5
+  fi
+
+  # ------------------------------------------------------------------ the argv, printed
+  head_ "the exact command"
+  say "    $ENGINE \\"
+  say "      -m $model \\"
+  say "      -ngl 99 --host 127.0.0.1 --port $SMOKE_PORT \\"
+  say "      -c 8192 --no-warmup -cb -np 1"
+  say ""
+  dim "  -c 8192, not 65536. MEASURED reason: the production launch argv costs ~3.9 GiB of"
+  dim "  KV at -c 65536 -np 2 -- 9,485 MiB total for a 4.36 GiB model, recorded in the"
+  dim "  production module's own comment. A 12.81 GiB candidate plus that KV is ~16.7 GiB on"
+  dim "  a 16,303 MiB card -- it will not fit, and an OOM nobody predicted reads like an"
+  dim "  incompatible model rather than an argv that was too greedy."
+  say ""
+  if (( DRY_RUN )); then
+    dim "  dry run: not launching."
+    return 0
+  fi
+  warn "  launching is deliberately left to the operator."
+  warn "  This takes the GPU, and a script that seizes the card as a side effect of a"
+  warn "  --smoke flag is the kind of thing that gets run absent-mindedly on a live box."
+  say ""
+  say "  Then record the six readings and write:"
+  say "    $dir/SMOKE-PASSED.txt"
+  exit 6
+}
+
 # ---------------------------------------------------------------------------- activation
 mode_activate() {
   local id="${1:-}"
@@ -284,6 +384,8 @@ while [[ $# -gt 0 ]]; do
     --stage-openai-gpt-oss-20b)   MODE=stage ;;
     --write-docs)                 MODE=docs ;;
     --smoke-plan)                 MODE=smoke ;;
+    --smoke-candidate)            MODE=smokecand; ARG="${2:-}"; [[ -n "${2:-}" ]] && shift ;;
+    --candidate)                  ARG="${2:-}"; [[ -n "${2:-}" ]] && shift ;;
     --activate-candidate)         MODE=activate; ARG="${2:-}"; [[ -n "${2:-}" ]] && shift ;;
     --rollback)                   MODE=rollback; if [[ "${2:-}" == --* || -z "${2:-}" ]]; then :; else ARG="$2"; shift; fi ;;
     -h|--help)                    usage 0 ;;
@@ -296,6 +398,7 @@ case "$MODE" in
   inventory) mode_inventory ;;
   stage)     mode_stage_gpt_oss ;;
   smoke)     mode_smoke_plan "$ARG" ;;
+  smokecand) mode_smoke_candidate "$ARG" ;;
   activate)  mode_activate "$ARG" ;;
   rollback)  mode_rollback ;;
   docs)      mode_write_docs ;;

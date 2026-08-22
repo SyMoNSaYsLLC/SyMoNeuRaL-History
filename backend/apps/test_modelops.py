@@ -150,6 +150,132 @@ class InventoryOutputTests(unittest.TestCase):
                       inv.render(inv.scan()))
 
 
+class IsolatedCandidateSmokeTests(unittest.TestCase):
+    """The smoke path must not be able to answer from the active model.
+
+    Garrett's requirement is that a candidate smoke fails honestly rather than silently
+    falling back to Qwen. The implementation does not disable a fallback — it makes one
+    **unreachable**: the mode launches the engine binary directly, on its own port, in its own
+    process, and never imports or invokes `backend/api.py`, which is the only thing that knows
+    what `CHAT_MODEL` and `DRAFT_MODEL` are.
+
+    **A flag that disables a fallback can be wrong. A process that cannot name the fallback's
+    path cannot be.** These tests assert that property structurally, because the alternative is
+    downloading 12.81 GiB to find out.
+    """
+
+    def test_it_needs_an_explicit_candidate_id(self):
+        got = run_script("--smoke-candidate")
+        self.assertEqual(got.returncode, 2)
+        self.assertIn("explicit candidate id", got.stderr)
+
+    def test_it_fails_nonzero_when_the_candidate_is_not_staged(self):
+        """Missing candidate is a failure, not a no-op. Exit 5 rather than 0, so a caller
+        cannot read 'nothing happened' as 'the candidate is fine'."""
+        staging = MODELS / "staging"
+        if staging.exists():
+            self.skipTest("a real staging tree exists; not touching it")
+        got = run_script("--smoke-candidate", "symon-openai-20b")
+        self.assertEqual(got.returncode, 5)
+        out = got.stdout + got.stderr
+        self.assertIn("REFUSED", out)
+        self.assertIn("candidate not staged", out)
+
+    def test_the_refusal_says_the_active_model_was_not_consulted(self):
+        staging = MODELS / "staging"
+        if staging.exists():
+            self.skipTest("a real staging tree exists; not touching it")
+        got = run_script("--smoke-candidate", "symon-openai-20b")
+        flat = " ".join((got.stdout + got.stderr).split())
+        self.assertIn("no active model was consulted", flat)
+        self.assertIn("active default is untouched", flat)
+
+    @staticmethod
+    def _smoke_body():
+        src = SCRIPT.read_text(encoding="utf-8")
+        return src[src.index("mode_smoke_candidate()"):src.index("mode_activate()")]
+
+    def test_the_smoke_mode_cannot_NAME_what_it_must_not_load(self):
+        """The strictest available guarantee, and stricter than the obvious one.
+
+        A first draft of this test allowed the body to *mention* the production symbols in
+        prose and forbade only a dereference (`$CHAT_MODEL`). Garrett's correction was better:
+        forbid the literal strings outright, and write the explanation in neutral terms
+        instead. The reasoning generalises — **a function that cannot name the fallback cannot
+        load it**, and that is verifiable by grep, whereas "mentions it but only in a comment"
+        needs a human to keep agreeing with itself.
+
+        So the smoke body may explain isolation, and may not name the symbols or the files."""
+        body = self._smoke_body()
+        for forbidden in ("CHAT_MODEL", "DRAFT_MODEL", "backend/api.py", "--lora",
+                          "symon-1.0-7b", "symon-1.0-draft", "symon-1.0-14b",
+                          "symon-1.0-27b", "symon-1.0-32b"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, body,
+                                 f"the isolated smoke body names {forbidden!r}; use neutral "
+                                 "wording so the function cannot name what it must not load")
+
+    def test_the_smoke_mode_does_not_execute_the_production_module(self):
+        body = self._smoke_body()
+        for invocation in ("python3 backend", "python backend", "source backend",
+                           "bash backend", "exec backend", "uvicorn"):
+            with self.subTest(invocation=invocation):
+                self.assertNotIn(invocation, body)
+
+    def test_the_printed_command_carries_no_adapter_and_no_draft_flag(self):
+        """Asserted against the argv the script prints, and the positive assertion is the
+        neutral wording — requiring the literal "no --lora" would reintroduce the very string
+        the test above forbids."""
+        body = self._smoke_body()
+        argv_lines = [ln for ln in body.splitlines()
+                      if "say " in ln and ("-m " in ln or "-ngl" in ln or "-c 8192" in ln
+                                           or "$ENGINE" in ln)]
+        self.assertTrue(argv_lines, "could not find the printed command block")
+        argv = " ".join(argv_lines)
+        for flag in ("--lora", "-md", "--draft", "--model-draft"):
+            with self.subTest(flag=flag):
+                self.assertNotIn(flag, argv)
+        self.assertIn("-np 1", argv)              # single slot, not the production two
+        self.assertIn("no adapter", body)         # and the reason, neutrally worded
+
+    def test_the_smoke_uses_its_own_port_not_the_production_one(self):
+        src = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("SMOKE_PORT", src)
+        self.assertIn("8099", src)
+        body = src[src.index("mode_smoke_candidate()"):src.index("mode_activate()")]
+        self.assertNotIn("8081", body)
+
+    def test_the_output_identifies_the_candidate_and_the_runtime(self):
+        """Requirement 4: the smoke must report exactly what ran. A smoke that does not name
+        its own model is indistinguishable from one that ran something else."""
+        src = SCRIPT.read_text(encoding="utf-8")
+        body = src[src.index("mode_smoke_candidate()"):src.index("mode_activate()")]
+        self.assertIn("candidate model:", body)
+        self.assertIn("runtime:", body)
+        self.assertIn("--version", body)          # the engine identifies its own build
+        self.assertIn("the exact command", body)
+
+    def test_the_rollback_models_are_present_and_untouched_by_the_smoke(self):
+        """Disabled-for-smoke means disabled in the test path. It does not mean deleted, and it
+        does not mean moved. Asserted against the disk."""
+        for rel in ("llm/symon-1.0-7b-q4_k_m.gguf", "llm/symon-1.0-draft-0.5b-q4_k_m.gguf"):
+            with self.subTest(rel=rel):
+                p = MODELS / rel
+                if not p.exists():
+                    self.skipTest(f"{rel} absent from this clone")
+                self.assertGreater(p.stat().st_size, 0)
+
+    def test_a_reduced_context_is_used_and_the_reason_is_measured(self):
+        """-c 8192 rather than the production 65536, and the script states the arithmetic:
+        a 12.81 GiB candidate plus ~3.9 GiB of KV does not fit 16,303 MiB. A smoke that OOMs
+        for a reason nobody wrote down looks like an incompatible model."""
+        src = SCRIPT.read_text(encoding="utf-8")
+        body = src[src.index("mode_smoke_candidate()"):src.index("mode_activate()")]
+        self.assertIn("-c 8192", body)
+        self.assertIn("16,303", body)
+        self.assertIn("MEASURED", body)
+
+
 class StagingScriptRefusalTests(unittest.TestCase):
     """Each guardrail driven for real. A refusal that is never exercised is a comment."""
 

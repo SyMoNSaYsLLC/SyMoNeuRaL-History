@@ -86,23 +86,30 @@ Each runtime profile entry:
 
 ---
 
-## Candidate runtime compatibility — added 2026-08-22
+## Candidate runtime compatibility — ANSWERED 2026-08-22
 
-**A candidate model is not a runtime claim.** `symon-openai-20b` (`openai/gpt-oss-20b`) is staged
-as a candidate, and its runtime compatibility is **UNRECORDED** — the word the staged manifest
-uses, and the word activation gate 5 refuses on.
+**Verdict for `symon-openai-20b` (`openai/gpt-oss-20b`): NEEDS CONVERSION.** Everything needed is
+in this tree; a conversion step stands between upstream's format and the engine's.
 
-| Question | State |
+| Question | Answer, measured |
 |---|---|
-| format the active engine requires | **GGUF** — measured from the active files |
-| format `gpt-oss-20b` ships | **UNRECORDED** — read the upstream card, do not assume |
-| conversion needed? | **UNRECORDED**. If yes it is its own reviewed step with its own provenance |
-| tokenizer / chat template | **UNRECORDED**. A model answering in the wrong template is worse than one that fails to load |
-| VRAM on the 15.92 GiB card | **UNRECORDED**. A projection is not a measurement |
+| format the active engine requires | **GGUF** |
+| format `gpt-oss-20b` ships | **safetensors only** — `original/model.safetensors` 12.81 GiB, or three shards of the same total. **No GGUF upstream** |
+| conversion needed? | **Yes, and it is supported in-tree** — `engines/symoneural-llm/conversion/gpt_oss.py`, `@ModelBase.register("GptOssForCausalLM")`, with `repack_mxfp4()` |
+| **MXFP4 supported?** | **Yes.** `GGML_TYPE_MXFP4 = 39` in `ggml.h:429`, **and the CUDA path** — `convert.cu`, `getrows.cu`, MMQ configs |
+| architecture registered? | **Yes.** `LLM_ARCH_OPENAI_MOE` → `"gpt-oss"` (`llama-arch.cpp:121`) |
+| chat template? | **Yes.** `LLM_CHAT_TEMPLATE_OPENAI_MOE` — Harmony (`llama-chat.cpp:75`) |
+| VRAM on the 15.92 GiB card | **will not fit at the production context.** 12.81 GiB weights + ~3.9 GiB KV at `-c 65536 -np 2` ≈ 16.7 GiB on a 16,303 MiB card. The smoke uses `-c 8192 -np 1` |
+| engine build | `build 296, commit 2246ab7` |
 
-**The MXFP4 question comes first.** `gpt-oss` ships a mixed-precision quantisation a stock
-llama.cpp build may not read, and discovering that *after* a tens-of-GB download is the avoidable
-version of finding out. Detail: `docs/ops/OPENAI-GPT-OSS-MIGRATION.md` §2.
+**`repack_mxfp4` is why this is viable.** It repacks the 4-bit blocks instead of dequantising
+them — `dequant_model()` returns early when `_is_mxfp4` — so the GGUF keeps the 4-bit weights
+rather than inflating to bf16, which would not fit this card at all.
 
-**This changes no maturity level above.** No runtime family moved on the ladder, and **no document
-here claims a runtime is running** that was not already claimed.
+**Conversion requires PyTorch and the interpreter matters:** `/usr/bin/python3` has none;
+**`training/.venv/bin/python3` has torch 2.11.0+cu128 with CUDA available and sm_120 recognised.**
+**The isolated smoke path needs no PyTorch** — it is the C++ engine binary.
+
+**No runtime family moved on the maturity ladder**, and no document here claims a runtime is
+running that was not already claimed. What changed is that a candidate's compatibility is now
+**recorded** rather than unrecorded. Full detail: `docs/ops/OPENAI-GPT-OSS-MIGRATION.md` §2.
