@@ -4316,3 +4316,46 @@ an agent to do what Garrett explicitly deauthorized.
 2. **`BOX-REALITY-AUDIT.md` §7 says 141 shipped routes; the security audit measures 123.**
    **Not reconciled, and neither number is restated as the other.** Counting method is the likely
    cause. Reconcile before either is published.
+
+---
+
+## 2026-08-22 — ModelOps: 61% of the weight bytes had no provenance
+
+`tools/modelops_inventory.py` · `scripts/modelops/symoneural-modelops-stage.sh` ·
+`backend/apps/test_modelops.py` · four ops docs. **Docs/script/inventory only: no model
+downloaded, no active default changed, no weight deleted, moved or committed.**
+
+**The finding.** `backend/models/PROVENANCE.json` covers **11 of 28** weight files. The other
+**17 are 78.26 GiB — 61% of the weight bytes on this box** — with no upstream, no licence, no
+role, no runtime. All classified `unknown-blocked`. `BOX-REALITY-AUDIT.md` §7 had this as "~57 GB
+of unreferenced weights"; **nobody had counted, because no document was measuring.** It is
+re-runnable now:
+
+```bash
+python3 tools/modelops_inventory.py
+```
+
+**Active defaults, read from source rather than assumed** — 7 files:
+
+| Role | File |
+|---|---|
+| chat | `llm/symon-1.0-7b-q4_k_m.gguf` + `symon-1.0-draft-0.5b` (`api.py:187`, `:191`) |
+| image | the four FLUX/Schnell components (`api.py:202-205` **==** `workflows.py:48-51`) |
+| asr | `whisper/symoneural-listen-base-en.bin` (`voice/asr.py:56`) |
+
+**A bug this work found, and it is the shape of the whole problem:** the first draft of the tool
+read only `api.py` and reported the listen model as an idle component **while the voice surface
+was loading it**. One loader site missed is one active model misclassified, so the sites are an
+explicit list with a test.
+
+**`symon-openai-20b` (`openai/gpt-oss-20b`) is a candidate only** — not downloaded, not staged on
+disk, not active. **Qwen stays active and is not deleted.** Six activation gates, exit 3 on any
+failure, and the script **refuses to download even with the confirm phrase set**: tens of GB onto
+a disk already holding 194 GB should not be one environment variable away.
+
+**The runtime question is the real gate and is deliberately UNRECORDED:** the engine consumes
+GGUF and `gpt-oss` ships an MXFP4-quantised layout a stock llama.cpp build may not read.
+**Read the upstream card before fetching** — discovering it afterwards is the avoidable version.
+
+**FLUX/Comfy is intact and formalised, not migrated.** There is no local open-weight OpenAI image
+model in scope; any claim that one replaces FLUX would be false.

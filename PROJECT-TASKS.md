@@ -1009,3 +1009,28 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep HotSwapAdmissionTests -- backend/apps/studio/test_studio.py
         check: grep HotSwapResidencyReconcileTests -- backend/apps/studio/test_studio.py
         check: exists backend/apps/studio/SMOKE-hot-swap.md
+        note: 2026-08-22 coder — ModelOps future-proofing landed: tools/modelops_inventory.py,
+        note: scripts/modelops/symoneural-modelops-stage.sh, backend/apps/test_modelops.py, and
+        note: four ops docs. Docs/script/inventory only -- NO model downloaded, no active default
+        note: changed, no weight deleted, moved or committed.
+        note: THE FINDING: PROVENANCE.json covers 11 of 28 weight files. The other 17 are
+        note: 78.26 GiB -- 61% of the weight bytes on this box -- with no upstream, no licence, no
+        note: role and no runtime recorded. All 17 classified unknown-blocked. BOX-REALITY-AUDIT
+        note: §7 had this as "~57 GB of unreferenced weights"; nobody had counted, because no
+        note: document was measuring. Now re-runnable: python3 tools/modelops_inventory.py.
+        note: Active defaults are read from source, not assumed: chat is
+        note: llm/symon-1.0-7b-q4_k_m.gguf with the 0.5b draft (api.py:187,:191), the image bundle
+        note: is the four FLUX/Schnell components (api.py:202-205 == workflows.py:48-51), and asr
+        note: is whisper/symoneural-listen-base-en.bin (voice/asr.py:56). That last one is a bug
+        note: this work found: the first draft of the tool read only api.py and reported the listen
+        note: model idle while voice was loading it. One loader site missed is one active model
+        note: misclassified, so the sites are an explicit list with a test.
+        note: symon-openai-20b (openai/gpt-oss-20b) is a CANDIDATE only -- not downloaded, not
+        note: staged on disk, not active. Qwen stays active and is not deleted; it becomes rollback
+        note: only after a smoke record exists AND Garrett approves. Six activation gates, exit 3
+        note: on any failure. The script refuses to download even with the confirm phrase set:
+        note: tens of GB onto a disk already holding 194 GB should not be one env var away.
+        note: The runtime question is the real gate and is UNRECORDED on purpose -- the engine
+        note: wants GGUF and gpt-oss ships MXFP4-quantised weights a stock llama.cpp build may not
+        note: read. Read the upstream card BEFORE fetching; finding that out after the download is
+        note: the avoidable version of the discovery.

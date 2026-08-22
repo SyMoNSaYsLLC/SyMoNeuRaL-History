@@ -8,11 +8,12 @@ run by this document.**
 ## 0. Four kinds of provenance, and only one of them is solved
 
 The word covers four different claims. Separating them is the point of this file, because "we have
-provenance" is true of exactly one row:
+provenance" is true of exactly one row — and even that row is true of 39% of the weight files
+rather than of the disk. See §1.
 
 | Kind | Answers | State |
 |---|---|---|
-| **model provenance** | which upstream artefact is this weight? | **strong** — `backend/models/PROVENANCE.json` |
+| **model provenance** | which upstream artefact is this weight? | **strong for 11 of 28 files; absent for the other 17** — `PROVENANCE.json` + §1 |
 | **runtime provenance** | which engine build served this, from what source? | partial |
 | **data provenance** | what was this adapter trained on? | protected, and deliberately not exportable |
 | **build provenance** | what produced this artefact, reproducibly, attested? | **none** |
@@ -39,6 +40,16 @@ Four properties that make it actually load-bearing:
 
 **The known gap:** three of eleven entries have `license_text: null` — the unsloth/Qwen3.x files —
 so their attribution cannot travel. `docs/ops/MODEL-LICENSES.md` ML-1.
+
+**And the larger gap, measured 2026-08-22: the manifest covers 11 of 28 weight files.** The other
+**17 — 78.26 GiB, 61% of the weight bytes here — have no provenance at all.** So "model provenance
+is strong" was true of what the manifest describes and false as a statement about this disk, which
+is a distinction this file of all files should have drawn. `tools/modelops_inventory.py` now
+measures it and `docs/ops/SYMONEURAL-MODEL-BUNDLES.md` §5 lists them.
+
+**The pattern held; the coverage did not.** Nothing about the manifest's design was wrong — its
+fields, its tracked-ness, its byte-count tripwire are all still the thing to copy. It was simply
+never asked whether it described everything on the disk, and nothing asked on its behalf.
 
 **And the structural gap:** the manifest records *where a weight came from*, not *whether we may
 ship it or sell its output*. Four fields are missing — redistribution, commercial use,

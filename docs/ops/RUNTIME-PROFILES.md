@@ -83,3 +83,26 @@ Each runtime profile entry:
   "cannot coexist".
 - **Every runtime goes through the governor.** A runtime that takes the card without a lease is
   the failure `scripts/gpu-governor.sh` exists to prevent, whatever its family.
+
+---
+
+## Candidate runtime compatibility — added 2026-08-22
+
+**A candidate model is not a runtime claim.** `symon-openai-20b` (`openai/gpt-oss-20b`) is staged
+as a candidate, and its runtime compatibility is **UNRECORDED** — the word the staged manifest
+uses, and the word activation gate 5 refuses on.
+
+| Question | State |
+|---|---|
+| format the active engine requires | **GGUF** — measured from the active files |
+| format `gpt-oss-20b` ships | **UNRECORDED** — read the upstream card, do not assume |
+| conversion needed? | **UNRECORDED**. If yes it is its own reviewed step with its own provenance |
+| tokenizer / chat template | **UNRECORDED**. A model answering in the wrong template is worse than one that fails to load |
+| VRAM on the 15.92 GiB card | **UNRECORDED**. A projection is not a measurement |
+
+**The MXFP4 question comes first.** `gpt-oss` ships a mixed-precision quantisation a stock
+llama.cpp build may not read, and discovering that *after* a tens-of-GB download is the avoidable
+version of finding out. Detail: `docs/ops/OPENAI-GPT-OSS-MIGRATION.md` §2.
+
+**This changes no maturity level above.** No runtime family moved on the ladder, and **no document
+here claims a runtime is running** that was not already claimed.

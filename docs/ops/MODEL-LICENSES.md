@@ -73,6 +73,32 @@ label is plausible — Qwen3 releases are Apache-2.0 — but **plausible is the 
 as a warning.** Confirm from upstream when the text is fetched, and if it turns out otherwise, the
 status is `unknown-blocked` and the entry is wrong today.
 
+## 2a. ML-3 — the manifest covers 11 of 28 weight files
+
+**Measured 2026-08-22 by `tools/modelops_inventory.py`, which did not exist when §1 was
+written.** §1's eleven rows are complete *as a reading of the manifest*. They are not a reading
+of the disk.
+
+| | files | bytes |
+|---|---|---|
+| in `PROVENANCE.json` | 11 | 48.85 GiB |
+| **not in the manifest** | **17** | **78.26 GiB** |
+| manifest entries with no file | 0 | — |
+
+**All 17 are `unknown-blocked`:** no upstream repo, no licence, no licence text, no role, no
+runtime, no promotion status. That is 61% of the weight bytes on this box, and the reason nobody
+had noticed is that no document was measuring — `BOX-REALITY-AUDIT.md` §7 had it as "~57 GB of
+unreferenced weights" and no one had counted.
+
+The full list is `docs/ops/SYMONEURAL-MODEL-BUNDLES.md` §5. **The cheapest one to close is
+`rembg/u2net.onnx`** — its licence texts are *already on disk* (`licenses/u2net.LICENSE.txt`,
+`rembg.LICENSE.txt`, `onnxruntime.LICENSE.txt`); only the manifest entry is missing. The
+**largest single win** is the `minimax_h3_*` group: four files, 26.76 GiB, which *look* like one
+bundle spanning `diffusion_models`, `text_encoders`, `vae` and `loras` — and looks-like is why
+they are `unknown-blocked` rather than guessed.
+
+**Nothing is deleted, moved or renamed on the strength of this finding.** They are named.
+
 ## 3. Required per-model fields — what is present and what is not
 
 | Field | State |

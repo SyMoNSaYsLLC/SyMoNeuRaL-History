@@ -112,3 +112,30 @@ running and this file does not claim one.**
 (148 MB) is real. `whisper.cpp` is **absent**: `contrib/` does not exist and there is no
 `whisper-cli` on this box. So the weights are current inventory and there is **no production
 ASR route to claim** — `apps/voice` already reports `offline` and names the missing path.
+
+---
+
+## Registry sections — added 2026-08-22, and the inventory that populates them
+
+**The registry is not a list any more; it is a reading.** `tools/modelops_inventory.py` scans the
+disk, joins it to `PROVENANCE.json`, and joins that to the paths the running surfaces actually
+load. **Re-run it rather than trusting the numbers below** — that is the standing rule and this
+file is subject to it.
+
+| # | Section | Populated by |
+|---|---|---|
+| 1 | **active local defaults** | 7 files, parsed from `api.py` and `voice/asr.py` |
+| 2 | **local candidates** | `symon-openai-20b` — not downloaded, not active |
+| 3 | **rollbacks** | the Qwen 14B/27B/32B tiers, retained deliberately |
+| 4 | **component bundles** | FLUX/Schnell (4 files), Listen Base EN, the vision projector |
+| 5 | **API-only future providers** | none today. An API is never a swap for a local model |
+| 6 | **retired/removed** | none. **No mode of the staging script deletes a weight** |
+| 7 | **unknown-blocked** | **17 files, 78.26 GiB** — no upstream, no licence, no role |
+
+**Section 7 is the finding.** `PROVENANCE.json` covers 11 of 28 weight files; the other 17 are
+61% of the weight bytes on this box and had no record anywhere. Full list and the three
+observations that make it actionable: `docs/ops/SYMONEURAL-MODEL-BUNDLES.md` §5.
+
+**Bundles, not files, are what get promoted.** The image surface loads four components and the
+chat surface loads two; a registry keyed on single files cannot express *"this set works
+together"*. See `SYMONEURAL-MODEL-BUNDLES.md` §1.

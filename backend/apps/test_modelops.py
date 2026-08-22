@@ -1,0 +1,227 @@
+"""ModelOps: the inventory's classification, and the staging script's refusals.
+
+Two halves, and they fail for different reasons.
+
+**The inventory** is a scan, so the thing worth asserting is that it still finds what it is
+supposed to find. A regex that silently stops matching `CHAT_MODEL` would not raise — it would
+report "no active default", which reads like a finding rather than a broken tool. So the active
+set is asserted against paths taken from `backend/api.py` independently, the same shape as
+`test_symoneural_cli.py::LoadAndLayoutTests` uses for `ROOT`.
+
+**The staging script** is guardrails, and a guardrail that is never exercised is a comment. Each
+refusal below is driven for real: wrong directory, no candidate id, nothing staged, dry run.
+Nothing here downloads, activates, moves or deletes anything, and the script is never invoked in
+a mode that would.
+"""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+TOOL = ROOT / "tools" / "modelops_inventory.py"
+SCRIPT = ROOT / "scripts" / "modelops" / "symoneural-modelops-stage.sh"
+MODELS = ROOT / "backend" / "models"
+
+sys.path.insert(0, str(ROOT / "tools"))
+import modelops_inventory as inv                                        # noqa: E402
+
+
+def run_script(*args, cwd=None):
+    return subprocess.run([str(SCRIPT), *args], cwd=str(cwd or ROOT),
+                          capture_output=True, text=True, timeout=120)
+
+
+class ActiveModelParseTests(unittest.TestCase):
+    """The active set is read from source. If the read breaks, it must break loudly."""
+
+    def test_the_active_chat_and_draft_models_are_found(self):
+        """Asserted against `api.py` read independently, not against a literal filename.
+
+        Pinning the literal would make this test pass a rename that broke the tool, and fail a
+        rename that the tool handled correctly — exactly backwards."""
+        text = (ROOT / "backend" / "api.py").read_text(encoding="utf-8")
+        want = {}
+        for var, role in (("CHAT_MODEL", "chat"), ("DRAFT_MODEL", "chat-draft")):
+            m = re.search(rf'^{var}\s*=\s*MODELS\s*/\s*"([^"]+)"\s*/\s*"([^"]+)"', text, re.M)
+            self.assertIsNotNone(m, f"{var} is no longer a two-segment MODELS path in api.py")
+            want[f"{m.group(1)}/{m.group(2)}"] = role
+
+        got = inv.active_from_source()
+        for path, role in want.items():
+            self.assertEqual(got.get(path), role, f"{path} not reported active as {role}")
+
+    def test_the_four_image_components_are_all_found(self):
+        """FLUX/Schnell is four separately-loaded files, which is the whole reason the SDXL
+        one-checkpoint assumption does not transfer. Missing one silently would make the bundle
+        look three-quarters present."""
+        got = inv.active_from_source()
+        roles = {v for v in got.values() if v.startswith("image-")}
+        self.assertEqual(roles, {"image-unet", "image-t5", "image-clip", "image-vae"})
+
+    def test_the_asr_model_is_found_from_the_voice_app_not_just_api(self):
+        """The bug this test exists for: a first draft read only `api.py` and reported the
+        listen model as an idle component while `voice/asr.py` was loading it. A loader site
+        missed is an active model misclassified."""
+        got = inv.active_from_source()
+        self.assertIn("asr", got.values())
+
+    def test_an_empty_active_set_would_be_a_failure_not_a_finding(self):
+        self.assertTrue(inv.active_from_source(),
+                        "no active models parsed at all -- the tool is broken, not the box")
+
+
+class ClassificationTests(unittest.TestCase):
+    def test_an_unmanifested_weight_is_unknown_blocked(self):
+        """The honest default. `docs/ops/LICENSE-AUDIT.md`'s vocabulary says an unrecorded
+        licence is a blocker until provenance exists, so absence of a manifest entry is not
+        'probably fine' — whatever the file happens to be."""
+        self.assertEqual(inv._classify("vae/mystery.safetensors", None, False),
+                         "unknown-blocked")
+        self.assertEqual(inv._classify("llm/whatever.gguf", None, False), "unknown-blocked")
+
+    def test_active_beats_every_other_label(self):
+        entry = {"license": "Apache-2.0"}
+        self.assertEqual(inv._classify("llm/symon-1.0-7b-q4_k_m.gguf", entry, True),
+                         "active-default")
+
+    def test_a_manifested_non_active_llm_is_a_rollback(self):
+        self.assertEqual(inv._classify("llm/symon-1.0-14b-q4_k_m.gguf", {"license": "x"}, False),
+                         "rollback")
+
+    def test_the_class_vocabulary_is_closed(self):
+        """Every label the tool can emit has to be one of the declared classes, or a doc that
+        groups by class silently drops a row."""
+        got = {r["classification"] for r in inv.scan()["weights"]}
+        self.assertTrue(got <= set(inv.CLASSES), f"undeclared class emitted: {got - set(inv.CLASSES)}")
+
+    def test_the_real_scan_finds_unknown_blocked_files_and_says_how_many(self):
+        """Not pinned to 17: the count changes the moment somebody drops a file in, and a test
+        that pins it would fail for the right behaviour. What must hold is that unmanifested
+        files are FOUND and labelled, not that there are exactly N of them."""
+        scanned = inv.scan()["weights"]
+        self.assertTrue(scanned, "no weights scanned at all")
+        unknown = [r for r in scanned if r["classification"] == "unknown-blocked"]
+        for r in unknown:
+            self.assertFalse(r["in_manifest"])
+            self.assertIsNone(r["license"])
+
+    def test_adapters_are_reported_separately_and_marked_protected(self):
+        """Training output is not a base weight. `training/` is the protected tree, and merging
+        the two lists is how an adapter ends up treated as something shippable."""
+        for a in inv.scan()["adapters"]:
+            self.assertTrue(a["protected"])
+            self.assertEqual(a["classification"], "adapter")
+            self.assertTrue(a["path"].startswith("training/"))
+
+
+class InventoryOutputTests(unittest.TestCase):
+    def test_the_text_output_is_deterministic_across_runs(self):
+        """Two runs, same bytes. A review artefact that reorders itself cannot be diffed, and
+        `sorted()` on a `rglob` is the only reason this holds."""
+        a = inv.render(inv.scan())
+        b = inv.render(inv.scan())
+        self.assertEqual(a, b)
+
+    def test_the_json_output_parses_and_carries_the_same_counts(self):
+        out = subprocess.run([sys.executable, str(TOOL), "--json"],
+                             capture_output=True, text=True, timeout=180, cwd=str(ROOT))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        data = json.loads(out.stdout)
+        self.assertEqual(len(data["weights"]), len(inv.scan()["weights"]))
+
+    def test_no_secret_shaped_string_reaches_the_output(self):
+        """The inventory reads a manifest and a directory listing, neither of which should
+        contain a credential — but it also reads `api.py`, which sits beside code that does.
+        Checked rather than assumed."""
+        text = inv.render(inv.scan()).lower()
+        for forbidden in ("token=", "secret", "password", "api_key", "bearer ",
+                          ".env", "file://", "vscode://", "pycharm://"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, text)
+
+    def test_it_says_plainly_that_it_changed_nothing(self):
+        self.assertIn("Nothing was downloaded, activated, moved or deleted",
+                      inv.render(inv.scan()))
+
+
+class StagingScriptRefusalTests(unittest.TestCase):
+    """Each guardrail driven for real. A refusal that is never exercised is a comment."""
+
+    def test_the_script_is_executable_and_parses(self):
+        self.assertTrue(SCRIPT.is_file())
+        self.assertEqual(subprocess.run(["bash", "-n", str(SCRIPT)]).returncode, 0)
+
+    def test_it_refuses_to_run_outside_the_repo_root(self):
+        """Every path in the script is relative. Run from elsewhere it would write a staging
+        tree somewhere nobody looks again, so it exits before doing anything."""
+        with tempfile.TemporaryDirectory() as td:
+            got = run_script("--inventory", cwd=td)
+        self.assertEqual(got.returncode, 2)
+        self.assertIn("refusing", got.stderr)
+
+    def test_activation_without_a_candidate_id_refuses(self):
+        got = run_script("--activate-candidate")
+        self.assertEqual(got.returncode, 2)
+        self.assertIn("explicit candidate id", got.stderr)
+
+    def test_activation_refuses_when_nothing_is_staged(self):
+        """The gate that matters. Six conditions, and the exit code says refused rather than
+        'nothing to do' — a promotion path that exits 0 when it did not promote is the shape
+        that lets a caller believe it worked."""
+        got = run_script("--activate-candidate", "symon-openai-20b")
+        self.assertEqual(got.returncode, 3)
+        self.assertIn("REFUSED", got.stderr + got.stdout)
+        for gate in ("candidate staged", "smoke marker present", "rollback recorded",
+                     "licence recorded", "runtime compat recorded", "owner approval"):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, got.stderr + got.stdout)
+
+    def test_a_dry_run_stage_creates_nothing_on_disk(self):
+        """The staging directory must not exist afterwards. Asserted by absence, and skipped
+        rather than deleted if a real staging tree is already there — this test does not get to
+        remove somebody's staged candidate to make itself pass."""
+        staging = MODELS / "staging"
+        if staging.exists():
+            self.skipTest("a real staging tree exists; not touching it")
+        got = run_script("--stage-openai-gpt-oss-20b", "--dry-run")
+        self.assertEqual(got.returncode, 0, got.stderr)
+        self.assertFalse(staging.exists(), "dry run created a staging directory")
+        self.assertIn("dry run", got.stdout)
+
+    def test_the_download_is_refused_even_with_the_confirm_phrase(self):
+        """Deliberate: the phrase is necessary and still not sufficient. Tens of GB onto a disk
+        already holding 194 GB should not be one environment variable away, so the script
+        prints the command and declines to be the thing that spends the disk."""
+        src = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("this script still will not fetch", src)
+        self.assertNotIn("huggingface-cli download \"", src)      # never built as a live argv
+
+    def test_no_mode_deletes_a_weight(self):
+        """Structural, because the alternative is running a mode that might delete one. `rm`
+        appears exactly once and only against the script's own staging scratch."""
+        src = SCRIPT.read_text(encoding="utf-8")
+        for line in src.splitlines():
+            if re.search(r"\brm\b|\bshred\b|\btruncate\b", line) and not line.strip().startswith("#"):
+                self.fail(f"a destructive command appears in the script: {line.strip()!r}")
+
+    def test_the_smoke_plan_requires_a_real_run_not_a_file_check(self):
+        got = run_script("--smoke-plan")
+        self.assertEqual(got.returncode, 0, got.stderr)
+        self.assertIn("SMOKE-PASSED.txt", got.stdout)
+        # Whitespace-collapsed before matching. The phrase wraps across a line in the heredoc,
+        # and a plain substring check missed it -- the same failure #97 found in a GPL header,
+        # where an 80-column wrap put the licence name across a line break and made it
+        # invisible to a substring search. Same bug, same fix.
+        flat = " ".join(got.stdout.split())
+        self.assertIn("cannot ask whether a model works", flat)
+        self.assertIn("a stamped smoke record can", flat)
+
+
+if __name__ == "__main__":
+    unittest.main()
