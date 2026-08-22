@@ -1,7 +1,7 @@
 # SyMoNeuRaL OpenAI 20B — the LLM candidate, and what has to be true before it runs
 
 **Opened 2026-08-22.** **Weights downloaded and converted 2026-08-22 on Garrett's explicit
-authorization — see §3a, §3b. Nothing smoked. Nothing activated. Qwen unchanged and not deleted. No deploy.**
+authorization, and live-smoked — see §3a, §3b, §3c. Nothing activated. Qwen unchanged and not deleted. No deploy.**
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@ authorization — see §3a, §3b. Nothing smoked. Nothing activated. Qwen unchan
 | status | **AUDIT / CANDIDATE** |
 | downloaded | **yes — 2026-08-22, 32 GiB staged, see §3a** |
 | converted | **yes — 12.85 GiB GGUF, MXFP4 preserved, see §3b** |
-| smoked | **no — awaiting RUN GPT-OSS SMOKE** |
+| smoked | **yes — 2026-08-22, loads/generates/fits; 5 of 6 readings, see §3c** |
 | active | **no** |
 
 ## 0. Scope, stated first because it is the thing most likely to be over-read
@@ -96,7 +96,7 @@ them, and it is supported in-tree.
 already wrong.** The projection said ~26 GiB peak on the assumption of one 12.81 GiB download.
 **Two trees were fetched** (§3a) and the GGUF has since been written (§3b), so the real total is
 **~45 GiB**, not 26 — and all four items below are **retained on Garrett's instruction** until
-live smoke passes and the activation decision is made:
+the activation decision is made (the live-smoke condition was met on 2026-08-22, §3c):
 
 | | |
 |---|---|
@@ -117,6 +117,11 @@ measured comment records **9,485 MiB total for a 4.36 GiB model** — so **KV an
 ~3.9 GiB at that context**.
 
 > **12.81 GiB of weights + ~3.9 GiB of KV ≈ 16.7 GiB on a 16,303 MiB card. It will not fit.**
+
+> ⚠️ **The 972 MiB idle figure above was superseded by measurement on 2026-08-22: idle was
+> 239 MiB.** The smoke peaked at **12,911 MiB with 3,392 MiB spare** — §3c. The conclusion that the
+> *production* context will not fit is unaffected and untested; only the idle baseline was wrong,
+> and it was wrong in the conservative direction.
 
 **So the candidate cannot be smoked at the production context.** `--smoke-candidate` uses
 **`-c 8192 -np 1`**, and says why in its own output — because *an OOM nobody predicted reads like
@@ -337,6 +342,65 @@ is now **exit 0**, finding both the candidate and engine `build 296, commit 2246
 MiB against a **16,303 MiB** card with ~972 MiB used at idle — roughly **2,200 MiB** left for KV and
 compute buffers at `-c 8192 -np 1`. Plausible, and **not measured.** That is the whole reason
 `SMOKE-PASSED.txt` is gate 2.
+
+## 3c. Live isolated smoke — RUN 2026-08-22. **It runs.**
+
+`SMOKE-PASSED.txt` is written and carries the readings; it is in gitignored staging, so this is
+the tracked summary.
+
+| Reading | Result |
+|---|---|
+| runtime load | **PASS** — health in 4 s, no warnings, `n_ctx_slot 8192` |
+| tokenizer / template | **PASS** — Harmony markers in `/props`, and `reasoning_content` came back populated, so the analysis channel parses end-to-end |
+| one real generation | **PASS** — exact phrase, 96 tokens, 165.4 tok/s generation, 454.0 tok/s prompt |
+| VRAM measured | **PASS** — 239 → **12,911 MiB peak** → 239, on a 16,303 MiB card |
+| **governor lease** | **NOT DONE — and not possible this way. See below.** |
+| previous default still loads | **PASS** — Qwen reloaded and generated afterwards, 5,261 MiB |
+
+```
+prompt:   Say exactly: SyMoNeuRaL OpenAI candidate online.
+response: SyMoNeuRaL OpenAI candidate online.
+```
+
+### The VRAM projection was wrong in the safe direction
+
+§2 predicted ~2,200 MiB of headroom from an assumed 972 MiB idle. **Idle was 239 MiB**, so real
+headroom at peak was **3,392 MiB** — about 1.2 GiB more than predicted. **The projection was
+conservative, not accurate**, and it is the measurement that stands. This changes nothing about
+the production context: `-c 65536 -np 2` was never attempted and is still predicted not to fit.
+
+### Reading 5 is a structural gap, not an oversight
+
+**No governor lease was taken, and this path cannot take one.** The governor lives in the
+production module, and the smoke path is forbidden from importing it — that forbidding is exactly
+what makes a fallback *unreachable* rather than merely *disabled*. **A lease and this isolation
+are mutually exclusive.**
+
+So the record proves the candidate **runs**; it does **not** prove it behaves as a governor tenant
+alongside other work. Whoever promotes it still owes that reading through the normal serving path.
+**Reading 4 does not cover it** — that the weights fit is not that the candidate cooperates.
+
+### Isolation, read from the kernel rather than argued from the argv
+
+| Claim | How it was established |
+|---|---|
+| only the candidate was opened | `/proc/<pid>/fd` + `/proc/<pid>/maps` — the candidate GGUF **and nothing else** |
+| no Qwen, draft, adapter, FLUX or whisper | **zero** matches across that process's fds and maps |
+| **port 8081 never listening** | the fallback was not blocked, it was **absent** — no production LLM server existed |
+| response attributable to this engine | `model` = candidate path, `system_fingerprint` = `b296-2246ab7` |
+| only GPU tenant | the smoke engine, 12,664 MiB; nothing else held the card |
+
+> **One thing worth stating plainly, because "isolated" invites over-reading:** `backend/api.py`
+> **was running throughout** (pid 1849, up 1h44m). It was neither used nor disturbed — it held no
+> model file and no GPU memory, because it spawns an engine on demand and had not. Saying "nothing
+> else was running" would have been false; saying "nothing else served this request" is what was
+> proven.
+
+### What the smoke does not say
+
+**One deterministic 96-token completion is evidence of life, not of quality.** No benchmark, no
+A/B against the current default, no eval. Nothing here argues the candidate is *better* than Qwen —
+only that it loads, generates, fits, and releases the card.
 
 ## 4. The six activation gates
 
