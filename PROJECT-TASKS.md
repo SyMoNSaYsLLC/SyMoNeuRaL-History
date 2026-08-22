@@ -862,6 +862,23 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: grep StudioEditorNotPubliclyExposedTests -- backend/apps/studio/test_studio.py
         check: grep StudioHardwareBadgeTests -- backend/apps/studio/test_studio.py
         check: exists backend/apps/studio/SMOKE-graph-surface.md
+        note: 2026-08-22 coder — pre-migration scope batch landed in ten commits, 9479cee2
+        note: through 5d5724be: application lab, platform targets, live stack, control board, API
+        note: surface, website look/feel, Parameters, MoE, Cloud/Local, Generic contracts, seven
+        note: per-surface scopes, the security audit, the licence/model/Yocto/SBOM/provenance
+        note: audits, and the commercial-mode and revenue specs. Docs and one page's copy only.
+        note: THIS DOES NOT CLOSE PHASE 0.6b. 0.6b is the CLAUDE.md migration (R-180) and is a
+        note: different workstream: the migration has landed -- ENGINEERING.md, MEASUREMENTS.md
+        note: and EXPORTS.md each say so in their own headers -- but neither this file nor
+        note: docs/specs/scope-of-work-2026-08-22.md records it CLOSED, so it is a candidate.
+        note: Phase 1 is NOT STARTED and Deploy is NOT STARTED. The Scope Parking Lot REMAINS
+        note: QUEUED per Garrett's standing statement, and it has no artefact in this repo -- a
+        note: grep across tracked files finds no mention of one. Recorded both ways on purpose:
+        note: the status is his, and the absence of a file is the measurement.
+        note: Two figures deliberately left unreconciled rather than restated: BOX-REALITY-AUDIT
+        note: §7 says 141 shipped routes and SECURITY-AUDIT measures 123. Reconcile before either
+        note: is published -- this project has already published a count that was never true of
+        note: the commit it sat beside.
 
 ◻ #104 — SyMoNeuRaL ModelOps/RuntimeOps: runtime registry, router, hot swap, governor
         owner: coder

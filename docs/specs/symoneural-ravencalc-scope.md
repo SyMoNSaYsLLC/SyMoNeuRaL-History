@@ -67,12 +67,33 @@ same thing twice** — there are currently two.
 > designed around SymPy-style symbolic algebra, not language-model guessing. It never takes the
 > GPU."*
 
-**Which one is correct depends on a measurement, not a preference:** whether the current
-implementation actually is SymPy. The first wording asserts it; the second describes the design.
-`backend/apps/ravencalc/` holds a bare `ravencalc.py` — deliberately **not** a Python package,
-reached by inserting its directory on `sys.path` — plus `backend/apps/test_ravencalc.py` and
-`tools/prove_ravencalc_steps.py`. **Confirm the SymPy dependency before using the stronger wording;
-the weaker one is correct either way.** #84 owns the page change.
+**Measured 2026-08-22 — it is SymPy, so the stronger wording is factually safe.**
+`backend/apps/ravencalc/symbolic.py:1-7` is a *"facade over the upstream symbolic engine
+(sympy)"* and declares itself *"the ONLY file in the `ravencalc` package allowed to `import
+sympy`"*; **sympy 1.13.3 is installed**; and `ravencalc.py:47-49` imports `parse_expr`,
+`standard_transformations`, `implicit_multiplication_application` and `convert_xor` directly, under
+a comment marking that as a deliberate exception — *"Keep the parser direct until we wrap it."*
+
+The package is five tracked files — `ravencalc.py`, `steps.py`, `symbolic.py`, `test_ravencalc.py`,
+`test_steps.py` — and is deliberately **not** a Python package, reached by inserting its directory
+on `sys.path`.
+
+**But there is a second consideration that is not a measurement, and it points the other way.**
+There is a **standing SymPy rebrand request**, which #84 names and deliberately declines to act on:
+*"Same page as the standing SymPy rebrand request, and deliberately not doing it: that is its own
+task, and re-typing the word here is the edit that would hide it."* The repo also carries a vendor
+facade and its guards — `symbolic.py`, `backend/apps/test_brand_boundary.py`,
+`tools/prove_vendor_facade.py`.
+
+So the choice is **not** technical, and it should not be made by whoever next edits the page:
+
+- **naming SymPy is accurate**, and #84 lists the SymPy claim among the load-bearing claims a
+  layout change must not delete;
+- **naming SymPy on a public page may be exactly what the rebrand request wants stopped.**
+
+**Garrett's call, and the two are reconcilable** — the *claim* that survives is "exact symbolic
+algebra, computed, not guessed", and whether the vendor is named is the rebrand question.
+**Recorded rather than decided.** #84 owns the page change.
 
 ## 5. Chat co-processor direction
 
