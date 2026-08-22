@@ -440,7 +440,12 @@ try {
   const gw = await page.evaluate(async () => {
     const s = await fetch('/api/status', { headers: { Accept: 'application/json' } })
       .then(r => r.ok ? r.json() : null).catch(() => null);
-    const unit = s && (s.units || []).find(u => u.id === 'gateway');
+    // Searched in `sub` too: gateway was folded into the Miner row on 2026-08-22 and is no
+    // longer a top-level unit. Reading only `units` would make `apiState` undefined, and
+    // the assertion below would then be comparing the page against nothing while looking
+    // like a page bug.
+    const rows = (s && s.units) || [];
+    const unit = [...rows, ...rows.flatMap(r => r.sub || [])].find(u => u.id === 'gateway');
     const led = document.querySelector('#gwhead s');
     return {
       shown: document.getElementById('gwstate')?.textContent?.trim(),

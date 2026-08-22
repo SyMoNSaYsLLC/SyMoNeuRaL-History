@@ -34,7 +34,20 @@ TREE = ast.parse(SOURCE)
 #: The rows, in the order `build_status()` builds them. Read from `/api/status` on the running
 #: API for the live truth; this is the source's own order and is what the comment must match.
 EXPECTED = ["chat", "image", "remix", "ravencalc", "train", "miner", "streamer", "coder",
-            "gateway", "project", "sigils", "studio", "exp", "live"]
+            "project", "sigils", "studio", "exp", "live"]
+
+#: Rows that are NOT top-level units and must not come back as one. `gateway` was a 1U tile
+#: until 2026-08-22, when Garrett folded it into the Miner row -- *"gateway is a miner app so
+#: it can merge into miner"*, *"gatway should be a sub app of miner"*. `guide` went the same
+#: way into `streamer` before it.
+#:
+#: Asserted as its own list rather than by leaving them out of EXPECTED above, because those
+#: are two different claims and only one of them is checked by omission. Dropping a name from
+#: EXPECTED says "this is not a row"; it says nothing about whether the surface survived the
+#: fold or was quietly deleted, and a fold that loses the reading is the failure worth having
+#: a test for -- `/gateway.html` renders whatever `/api/status` says about it, so a gateway
+#: that stops being reported anywhere makes that page read "not present" to every visitor.
+FOLDED = {"gateway": "miner", "guide": "streamer"}
 
 
 #: There is deliberately NO module->row map here any more. There used to be one, holding a
@@ -98,8 +111,41 @@ def _row_id(call: ast.Call) -> str:
 
 
 class RackCountTests(unittest.TestCase):
-    def test_the_rack_is_fourteen_units(self):
+    def test_the_rack_is_thirteen_units(self):
         self.assertEqual(len(_unit_calls()), len(EXPECTED))
+
+    def test_a_folded_surface_is_a_subunit_and_not_a_missing_one(self):
+        """The half of a fold that omission cannot check.
+
+        Taking `gateway` out of `EXPECTED` proves it is not a rack row. It does not prove
+        the surface still exists -- and the two failures look identical from up here, while
+        being very different for a visitor: folded means `/gateway.html` still prints the
+        API's own state, deleted means it prints *"not present"* forever.
+
+        So this asserts the positive: the id appears in a `SubUnit(...)` and the row it sits
+        under is the one it was folded into. `guide` is in the map too and has no `SubUnit`
+        -- it was folded into the Streamer's own detail line rather than as a sub -- so only
+        ids that are actually built as subunits are required to be, and `guide` is required
+        to be absent from `EXPECTED`, which is the whole of what was claimed for it."""
+        import re
+        for folded, parent in FOLDED.items():
+            with self.subTest(folded=folded):
+                self.assertNotIn(folded, EXPECTED,
+                                 f"{folded} was folded into {parent}; it is not a rack row")
+                # (?<!Sub): `SubUnit(id="gateway"` CONTAINS `Unit(id="gateway"`, so a bare
+                # substring check fails on the very fold it exists to protect. Found by this
+                # test going red on correct code on its first real run -- the generic-name
+                # collision this repo has recorded five times in CSS, arriving in an
+                # assertion string.
+                self.assertIsNone(re.search(rf'(?<!Sub)Unit\(id="{folded}"', SOURCE),
+                                  f"{folded} is back as a top-level Unit in api.py")
+
+        # gateway specifically: folded AS a subunit, so the built form is checkable.
+        self.assertIn('SubUnit(id="gateway"', SOURCE,
+                      "gateway is neither a Unit nor a SubUnit -- the surface was deleted "
+                      "rather than folded, and /gateway.html now reads 'not present'")
+        parent = [c for c in _unit_calls() if _row_id(c) == "miner"]
+        self.assertEqual(len(parent), 1, "the miner row gateway was folded into is gone")
 
     def test_the_comment_above_the_list_says_the_same_number(self):
         """The defect that was actually shipped: the code and its own comment disagreeing.

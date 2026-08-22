@@ -1746,7 +1746,16 @@ GATEWAY_JS = """<script>
   fetch('/api/status', {headers: {'Accept': 'application/json'}})
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (s) {
-      var u = s && (s.units || []).filter(function (x) { return x.id === 'gateway'; })[0];
+      // Searched in `sub` as well as in `units`, and the order matters less than the fact
+      // that BOTH are searched. Gateway was a top-level rack unit until 2026-08-22, when it
+      // was folded into the Miner row as a third `sub` -- *"gateway is a miner app so it
+      // can merge into miner"*. A lookup that reads only `units` would have gone on working
+      // in every test that stubs the payload and reported 'not present' to every real
+      // visitor, which is the failure this page exists to not have: it renders the API's
+      // own words about a licensing surface, so being wrong here is worse than being blank.
+      var rows = (s && s.units) || [];
+      var all = rows.concat.apply(rows, rows.map(function (x) { return x.sub || []; }));
+      var u = all.filter(function (x) { return x.id === 'gateway'; })[0];
       if (!u) { st.textContent = 'not present'; d.textContent =
         'The gateway surface is not present in this API build.'; return; }
       st.textContent = u.state;

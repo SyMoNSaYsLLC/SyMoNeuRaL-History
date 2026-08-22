@@ -2040,12 +2040,21 @@ def build_status() -> Status:
             # on a machine with no rig attached was always the overstatement.
             Unit(id="miner", label="SyMoNeuRaL Miner", slot="6U",
                  state=miner_state, bus="gpu", href="/miner.html",
-                 spec="KawPow on the RTX 5070 Ti · Antminer + MicroBT ops",
+                 spec="KawPow on the RTX 5070 Ti · Antminer + MicroBT ops · TRON USDT licensing",
                  detail=miner_detail,
                  sub=[SubUnit(id="gpuminer", label="GPU · Ravencoin",
                               state=gpuminer_state, bus="gpu", detail=gpuminer_detail),
                       SubUnit(id="asicminer", label="ASIC · Antminer + MicroBT",
-                              state=asic_state, bus="asic", detail=asic_detail)]),
+                              state=asic_state, bus="asic", detail=asic_detail),
+                      # Folded from its own 1U row on 2026-08-22 -- see the comment further
+                      # down, where the rack count is kept. `bus` is `net` and not `gpu`:
+                      # this half settles licences on TRON and never touches the card, and
+                      # claiming a GPU bus for it would be the same overstatement the ASIC
+                      # half's comment above rejects. Its `id` is unchanged so that
+                      # `/gateway.html`, which reads its own state out of `/api/status`,
+                      # keeps finding it -- that page searches `sub` as well as `units`.
+                      SubUnit(id="gateway", label="Gateway · TRON USDT licensing",
+                              state=gateway_state, bus="net", detail=gateway_detail)]),
             # Stream copy, not transcode: the work is network I/O and muxing, so it never
             # contends for the card. `ready` is honest here -- unlike the mining surfaces
             # this one is functional right now; it holds no content of its own because the
@@ -2082,11 +2091,6 @@ def build_status() -> Status:
                  state=coder_state, bus="cpu", href="/livestack/coder",
                  spec="local workspace agent · reads over /local, never /api",
                  detail=coder_detail),
-            # Designed, not deployed: no contract, no wallet, no daemon, no key material.
-            Unit(id="gateway", label="SyMoNeuRaL Gateway", slot="1U",
-                 state=gateway_state, bus="net", href="/gateway.html",
-                 spec="TRON TVM · USDT (TRC-20) licensing",
-                 detail=gateway_detail),
             # GUIDE IS NOT A UNIT ANY MORE -- it is folded into the Streamer above, and this
             # comment is the record of why rather than a leftover.
             #
@@ -2106,8 +2110,22 @@ def build_status() -> Status:
             # is now in the Streamer unit's own detail line. See
             # `apps/streamer/routes.py::status()`.
             #
-            # The rack is therefore FOURTEEN units, in the order they are built below:
-            # chat, image, remix, ravencalc, train, miner, streamer, coder, gateway, project,
+            # GATEWAY IS NOT A UNIT ANY MORE either -- it is a third `sub` of the Miner
+            # above, folded 2026-08-22. Garrett: *"gateway is a miner app so it can merge
+            # into miner"*. Same move as Guide into Streamer and for a related reason: it
+            # was a 1U tile whose LED had never been anything but grey, because there is no
+            # contract, no wallet and no key material, and it was taking a rack slot to say
+            # so. The Miner row already exists to carry halves that fail independently, and
+            # a licensing surface that is switched off is exactly that shape.
+            #
+            # WHAT WAS NOT DONE, on purpose: `backend/apps/gateway/` did not move. It is
+            # thirteen modules of TRON settlement -- chain, abi, keccak, entitlement,
+            # verify, store -- and putting payment code inside a mining package would be a
+            # rename dressed as an architecture. The fold is a rack decision, not a code
+            # one, and `/gateway.html` still answers and still owns the surface.
+            #
+            # The rack is therefore THIRTEEN units, in the order they are built below:
+            # chat, image, remix, ravencalc, train, miner, streamer, coder, project,
             # sigils, studio, exp, live. Eleven before `studio` and `exp` landed alongside their
             # pages -- and this comment said TWELVE for the change that added both, because a
             # number kept only in prose drifts. `apps/test_status_rack.py` now counts the

@@ -68,8 +68,16 @@ def _module_rows() -> dict:
 class RosterParsesTests(unittest.TestCase):
     def test_the_roster_reads_and_is_not_empty(self):
         rows = roster.rows()
-        self.assertEqual(len(rows), 14)
-        self.assertEqual(roster.slots(), 21)
+        # 14 until the gateway fold, 2026-08-22. Thirteen rows, and the slot total on the
+        # next line moves with it -- the two must always move together or the roster is
+        # claiming units its own table does not carry.
+        self.assertEqual(len(rows), 13)
+        # 21 until 2026-08-22, when gateway's 1U was folded into the miner row. A fold gives
+        # a slot BACK, which is the opposite direction from every previous change to this
+        # number and the reason it is worth a comment: the one-screen budget in
+        # .claude/HANDOVER.md §0 was measured against fourteen rows, so thirteen is inside
+        # what was measured rather than past it.
+        self.assertEqual(roster.slots(), 20)
 
     def test_a_malformed_row_raises_instead_of_being_skipped(self):
         """The failure mode that would make the roster a fourth disagreeing list.

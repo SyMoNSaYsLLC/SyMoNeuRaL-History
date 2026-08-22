@@ -29,18 +29,29 @@ Read in the order `build_status()` emits them, which is the order the rack rende
 | miner | SyMoNeuRaL Miner | 6U | gpu | /miner.html | backend/apps/cryptominer | no |
 | streamer | SyMoNeuRaL Streamer | 1U | net | /streamer.html | backend/apps/streamer | no |
 | coder | SyMoNeuRaL Coder | 1U | cpu | /documentation.html | backend/apps/coder | no |
-| gateway | SyMoNeuRaL Gateway | 1U | net | /gateway.html | backend/apps/gateway | no |
 | project | SyMoNeuRaL Project | 1U | cpu | /project.html | backend/apps/project | no |
 | sigils | SyMoNeuRaL Sigils | 1U | gpu | /sigils.html | backend/apps/sigils | yes |
 | studio | SyMoNeuRaL Studio | 1U | gpu | /studio | backend/apps/studio | no |
 | exp | SyMoNeuRaL Exp | 1U | cpu | /exp | backend/apps/studio/plugins/exp | no |
 | live | SyMoNeuRaL Live | 1U | net | /livestack/live | backend/apps/live | no |
 
-Fourteen rows, twenty-one rack units. The slot figures are what the one-screen budget is
+Thirteen rows, twenty rack units. The slot figures are what the one-screen budget is
 spent on; `.claude/HANDOVER.md` §0 has the viewport table and says fourteen rows fit
-everywhere -- so this row spends the last of the slack that table measured, and the next one
-has to be re-measured rather than assumed. Measure with a cloned `.unit`, never with
+everywhere -- so the fold below **gave a slot back** rather than spending one, and the next
+row to land has that slack and no more. Measure with a cloned `.unit`, never with
 `scrollHeight`.
+
+**`gateway` is not a row any more.** Folded into `miner` as a third `sub` on 2026-08-22 --
+Garrett: *"gateway is a miner app so it can merge into miner"*, *"gatway should be a sub app
+of miner"*. It was a 1U tile whose LED had never been anything but grey, because there is no
+contract, no wallet and no key material, and it was spending a rack slot to say so.
+
+`backend/apps/gateway/` did **not** move and must not be read as having moved: thirteen
+modules of TRON settlement inside a mining package would be a rename dressed as an
+architecture. `/gateway.html` still answers, still owns the surface, and still renders its
+state out of `/api/status` -- which is why the fold kept the id `gateway` on the `SubUnit`
+rather than renaming it. `apps/test_status_rack.py::FOLDED` asserts both halves: not a row,
+and not deleted either.
 
 ### Things that column will mislead you about if you read it too fast
 
@@ -89,6 +100,10 @@ A directory here is not a claim to a row on the front page. These are not omissi
 - **`cryptominer`** and **`asicminer`** — the two halves of the single `miner` row. The row
   reports one state derived from both, and the detail line always names both in the same
   order, so a reading from one can never be mistaken for a reading from the other.
+- **`gateway`** — the third piece of that same row since 2026-08-22, carried as a `SubUnit`
+  with its own `net` bus (see the fold note above the table). The thirteen TRON settlement
+  modules stay in this directory and `/gateway.html` still reads their state off
+  `/api/status`; what it no longer has is a rack row of its own.
 - **`discovery`** and **`reinforce`** (under `studio/plugins/`) — Studio plugins. `exp` is
   the only plugin with a row of its own.
 - **`accounts`**, **`capture`**, **`controlboard`**, **`licensing`**, **`news`** —
