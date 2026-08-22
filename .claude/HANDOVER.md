@@ -1,13 +1,27 @@
 # HANDOVER — symoneural.com
 
-**Last updated 2026-08-21. Written for a fresh agent with zero prior context.**
+**Last updated 2026-08-22. Written for a fresh agent with zero prior context.**
 
-> **Before you trust a test figure — including the ones below — read §0a-octies.** The
-> backend suite does **not collect** at HEAD: `apps/ravencalc/test_ravencalc.py` raises
-> `NameError: name 'convert_xor' is not defined`, one collection error, zero tests run,
-> from `49185b8` onward. The working tree is green only because two uncommitted
-> `apps/ravencalc/` files from another session repair it. A green suite proves the
-> working tree, not the commit.
+> **CORRECTION 2026-08-22 — the warning that stood here is now stale, and it was the first thing
+> a fresh agent read.** It said the backend suite *"does not collect at HEAD"* because
+> `apps/ravencalc/test_ravencalc.py` raised `NameError: name 'convert_xor' is not defined`, and
+> that the working tree was green *"only because two uncommitted `apps/ravencalc/` files from
+> another session repair it."*
+>
+> **All three parts of that are now false.** Measured on a **clean tree** at `5d5724be`:
+> `convert_xor` is imported at `backend/apps/ravencalc/ravencalc.py:47-49`; **all five
+> `apps/ravencalc/` files are tracked** (`ravencalc.py`, `steps.py`, `symbolic.py`,
+> `test_ravencalc.py`, `test_steps.py`); `pytest apps/ravencalc/test_ravencalc.py -q` gives
+> **14 passed**; and the canonical full invocation — `cd backend && python3 -m pytest apps/ -q
+> --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests` — gives **1818 passed,
+> 14 skipped in 146.01 s**, matching the figure `docs/ops/MEASUREMENTS.md` records at
+> `ca0571b7`. `git status --short` was empty for that run, so the green is the commit's, not a
+> working tree's.
+>
+> **The lesson is the one this repo already warns about**, and it caught its own state document:
+> the warning was true when written and nothing re-measured it. It is corrected here rather than
+> deleted, because *"a green suite proves the working tree, not the commit"* remains exactly the
+> right instruction — it just is not what was happening.
 
 > **If you read nothing else:** nothing is broken and nothing is blocked, but **the whole of
 > `site/` is now waiting on a deploy** — as of `26cb58e` that is `site/ui.js` and
@@ -4207,3 +4221,73 @@ setting it first is worse than not setting it**: production serves `/symoneural.
 `/ui.js` off the webroot through Caddy and the `?v=` hash is only a cache key, so until the
 deploy runs a switched-on bar would be new markup against the old stylesheet. `GARRETT-INBOX.md`
 carries the same three lines.
+
+
+---
+
+## 2026-08-22 — the pre-migration scope batch, and what it found
+
+**Ten commits, docs and one page's copy. No implementation, no folder migration, no deploy, no
+gate change, no archive imported.** Chain: `9479cee2` → `1e5cd6ac` → `ef499eec` → `e9cd666f` →
+`8b23bbbe` → `e946494f` → `73b5ae7a` → `5c0057d6` → `778b9958` → `5d5724be`.
+
+Garrett asked for the full architecture to be written down before a migration decides it. The
+recurring result was not new scope — it was **corrections**, because most of what the briefs asked
+to be built is already built. Those are the rows worth carrying forward:
+
+| Finding | Where |
+|---|---|
+| **`@symoneural code.tar.gz` contains no first-party code.** 3,598 entries, eleven third-party Anthropic projects, zero SyMoNeuRaL files. `claude-code`'s licence is one line of all-rights-reserved | `docs/specs/symoneural-coder-project-cli-scope.md` §1 |
+| **The CLI's "missing" interactive UX is all built** — nine slash commands, permission gating, `@file`, multiline, Ctrl-C, markdown streaming, resume-by-id. `apps/coder` is 2,748 lines with a stamped smoke record, not thin | §3, §4 |
+| **`accounts/meter.py` is built** — balances, holds, ledger, reserve-then-resolve, stale-hold sweep. Wired to one caller, so app-wide metering is PARTIAL | `docs/specs/symoneural-commercial-mode.md` §1 |
+| **The miner page claimed a hashrate the tree cannot produce.** `contrib/` is absent and `build-kawpowminer.sh` is untracked, so a clone has no path to a running miner. Copy corrected; the benchmark kept as provenance | `docs/specs/symoneural-miner-scope.md` |
+| **Three of eleven weights have `license_text: null`** — the unsloth/Qwen3.x files. Apache-2.0 §4 attribution has nothing to travel, so they cannot be redistributed | `docs/ops/MODEL-LICENSES.md` ML-1 |
+| **`AUDIT.md` Q1's premise is stale** — the recipe stopped declaring `LICENSE = "CLOSED"` at `97b92770` | `docs/ops/LICENSE-AUDIT.md` LA-1 |
+| **Yocto's missing artefacts are not missing — they are not yet producible**, because no image has ever been built. All 12 layers and all 9 recipes already carry complete metadata | `docs/ops/YOCTO-LAYER-LICENSES.md` §0 |
+
+### The one thing a fresh agent should read first
+
+**`docs/ops/SECURITY-AUDIT.md`, BLOCKER-1.** Three facts that are each fine alone: `ops/Caddyfile:150`
+delegates `/studio` **and** `/studio/*`; `/studio/editor/*` proxies ComfyUI's own editor with a
+catch-all forwarding seven methods plus a WebSocket; and the only thing in front of it is `_guard`'s
+401. **Open task #88 asks for that 401 to be removed**, across eight surfaces. Executed literally,
+ComfyUI's full editor API becomes unauthenticated on the public internet.
+
+The warning is on **#88 itself** as `note:` lines, because that is where the agent who does the work
+will see it. His complaint is legitimate and four ways to satisfy it are recorded — loopback-only via
+`_require_local`, exclude the editor, drop the Caddy delegation while testing, or accept it in
+writing with a date. **The risk type differs per surface and must not be flattened.**
+
+### Phase state, stated so nobody infers it
+
+- **Phase 0.1–0.5: CLOSED** (unchanged by this batch).
+- **Phase 0.6b — the CLAUDE.md migration (R-180) — is NOT recorded as closed anywhere.** The
+  migration itself has landed (`docs/ENGINEERING.md`, `docs/ops/MEASUREMENTS.md`,
+  `docs/ops/EXPORTS.md` all say so in their own headers), but neither `PROJECT-TASKS.md` nor
+  `docs/specs/scope-of-work-2026-08-22.md` marks it closed. **Treat it as candidate, not closed.**
+- **Phase 1: NOT STARTED.** Its item 3 is #75, which this batch deliberately **paused at 0/4**.
+- **Deploy: NOT STARTED.** Nothing was deployed and `site/` still carries the pending items above.
+- **The Scope Parking Lot remains QUEUED** per Garrett's standing statement — and it has **no
+  artefact in this repo**: a grep across tracked files finds no mention of one. Both are recorded
+  because the status is his and the absence of a file is the measurement.
+
+### #75 is paused, and why the pause is safe
+
+Nothing read, nothing moved, nothing renamed. Both `.env` files are still mode 600 and untracked.
+A **`check: exists scripts/SMOKE-credentials.md`** was added **before** any work started, because the
+other four checks all go green on a `mv` plus two new files — and the task's own item 1 names that
+trap: *"untracking a key that is still valid moves it out of sight without making it harmless."*
+Four-of-four was reachable with every credential still live.
+
+The DJ → Remix rename is `AUDIT.md` **Q12**, deliberately **not** a task row: a row would authorize
+an agent to do what Garrett explicitly deauthorized.
+
+### Two open questions left with Garrett rather than answered
+
+1. **RavenCalc's top copy.** The implementation *is* SymPy (`symbolic.py` is the facade; 1.13.3
+   installed), so naming it is accurate — **but there is a standing SymPy rebrand request**, and #84
+   declines to touch it for exactly that reason. Accuracy and branding point opposite ways;
+   `docs/specs/symoneural-ravencalc-scope.md` §4 records both.
+2. **`BOX-REALITY-AUDIT.md` §7 says 141 shipped routes; the security audit measures 123.**
+   **Not reconciled, and neither number is restated as the other.** Counting method is the likely
+   cause. Reconcile before either is published.
