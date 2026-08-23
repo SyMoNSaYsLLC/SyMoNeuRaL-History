@@ -1062,3 +1062,125 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: grep-verifiable, so it replaced mine.
         note: Exit 5 with REFUSED on a missing candidate or engine. No adapter flag, no draft
         note: model, own port. Nothing downloaded, no default changed, Qwen present and untouched.
+
+◻ #105 — SyMoNeuRaL Control Plane Matrix: the 16-dimension record, and three open rulings
+        owner: coder
+        2026-08-23, opened at 507e09ee alongside the Bootcamp framework (#not-numbered, landed
+        c0ee30e3/507e09ee). Bootcamp owns the roster vocabulary, the starter gate and the depth
+        charts. This task owns the NORMALIZED record -- App x Instance x Team x Starter x
+        Candidate x Captain x Model x Tool x Agent x Data x Runtime x Gate x Meter x State x
+        Risk x Runbook -- and the machine-checkable rows that fill it.
+
+        DELIVERED at 507e09ee: four documents plus a test with teeth.
+        docs/specs/symoneural-control-plane-matrix.md   -- the schema, 20 instance rows, ratings
+        docs/ops/APPLICATION-MODEL-CAPABILITY-MATRIX.md -- app x weight reachability, measured
+        docs/ops/MODEL-BENCHMARKS.md                    -- the benchmark ledger, SHA per figure
+        docs/ops/VLLM-BENCH-PARITY.md                   -- the parity contract, unmeasured
+        backend/apps/test_control_plane_matrix.py       -- 16 tests, 9 sabotage cases verified
+
+        THE FINDING THAT MATTERS. Filling the Runtime column against the disk, rather than
+        against a document, caught a claim no file-based check could: ASR's weight is present
+        and 1/1 manifested while `whisper-cli` is ABSENT -- contrib/ does not exist, /contrib is
+        gitignored, and a filesystem sweep found no whisper binary anywhere. Two apps name it,
+        `voice` and `sigils`, and neither can transcribe.
+
+        The repo already knew. RUNTIME-PROFILES.md:42 and symoneural-runtime-registry.md:90 both
+        say `absent`, and #104 above states contrib/ does not exist, measured at 41524770, 13:12
+        on 2026-08-22. The Bootcamp depth chart said `proof: serving` at 507e09ee, 22:21 -- NINE
+        HOURS LATER. So this was not a stale doc nobody re-measured; it was a newer document
+        contradicting an older measurement, same repo, same day. The mechanism: the Model row
+        was filled from PROVENANCE.json ("1/1 manifested") and the Runtime row was never filled
+        at all. That is the whole argument for a Runtime column.
+
+        Corrected in place, dated, quoting what each line said: bootcamp (4 places),
+        RUNTIME-PROFILES.md, BOX-REALITY-AUDIT.md, symoneural-runtime-registry.md,
+        symoneural-studio-node-system.md.
+
+        SECOND FINDING: vLLM is NOT absent. vLLM 0.25.1 lives in /home/google/.venvs/vllm,
+        imports, torch 2.11.0+cu130, cuda True, sees the 5070 Ti, created 2026-07-20 -- three
+        weeks BEFORE 7a4e5c98 wrote "absent" into RUNTIME-PROFILES.md:43. Outside the repo, so
+        no in-repo search could find it. NO service runs, so MODEL-REGISTRY.md:108 and
+        BOX-REALITY-AUDIT.md:507 ("candidate only, no service running") stay untouched and true.
+        "Not installed" and "not serving" got conflated; only the first was ever wrong.
+
+        THREE OPEN RULINGS -- owner: garrett on the first two, and they are why this is not done:
+
+        1. The maturity ladder has no word for "installed, importable, no service". absent is
+           false, built is misleading (we compiled nothing; a third-party venv is not our
+           artefact), running is false. Either add a rung, or rule the ladder repo-scoped so an
+           external venv is out of scope. Placeholder `installed-not-serving` is in the files
+           now and is explicitly NOT a ladder level.
+        2. symoneural-ui (Comfy): RUNTIME-PROFILES says source-only; measured is source PLUS a
+           working .venv with torch 2.13.0+cu130, cuda True. A Python app has no compile step, so
+           `built` may be wrong too. Left as source-only, measurement recorded, not reclassified.
+        3. voice/routes.py:107,116 emit "engine" and "measured_ms_short_utterance": 650
+           UNCONDITIONALLY -- a measured figure, no SHA, about an absent binary. The route is
+           otherwise honest (available:false, problem names the missing path) and the surface is
+           disabled, so nobody is told this today. Already filed under #104; the check below
+           tracks it so it cannot be forgotten twice.
+
+        check: exists docs/specs/symoneural-control-plane-matrix.md
+        check: exists docs/ops/APPLICATION-MODEL-CAPABILITY-MATRIX.md
+        check: exists docs/ops/MODEL-BENCHMARKS.md
+        check: exists docs/ops/VLLM-BENCH-PARITY.md
+        check: exists backend/apps/test_control_plane_matrix.py
+        check: exists engines/symoneural-listen/build/bin/symoneural-listen
+        check: ngrep ruling pending -- docs/specs/symoneural-runtime-registry.md
+        check: ngrep measured_ms_short_utterance -- backend/apps/voice/routes.py
+
+        The last three checks are RED on purpose and each names real remaining work: build the
+        ASR runtime into engines/symoneural-listen/ AND track its build script, land the ladder
+        ruling, gate the unconditional ASR figure. 5 of 8 passing is the honest reading of
+        "matrix delivered, three follow-ups open" -- and it keeps archive_tasks.py from filing
+        this at 100% two minutes after it was written.
+
+        WHY engines/ AND NOT contrib/. The check deliberately does NOT target
+        contrib/whisper.cpp/build/bin/whisper-cli, because that path is BANNED:
+        test_references_boundary.py:70 bans references/<tree>/ and the contrib/whisper.cpp/
+        spelling both, and its failure message says "Put what you need in our own tree." Two
+        whisper-cli binaries (973,872 B each) do exist under references/ and are quarantined by
+        that same rule -- so a naive "rebuild contrib/" recreates a rule violation the grep
+        happens not to see. d6b7838a already forked the other two GPU runtimes under our own
+        names into engines/ (symoneural-llm, symoneural-diffuse) and
+        symoneural-runtime-registry.md:88 already reserves runtime_id: symoneural-listen. Two
+        call sites to repoint, voice/asr.py:53-54 and sigils/listen.py:44, and no others.
+
+        note: 2026-08-23 coder -- MY OWN OVERCLAIM, corrected same day. The first draft of these
+        note: documents said "a filesystem sweep found no whisper-cli anywhere on the box". I
+        note: wrote that before the sweep finished. Two exist, both under references/, one dated
+        note: Aug 17 14:04 -- the same hour voice-spec.md:28 recorded the build. The conclusion
+        note: held (ASR cannot serve) but the reason was wrong: quarantined, not missing. That
+        note: distinction is the whole difference between "rebuild it" and "rebuild it somewhere
+        note: else", so it changed the recommendation and the check above.
+        note: Why no test caught the rule/code disagreement: the boundary check skips prose and
+        note: requires a quote character, so asr.py:4's backticked mention is correctly ignored,
+        note: and asr.py:54 plus sigils/listen.py:44 assemble the path from SEGMENTS
+        note: (ROOT / "contrib" / "whisper.cpp" / ...) so the banned literal never appears on a
+        note: line. The rule and the code disagree and the grep cannot see it.
+
+        note: 2026-08-23 coder -- the test was verified by SABOTAGE, not by going green. Nine
+        note: mutations, each landing on the test written for it: 4th option added to a depth
+        note: chart; benchmark cell changed in the ledger only; SHA attribution line deleted;
+        note: instance count desynced from the table; off-the-record marked available; vLLM
+        note: called "not installed" outside a blockquote; ASR re-claimed as serving; a
+        note: nonexistent app module named; the 404-commit caveat dropped. All nine went red,
+        note: all files restored byte-for-byte, suite green after.
+        note: TWO of those assertions were DECORATION on the first pass and the sabotage run is
+        note: the only reason that is known. "Every figure appears in both files" passed while a
+        note: table cell read 999.9, because 166.3 also occurs in prose two sections down -- a
+        note: substring search over a whole document cannot tell a cell from a mention of it. It
+        note: now compares table rows cell-for-cell. And the SHA check accepted the section
+        note: HEADING's copy of the SHA, so deleting the attribution line entirely still passed;
+        note: it now requires an explicit **SHA `<hex>` line. A third was VACUOUS: the weight
+        note: check parsed zero filenames because the doc named weights by column header, so it
+        note: asserted nothing. The doc now spells all ten out and the test refuses to run on
+        note: fewer than ten.
+        note: 2026-08-23 coder -- CAVEAT CARRIED: 404 commits between 2026-08-17 and 7a4e5c98
+        note: are not audited. Every runtime, route, rating and live-state reading in these four
+        note: documents is measured at 507e09ee on 2026-08-23 and is NOT historical proof. The
+        note: unaudited range touched backend/api.py (53 commits), Studio (16), site/ (90) and
+        note: ops/Caddyfile (9), so a cell here could have been different last week with nothing
+        note: in the audited range saying so. A test asserts all four docs keep this caveat.
+        note: 2026-08-23 coder -- no app code was touched. No starter changed, gpt-oss NOT
+        note: activated, Qwen still CHAT_MODEL, commercial mode off, Phase 1 not started,
+        note: nothing deployed, auth unchanged, no weight moved/deleted/committed.

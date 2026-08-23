@@ -40,9 +40,33 @@ Roles are Garrett's, 2026-08-22. Current levels are measured — see the audit f
 | **stable-diffusion.cpp** → `symoneural-diffuse` | local/customer/owner image runtime candidate — lower-level image generation, GGUF/quantized workflows, a simpler runtime beside Comfy | **built** |
 | **ComfyUI** → `symoneural-ui` | **private** workflow/image runner: complex image/audio/video graph execution, the current FLUX/Schnell bridge. **Not a public raw product surface.** | **source-only** |
 | **whisper.cpp** | primary ASR runtime candidate — local/customer/owner speech-to-text | **absent** |
-| **vLLM** | primary **cloud** LLM runtime candidate — high-throughput serving, OpenAI-compatible API, future dynamic adapter/LoRA serving where supported | **absent** |
+| **vLLM** | primary **cloud** LLM runtime candidate — high-throughput serving, OpenAI-compatible API, future dynamic adapter/LoRA serving where supported | **`installed-not-serving`** — see the correction below |
 | **NVIDIA samples/tools** (`nvidia-diagnostics`) | diagnostic and benchmark **reference only** — GPU diagnostics, CUDA benchmarking, memory/concurrency experiments. **Not blindly copied into app logic.** | **absent** on disk |
 | **TensorRT-LLM, Triton, CUDA graphs / MPS** | future NVIDIA-optimized path, **after proof** | **absent** — future/AUDIT only |
+
+> **Correction, 2026-08-23 at `507e09ee`.** The vLLM row read **`absent`** — *"Not on disk"* —
+> and that was **false when it was written**, on 2026-08-22 at `7a4e5c98`. **vLLM 0.25.1** lives in
+> **`/home/google/.venvs/vllm`**, created **2026-07-20** (three weeks earlier) by `uv 0.11.27`. It
+> imports, `torch 2.11.0+cu130`, `torch.cuda.is_available()` **True**, device **RTX 5070 Ti**.
+> **No service, no port, no unit.**
+>
+> **`installed-not-serving` is deliberately not a ladder level.** The ladder above has five rungs
+> and none of them fits: `absent` is false, `built` is misleading (we compiled nothing; a
+> third-party venv is not our artefact), `running` is false. **Naming the level is mandatory here,
+> so the honest move is to say the ladder is short a rung rather than round to the nearest one.**
+> Two options — add the rung, or rule the ladder repo-scoped so an external venv is out of scope.
+> **Garrett's ruling; the argument is in `docs/ops/VLLM-BENCH-PARITY.md` §1.**
+>
+> **`whisper.cpp` above stays `absent`, and it is correct.** The weight
+> (`symoneural-listen-base-en.bin`, 147,964,211 B) is present and manifested, but `contrib/` does
+> not exist — so **two apps** (`voice`, `sigils`) name a runtime that cannot load it. Two
+> `whisper-cli` binaries exist under `references/`, and both are **quarantined** by
+> `backend/apps/test_references_boundary.py:70`, which bans `references/<tree>/` **and** the
+> `contrib/whisper.cpp/` spelling — so `absent` is right for the ladder even though a binary
+> exists on the disk. **The sanctioned home is `engines/symoneural-listen/`**, the id
+> `docs/specs/symoneural-runtime-registry.md:88` already reserves, following `d6b7838a`, which
+> forked the other two runtimes under our own names. This ladder was right; a depth chart claiming
+> ASR was *serving* was wrong, and is corrected in `docs/specs/symoneural-bootcamp.md` §5.
 
 **On NVIDIA sample code specifically:** do not import sample source into product logic without
 a license and security review. That is not only a rule here — `backend/apps/test_references_boundary.py:70`

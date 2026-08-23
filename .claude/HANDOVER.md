@@ -291,6 +291,70 @@ conversation, so every number, path and decision you need is stated here.
 
 ---
 
+## 0a-nonies. The Control Plane Matrix landed, and its Runtime column caught two live false claims (2026-08-23, at `507e09ee`)
+
+Four documents plus a test with teeth — `docs/specs/symoneural-control-plane-matrix.md`,
+`docs/ops/APPLICATION-MODEL-CAPABILITY-MATRIX.md`, `docs/ops/MODEL-BENCHMARKS.md`,
+`docs/ops/VLLM-BENCH-PARITY.md`, `backend/apps/test_control_plane_matrix.py`. Task **#105**.
+Bootcamp still owns the competition rules and depth charts; the matrix owns the normalized
+16-dimension record. **No second state document: each file states what it owns in its header.**
+
+### The two things that will bite you
+
+1. **ASR does not work, and three documents already said so before a fourth said otherwise.**
+   The weight is present and 1/1 manifested; **the runtime is unusable** — `contrib/` does not
+   exist and `/contrib` is gitignored. **Two** apps name it (`voice`, `sigils`). Two `whisper-cli`
+   binaries do exist under `references/` and are **quarantined** by
+   `test_references_boundary.py:70`, which bans `references/<tree>/` *and* the
+   `contrib/whisper.cpp/` spelling — **so the fix is `engines/symoneural-listen/`, not a
+   `contrib/` rebuild**, following `d6b7838a` and the id already reserved at
+   `symoneural-runtime-registry.md:88`. `RUNTIME-PROFILES.md:42`,
+   `symoneural-runtime-registry.md:90` and
+   **task #104** (measured `41524770`, 13:12 on 2026-08-22) all had it right. The Bootcamp depth
+   chart said `proof: serving` at `507e09ee`, **22:21 the same day — nine hours later.** The
+   mechanism: its **Model** row was filled from `PROVENANCE.json` ("1/1 manifested") and its
+   **Runtime** row was never filled. Corrected in four places in that file.
+2. **vLLM is installed. Four documents called it absent.** vLLM **0.25.1** in
+   `/home/google/.venvs/vllm`, imports, `torch 2.11.0+cu130`, CUDA **True**, sees the 5070 Ti,
+   created **2026-07-20** — three weeks *before* `7a4e5c98` wrote "absent". It is **outside the
+   repo**, so no in-repo search could ever have found it. **No service runs**, so
+   `MODEL-REGISTRY.md:108` and `BOX-REALITY-AUDIT.md:507` ("candidate only, no service") were
+   always true and are untouched. *Not installed* and *not serving* got conflated.
+
+### Three rulings owed, and they are why #105 is at 62% and not archived
+
+- **The maturity ladder is short a rung.** `installed-not-serving` is a placeholder in the files
+  now and is **explicitly not a ladder level**. Either add a rung meaning *installed, importable,
+  no service*, or rule the ladder repo-scoped. **Garrett's call** — `VLLM-BENCH-PARITY.md` §1.
+- **`symoneural-ui` (Comfy)** reads `source-only`; measured is source **plus** a working `.venv`
+  with `torch 2.13.0+cu130`, CUDA True. A Python app has no compile step, so `built` may be wrong
+  too. **Left unreclassified on purpose.**
+- **`voice/routes.py:107,116`** emit `"engine"` and `"measured_ms_short_utterance": 650`
+  **unconditionally** — a measured figure, no SHA, about an absent binary. Already under #104.
+
+### What the sabotage run found, which is the part worth copying
+
+Nine deliberate mutations, all caught. **Two assertions were decoration on the first pass and
+only the sabotage run knew it:** "every figure appears in both files" passed while a table cell
+read `999.9`, because `166.3` also occurs in prose two sections down — *a substring search over a
+whole document cannot tell a cell from a mention of it*. And the SHA check accepted the section
+**heading's** copy of the SHA, so deleting the attribution line entirely still passed. A third was
+**vacuous**: the weight check parsed zero filenames because the doc named weights by column
+header. All three are fixed and now compare structurally.
+
+### Test state at HEAD, measured 2026-08-23
+
+`1872 passed, 8 failed, 67 skipped` from the worktree. **Five of the eight are worktree
+artefacts** (gitignored `engines/`, `backend/models`, `INTAKE.md` absent) and pass in the main
+checkout. **Three fail at HEAD and are nothing to do with this batch:**
+`test_desktop_shell.py::WindowSmokeTests` ×3 — the PTY smoke expects `agent-code-`,
+`interactive session` and `permissions: auto -> ask` in a banner that now reads
+`SyMoNeuRaL Code  local session`. **Stale test, live at HEAD, unowned.**
+
+**Standing caveat on everything above:** 404 commits between 2026-08-17 and `7a4e5c98` are
+**not audited**. Every runtime, route, rating and live-state reading is measured at `507e09ee` on
+2026-08-23 and is **not historical proof**.
+
 ## 0a-octies. The suite at HEAD collects NOTHING, and two uncommitted files are hiding it (2026-08-21)
 
 **Read this before you trust any test figure taken today, including mine.** A clean worktree

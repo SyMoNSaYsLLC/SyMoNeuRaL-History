@@ -171,7 +171,7 @@ the number.
 |---|---|---|---|---|
 | `llm/` | 6 | 36.92 GiB | **6/6** | starters + backups + redshirts |
 | `image/` | 4 | 11.80 GiB | **4/4** | starter bundle (FLUX/Schnell) |
-| `whisper/` | 1 | 0.14 GiB | **1/1** | ASR starter |
+| `whisper/` | 1 | 0.14 GiB | **1/1** | **weight present, runtime absent** — no ASR starter (corrected 2026-08-23) |
 | `staging/openai-gpt-oss-20b/` | 5 | 38.49 GiB | 0/5 | **candidate** — smoke-passed, benchmarked |
 | `hf/hub/` Qwen2.5-7B, Qwen3.6-27B | 21 | 65.94 GiB | 0/21 | **walk-on** — raw HF snapshots, not serving format |
 | `diffusion_models/` | 3 | 31.68 GiB | 0/3 | **injured reserve** — video/image/3D, no provenance |
@@ -446,11 +446,54 @@ rollback       : the bundle is the rollback; nothing has replaced it
 ### Voice — ASR  ·  `backend/apps/voice/` (3 routes)
 **Classification** PROD · **Priority** `speed_first` → accuracy
 
-- **Option 1 — Current/Proven** — `symoneural-listen-base-en.bin` (147,964,211 B, whisper.cpp, `voice/asr.py:56`). **1/1 manifested.** **proof** serving; **ASR only**. **risk** low; CPU/GPU cost small. **recommendation** **STARTER.**
+> **Corrected 2026-08-23 at `507e09ee`.** Option 1 read *"**proof** serving"*. **It is not
+> serving, and it cannot.** The weight is present and manifested; **the runtime is absent.**
+> `voice/asr.py:53-54` and `sigils/listen.py:44` both resolve `whisper-cli` to
+> `contrib/whisper.cpp/build/bin/whisper-cli` — **`contrib/` does not exist**, `.gitignore:63`
+> ignores `/contrib`, `SYMONEURAL_VOICE_ENABLED` is unset in `symoneural-api.service`, and **no
+> `voice` unit appears in `GET /api/status`.**
+>
+> Two `whisper-cli` binaries **do** exist, both 973,872 B, both under `references/` — and both are
+> **quarantined**: `references/` is INSPIRE_ONLY and `test_references_boundary.py:70` bans
+> `references/<tree>/` **and** the `contrib/whisper.cpp/` spelling from product code. So the fix
+> is **not** to rebuild `contrib/`; it is `engines/symoneural-listen/`, the home
+> `symoneural-runtime-registry.md:88` already reserves and the pattern `d6b7838a` already set for
+> the other two runtimes.
+>
+> **This is the #94 failure this framework was built to catch, in this framework's own chart** —
+> a claimed live surface behind a runtime that cannot start. It got in because "1/1 manifested"
+> and "serving" were read as the same sentence; **the roster vocabulary in §1 exists precisely to
+> keep them apart**, and it was not applied to the Runtime dimension here.
+>
+> **The code is blameless.** `asr.py:106-109` returns `"whisper-cli missing at <path>"` and
+> `sigils/listen.py:85` gates on `WHISPER.is_file()`.
+>
+> **And this repo already knew.** `docs/ops/RUNTIME-PROFILES.md:42` and
+> `docs/specs/symoneural-runtime-registry.md:90` both say whisper.cpp is **`absent`**, the latter
+> naming `contrib/` explicitly — and **task #104 records it outright**: *"`contrib/` **does not
+> exist**, and two live things cite it… `apps/voice`'s whisper binary lives there"*, measured at
+> **`41524770`, 13:12 on 2026-08-22.**
+>
+> **This chart was written at `507e09ee`, 22:21 the same day — nine hours later.** So the failure
+> was not a stale document nobody re-measured; it was a **newer** document contradicting an
+> **older** measurement in the same repo on the same day. The mechanism is worth naming, because
+> it will recur: this position's **Model** row was filled from `PROVENANCE.json` — *1/1
+> manifested* — and its **Runtime** row was never filled at all. "The weight is manifested" was
+> allowed to stand in for "the surface serves", which is the exact substitution §1's vocabulary
+> exists to forbid.
+>
+> **It is a disappeared runtime, not a never-built one.** `docs/specs/voice-spec.md:28` records
+> `contrib/whisper.cpp @ 1fe009c` as *"cloned **and built** — `whisper-cli`, `whisper-server`,
+> `whisper-bench` all present. Gitignored."* True on 2026-08-17. **The same sentence that recorded
+> the build recorded why it could not survive.** This is the miner's failure mode a second time
+> (`contrib/build-kawpowminer.sh`, also untracked, also `/contrib`), which makes it a pattern:
+> **artefacts that matter living in a gitignored directory.**
+
+- **Option 1 — Current/Proven** — `symoneural-listen-base-en.bin` (147,964,211 B, whisper.cpp, `voice/asr.py:56`). **1/1 manifested.** **proof** — **the weight loads nothing: `whisper-cli` is absent, and ASR is not enabled.** **risk** low; nothing runs. **recommendation** **NO STARTER for this position.** The weight is the backup for a starter that does not currently exist; the smallest honest step is to rebuild the runtime and *track its build script*, then re-scout — not to bench anything.
 - **Option 2 — Near Upgrade** — a larger whisper tier for accuracy. **proof needed** the weight is **not on disk** — nothing to bench. **blocker** absent. **recommendation** **no safe candidate yet**, and that is the honest answer rather than nominating something unrelated.
 - **Option 3 — Future/Blocked** — TTS / audio generation via `stable_audio_3_medium` (8.59 GiB) + audio VAE (0.56). **blocker** **BLOCKED** — unmanifested, no route, and **TTS is a different position from ASR**; a generation model is not an upgrade to a transcriber. **recommendation** if wanted, open it as its own position with its own gate.
 
-**Competition** team Voice Team · starter whisper base-en · **candidates: none proven** · race `no_race` · rollback: same file · **note** whisper/listen may serve ASR paths **only**
+**Competition** team Voice Team · **starter: NONE — runtime absent (corrected 2026-08-23)** · **candidates: none proven** · race `no_race` · rollback: the weight is present and unchanged · **note** whisper/listen may serve ASR paths **only**, and serves none today · **blocker** `whisper-cli` absent, `/contrib` gitignored
 
 ---
 
@@ -597,8 +640,10 @@ any depth chart for it has to say.
 - **No unmanifested weight is presented as a capability**, including the video, 3D and audio
   stacks that are physically present and would be the most impressive things here.
 - **No starter changed as a result of writing this.** Qwen is the Chat starter, FLUX the Image
-  starter, whisper the ASR starter, and the deterministic engines hold RavenCalc, Streamer and
-  Sigils.
+  starter, and the deterministic engines hold RavenCalc and Streamer. **ASR has no starter** —
+  corrected 2026-08-23; the weight is present and its runtime is absent. **Sigils is not
+  deterministic either** — it shares the Image starter's four FLUX weights (`render.py:85-90`),
+  corrected earlier in this file.
 - **Commercial mode is off, Phase 1 is not started, nothing is deployed, auth is unchanged.**
 
 **Related** `docs/ops/OPENAI-GPT-OSS-MIGRATION.md` · `docs/ops/PROVENANCE.md` ·

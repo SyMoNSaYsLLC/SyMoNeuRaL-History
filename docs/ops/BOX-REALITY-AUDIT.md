@@ -451,9 +451,23 @@ That distinction — API up, runtimes down — is load-bearing for `GPU-GOVERNOR
 | **stable-diffusion.cpp** → `symoneural-diffuse` | **built** | `engines/symoneural-diffuse/build/bin/symoneural-diffuse`. Not running. |
 | **ComfyUI** → `symoneural-ui` | **source-only** | `engines/symoneural-ui/main.py`, `folder_paths.py`, `custom_nodes/ComfyUI-GGUF`, `.venv` with `comfyui_frontend_package`. No build step needed, but nothing listening. |
 | **whisper.cpp** | **absent** | See §8.3 |
-| **vLLM** | **absent** | Not installed. The only references are `--rollout {transformers,vllm}` and `--vllm-base-url` in `plugins/reinforce/runner.py:280-281` — a trainer option pointing at an *external* server that does not exist here. |
+| **vLLM** | **installed-not-serving** — corrected 2026-08-23, see below | **vLLM 0.25.1 in `/home/google/.venvs/vllm`**, imports, `torch 2.11.0+cu130`, CUDA **True**, sees the 5070 Ti. **No service, no port, no unit.** In-repo references remain only `--rollout {transformers,vllm}` and `--vllm-base-url` in `plugins/reinforce/runner.py:280-281`, pointing at an *external* server that does not exist here. |
 | **NVIDIA samples/tools** | **absent** | No `contrib/cuda-samples`. `references/` holds `apex`, `cosmos`, `cudf`, `cuml`, `DALI`, `DeepLearningExamples`, `FasterTransformer`, `nvidia-{aws,azure,gcp,oci}-samples` — INSPIRE_ONLY, and `test_references_boundary.py:70` already enforces that boundary in a test. |
 | **TensorRT-LLM / Triton** | **absent** | Nothing on disk. Future/AUDIT only. |
+
+> **Corrected 2026-08-23 at `507e09ee`.** The vLLM row read **`absent` — "Not installed"**. That
+> was **false, and had been for three weeks.** `/home/google/.venvs/vllm` holds **vLLM 0.25.1**,
+> created **2026-07-20** by `uv 0.11.27`; it imports, and `torch.cuda.is_available()` is **True**
+> against the 5070 Ti. The venv is **outside the repo**, so `git check-ignore` refuses it and no
+> in-repo search could ever have found it — which is how the claim survived.
+>
+> **§8.2's "vLLM: candidate only. No running service" is untouched, because it is still true.**
+> *Not installed* and *not serving* got conflated, and only the first was wrong. The distinction
+> matters: one is a missing dependency, the other is a deliberate posture.
+>
+> `installed-not-serving` is **not a ladder level** — the ladder has no word for this, and picking
+> the nearest one would repeat the error. The ruling is Garrett's; the options are in
+> `docs/ops/VLLM-BENCH-PARITY.md` §1.
 
 **`bin/` holds no runtime binary.** It has `claude`, `symoneural-cli`, `symoneural-code`,
 `symoneural-discovery`. This is **not** a defect: the governor's kill anchors are *substrings* —
