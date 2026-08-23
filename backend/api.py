@@ -186,6 +186,81 @@ RENDERS.mkdir(exist_ok=True)
 
 CHAT_MODEL = MODELS / "llm" / "symon-1.0-7b-q4_k_m.gguf"
 CHAT_ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"
+
+#: The product label for CHAT_MODEL. Pinned to the model by
+#: `test_chat_model_and_its_label_change_together`, because this string is what the rack unit
+#: and the site show, and a label naming the wrong model is the one kind of wrong this project
+#: cannot ship. Change the model, change this, or the test fails.
+CHAT_MODEL_LABEL = "SymonChat S1-7B"
+
+
+def _gguf_arch(path):
+    """`general.architecture` out of a GGUF header, or None if it cannot be read.
+
+    Reads a few KB, not the weights: the architecture is one of the first KV pairs, so this
+    returns long before it has touched any tensor data. Deliberately total -- a truncated
+    file, a non-GGUF file, a missing file and an unknown value type all return None rather
+    than raising, because every caller is a status surface or a launch decision and neither
+    should crash over metadata.
+    """
+    import struct
+    _SCALAR = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}
+    try:
+        with open(path, "rb") as fh:
+            if fh.read(4) != b"GGUF":
+                return None
+            _version, _n_tensors, n_kv = struct.unpack("<IQQ", fh.read(20))
+
+            def skip(vtype):
+                if vtype == 8:                                    # string
+                    (n,) = struct.unpack("<Q", fh.read(8))
+                    fh.seek(n, 1)
+                elif vtype == 9:                                  # array
+                    (elem,) = struct.unpack("<I", fh.read(4))
+                    (n,) = struct.unpack("<Q", fh.read(8))
+                    for _ in range(n):
+                        skip(elem)
+                else:
+                    fh.seek(_SCALAR[vtype], 1)
+
+            for _ in range(min(n_kv, 4096)):
+                (klen,) = struct.unpack("<Q", fh.read(8))
+                key = fh.read(klen)
+                (vtype,) = struct.unpack("<I", fh.read(4))
+                if key == b"general.architecture" and vtype == 8:
+                    (n,) = struct.unpack("<Q", fh.read(8))
+                    return fh.read(n).decode("utf-8", "replace")
+                skip(vtype)
+    except Exception:
+        return None
+    return None
+
+
+def adapter_applies():
+    """Whether CHAT_ADAPTER can actually be applied to CHAT_MODEL -- not merely whether the
+    file is on disk.
+
+    Every caller used to ask `CHAT_ADAPTER.exists()`, which answers a different question, and
+    the difference is not academic. MEASURED 2026-08-22: launching the production argv with
+    this qwen2 adapter against the gpt-oss candidate exits 1 with
+
+        llama_adapter_lora_init: failed to apply lora adapter: model arch and LoRA arch mismatch
+
+    so on a mismatch the chat surface does not degrade, it fails to start. Worse, the status
+    surfaces would have gone on reporting `adapter: true` and advertising "+ persona adapter"
+    for an adapter the engine had refused -- a product claiming a persona it is not running.
+
+    Unknown counts as NO. If either architecture cannot be read, this returns False, and the
+    asymmetry is deliberate: not applying a matching adapter costs the persona and still
+    serves, while applying a mismatched one takes the whole surface down.
+    """
+    if not CHAT_ADAPTER.exists():
+        return False
+    model_arch = _gguf_arch(CHAT_MODEL)
+    adapter_arch = _gguf_arch(CHAT_ADAPTER)
+    if not model_arch or not adapter_arch:
+        return False
+    return model_arch == adapter_arch
 # Draft model for speculative decoding. Measured on this box: shallow drafting wins and
 # deep drafting loses badly -- see SPEC_DRAFT_MAX.
 DRAFT_MODEL = MODELS / "llm" / "symon-1.0-draft-0.5b-q4_k_m.gguf"
@@ -1193,8 +1268,13 @@ async def start_llama() -> bool:
         if DRAFT_MODEL.exists():
             argv += ["-md", str(DRAFT_MODEL), "-ngld", "99",
                      "--spec-draft-n-max", str(SPEC_DRAFT_MAX)]
-        if CHAT_ADAPTER.exists():
+        if adapter_applies():
             argv += ["--lora", str(CHAT_ADAPTER)]
+        elif CHAT_ADAPTER.exists():
+            # On disk but not applicable. Say so loudly: the alternative is a surface that
+            # quietly serves without its persona and a log that never mentions it.
+            log.warning("persona adapter NOT applied: %s is %s, chat model is %s",
+                        CHAT_ADAPTER.name, _gguf_arch(CHAT_ADAPTER), _gguf_arch(CHAT_MODEL))
         log.info("starting chat surface")
         _llama = await asyncio.create_subprocess_exec(
             *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
@@ -1960,8 +2040,8 @@ def build_status() -> Status:
                  # detail line because both bases are Apache-2.0 and attribution is a
                  # licence condition, not a courtesy -- and because a page arguing that
                  # its numbers are real cannot hide where its weights came from.
-                 spec="SymonChat S1-7B" + (" + persona adapter" if CHAT_ADAPTER.exists()
-                                           else " · Q4_K_M"),
+                 spec=CHAT_MODEL_LABEL + (" + persona adapter" if adapter_applies()
+                                          else " · Q4_K_M"),
                  detail="~5 GB resident · SymonChat S1-7B"),
             Unit(id="image", label="SyMoNeuRaL Image", slot="2U",
                  state=gpu_unit("image", image_ok), bus="gpu", href="/image.html",
@@ -2003,7 +2083,7 @@ def build_status() -> Status:
             # for src=/href=, and a rack href arrives as JSON from /api/status, so it is
             # never in the markup to be checked. The ordering is the only protection.
             #
-            # `state` is still read from CHAT_ADAPTER.exists() and NOT from
+            # `state` is still read from adapter_applies() and NOT from
             # `reinforce.status()`, deliberately. The two assert different true things: this
             # unit says an adapter is loaded, and the reinforce app's own status says whether
             # its HTTP surface will accept work. Splatting one over the other would flip a
@@ -2012,12 +2092,12 @@ def build_status() -> Status:
             # separate decision.
             Unit(id="train", label="SyMoNeuRaL Reinforce", slot="2U",
                  state="busy" if holder == "train" else
-                       ("ready" if CHAT_ADAPTER.exists() else "offline"),
+                       ("ready" if adapter_applies() else "offline"),
                  bus="gpu", href="/reinforce.html",
                  spec="SymonChat persona adapter · 4-bit low-rank",
                  detail="fine-tune in progress — serving surfaces queue" if holder == "train"
                         else ("adapter loaded · for model/adapter tuning"
-                              if CHAT_ADAPTER.exists() else "no adapter built")),
+                              if adapter_applies() else "no adapter built")),
             # ONE miner on the rack, two kinds of mining hardware under it.
             #
             # These were two rows until 2026-08-17: "SyMoNeuRaL Miner", OFFLINE on the ASIC
@@ -2352,7 +2432,7 @@ async def ws_chat(ws: WebSocket, msg: dict) -> None:
         await ws.send_text(json.dumps({
             "t": "done", "tokens": tokens, "seconds": round(elapsed, 2),
             "tok_per_s": round(tokens / elapsed, 1) if elapsed else None,
-            "model": CHAT_MODEL.stem, "adapter": CHAT_ADAPTER.exists()},
+            "model": CHAT_MODEL.stem, "adapter": adapter_applies()},
             separators=(",", ":")))
 
 
@@ -2519,7 +2599,7 @@ async def chat(body: ChatRequest, request: Request,
             yield "data: " + json.dumps({
                 "done": True, "tokens": tokens, "seconds": round(elapsed, 2),
                 "tok_per_s": round(tokens / elapsed, 1) if elapsed else None,
-                "model": CHAT_MODEL.stem, "adapter": CHAT_ADAPTER.exists(),
+                "model": CHAT_MODEL.stem, "adapter": adapter_applies(),
             }) + "\n\n"
         finally:
             # Every exit from the generator returns the card: a clean finish, a client that
