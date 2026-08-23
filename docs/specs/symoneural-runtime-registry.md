@@ -94,7 +94,11 @@ Roles are Garrett's. Levels are measured — see the audit for the evidence behi
 - runtime_id: vllm-cloud
   role: primary CLOUD LLM runtime candidate -- high throughput, OpenAI-compatible,
         future dynamic adapter/LoRA serving where supported
-  maturity: absent                      # only a --rollout vllm flag in the reinforce trainer
+  # Corrected 2026-08-23 at 507e09ee: this read `absent`, which was false. vLLM 0.25.1 is
+  # installed at /home/google/.venvs/vllm (outside the repo, created 2026-07-20), imports, and
+  # sees the 5070 Ti via torch 2.11.0+cu130. NO service runs. The ladder has no word for
+  # "installed, importable, not serving" -- ruling pending, see docs/ops/VLLM-BENCH-PARITY.md §1.
+  maturity: installed-not-serving       # NOT a ladder level; a measurement pending a ruling
   targets: [cloud]
   api_styles: [openai-compatible]
   concurrency_class: llm

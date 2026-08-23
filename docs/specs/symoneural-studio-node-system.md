@@ -218,10 +218,17 @@ example with its keys normalised to the canonical spellings above:
 }
 ```
 
-**`vllm-cloud` is `absent` on this box** (`BOX-REALITY-AUDIT.md` §8.2) and `symoneural-llm` is
-`built`. A node listing a runtime does **not** assert that runtime is running — the router
-refuses by maturity level and says which. That separation is what lets a node be written once
-and stay honest as the box changes.
+**`vllm-cloud` is `installed-not-serving` on this box** — corrected 2026-08-23 at `507e09ee`;
+this line read `absent`, which was false (vLLM 0.25.1 is installed outside the repo and imports,
+but **no service runs**; `docs/ops/VLLM-BENCH-PARITY.md` §1). `symoneural-llm` is `built`.
+
+**And this correction is an argument for the design in this section, not against it.** A node
+listing a runtime does **not** assert that runtime is running — the router refuses by maturity
+level and says which. Because the router gates on *serving*, not on *installed*, **the false
+`absent` label never granted anything it should not have**: a node naming `vllm-cloud` was
+refused before the correction and is still refused after it. That separation is what lets a node
+be written once and stay honest as the box changes — and it just absorbed a three-week-old wrong
+label without a behaviour change, which is the strongest evidence for it in this file.
 
 Two constraints on the `hardware` block, both from rules already in force:
 
