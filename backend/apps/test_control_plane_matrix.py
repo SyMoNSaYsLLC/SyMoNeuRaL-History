@@ -24,7 +24,7 @@ The four assertions worth having are the ones a document cannot satisfy by being
 Each was verified by sabotage, not by going green — and the harness that does it is **tracked**, so
 the proof is reproducible rather than asserted:
 
-    python3 tools/sabotage_matrix.py          # 11 mutations, each must turn one test red
+    python3 tools/sabotage_matrix.py          # 12 mutations, each must turn one test red
     python3 tools/sabotage_matrix.py --list   # inspect the cases, mutate nothing
 
 `apps/test_sabotage_matrix.py` keeps that harness honest (anchors present, test ids real) without
@@ -47,6 +47,31 @@ MIGRATION = DOCS / "ops" / "OPENAI-GPT-OSS-MIGRATION.md"
 
 APPS = ROOT / "backend" / "apps"
 MODELS = ROOT / "backend" / "models"
+SCOUT = ROOT / "tools" / "bootcamp_scout.py"
+
+
+def is_app_module_dir(path):
+    """Is this directory an app module, as `tools/bootcamp_scout.py` counts them?
+
+    **This function exists because its first version was wrong in a way that only surfaced after
+    the merge.** It excluded `__pycache__` and nothing else, while the comment above it claimed to
+    match the Scout -- which excludes any `__`-prefixed *or* dot-prefixed name
+    (`bootcamp_scout.py:189`). A stray `backend/apps/.pytest_cache`, left behind by an earlier
+    pytest run, was counted as an 18th app module, so the count test failed on `main` while passing
+    in the worktree that happened not to have that directory.
+
+    Two lessons, and the second is why this is a named function instead of an inline generator:
+
+      * **a transient cache directory must never be able to move a published figure.** `17` is
+        quoted by four documents; a leftover directory is not a product decision, and a test that
+        lets one change the answer is measuring the filesystem's mood;
+      * **"matches the Scout" has to be enforced, not asserted.** It was asserted -- in a comment,
+        directly above a filter that did something else. `test_the_filter_matches_the_scouts_own_
+        predicate` now pins the two together so they cannot drift again.
+    """
+    return (path.is_dir()
+            and path.name != "__pycache__"
+            and not path.name.startswith("."))
 
 #: The whisper runtime both `voice` and `sigils` resolve. Absent on this box, which is the whole
 #: point of `test_no_document_claims_asr_is_serving_while_its_runtime_is_absent`.
@@ -125,10 +150,54 @@ class CountsMatchTheTables(unittest.TestCase):
         # `__init__.py` -- `ravencalc` and `remix` are not importable packages. Counting packages
         # here would silently disagree with the Scout by two, which is the drift this class exists
         # to catch, so the definition is pinned rather than left to taste.
-        actual = sorted(p.name for p in APPS.iterdir()
-                        if p.is_dir() and p.name != "__pycache__")
+        #
+        # The filter lives in `is_app_module_dir` so that "transient directories do not count" is
+        # one rule with one test behind it, rather than a condition repeated at each call site.
+        actual = sorted(p.name for p in APPS.iterdir() if is_app_module_dir(p))
         self.assertEqual(claimed_modules, len(actual),
                          f"matrix claims {claimed_modules} app modules; the tree has {len(actual)}: {actual}")
+
+    def test_transient_cache_directories_are_not_app_modules(self):
+        """The post-merge failure, as a unit test: a leftover `.pytest_cache` made the count 18.
+
+        Synthetic names on purpose -- creating a real directory under `backend/apps` would be a
+        filesystem side effect in `pytest apps/`, which is precisely the kind of leftover that
+        caused the bug. `pathlib.Path` needs no filesystem to answer `.name`, and `is_dir()` is
+        supplied by a stub so the name filter is what gets tested.
+        """
+        class Dir:
+            def __init__(self, name): self.name = name
+            def is_dir(self): return True
+
+        for name in (".pytest_cache", ".mypy_cache", ".ruff_cache", ".cache", ".hypothesis",
+                     ".DS_Store", ".ipynb_checkpoints", "__pycache__"):
+            with self.subTest(directory=name):
+                self.assertFalse(is_app_module_dir(Dir(name)),
+                                 f"{name} must never be counted as an app module")
+
+        for name in ("voice", "sigils", "ravencalc", "studio", "asicminer"):
+            with self.subTest(directory=name):
+                self.assertTrue(is_app_module_dir(Dir(name)),
+                                f"{name} is a real app module and must be counted")
+
+    def test_the_filter_matches_the_scouts_own_predicate(self):
+        """The Scout is the source of the number every document quotes, so this test must not
+        merely *claim* to agree with it. `bootcamp_scout.py:189` skips any name starting with `__`
+        or `.`; if that line changes, this goes red rather than silently disagreeing."""
+        src = SCOUT.read_text(encoding="utf-8")
+        self.assertRegex(src, r'name\.startswith\(\s*"__"\s*\)',
+                         "the Scout no longer skips dunder directories; re-derive the filter")
+        self.assertRegex(src, r'name\.startswith\(\s*"\."\s*\)',
+                         "the Scout no longer skips dot directories; re-derive the filter")
+
+    def test_the_module_count_is_stable_against_whatever_is_on_disk_now(self):
+        """Belt and braces: the live tree must produce exactly the published figure, and the
+        failure message names the offender rather than only the count."""
+        counted = sorted(p.name for p in APPS.iterdir() if is_app_module_dir(p))
+        rejected = sorted(p.name for p in APPS.iterdir() if p.is_dir() and not is_app_module_dir(p))
+        self.assertEqual(17, len(counted),
+                         f"expected 17 app modules, counted {len(counted)}: {counted} "
+                         f"(rejected as transient: {rejected})")
 
 
 class DepthChartsKeepExactlyThreeOptions(unittest.TestCase):

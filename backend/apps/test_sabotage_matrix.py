@@ -28,8 +28,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TOOL = ROOT / "tools" / "sabotage_matrix.py"
 SUITE = ROOT / "backend" / "apps" / "test_control_plane_matrix.py"
 
-#: The nine the branch originally claimed, plus the two the review made necessary.
-EXPECTED_CASES = 11
+#: The nine the branch originally claimed, plus two the pre-merge review made necessary, plus one
+#: added after the post-merge count failure. Raise this when cases are added -- a stale floor here
+#: would let the harness quietly shrink while every document still claimed the old number.
+EXPECTED_CASES = 12
 
 
 def cases():

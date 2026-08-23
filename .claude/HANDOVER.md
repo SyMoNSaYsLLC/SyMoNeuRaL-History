@@ -337,11 +337,12 @@ Bootcamp still owns the competition rules and depth charts; the matrix owns the 
 **The harness is tracked** — `python3 tools/sabotage_matrix.py` (`--list` to inspect without
 mutating). It refuses to start on a dirty tree, restores in a `finally` and asserts the restore is
 byte-exact; `apps/test_sabotage_matrix.py` keeps it honest without running it, so `pytest apps/`
-stays side-effect free. **Eleven cases** — nine original plus two the review made necessary (a
-Safety cell hand-typed against the derivation table, and an exposure cell contradicting `api.py`'s
-mount table).
+stays side-effect free. **Twelve cases** — nine original, two from the pre-merge review (a Safety
+cell hand-typed against the derivation table, an exposure cell contradicting `api.py`'s mount
+table), and one from the post-merge failure below (the published app-module count desyncing from
+the tree).
 
-All eleven caught. **Two assertions were decoration on the first pass and
+All twelve caught. **Two assertions were decoration on the first pass and
 only the sabotage run knew it:** "every figure appears in both files" passed while a table cell
 read `999.9`, because `166.3` also occurs in prose two sections down — *a substring search over a
 whole document cannot tell a cell from a mention of it*. And the SHA check accepted the section
@@ -372,6 +373,22 @@ mount and still cannot make it internet-reachable, because Caddy proxies no `/lo
 ABSENT · SyMoNeuRaL integration AUDIT · parity AUDIT · NOT PRODUCTION-READY.** PRESENT is not
 READY, and over-reading the correction in the other direction would be the same conflation with the
 sign flipped.
+
+### The post-merge failure, and why the worktree could not have caught it (2026-08-23)
+
+`test_the_stated_app_module_count_equals_the_tree` **passed on the branch and failed on `main`**.
+Not a merge conflict and not a doc error: **`backend/apps/.pytest_cache`**, left behind by a pytest
+run on 2026-08-17, was counted as an **18th app module** against a published **17**. The worktree
+had no such directory, so the test was green there — **the assertion depended on filesystem
+leftovers, which is the one input a test must never trust.**
+
+The filter now lives in **`is_app_module_dir()`** and excludes `__pycache__` **and any dot-prefixed
+name**, which is what **`tools/bootcamp_scout.py:189` already did**. So the Scout was right the
+whole time and the test was wrong *while carrying a comment claiming it matched the Scout* — the
+same shape as the ASR finding: an assertion about agreement, with nothing enforcing it.
+`test_the_filter_matches_the_scouts_own_predicate` now reads the Scout's source and goes red if
+that line changes. **The published `17` did not move, and must not**: a leftover cache directory is
+not a product decision.
 
 ### Test state at HEAD, measured 2026-08-23
 

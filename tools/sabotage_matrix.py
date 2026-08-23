@@ -113,6 +113,16 @@ CASES: list[tuple[str, str, str, str, str]] = [
      "| **RavenCalc** | RavenCalc | CPU deterministic, **no model** | n/a | public · none · read | `S-low`¹¹",
      "SafetyRatingsAreDerivedNotTyped::test_every_safety_cell_matches_the_derivation_table"),
 
+    # Added after the post-merge failure. That bug was in the test's *filter* rather than in a
+    # document, so the harness (documentation-only by contract) cannot reproduce it directly -- the
+    # three unit tests around `is_app_module_dir` cover that side. What this case does cover is the
+    # other half: the published module count drifting away from the tree.
+    ("the app-module count desynced from the tree",
+     MATRIX,
+     "**20 instances across 17 app modules.**",
+     "**20 instances across 18 app modules.**",
+     "CountsMatchTheTables::test_the_stated_app_module_count_equals_the_tree"),
+
     ("an exposure cell contradicting the mount table in api.py",
      MATRIX,
      "| **Voice — ASR** | Voice | weight present, **runtime unusable** | `whisper.cpp` **absent** | public · token · read",

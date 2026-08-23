@@ -1163,9 +1163,16 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: than asserted: `python3 tools/sabotage_matrix.py` (--list to inspect without
         note: mutating). It refuses to start on a dirty tree, restores in a finally and asserts
         note: the restore is byte-exact; apps/test_sabotage_matrix.py keeps it honest without
-        note: running it, so `pytest apps/` stays side-effect free. ELEVEN cases now -- the nine
-        note: below plus two added by the review: a Safety cell hand-typed against the derivation
-        note: table, and an exposure cell contradicting api.py's mount table.
+        note: running it, so `pytest apps/` stays side-effect free. TWELVE cases now -- the nine
+        note: below, two added by the pre-merge review (a Safety cell hand-typed against the
+        note: derivation table, an exposure cell contradicting api.py's mount table), and one
+        note: added after the POST-MERGE failure: the published app-module count desyncing from
+        note: the tree. That failure was a test bug, not a doc bug -- backend/apps/.pytest_cache,
+        note: a leftover from an earlier pytest run, was counted as an 18th app module. It passed
+        note: in the worktree, which had no such directory, and failed on main, which did. The
+        note: filter now lives in is_app_module_dir() and matches tools/bootcamp_scout.py:189
+        note: (skip __-prefixed AND .-prefixed names) -- and a test pins the two together, because
+        note: the old comment CLAIMED to match the Scout while the code did something looser.
         note: The nine, each landing on the test written for it: 4th option added to a depth
         note: chart; benchmark cell changed in the ledger only; SHA attribution line deleted;
         note: instance count desynced from the table; off-the-record marked available; vLLM
