@@ -1158,8 +1158,15 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: (ROOT / "contrib" / "whisper.cpp" / ...) so the banned literal never appears on a
         note: line. The rule and the code disagree and the grep cannot see it.
 
-        note: 2026-08-23 coder -- the test was verified by SABOTAGE, not by going green. Nine
-        note: mutations, each landing on the test written for it: 4th option added to a depth
+        note: 2026-08-23 coder -- the test was verified by SABOTAGE, not by going green, and the
+        note: harness is TRACKED at tools/sabotage_matrix.py so the proof is reproducible rather
+        note: than asserted: `python3 tools/sabotage_matrix.py` (--list to inspect without
+        note: mutating). It refuses to start on a dirty tree, restores in a finally and asserts
+        note: the restore is byte-exact; apps/test_sabotage_matrix.py keeps it honest without
+        note: running it, so `pytest apps/` stays side-effect free. ELEVEN cases now -- the nine
+        note: below plus two added by the review: a Safety cell hand-typed against the derivation
+        note: table, and an exposure cell contradicting api.py's mount table.
+        note: The nine, each landing on the test written for it: 4th option added to a depth
         note: chart; benchmark cell changed in the ledger only; SHA attribution line deleted;
         note: instance count desynced from the table; off-the-record marked available; vLLM
         note: called "not installed" outside a blockquote; ASR re-claimed as serving; a

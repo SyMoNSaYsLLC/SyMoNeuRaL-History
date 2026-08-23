@@ -334,13 +334,44 @@ Bootcamp still owns the competition rules and depth charts; the matrix owns the 
 
 ### What the sabotage run found, which is the part worth copying
 
-Nine deliberate mutations, all caught. **Two assertions were decoration on the first pass and
+**The harness is tracked** — `python3 tools/sabotage_matrix.py` (`--list` to inspect without
+mutating). It refuses to start on a dirty tree, restores in a `finally` and asserts the restore is
+byte-exact; `apps/test_sabotage_matrix.py` keeps it honest without running it, so `pytest apps/`
+stays side-effect free. **Eleven cases** — nine original plus two the review made necessary (a
+Safety cell hand-typed against the derivation table, and an exposure cell contradicting `api.py`'s
+mount table).
+
+All eleven caught. **Two assertions were decoration on the first pass and
 only the sabotage run knew it:** "every figure appears in both files" passed while a table cell
 read `999.9`, because `166.3` also occurs in prose two sections down — *a substring search over a
 whole document cannot tell a cell from a mention of it*. And the SHA check accepted the section
 **heading's** copy of the SHA, so deleting the attribution line entirely still passed. A third was
 **vacuous**: the weight check parsed zero filenames because the doc named weights by column
 header. All three are fixed and now compare structurally.
+
+### Five review findings, fixed 2026-08-23 — and the root cause was the rule, not the cells
+
+A pre-merge review of this branch found **four hand-typed Safety cells**, and the cause was that
+§2's rule was **not a total function**: it had no cell for `public · none · read`, so six rows were
+decided by prose and two of them differently. §2 is now a **complete (exposure × blast) lookup**,
+`gate` is explicitly recorded-but-not-scoring, and **the suite recomputes every rating** — so a
+hand-typed value cannot survive.
+
+| Cell | Was | Now | Source that settles it |
+|---|---|---|---|
+| **RavenCalc** safety | `S-low` | **`S-med`** | same triple as five `S-med` rows — straight contradiction |
+| **Voice** exposure | `none` | **`public`** | `api.py:2932` mounts `/api/voice`; `Caddyfile:50` delegates `/api/*` |
+| **Coder** exposure | `public` | **`loopback`** (→ `S-med`) | `api.py:3545-3559` — `/local/*` matches no `handle` block, 404s from disk |
+| **Miner** exposure | `loopback` | **`none`** | 0 routes, in no `include_router`; rack status is `/api/status`, a different instance |
+
+Coder's is a *downgrade* and deliberately so: `S-high` had been reached by calling its data path
+public, which is the one thing that design is not. `ALLOW_REMOTE` relaxes the peer check on that
+mount and still cannot make it internet-reachable, because Caddy proxies no `/local` path.
+
+`VLLM-BENCH-PARITY.md` §0 now carries explicit labels: **vLLM 0.25.1 PRESENT · running service
+ABSENT · SyMoNeuRaL integration AUDIT · parity AUDIT · NOT PRODUCTION-READY.** PRESENT is not
+READY, and over-reading the correction in the other direction would be the same conflation with the
+sign flipped.
 
 ### Test state at HEAD, measured 2026-08-23
 

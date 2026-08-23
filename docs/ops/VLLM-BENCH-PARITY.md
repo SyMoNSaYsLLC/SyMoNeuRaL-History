@@ -8,6 +8,27 @@ on this box that four other documents get wrong.
 > `docs/ops/RUNTIME-PROFILES.md` owns the runtime ladder. `docs/ops/MODEL-BENCHMARKS.md` owns the
 > figures that *do* exist. Nothing here activates, installs, serves or benchmarks anything.
 
+## 0. Classification, in the project's own vocabulary
+
+Stated as labels and not only as prose, so the status is greppable and cannot be softened by a
+sentence somewhere else:
+
+| Thing | Classification |
+|---|---|
+| **vLLM 0.25.1 on this box** | **PRESENT** — installed, imports, CUDA-visible. A measured fact |
+| **A running vLLM service** | **ABSENT** — no process, no port, no unit |
+| **SyMoNeuRaL ↔ vLLM integration** | **AUDIT** — nothing wired, nothing proven |
+| **vLLM ↔ SyMoNeuRaL benchmark parity** | **AUDIT** — no parity figure exists at any value |
+| **Production readiness** | **NOT PRODUCTION-READY.** Not a candidate for serving, not a fallback, not a claim to make about this box |
+
+**PRESENT is not READY, and this table exists to keep those two words apart** — because the
+opposite conflation (*not installed* vs *not serving*) is precisely the error §1 corrects. Getting
+the correction right and then over-reading it in the other direction would be the same mistake
+with the sign flipped.
+
+**`AUDIT` stays `AUDIT` until every row of the §2 contract is satisfied and recorded.** Installing
+a package proves the package installs. It proves nothing about this project.
+
 ## 1. The finding: vLLM is installed, and four documents say it is absent
 
 | Reading | Value | How |

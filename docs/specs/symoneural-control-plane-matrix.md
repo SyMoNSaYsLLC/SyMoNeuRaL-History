@@ -55,18 +55,36 @@ measured inputs, and the inputs are printed beside the result in §4.
 
 ### Safety rating
 
-Inputs: **exposure** (`public` = a path in `ops/Caddyfile` reaches it · `loopback` = 127.0.0.1
-only · `none`) · **gate** (`token` · `flag-only` · `none`) · **blast** (`read` · `write-local` ·
-`device-or-money`).
+Inputs, and each is a reading of source rather than a judgement:
 
-| Rating | Rule |
-|---|---|
-| `S-low` | exposure ≠ public **and** blast = read |
-| `S-med` | exposure = public **and** gate = token **and** blast = read |
-| `S-high` | blast = write-local **and** exposure = public; **or** blast = device-or-money at any exposure |
-| `S-blocked` | an open `HIGH-n` in `docs/ops/SECURITY-AUDIT.md` names this instance |
+- **exposure** — `public` = a path in `ops/Caddyfile` reaches it, **including everything under
+  `handle /api/*`**, which covers every router mounted with an `/api/…` prefix in `backend/api.py`
+  · `loopback` = reachable only from this box · `none` = **no route exists at all**
+- **gate** — `token` · `flag-only` · `none`
+- **blast** — `read` · `write-local` · `device-or-money`
 
-`S-blocked` **outranks** the others: it is not a worse number, it is a named open finding.
+**The rule is a total lookup over (exposure × blast).** It has to be: the first version of this
+section was a list of four conditions that **did not cover `public · none · read`**, so six rows
+had no derived answer and were hand-typed — and two of them were typed differently from the other
+four. A derivation with a hole in it is not a derivation, and the hole is where the drift got in.
+
+| exposure ↓ · blast → | `read` | `write-local` | `device-or-money` |
+|---|---|---|---|
+| **`none`** | `S-low` | `S-low` | `S-high` |
+| **`loopback`** | `S-low` | **`S-med`** | `S-high` |
+| **`public`** | **`S-med`** | **`S-high`** | `S-high` |
+
+**`S-blocked` overrides any cell** when an open `HIGH-n` in `docs/ops/SECURITY-AUDIT.md` names the
+instance. It is not a worse number; it is a named open finding.
+
+**Gate is recorded and does **not** change the rating**, which is deliberate and worth defending: a
+token gate reduces the *likelihood* of a bad caller, not the *blast radius* if one gets through,
+and this column rates exposure of consequence. Putting `gate` in the formula is also what let the
+first version claim `S-med` required `gate = token` while rating six ungated public surfaces
+`S-med` anyway.
+
+**`backend/apps/test_control_plane_matrix.py` recomputes every row from this table** and fails on
+any disagreement, so a hand-typed rating cannot survive again.
 
 ### Data rating
 
@@ -109,7 +127,10 @@ Dimensions that are constant across every row are stated once rather than repeat
 policy defaults to `Team-Priority arbitrating` (Bootcamp §1), and **Runbook** is
 `scripts/modelops/symoneural-modelops-stage.sh` for every model position.
 
-Exposure/gate/blast are the §2 inputs; the ratings are derived from them, not typed by hand.
+Exposure/gate/blast are the §2 inputs, and **every Safety cell is recomputed from the §2 lookup
+table by `test_control_plane_matrix.py`** — so "derived, not typed by hand" is now enforced rather
+than asserted. Four cells were wrong in the first version of this table and are corrected below
+with their source cited in the footnotes: **Voice**, **RavenCalc**, **Coder** and **Miner**.
 
 | Instance | Team | Starter | Runtime (level) | Exposure · Gate · Blast | Safety | Data | Perf | State (live) | Meter |
 |---|---|---|---|---|---|---|---|---|---|
@@ -118,17 +139,17 @@ Exposure/gate/blast are the §2 inputs; the ratings are derived from them, not t
 | **Chat — project / cowork** | Project | deterministic SQLite store, **no model** | n/a | public · token · write-local | **`S-high`** | `D-project` | `P-none` | `ready` | no |
 | **Image** | Image | FLUX/Schnell, 4 components | `symoneural-diffuse` **built** | public · none · read | `S-med`¹ | `D-public` | `P-partial`² | `ready` | no |
 | **Sigils** | Image (shared) | FLUX/Schnell, **same 4 weights** | `symoneural-diffuse` **built** | public · none · read | `S-med`¹ | `D-public` | `P-none` | `ready` | no |
-| **Voice — ASR** | Voice | weight present, **runtime absent** | `whisper.cpp` **absent** | none · token · read | `S-low` | `D-public` | `P-none` | **no unit on rack** | no |
-| **RavenCalc** | RavenCalc | CPU deterministic, **no model** | n/a | public · none · read | `S-low` | `D-none` | `P-none` | `ready` | no |
+| **Voice — ASR** | Voice | weight present, **runtime unusable** | `whisper.cpp` **absent** | public · token · read | `S-med`¹⁰ | `D-public` | `P-none` | **no unit on rack** | no |
+| **RavenCalc** | RavenCalc | CPU deterministic, **no model** | n/a | public · none · read | `S-med`¹¹ | `D-none` | `P-none` | `ready` | no |
 | **Studio — editor** | Studio | **undetermined** (`SYMONEURAL_STUDIO_LLM`) | `symoneural-ui` **see §5** | public · token · write-local | **`S-blocked`**³ | `D-credential` | `P-none` | **`offline`** | no |
 | **Studio — API** | Studio | 46 routes | `symoneural-ui` **see §5** | public · token · write-local | **`S-blocked`**³ | `D-credential` | `P-none` | **`offline`** | no |
 | **Streamer** | Streamer | deterministic guide/EPG/HLS, **no model** | ffmpeg **built** | public⁴ · none · read | `S-med` | `D-public` | `P-none` | `ready` | no |
-| **Coder** | Coder | token gate + resolved-path denylist | n/a | **public** · token · write-local | **`S-high`** | `D-project` | `P-none` | `ready` | no |
+| **Coder** | Coder | token gate + resolved-path denylist | n/a | loopback · token · write-local | `S-med`¹² | `D-project` | `P-none` | `ready` | no |
 | **Project store** | Project | SQLite + FTS5, **no weights** | n/a | public · token · write-local | **`S-high`** | `D-project` | `P-none` | `ready` | no |
-| **Miner — status** | Miner | read-only status | kawpowminer **unreproducible**⁵ | loopback · flag-only · device-or-money | **`S-high`** | `D-device` | `P-partial`⁵ | `offline` | no |
+| **Miner — status** | Miner | read-only status | kawpowminer **unreproducible**⁵ | none · flag-only · device-or-money | **`S-high`**¹³ | `D-device` | `P-partial`⁵ | `offline` | no |
 | **Gateway** | Gateway | `symon-gateway` (Rust) | own binary **running** | public (all `/api/*`) · none · read | `S-med` | `D-public` | `P-none` | `running` | no |
 | **Live** | Live | OBS scenes | OBS **external** | public · flag-only · device-or-money | **`S-high`** | `D-credential`⁶ | `P-none` | `ready` | no |
-| **Remix** | Remix | client of chat | `symoneural-llm` **built** | public · flag-only⁷ | `S-med` | `D-credential`⁷ | `P-none` | `ready` | no |
+| **Remix** | Remix | client of chat | `symoneural-llm` **built** | public · flag-only · read⁷ | `S-med` | `D-credential`⁷ | `P-none` | `ready` | no |
 | **Reinforce / tuner** | Tuner | qwen2 LoRA training | `symoneural-llm` **built** | public · token · write-local | **`S-high`** | `D-project` | `P-partial`⁸ | `ready` | no |
 | **ModelOps** | ModelOps | by-the-book scripts | n/a | none · none · write-local | `S-low`⁹ | `D-project` | **`P-measured`** | n/a (CLI) | no |
 | **NeuroScope / Model Atlas** | Inspection | metadata-only GGUF reader | pure Python **built** | none · none · read | `S-low` | `D-public` | `P-none` | n/a | no |
@@ -149,8 +170,11 @@ Two reconciliations, so neither number reads as contradicting a neighbour:
 
 Footnotes are the derivation, not decoration:
 
-1. `S-med` and **not** `S-low` because the path is public and the role is anonymous. Gate is
-   `none` by design for the public product surfaces; the rating records that, it does not object.
+1. `public · read` → `S-med` straight off the §2 table. **This footnote used to do the work the
+   rule could not** — it argued "`S-med` and not `S-low` because the path is public and the role is
+   anonymous", which was reasoning applied to six rows and, by oversight, not to RavenCalc or
+   Voice. The rule is now total, so the footnote explains nothing and the table decides. Gate is
+   `none` by design on the public product surfaces; the rating records that, it does not object.
 2. `P-partial` — the FLUX bundle serves, but no stamped throughput figure exists for the image
    path. Its VRAM footprint (~11.8 GiB resident) is recorded in Bootcamp §5, and it is a capacity
    reading rather than a benchmark.
@@ -168,9 +192,39 @@ Footnotes are the derivation, not decoration:
    DJ→Remix rename — recorded as debt in Bootcamp §5, not renamed opportunistically here.
 8. `docs/specs/qlora-27b-measured.md` holds a measured training run; it does not cover the
    currently-wired adapter path.
-9. `S-low` for a script with `write-local` blast is deliberate and derivable: exposure is `none`
-   (no route reaches it) and its writes are refused by construction — **no mode deletes a
-   weight**, and `--activate-candidate` will not rewrite `CHAT_MODEL` even with six green gates.
+9. `S-low` for a script with `write-local` blast is the `none · write-local` cell, and it is the
+   right cell: no route reaches it, and its writes are refused by construction — **no mode deletes
+   a weight**, and `--activate-candidate` will not rewrite `CHAT_MODEL` even with six green gates.
+
+**The four corrections, each with the source that settles it:**
+
+10. **Voice exposure was `none`. It is `public`.** `backend/api.py:2932` mounts
+    `voice.router` at **`prefix="/api/voice"`**, and `ops/Caddyfile:50` delegates the whole
+    `handle /api/*` subtree — so the routes are internet-reachable. `public · read` → **`S-med`**.
+    **The ASR runtime status is unchanged and still dead:** the surface answers off because
+    `SYMONEURAL_VOICE_ENABLED` is unset, and `whisper-cli` is absent regardless. **A reachable
+    route in front of an unusable runtime is exactly the pair worth rating** — the old `none`
+    hid the reachable half.
+11. **RavenCalc was `S-low` on the same `public · none · read` triple that five other rows read
+    `S-med`.** Straight contradiction, now `S-med` off the table. The instinct behind the wrong
+    value was "a deterministic calculator is harmless" — true about *blast*, which is already
+    `read`, and not a licence to also discount the public path.
+12. **Coder exposure was `public`, which inverted its safety case.** The page is public at
+    `/live-stack/coder` (`ops/Caddyfile:226`), but **every read and write goes to `/local/coder/*`,
+    which Caddy never proxies** — `api.py:3545-3559` states it outright: *"`/local/*` matches no
+    `handle` block in `ops/Caddyfile`, so it falls through to `handle { file_server }`, is looked
+    up in `/var/www/symoneural`, and 404s from disk without this process ever being asked."* The
+    consequence lives on the loopback path, so `loopback · write-local` → **`S-med`**. This is a
+    *downgrade from `S-high`*, and the reason it is not a softening: `S-high` was reached by
+    calling the data path public, which is the one thing this design deliberately is not.
+    `SYMONEURAL_CODER_ALLOW_REMOTE` relaxes the peer check on that mount and **still cannot make
+    it internet-reachable**, because Caddy proxies no `/local` path at all.
+13. **Miner exposure was `loopback`, naming a service that does not exist.** `cryptominer` and
+    `asicminer` declare **0 routes each** and appear in **no `include_router` call** in `api.py` —
+    so exposure is `none`. **The rack status a visitor sees is `/api/status`, a different
+    instance** (the Gateway/Chat row family), and conflating the two is what produced the wrong
+    input. Rating stays **`S-high`**: `device-or-money` is `S-high` at *any* exposure, which is
+    the one cell where the blast column alone decides.
 
 **Meter is `no` in every row.** That is the honest reading: `backend/apps/accounts/meter.py` is
 built, but its only caller is `symoneural_dj.pipeline.run_job`. **A ledger one caller uses is a

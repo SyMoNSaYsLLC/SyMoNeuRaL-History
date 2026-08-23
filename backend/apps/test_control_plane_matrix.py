@@ -21,7 +21,14 @@ The four assertions worth having are the ones a document cannot satisfy by being
      enforced rather than trusted;
   4. a claim contradicted by the disk fails -- specifically the two claims this batch corrected.
 
-Each was verified by sabotage, not by going green: see the commit message.
+Each was verified by sabotage, not by going green — and the harness that does it is **tracked**, so
+the proof is reproducible rather than asserted:
+
+    python3 tools/sabotage_matrix.py          # 11 mutations, each must turn one test red
+    python3 tools/sabotage_matrix.py --list   # inspect the cases, mutate nothing
+
+`apps/test_sabotage_matrix.py` keeps that harness honest (anchors present, test ids real) without
+running it, so `pytest apps/` stays free of side effects.
 """
 
 import pathlib
@@ -235,7 +242,12 @@ class ClaimsContradictedByTheDiskFail(unittest.TestCase):
                 # exactly that, which is why the exemption is narrow -- blockquotes only.
                 if line.lstrip().startswith(">"):
                     continue
-                # "no service is running" / "candidate only" are TRUE and must stay allowed.
+                # "no service is running" / "candidate only" are TRUE and must stay allowed. So is
+                # "a running vLLM SERVICE is absent" -- the distinction this whole correction is
+                # about is package-absent (false) vs service-absent (true), and a check that
+                # flagged the true half would push the docs back toward the conflation it fixed.
+                if re.search(r"\b(service|process|port|unit|serving)\b", low):
+                    continue
                 if re.search(r"\bnot installed\b", low) or re.search(
                         r"vllm[^|\n]{0,80}\|\s*\*\*absent\*\*", low) or re.search(
                         r"maturity:\s*absent", low):
@@ -307,6 +319,142 @@ class WeightNamesResolve(unittest.TestCase):
                 self.assertIn(name, present,
                               f"capability matrix names {name}, absent from "
                               f"{[str(r) for r in self.WEIGHT_ROOTS]}")
+
+
+class SafetyRatingsAreDerivedNotTyped(unittest.TestCase):
+    """The matrix claims its Safety column is derived. This class is what makes that true.
+
+    A review found four hand-typed cells that no test could catch, because nothing recomputed
+    them. The worst was a straight contradiction: `public - none - read` read `S-med` on five rows
+    and `S-low` on RavenCalc, under a rule that was not even a total function -- it had no cell for
+    that triple at all, so six rows were decided by prose and two of them differently.
+
+    So both halves are checked here: the ratings against the declared table, and the EXPOSURE
+    inputs against `api.py`'s mount table, since exposure feeds every rating and was the least
+    verified thing in the batch.
+    """
+
+    @staticmethod
+    def clean(cell):
+        """Strip bold, backticks and footnote superscripts -- markup is not data."""
+        return re.sub(r"[*`¹²³⁴⁵⁶⁷⁸⁹⁰]", "", cell).strip()
+
+    def derivation_table(self):
+        """The (exposure, blast) -> rating lookup, parsed from section 2 rather than hardcoded."""
+        text = read(MATRIX)
+        body = text[text.index("### Safety rating"):text.index("### Data rating")]
+        table = {}
+        for line in body.splitlines():
+            if not line.startswith("| **"):
+                continue
+            cells = [self.clean(c) for c in line.strip("|").split("|")]
+            exposure = cells[0]
+            for blast, rating in zip(("read", "write-local", "device-or-money"), cells[1:4]):
+                table[(exposure, blast)] = rating
+        return table
+
+    def rows(self):
+        """Each matrix row as (instance, exposure, gate, blast, safety)."""
+        text = read(MATRIX)
+        section = text[text.index("## 4. The matrix"):text.index("**20 instances")]
+        out = []
+        for line in section.splitlines():
+            if not line.startswith("| **"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if len(cells) < 6:
+                continue
+            triple = [self.clean(p) for p in cells[4].split("·")]
+            # "public (all /api/*)" and the like -> the bare level
+            exposure = triple[0].split("(")[0].strip()
+            out.append((self.clean(cells[0]), exposure,
+                        triple[1] if len(triple) > 1 else "",
+                        triple[2] if len(triple) > 2 else "",
+                        self.clean(cells[5])))
+        return out
+
+    def test_the_derivation_table_is_total(self):
+        table = self.derivation_table()
+        for exposure in ("none", "loopback", "public"):
+            for blast in ("read", "write-local", "device-or-money"):
+                with self.subTest(cell=(exposure, blast)):
+                    self.assertIn((exposure, blast), table,
+                                  "the safety rule has a hole; a hole is where hand-typing gets in")
+
+    def test_every_row_states_a_complete_input_triple(self):
+        for instance, exposure, gate, blast, _ in self.rows():
+            with self.subTest(instance=instance):
+                self.assertIn(exposure, ("none", "loopback", "public"), f"{instance}: bad exposure")
+                self.assertIn(blast, ("read", "write-local", "device-or-money"),
+                              f"{instance}: incomplete triple -- blast missing")
+                self.assertTrue(gate, f"{instance}: gate missing")
+
+    def test_every_safety_cell_matches_the_derivation_table(self):
+        table = self.derivation_table()
+        for instance, exposure, _gate, blast, safety in self.rows():
+            with self.subTest(instance=instance):
+                if safety == "S-blocked":
+                    # The one documented override: a named open HIGH-n outranks the cell.
+                    self.assertIn("SECURITY-AUDIT", read(MATRIX),
+                                  "S-blocked used without the override being documented")
+                    continue
+                self.assertEqual(table[(exposure, blast)], safety,
+                                 f"{instance}: {exposure} x {blast} derives "
+                                 f"{table[(exposure, blast)]}, table says {safety}")
+
+    #: instance -> (app module that must be mounted under /api/, expected exposure). `None` means
+    #: the module must appear in NO include_router call. These are the three cells the review
+    #: caught plus four controls, so a regression on either side goes red.
+    MOUNTS = {
+        "Voice — ASR": ("voice", "public"),
+        "Streamer": ("streamer", "public"),
+        "Project store": ("project", "public"),
+        "Live": ("live", "public"),
+        "Exp / plugin runtime": ("exp", "public"),
+        "Miner — status": (None, "none"),
+        "Coder": (None, "loopback"),
+    }
+
+    def test_exposure_agrees_with_the_mount_table_and_the_caddyfile(self):
+        api = (ROOT / "backend" / "api.py").read_text(encoding="utf-8")
+        caddy = (ROOT / "ops" / "Caddyfile").read_text(encoding="utf-8")
+        # Caddy delegating the whole /api subtree is the premise that makes any /api mount public.
+        self.assertRegex(caddy, r"handle /api/\*",
+                         "ops/Caddyfile no longer delegates /api/* -- every 'public' cell needs re-deriving")
+
+        mounted = dict(re.findall(r'include_router\(\s*(?:\w+\.)*(\w+)\.\w*router\w*'
+                                  r'[^)]*?prefix="(/[^"]*)"', api, flags=re.S))
+        by_row = {inst: (mod, exp) for inst, (mod, exp) in self.MOUNTS.items()}
+        rows = {inst: exposure for inst, exposure, _, _, _ in self.rows()}
+
+        for instance, (module, expected) in by_row.items():
+            with self.subTest(instance=instance):
+                self.assertIn(instance, rows, f"{instance} vanished from the matrix")
+                self.assertEqual(expected, rows[instance],
+                                 f"{instance}: matrix says exposure {rows[instance]!r}, "
+                                 f"source says {expected!r}")
+                if module:
+                    self.assertIn(module, mounted,
+                                  f"{module} is no longer mounted in api.py; exposure needs re-deriving")
+                    self.assertTrue(mounted[module].startswith("/api/"),
+                                    f"{module} is mounted at {mounted[module]}, not under /api/")
+
+    def test_the_unmounted_miner_modules_really_have_no_router(self):
+        api = (ROOT / "backend" / "api.py").read_text(encoding="utf-8")
+        for module in ("cryptominer", "asicminer"):
+            with self.subTest(module=module):
+                self.assertNotRegex(api, rf"include_router\(\s*{module}\.",
+                                    f"{module} is now mounted; the Miner row's 'none' is stale")
+
+    def test_the_coder_data_path_is_loopback_by_construction(self):
+        """Coder's rating is S-med rather than S-high only because /local is never proxied."""
+        api = (ROOT / "backend" / "api.py").read_text(encoding="utf-8")
+        caddy = (ROOT / "ops" / "Caddyfile").read_text(encoding="utf-8")
+        self.assertIn("/local/coder/", api, "the coder mount moved; re-derive its exposure")
+        self.assertNotRegex(api, r"include_router\(\s*coder\.",
+                            "coder gained an /api router -- exposure becomes public and S-high")
+        self.assertNotRegex(caddy, r"^\s*handle /local",
+                            "ops/Caddyfile now proxies /local -- Coder's whole safety case is gone")
 
 
 class ForbiddenModeStaysForbidden(unittest.TestCase):
