@@ -1,7 +1,8 @@
 # SyMoNeuRaL OpenAI 20B — the LLM candidate, and what has to be true before it runs
 
 **Opened 2026-08-22.** **Weights downloaded and converted 2026-08-22 on Garrett's explicit
-authorization, and live-smoked — see §3a, §3b, §3c. Nothing activated. Qwen unchanged and not deleted. No deploy.**
+authorization, live-smoked and benchmarked — see §3a-§3d.
+**NOT activated: one measured blocker, §3d.** Qwen unchanged and not deleted. No deploy.**
 
 | | |
 |---|---|
@@ -13,6 +14,10 @@ authorization, and live-smoked — see §3a, §3b, §3c. Nothing activated. Qwen
 | downloaded | **yes — 2026-08-22, 32 GiB staged, see §3a** |
 | converted | **yes — 12.85 GiB GGUF, MXFP4 preserved, see §3b** |
 | smoked | **yes — 2026-08-22, loads/generates/fits; 5 of 6 readings, see §3c** |
+| benchmarked | **yes — base-vs-base vs Qwen, see §3d** |
+| licence text | **stored — Apache-2.0, `backend/models/licenses/`** |
+| `general.name` | **`SyMoNeuRaL OpenAI 20B`** (was `Hf`) |
+| **promotable?** | **NO — one measured blocker: the qwen2 persona adapter, §3d** |
 | active | **no** |
 
 ## 0. Scope, stated first because it is the thing most likely to be over-read
@@ -103,7 +108,7 @@ the activation decision is made (the live-smoke condition was met on 2026-08-22,
 | `original/` (unconvertible, retained) | 13 GiB |
 | `hf/` (convertible) | 19 GiB |
 | dead `.incomplete` leftovers, reclaimable | 6,574,559,947 B |
-| **GGUF, written 2026-08-22** | **12.85 GiB** (13,792,638,592 B) |
+| **GGUF, written 2026-08-22** | **12.85 GiB** (13,792,638,624 B after the name patch) |
 | **total staged now** | **~45 GiB** — all four retained on instruction |
 | available on `/home` before → after conversion | **793 GB → 780 GB** |
 
@@ -118,13 +123,20 @@ measured comment records **9,485 MiB total for a 4.36 GiB model** — so **KV an
 
 > **12.81 GiB of weights + ~3.9 GiB of KV ≈ 16.7 GiB on a 16,303 MiB card. It will not fit.**
 
-> ⚠️ **The 972 MiB idle figure above was superseded by measurement on 2026-08-22: idle was
-> 239 MiB.** The smoke peaked at **12,911 MiB with 3,392 MiB spare** — §3c. The conclusion that the
-> *production* context will not fit is unaffected and untested; only the idle baseline was wrong,
-> and it was wrong in the conservative direction.
+> ⚠️ **BOTH claims in this block were disproved by measurement on 2026-08-22 — see §3d.**
+> Idle was **239 MiB**, not 972. And the "it will not fit" conclusion is **FALSE**: the candidate
+> ran at the full production context `-c 65536 -cb -np 2`, **generating, at 14,297 MiB peak.**
+>
+> **The error was applying Qwen2.5-7B's KV measurement to a different model.** ~3.9 GiB of KV was
+> measured on a 28-block dense model and reused here for a 24-block 32-expert one, as if KV cost
+> followed context length alone rather than the model's own shape. **That is carrying a figure
+> across a boundary it was never measured across** — the failure this repo's rules name — committed
+> in the document that names it. The paragraph is left standing, marked, because deleting it would
+> hide the mistake rather than record it.
 
-**So the candidate cannot be smoked at the production context.** `--smoke-candidate` uses
-**`-c 8192 -np 1`**, and says why in its own output — because *an OOM nobody predicted reads like
+**The smoke still uses the reduced context, and the reason now stands on different ground:**
+the production context *does* fit, but a smoke should not be the first thing to discover that.
+`--smoke-candidate` uses **`-c 8192 -np 1`**, and says why in its own output — because *an OOM nobody predicted reads like
 an incompatible model rather than an argv that was too greedy.*
 
 ## 2a. Isolated smoke — the candidate proves itself or fails
@@ -401,6 +413,104 @@ alongside other work. Whoever promotes it still owes that reading through the no
 **One deterministic 96-token completion is evidence of life, not of quality.** No benchmark, no
 A/B against the current default, no eval. Nothing here argues the candidate is *better* than Qwen —
 only that it loads, generates, fits, and releases the card.
+
+## 3d. Naming, licence, benchmark — and why promotion did NOT happen
+
+### general.name fixed without editing a byte of the original
+
+It read `Hf`, from the input directory name. `gguf-py` ships **`gguf_new_metadata.py`, which writes a
+copy** rather than editing in place — so the validated original was never touched. The copy was
+read back (architecture, `file_type 38`, all 459 tensors and their types, tokenizer, Harmony
+template — **identical**), then made canonical by atomic rename, sha256 preserved.
+
+| | |
+|---|---|
+| `general.name` | **`SyMoNeuRaL OpenAI 20B`** — the real GGUF field, not just a display string |
+| size | 13,792,638,624 B — **32 B larger**, being the longer name plus alignment |
+| GGUFs in staging | **exactly one.** Two would have been worse than a wrong name: the smoke selects with `find -print -quit`, so it would have validated one file while promotion used the other |
+
+**Licence stored** at `backend/models/licenses/openai-gpt-oss-20b-LICENSE.txt`, 11,357 B,
+byte-identical to upstream, sha256 `58d1e17f…`, read and confirmed as **Apache-2.0 Version 2.0**.
+This discharges the **local activation** gate only — it is *not* a commercial-readiness finding,
+and ML-2's four fields remain unrecorded for every model here.
+
+### Benchmark — base vs base, and the headline is not throughput
+
+Same prompt, same context, isolated port, no adapter, no draft, on the same idle card.
+
+| | **SyMoNeuRaL OpenAI 20B** | **Qwen (current default)** |
+|---|---|---|
+| load | 4.03 s | **2.02 s** |
+| peak VRAM | 12,911 MiB | **5,259 MiB** |
+| prompt | 571.8 tok/s | **1,807.1 tok/s** |
+| **generation** | **166.3 tok/s** | 147.6 tok/s |
+| tokens for a one-sentence answer | **259** | **25** |
+| wall clock | 1.72 s | **0.21 s** |
+
+**Read the token column before the tok/s column.** gpt-oss spent **259 tokens on a one-sentence
+request** against Qwen's 25 — the Harmony reasoning channel is charged whether or not anyone reads
+it. A 13% generation-rate win alongside a **10× token cost** is not a throughput win, and the
+1.72 s vs 0.21 s wall clock is what a user would actually feel.
+
+**And both answers were wrong.** Asked "What is SyMoNeuRaL?", gpt-oss produced *"a hybrid
+neural-symbolic architecture…"* and Qwen *"a symbolic model neural network library…"*. Neither is
+this project. **The prompt measured fluency, not knowledge** — and the production Qwen path answers
+it *with* the persona adapter that this isolated benchmark deliberately excluded. **Base vs base is
+the only honest label for this table.**
+
+### The one real blocker — measured, after two of my own predictions were disproved
+
+I predicted three blockers. **Probing each separately turned that into one.**
+
+| Probe | Result |
+|---|---|
+| **A** — full production argv | **exit 1**, `llama_adapter_lora_init: failed to apply lora adapter: model arch and LoRA arch mismatch` |
+| **B** — minus `--lora`, draft kept | **STARTED**, generated, peak 14,297 MiB |
+| **C** — minus draft too | **STARTED**, peak 14,229 MiB |
+
+- **Blocker 1 — the adapter. FATAL, and the only one.** `api.py:1196-1197` applies `--lora`
+  **unconditionally when the file exists**. That adapter is `general.architecture: qwen2`, base
+  `Qwen/Qwen2.5-7B-Instruct`. The candidate is `gpt-oss`. The engine refuses and exits 1.
+- **Blocker 2 — the draft. WRONG.** I predicted the 151,936-vs-201,088 vocab gap would make `-md`
+  reject. It does not: the server started and generated. *Loading is not working*, though —
+  164.4 tok/s with the draft vs 166.3 without means speculative decode is buying **nothing**,
+  which is what a mismatched vocabulary predicts.
+- **Blocker 3 — VRAM. WRONG, and this doc was the source of the error.** §2 says
+  *"12.81 GiB + ~3.9 GiB KV ≈ 16.7 GiB… it will not fit."* **Measured: 14,297 MiB at the full
+  production context, generating.** The ~3.9 GiB KV figure was measured on **Qwen2.5-7B (28
+  blocks)** and applied to **gpt-oss (24 blocks, 32 experts, different attention geometry)** as
+  though KV cost were a property of context length alone. It is a property of *the model's shape*.
+  **Carrying one model's KV measurement onto another is the same error as carrying a figure forward
+  and re-dating it** — the thing this repo warns about — and I did it in the doc that warns about it.
+
+> **The real remaining concern is not startup, it is co-residency.** At production context with the
+> draft, peak was **15,409 MiB in one probe** — leaving 894 MiB, **below the governor's 1.5 GB drain
+> floor.** That is an image-stack co-tenancy problem, not a load failure.
+
+### Why promotion was not taken, with all six gates green
+
+**All six gates pass.** They are also, all six, readings of files and a marker — **not one of them
+asks whether the chat surface starts.** Probe A says it does not. This is the **#94 failure
+`.claude/CLAUDE.md` names** — green checks over a dead surface — caught before archiving instead of
+after.
+
+The blocker has a small fix: apply `--lora` only when the adapter's architecture matches the
+model's. **But the fix is not the whole change**, because five sites read `CHAT_ADAPTER.exists()`
+as a proxy for *"the adapter is in use"* (`:1963`, `:2015`, `:2020`, `:2355`, `:2522`), and one
+hardcodes `"SymonChat S1-7B"`. After promotion the file still exists and is **not applied**, so the
+rack unit would announce **"SymonChat S1-7B + persona adapter"** while serving a 20B model with no
+persona, and `/api` would report `"adapter": true`. **That is shipping a claim that is not true**,
+which is the one thing this repo is built to refuse.
+
+**And the product consequence is a decision, not a config detail: promotion loses the persona
+adapter entirely.** There is no gpt-oss-shaped LoRA on this box, and training one is its own task
+with its own corpus run. The adapter is what makes the surface *SymonChat* rather than *base Qwen* —
+and the benchmark above is precisely the evidence that base models do not know what SyMoNeuRaL is.
+
+**Garrett's call, with the work scoped:** an `adapter_applies()` arch-match predicate, the five
+status sites reading it instead of `.exists()`, a model-aware display string, `CHAT_MODEL` and a
+recorded `ROLLBACK_MODEL`, each with a test and each verified by sabotage. Small, but it touches the
+live chat launch path and it changes what the product says about itself.
 
 ## 4. The six activation gates
 
