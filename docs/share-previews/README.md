@@ -58,6 +58,54 @@ by anyone willing to edit one class in the page. It is review discipline — it 
 boundaries impossible to miss before the content is read — and it should never be described,
 in copy or in conversation, as acceptance having been captured.
 
+## Customer confidentiality posture
+
+Treat customer ideas, workflows, routes, pricing logic, policies and operational details as
+**confidential scoping material**. In practice:
+
+- Do not publish customer-specific details outside protected preview paths.
+- Do not paste customer-sensitive details into public docs.
+- Do not put customer-sensitive details in commit messages — `git log` is permanent here and
+  is read far more often than the file it describes.
+- Do not create customer exports without sanitisation.
+- Offer a mutual NDA before deeper production discovery, if asked or if sensitive material
+  will be exchanged.
+- Formal confidentiality obligations get reviewed in written terms, not asserted on a page.
+
+**Say what is true and no more.** The page states that SyMoNeuRaL *voluntarily treats* this
+material as confidential and that a mutual NDA *can be signed* — both are accurate. It does not
+say an NDA is in force, that confidentiality is guaranteed, or that anything on the page is
+legally binding, because none of that would be true without a signature. A customer who later
+discovers the protection was weaker than the wording implied has been misled, and that costs
+more than the reassurance was worth.
+
+None of this is legal advice, and nothing here has been through a lawyer.
+
+## Scope-boundary posture
+
+Every customer preview must define the boundary between **customer-provided inputs** and
+**SyMoNeuRaL-managed implementation**, and must define it on the page rather than leaving it
+to be inferred.
+
+- The customer owns and controls business facts, approvals and production decisions.
+- SyMoNeuRaL manages preview staging, runtime approach, implementation details, source,
+  prompts, model files, credentials and deployment method — unless written terms say otherwise.
+
+Three things that are easy to slide into and are each wrong:
+
+- **Preview access is not source handoff.**
+- **Preview approval is not production clearance.**
+- **Customer feedback is not a signed production agreement.**
+
+Production requires written scope and terms.
+
+This is scope-boundary / trust-boundary discipline: name the boundaries, name who holds each
+side, and name the handoff point where control transfers — so that neither side has to guess,
+and so an enthusiastic conversation cannot quietly move a boundary nobody wrote down. Keep
+that framing **internal**. The customer page states the boundaries plainly and in business
+language; it does not explain the discipline behind them, and it must never read like a
+security document.
+
 ## Customer variable boundary
 
 This preview binds generic SyMoNeuRaL / Solo Operator / SyMon AI capabilities to **one

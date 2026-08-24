@@ -166,6 +166,13 @@
   .dx-bnd td:first-child{color:var(--fg); width:20%}
   .dx-bnd td:nth-child(2){color:var(--dim); width:40%}
   .dx-bnd td:last-child{color:var(--faint); width:40%}
+  .dx-own{width:100%; border-collapse:collapse; margin-top:18px; font-size:var(--t5)}
+  .dx-own th,.dx-own td{border-top:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top}
+  .dx-own thead th{border-top:0; color:var(--faint); font-weight:650; font-size:var(--t6);
+    text-transform:uppercase; letter-spacing:.1em}
+  .dx-own td:first-child{color:var(--fg); width:20%}
+  .dx-own td:nth-child(2){color:var(--dim); width:40%}
+  .dx-own td:last-child{color:var(--dim); width:40%}
 
   /* ---- acknowledgment gate ---- */
   .dx-gate{max-width:760px; margin:0 auto; padding:34px 0 46px}
@@ -268,6 +275,14 @@
     .dx-bnd td:nth-child(2){margin:7px 0 0}
     .dx-bnd td:nth-child(2)::before{content:"Covers — "; color:var(--accent)}
     .dx-bnd td:last-child::before{content:"Not covered — "; color:var(--amber)}
+    .dx-own,.dx-own tbody,.dx-own tr,.dx-own td{display:block; width:auto}
+    .dx-own thead{display:none}
+    .dx-own tr{border-top:1px solid var(--line); padding:13px 0}
+    .dx-own td{border:0; padding:0}
+    .dx-own td:first-child{font-size:var(--t4); font-weight:650; color:var(--fg)}
+    .dx-own td:nth-child(2){margin:7px 0 0}
+    .dx-own td:nth-child(2)::before{content:"Customer — "; color:var(--accent)}
+    .dx-own td:last-child::before{content:"SyMoNeuRaL — "; color:#7fb8d8}
     .dx-steps button{flex:1 1 auto; text-align:center}
 
     /* The coverage table is three columns wide and its status chips do not wrap, which
@@ -877,6 +892,27 @@
   </div>
 </section>
 
+<!-- ===================== CONFIDENTIAL PREVIEW HANDLING ===================== -->
+<section>
+  <div class="wrap">
+    <div class="dx-sec-h"><h2>Confidential preview handling</h2></div>
+    <p style="font-size:var(--t5); color:var(--dim); max-width:74ch">
+      SyMoNeuRaL treats customer preview discussions, workflow ideas, and business-specific
+      details as confidential scoping material. This protected preview is not a public proposal
+      page and should not be forwarded or redistributed.
+    </p>
+    <p style="font-size:var(--t5); color:var(--dim); max-width:74ch">
+      Before deeper production discovery, source discussion, integrations, or sensitive
+      operational details are exchanged, SyMoNeuRaL can sign a mutual NDA or include
+      confidentiality terms in the written production agreement.
+    </p>
+    <div class="dx-note">
+      This preview is not a quote, contract, signed NDA, or production authorization. It is a
+      controlled review step before written scope and terms.
+    </div>
+  </div>
+</section>
+
 <!-- ===================== SCOPE OF THIS PREVIEW ===================== -->
 <section>
   <div class="wrap">
@@ -927,6 +963,91 @@
     <div class="dx-note">
       <b>These boundaries define what this webpage is showing. They do not grant production
       rights, source rights, model rights, deployment rights, or commercial terms.</b>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SCOPE BOUNDARIES ===================== -->
+<section>
+  <div class="wrap">
+    <div class="dx-sec-h"><h2>Scope boundaries</h2></div>
+    <p style="font-size:var(--t5); color:var(--dim); max-width:74ch">
+      Where the customer side ends and the SyMoNeuRaL side begins, area by area. The section
+      above says what this page shows; this one says who holds what.
+    </p>
+    <table class="dx-own">
+      <thead>
+        <tr><th>Boundary area</th><th>Customer side</th><th>SyMoNeuRaL side</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Business workflow</td>
+            <td>Provides service rules, routes, policies and operational preferences</td>
+            <td>Converts approved workflow into preview and production configuration</td></tr>
+        <tr><td>Preview access</td>
+            <td>Reviews the protected preview and gives feedback</td>
+            <td>Hosts and protects the preview path</td></tr>
+        <tr><td>First-version scope</td>
+            <td>Confirms what matters for the first version</td>
+            <td>Keeps it limited to the approved booking, quote, dispatch, reminder and review flow</td></tr>
+        <tr><td>Deferred features</td>
+            <td>Confirms what can wait</td>
+            <td>Keeps dashboards, revenue tracking, memory, summaries and the full AI workflow out unless later approved</td></tr>
+        <tr><td>AI assistant</td>
+            <td>Provides business context and approved knowledge</td>
+            <td>Maintains SyMon AI as a managed SyMoNeuRaL runtime</td></tr>
+        <tr><td>Source, model and prompts</td>
+            <td>Not included in the preview</td>
+            <td>Retained unless written terms grant specific rights</td></tr>
+        <tr><td>Hosting</td>
+            <td>Chooses the approved cloud-first or local-box-later path</td>
+            <td>Manages the approved infrastructure path</td></tr>
+        <tr><td>Production launch</td>
+            <td>Requires written approval, scope and terms</td>
+            <td>Does not launch production until cleared</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:var(--t5); color:var(--dim); max-width:74ch; margin-top:18px">
+      Scope boundaries protect both sides. The customer controls the business requirements and
+      the approval decisions. SyMoNeuRaL controls the protected runtime, implementation method,
+      preview staging and production-readiness process until written terms say otherwise.
+    </p>
+    <div class="dx-note">
+      <b>The preview shows the workflow direction.</b> It does not transfer source code,
+      prompts, model files, deployment rights, credentials, or production operating authority.
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RESPONSIBILITIES ===================== -->
+<section>
+  <div class="wrap">
+    <div class="dx-sec-h"><h2>Customer and provider responsibilities</h2></div>
+    <p style="font-size:var(--t5); color:var(--dim); max-width:74ch">
+      Review responsibilities for this preview stage — what each side does to keep the review
+      useful and the boundaries intact.
+    </p>
+    <div class="dx-split">
+      <div class="dx-box">
+        <h3>Customer</h3>
+        <ul>
+          <li>Provide accurate business rules and service expectations</li>
+          <li>Identify the must-have first-version workflow needs</li>
+          <li>Review preview behaviour before production</li>
+          <li>Avoid forwarding protected preview access</li>
+          <li>Approve written scope before production use</li>
+        </ul>
+      </div>
+      <div class="dx-box">
+        <h3>SyMoNeuRaL</h3>
+        <ul>
+          <li>Protect preview access</li>
+          <li>Avoid publishing customer-sensitive details</li>
+          <li>Keep implementation details out of customer-facing pages</li>
+          <li>Maintain clear first-version and deferred-scope boundaries</li>
+          <li>Require written terms before production launch</li>
+          <li>Maintain the managed runtime and infrastructure path</li>
+        </ul>
+      </div>
     </div>
   </div>
 </section>
