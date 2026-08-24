@@ -223,3 +223,14 @@ incoming/*
 !incoming/*/
 incoming/*/*
 !incoming/*/PROVENANCE.md
+
+# Local archive artefacts, written by the archive procedure in
+# docs/share-previews/ARCHIVE-PLAN.md. They are built FROM committed state, so tracking one
+# stores a second copy of history inside the history it was cut from -- and the next archive
+# would then contain the previous one, compounding on every run.
+#
+# The manifests are ignored with them, deliberately. A manifest names the SHA of the archive
+# it describes, so committing it changes the tree, which changes the next commit, which is a
+# document that is wrong the moment it is right. The durable record of a stage is the git
+# tag; the tarball and its manifest are local artefacts of a moment.
+archives/
