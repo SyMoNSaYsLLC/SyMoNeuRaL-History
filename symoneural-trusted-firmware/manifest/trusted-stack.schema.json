@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://symoneural.com/schema/trusted-stack-1.json",
+  "title": "SyMoNeuRaL trusted GPU stack manifest",
+  "description": "Provenance for one GPU stack per slot. Contains hashes and version identity only -- NEVER private signing keys, certificates or any other secret.",
+  "type": "object",
+  "required": ["schema", "slots"],
+  "properties": {
+    "schema": { "const": 1 },
+    "slots": {
+      "type": "object",
+      "description": "Exactly three slots. Nothing moves between them automatically.",
+      "required": ["PRIMARY", "CANDIDATE", "RECOVERY"],
+      "properties": {
+        "PRIMARY":   { "$ref": "#/$defs/slotOrNull", "description": "currently trusted operational stack" },
+        "CANDIDATE": { "$ref": "#/$defs/slotOrNull", "description": "under validation; never auto-promotes" },
+        "RECOVERY":  { "$ref": "#/$defs/slotOrNull", "description": "known-good rollback target" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "slotOrNull": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/slot" }] },
+    "hashedFile": {
+      "type": "object",
+      "required": ["sha256"],
+      "properties": {
+        "path":   { "type": "string" },
+        "size":   { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "required": ["kernel", "nvidia_kmd", "gsp_firmware", "nvidia_userspace",
+                   "cuda", "gpu", "sm", "upstream", "promotion"],
+      "properties": {
+        "schema": { "const": 1 },
+
+        "kernel": {
+          "type": "object",
+          "properties": {
+            "release": { "type": ["string", "null"] },
+            "version": { "type": ["string", "null"] },
+            "arch":    { "type": ["string", "null"] }
+          }
+        },
+
+        "nvidia_kmd": {
+          "type": "object",
+          "description": "NVIDIA open kernel modules. NOT to be confused with the Hugging Face `kernels` pip package.",
+          "properties": {
+            "nvrm_banner":     { "type": ["string", "null"] },
+            "flavour":         { "type": ["string", "null"], "description": "\"Open\" for open-gpu-kernel-modules" },
+            "version":         { "type": ["string", "null"] },
+            "module_versions": { "type": "object", "additionalProperties": { "type": "string" } },
+            "modules":         { "type": "object", "additionalProperties": { "$ref": "#/$defs/hashedFile" } },
+            "taint":           { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
+
+        "gsp_firmware": {
+          "type": "object",
+          "description": "Must match nvidia_kmd.version and nvidia_userspace.driver_version -- NVIDIA ships them as one release.",
+          "properties": {
+            "version": { "type": ["string", "null"] },
+            "blobs":   { "type": "object", "additionalProperties": { "$ref": "#/$defs/hashedFile" } }
+          }
+        },
+
+        "nvidia_userspace": {
+          "type": "object",
+          "properties": {
+            "driver_version": { "type": ["string", "null"] },
+            "libcuda":        { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/hashedFile" }] }
+          }
+        },
+
+        "cuda": {
+          "type": "object",
+          "properties": {
+            "umd_version":  { "type": ["string", "null"] },
+            "nvcc_release": { "type": ["string", "null"] },
+            "nvcc_build":   { "type": ["string", "null"] }
+          }
+        },
+
+        "gpu": {
+          "type": "object",
+          "description": "PCI and board identity. uuid pins the physical card.",
+          "properties": {
+            "name":                { "type": "string" },
+            "uuid":                { "type": "string" },
+            "pci.bus_id":          { "type": "string" },
+            "pci.device_id":       { "type": "string" },
+            "pci.sub_device_id":   { "type": "string" },
+            "vbios_version":       { "type": "string" },
+            "compute_cap":         { "type": "string" },
+            "memory.total [MiB]":  { "type": "string" }
+          }
+        },
+
+        "sm": {
+          "type": "object",
+          "properties": {
+            "compute_cap": { "type": ["string", "null"] },
+            "arch":        { "type": ["string", "null"], "examples": ["sm_120"] }
+          }
+        },
+
+        "secure_boot": {
+          "type": "object",
+          "properties": {
+            "state":             { "type": ["string", "null"] },
+            "kernel_lockdown":   { "type": ["string", "null"] },
+            "module_signatures": { "type": ["object", "null"], "description": "null until MODULE_SIGNATURE_MATCH is implemented" }
+          }
+        },
+
+        "upstream": {
+          "type": "object",
+          "description": "Pin to NVIDIA/open-gpu-kernel-modules.",
+          "properties": {
+            "path":           { "type": "string" },
+            "present":        { "type": "boolean" },
+            "remote":         { "type": ["string", "null"] },
+            "commit":         { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$|^$" },
+            "describe":       { "type": ["string", "null"] },
+            "clean":          { "type": "boolean" },
+            "nvidia_version": { "type": ["string", "null"] }
+          }
+        },
+
+        "higher_level_runtimes": {
+          "type": "object",
+          "description": "Userspace only. Recorded for reproducibility; never a trust root.",
+          "properties": {
+            "torch":      { "type": ["string", "null"] },
+            "torch_cuda": { "type": ["string", "null"] },
+            "triton":     { "type": ["string", "null"] },
+            "arch_list":  { "type": ["array", "null"], "items": { "type": "string" } }
+          }
+        },
+
+        "validation": {
+          "type": "object",
+          "description": "Results of the execution checks, written by `tfctl test`.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "result":   { "enum": ["PASS", "FAIL", "UNKNOWN"] },
+              "measured": { "type": ["object", "null"] },
+              "at":       { "type": ["string", "null"] }
+            }
+          }
+        },
+
+        "promotion": {
+          "type": "object",
+          "required": ["state"],
+          "properties": {
+            "state":            { "enum": ["MEASURED", "STAGED", "VALIDATED", "PROMOTED", "ROLLED_BACK"] },
+            "promoted_by":      { "type": ["string", "null"], "description": "human identifier; promotion is never automatic" },
+            "promoted_at":      { "type": ["string", "null"] },
+            "rollback_source":  { "type": ["string", "null"], "description": "slot this was restored from" }
+          }
+        }
+      }
+    }
+  }
+}
