@@ -62,7 +62,7 @@ def is_app_module_dir(path):
 
     Two lessons, and the second is why this is a named function instead of an inline generator:
 
-      * **a transient cache directory must never be able to move a published figure.** `17` is
+      * **a transient cache directory must never be able to move a published figure.** `18` is
         quoted by four documents; a leftover directory is not a product decision, and a test that
         lets one change the answer is measuring the filesystem's mood;
       * **"matches the Scout" has to be enforced, not asserted.** It was asserted -- in a comment,
@@ -146,7 +146,7 @@ class CountsMatchTheTables(unittest.TestCase):
         self.assertIsNotNone(stated)
         claimed_modules = int(stated.group(2))
         # Directories, which is how `tools/bootcamp_scout.py` counts and therefore what every
-        # document quotes. Measured 2026-08-23: 17 directories, of which only 15 hold an
+        # document quotes. Re-measured 2026-08-24: 18 directories, of which only 16 hold an
         # `__init__.py` -- `ravencalc` and `remix` are not importable packages. Counting packages
         # here would silently disagree with the Scout by two, which is the drift this class exists
         # to catch, so the definition is pinned rather than left to taste.
@@ -195,8 +195,8 @@ class CountsMatchTheTables(unittest.TestCase):
         failure message names the offender rather than only the count."""
         counted = sorted(p.name for p in APPS.iterdir() if is_app_module_dir(p))
         rejected = sorted(p.name for p in APPS.iterdir() if p.is_dir() and not is_app_module_dir(p))
-        self.assertEqual(17, len(counted),
-                         f"expected 17 app modules, counted {len(counted)}: {counted} "
+        self.assertEqual(18, len(counted),
+                         f"expected 18 app modules, counted {len(counted)}: {counted} "
                          f"(rejected as transient: {rejected})")
 
 

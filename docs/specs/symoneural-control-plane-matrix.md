@@ -155,7 +155,7 @@ with their source cited in the footnotes: **Voice**, **RavenCalc**, **Coder** an
 | **NeuroScope / Model Atlas** | Inspection | metadata-only GGUF reader | pure Python **built** | none · none · read | `S-low` | `D-public` | `P-none` | n/a | no |
 | **Exp / plugin runtime** | Studio | plugin host | `symoneural-ui` **see §5** | public · token · write-local | **`S-blocked`**³ | `D-credential` | `P-none` | **`queued`** | no |
 
-**20 instances across 17 app modules.** Both numbers are asserted by
+**20 instances across 18 app modules.** Both numbers are asserted by
 `backend/apps/test_control_plane_matrix.py` against the table and the tree, because a count in
 prose that has stopped matching the table under it is this repo's signature drift.
 
@@ -164,9 +164,17 @@ Two reconciliations, so neither number reads as contradicting a neighbour:
 - **20 instances here vs 19 positions in Bootcamp §5.** Different questions, both right. Bootcamp
   charts *positions* including future ones (CLI, Sentinel, OpenEmbedded/SDK); this table rows
   *exposures that exist now* and adds Gateway, the Project store, Reinforce/tuner and Exp.
-- **17 app modules, of which only 15 are importable packages.** `ravencalc` and `remix` are
-  directories with **no `__init__.py`**. The Scout counts directories, so 17 is the number every
+- **18 app modules, of which only 16 are importable packages.** `ravencalc` and `remix` are
+  directories with **no `__init__.py`**. The Scout counts directories, so 18 is the number every
   document quotes — and the two-module gap is recorded here rather than left to be rediscovered.
+- **The 18th module is `dispatchos`, added 2026-08-24, and it adds no row to the table above.**
+  That is not an omission. The table rows *exposures that exist now*, and DispatchOS is not
+  exposed: `backend/apps/dispatchos/routes.py` is an `APIRouter` that production `api.py` does
+  **not** mount, so the app has no public path, no token, no reachability cell and no security
+  rating to state. It is served only by the local experimental control service on
+  `127.0.0.1:8811` for capacity measurement. The module count moved because the count is a
+  reading of the tree; the instance count did not, because nothing new is reachable. When
+  DispatchOS is mounted in production it earns a row, and that is the change that moves 20.
 
 Footnotes are the derivation, not decoration:
 

@@ -1,0 +1,369 @@
+<title>SyMoNeuRaL Capacity Lab</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --panel:#fff; --ink:#16161a; --muted:#6b6b76; --line:#e3e3df;
+    --ok:#1f7a4d; --warn:#8a6100; --fail:#a32020; --na:#6b6b76; --accent:#1b3a5c;
+  }
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+    --bg:#121214; --panel:#1b1b1f; --ink:#ececed; --muted:#9a9aa4; --line:#2c2c33;
+    --ok:#4ec98a; --warn:#e0b155; --fail:#f0736d; --na:#9a9aa4; --accent:#9dc3e6;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#121214; --panel:#1b1b1f; --ink:#ececed; --muted:#9a9aa4; --line:#2c2c33;
+    --ok:#4ec98a; --warn:#e0b155; --fail:#f0736d; --na:#9a9aa4; --accent:#9dc3e6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
+  header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:22px}
+  h1{margin:0;font-size:25px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:13px;margin-top:5px}
+  .banner{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--warn);
+          padding:13px 15px;border-radius:6px;margin-bottom:22px;font-size:13.5px}
+  .banner b{color:var(--warn)}
+  h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+     margin:26px 0 11px;font-weight:600}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:17px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  button{font:inherit;font-size:13px;padding:7px 14px;border-radius:6px;cursor:pointer;
+         border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+  button.on{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  button.danger{border-color:var(--fail);color:var(--fail)}
+  .gated{position:relative}
+  .gate-note{font-size:11.5px;color:var(--muted);margin-top:7px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:11px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px 15px}
+  .tile .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .tile .v{font-size:23px;font-weight:600;margin-top:5px;letter-spacing:-.02em}
+  .tile .v.sm{font-size:15px;font-weight:500}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .fail{color:var(--fail)}
+  .na{color:var(--na);font-style:italic}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  td.num{font-variant-numeric:tabular-nums;text-align:right}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+  .scroll{overflow-x:auto}
+  .tabs{display:flex;gap:5px;border-bottom:1px solid var(--line);margin:26px 0 16px}
+  .tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;
+               background:none;padding:8px 13px;color:var(--muted)}
+  .tabs button.on{border-bottom-color:var(--accent);color:var(--ink);background:none;font-weight:600}
+  .hide{display:none}
+  .lbl{display:inline-block;font-size:10.5px;letter-spacing:.06em;padding:2px 6px;
+       border-radius:3px;border:1px solid var(--line);color:var(--muted);vertical-align:middle}
+  footer{margin-top:38px;padding-top:16px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:12px}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>SyMoNeuRaL Capacity Lab</h1>
+  <div class="sub">Concurrent-user measurement for this exact server &middot;
+    <span class="mono" id="hdr-run">no run loaded</span></div>
+</header>
+
+<div class="banner">
+  <b>SLICE 1 — HARNESS VALIDATION ONLY.</b> This is not a capacity test. Concurrency is
+  capped at 2 users and <b>FIND SERVER LIMIT is disabled</b> until the high-load ramp is
+  approved. No SLA thresholds exist yet, so <code>UPGRADE REQUIRED</code> reads
+  <b>NOT YET DETERMINED</b> unless there is a hard failure, and <code>DEGRADED</code> is
+  never assigned by guesswork.
+</div>
+
+<div class="banner" style="border-left-color:var(--fail)">
+  <b>BOOKING SCENARIO UNAVAILABLE.</b> The repo audit at <code>main @ 7d1a5529</code> found
+  <b>no booking application</b> — 0 routes matching book/appoint/dispatch/slot/schedul across
+  all 32 route decorators, no booking tables, and <code>share-dispatchos.html</code> makes 0
+  backend calls. Booking metrics report <span class="na">NOT AVAILABLE</span> rather than
+  being fabricated. The scenario is declared and drops in unchanged once the app exists.
+</div>
+
+<h2>AI Mode</h2>
+<div class="panel">
+  <div class="row">
+    <button id="ai-off" class="on">AI DISABLED</button>
+    <button id="ai-on">AI ENABLED</button>
+    <span class="lbl">benchmark-run scoped — production AI config is never altered</span>
+  </div>
+  <div class="gate-note">AI DISABLED bypasses inference <b>server-side</b>: no inference
+    request is issued, so no GPU worker is asked to exist. Verified by the sampler
+    (0 compute apps, VRAM flat at baseline).</div>
+</div>
+
+<h2>Concurrent Users</h2>
+<div class="panel">
+  <div class="row" id="presets"></div>
+  <div class="row" style="margin-top:11px">
+    <button id="find-limit" class="danger" disabled>FIND SERVER LIMIT</button>
+    <span class="gate-note" style="margin:0">Safe-gated in Slice 1. Requires explicit
+      approval of the destructive high-load ramp.</span>
+  </div>
+</div>
+
+<h2>Scenario</h2>
+<div class="panel">
+  <div class="row">
+    <button id="sc-normal" disabled>NORMAL BOOKING</button>
+    <button id="sc-ai" disabled>AI-ASSISTED BOOKING</button>
+    <button id="sc-tx" class="on">APPLICATION TRANSACTION</button>
+    <span class="lbl">HEAVY AI slots in without redesign</span>
+  </div>
+  <div class="gate-note">Booking scenarios are disabled because the application does not
+    exist. The transaction scenario runs real sessions against real endpoints
+    (<code>/api/status</code>, <code>/api/chat</code>, <code>/api/ravencalc</code>).</div>
+</div>
+
+<h2>Actions</h2>
+<div class="panel">
+  <div class="row">
+    <button id="run">RUN LIVE TEST</button>
+    <button id="stop">STOP TEST</button>
+    <button id="clear" class="danger">CLEAR TEST DATA</button>
+    <span class="gate-note" style="margin:0">CLEAR TEST DATA removes only records whose
+      run id matches the selected run. There is no generic delete.</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <button id="tab-biz" class="on">Business View</button>
+  <button id="tab-eng">Engineering View</button>
+</div>
+
+<!-- ------------------------------------------------ BUSINESS -->
+<section id="view-biz">
+  <div class="grid">
+    <div class="tile"><div class="k">Concurrent Users</div><div class="v" id="b-users">—</div></div>
+    <div class="tile"><div class="k">AI</div><div class="v" id="b-ai">—</div></div>
+    <div class="tile"><div class="k">Test Status</div><div class="v" id="b-status">—</div></div>
+  </div>
+  <div class="grid" style="margin-top:11px">
+    <div class="tile"><div class="k">Server Capacity</div><div class="v sm" id="b-cap">—</div></div>
+    <div class="tile"><div class="k">AI Performance</div><div class="v sm" id="b-aiperf">—</div></div>
+    <div class="tile"><div class="k">Booking Performance</div><div class="v sm" id="b-book">—</div></div>
+  </div>
+  <div class="grid" style="margin-top:11px">
+    <div class="tile"><div class="k">Current Active Users</div><div class="v" id="b-active">—</div></div>
+    <div class="tile"><div class="k">Completed</div><div class="v" id="b-done">—</div></div>
+    <div class="tile"><div class="k">Failed</div><div class="v" id="b-failed">—</div></div>
+  </div>
+  <div class="grid" style="margin-top:11px">
+    <div class="tile"><div class="k">VRAM</div><div class="v sm" id="b-vram">—</div></div>
+    <div class="tile"><div class="k">GPU Utilization</div><div class="v sm" id="b-util">—</div></div>
+    <div class="tile"><div class="k">CPU</div><div class="v sm" id="b-cpu">—</div></div>
+    <div class="tile"><div class="k">RAM</div><div class="v sm" id="b-ram">—</div></div>
+    <div class="tile"><div class="k">AI Queue</div><div class="v sm" id="b-queue">—</div></div>
+    <div class="tile"><div class="k">Booking P95</div><div class="v sm" id="b-bp95">—</div></div>
+    <div class="tile"><div class="k">AI P95</div><div class="v sm" id="b-ap95">—</div></div>
+    <div class="tile"><div class="k">Upgrade Required</div><div class="v sm" id="b-upgrade">—</div></div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------ ENGINEERING -->
+<section id="view-eng" class="hide">
+  <h2>Run identity</h2>
+  <div class="panel scroll"><table id="e-ident"></table></div>
+  <h2>Concurrency &amp; sessions</h2>
+  <div class="panel scroll"><table id="e-sessions"></table></div>
+  <h2>Application latency (ms)</h2>
+  <div class="panel scroll"><table id="e-latency"></table></div>
+  <h2>AI (SyMon AI)</h2>
+  <div class="panel scroll"><table id="e-ai"></table></div>
+  <h2>GPU — continuous sampler</h2>
+  <div class="panel scroll"><table id="e-gpu"></table></div>
+  <h2>System</h2>
+  <div class="panel scroll"><table id="e-sys"></table></div>
+  <h2>Errors &amp; cleanup</h2>
+  <div class="panel scroll"><table id="e-misc"></table></div>
+</section>
+
+<footer>
+  Every value shown is <b>MEASURED</b> from a real test or system telemetry, or marked
+  <span class="na">NOT AVAILABLE</span>. Nothing here is projected. The Business View names
+  the model <b>SyMon AI</b>; implementation identifiers appear only in the Engineering View,
+  for reproducibility.
+</footer>
+</div>
+
+<script>
+const NA = "NOT AVAILABLE";
+let REPORT = null, aiMode = "off", users = 2;
+
+const $ = id => document.getElementById(id);
+const na = v => (v === undefined || v === null || v === NA)
+  ? '<span class="na">NOT AVAILABLE</span>' : v;
+
+// ---- controls -------------------------------------------------------------
+const PRESETS = [2,4,6,8,10,16,24,32,48,64];
+PRESETS.forEach(n => {
+  const b = document.createElement("button");
+  b.textContent = n; b.dataset.n = n;
+  if (n === 2) b.classList.add("on"); else b.disabled = true;  // slice 1 cap
+  b.onclick = () => { if (b.disabled) return;
+    document.querySelectorAll("#presets button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); users = n; $("b-users").textContent = n; };
+  $("presets").appendChild(b);
+});
+const custom = document.createElement("button");
+custom.textContent = "CUSTOM"; custom.disabled = true;
+$("presets").appendChild(custom);
+const capNote = document.createElement("span");
+capNote.className = "gate-note"; capNote.style.margin = "0 0 0 6px";
+capNote.textContent = "Presets above 2 are gated until Slice 2 calibration.";
+$("presets").appendChild(capNote);
+
+$("ai-off").onclick = () => { aiMode="off"; $("ai-off").classList.add("on"); $("ai-on").classList.remove("on"); };
+$("ai-on").onclick  = () => { aiMode="on";  $("ai-on").classList.add("on");  $("ai-off").classList.remove("on"); };
+$("tab-biz").onclick = () => { $("view-biz").classList.remove("hide"); $("view-eng").classList.add("hide");
+  $("tab-biz").classList.add("on"); $("tab-eng").classList.remove("on"); };
+$("tab-eng").onclick = () => { $("view-eng").classList.remove("hide"); $("view-biz").classList.add("hide");
+  $("tab-eng").classList.add("on"); $("tab-biz").classList.remove("on"); };
+
+const cmd = m => alert(
+  "Slice 1 UI is a report viewer.\n\nRun from the CLI:\n\n" +
+  "  python3 cli.py run --users 2 --ai " + aiMode + "\n\n" +
+  "then load the JSON report here. " + m);
+$("run").onclick   = () => cmd("RUN LIVE TEST is CLI-driven until the lab is mounted as a surface.");
+$("stop").onclick  = () => cmd("STOP TEST sets the harness STOP event.");
+$("clear").onclick = () => { if (!REPORT) return cmd("Load a report first.");
+  cmd("CLEAR TEST DATA would run: python3 cli.py clear " + REPORT.run_id); };
+
+// ---- rendering ------------------------------------------------------------
+function rows(tbl, pairs){
+  tbl.innerHTML = "<tr><th>Field</th><th>Value</th></tr>" + pairs.map(
+    ([k,v]) => `<tr><td>${k}</td><td class="mono">${v}</td></tr>`).join("");
+}
+function pct(p){ return (!p || p.p50===NA)
+  ? `<span class="na">NOT AVAILABLE</span>`
+  : `n=${p.n} &middot; p50 ${p.p50} &middot; p95 ${p.p95} &middot; p99 ${p.p99} &middot; max ${p.max}`; }
+function stat(s){ return (!s || s.avg===NA)
+  ? `<span class="na">NOT AVAILABLE</span>`
+  : `min ${s.min} &middot; avg ${s.avg} &middot; max ${s.max} ${s.unit} (n=${s.n})`; }
+
+function render(r){
+  REPORT = r;
+  $("hdr-run").textContent = r.run_id + " · " + (r.timestamp_utc||"");
+  const runnable = r.runnable, m = runnable ? r.measurements : null;
+
+  // ---- business
+  $("b-users").textContent  = r.requested_users;
+  $("b-ai").textContent     = r.ai_mode;
+  const cls = r.classification;
+  const st = $("b-status"); st.textContent = cls;
+  st.className = "v " + (cls==="PASS"?"ok":cls==="FAIL"?"fail":cls==="DEGRADED"?"warn":"na");
+
+  const s = runnable ? r.sessions : null;
+  $("b-active").textContent = runnable ? 0 : "—";       // post-run: no sessions in flight
+  $("b-done").textContent   = s ? s.completed : "—";
+  $("b-failed").textContent = s ? s.failed : "—";
+
+  // No thresholds exist in slice 1 -> these cannot be coloured green/yellow/red.
+  const undetermined = '<span class="na">NOT YET DETERMINED</span>';
+  $("b-cap").innerHTML    = runnable ? undetermined : na(NA);
+  $("b-aiperf").innerHTML = (runnable && r.ai_mode==="ENABLED") ? undetermined
+                          : (r.ai_mode==="DISABLED" ? '<span class="na">AI DISABLED</span>' : na(NA));
+  $("b-book").innerHTML   = '<span class="na">NOT AVAILABLE</span>';
+
+  const g = m && m.telemetry && m.telemetry.gpu !== NA ? m.telemetry.gpu : null;
+  $("b-vram").innerHTML = g
+    ? `${(g.vram_used_mib.max/1024).toFixed(1)} / ${(g.vram_total_mib/1024).toFixed(1)} GB <span class="lbl">max sampled</span>`
+    : na(NA);
+  $("b-util").innerHTML = g ? `${g.utilization_pct.max} % <span class="lbl">max sampled</span>` : na(NA);
+  const sy = m && m.telemetry && m.telemetry.system !== NA ? m.telemetry.system : null;
+  $("b-cpu").innerHTML  = sy && sy.cpu_pct.avg!==NA ? `${sy.cpu_pct.max} % <span class="lbl">max sampled</span>` : na(NA);
+  $("b-ram").innerHTML  = sy && sy.ram_used_mib.avg!==NA
+    ? `${(sy.ram_used_mib.max/1024).toFixed(1)} / ${(sy.ram_total_mib/1024).toFixed(1)} GB` : na(NA);
+  const ai = m ? m.ai : null;
+  $("b-queue").innerHTML = ai && ai.queue_depth ? na(ai.queue_depth) : na(NA);
+  $("b-bp95").innerHTML  = '<span class="na">NOT AVAILABLE</span>';
+  $("b-ap95").innerHTML  = (ai && ai.latency_ms && ai.latency_ms.p95!==undefined && ai.latency_ms.p95!==NA)
+    ? `${ai.latency_ms.p95} ms` : na(NA);
+  // Only a hard failure may set this in slice 1.
+  $("b-upgrade").innerHTML = cls==="FAIL" ? '<span class="fail">YES — hard failure</span>' : undetermined;
+
+  // ---- engineering
+  rows($("e-ident"), [
+    ["benchmark run id", r.run_id],
+    ["timestamp (UTC)", r.timestamp_utc],
+    ["application commit", (r.application&&r.application.commit)||NA],
+    ["branch", (r.application&&r.application.branch)||NA],
+    ["tracked files dirty", (r.application&&r.application.dirty_tracked_files)],
+    ["host", (r.server_hardware&&r.server_hardware.hostname)||NA],
+    ["kernel", (r.server_hardware&&r.server_hardware.kernel)||NA],
+    ["CPU", (r.server_hardware&&r.server_hardware.cpu_model)||NA],
+    ["CPU threads", (r.server_hardware&&r.server_hardware.cpu_threads)],
+    ["system RAM (GiB)", (r.server_hardware&&r.server_hardware.system_ram_gib)],
+    ["GPU", (r.server_hardware&&r.server_hardware.gpu_model)||NA],
+    ["GPU VRAM", (r.server_hardware&&r.server_hardware.gpu_vram_total_mib)||NA],
+    ["GPU driver", (r.server_hardware&&r.server_hardware.gpu_driver)||NA],
+    ["AI mode", r.ai_mode],
+    ["player", JSON.stringify(r.player)],
+    ["scenario", r.scenario],
+    ["schema version", r.schema_version],
+    ["thresholds", na(r.thresholds)],
+  ]);
+  rows($("e-sessions"), runnable ? [
+    ["requested concurrency", r.requested_users],
+    ["actual started concurrency", r.actual_started_concurrency],
+    ["actual max concurrency", r.actual_max_concurrency],
+    ["completed", r.sessions.completed],
+    ["failed", r.sessions.failed],
+    ["wall seconds", r.wall_seconds],
+    ["requests/sec", na(m.application.requests_per_s)],
+    ["timeouts", m.application.timeouts],
+    ["HTTP status counts", JSON.stringify(m.application.http_status_counts)],
+  ] : [["runnable","false"],["reason", r.unavailable_reason||NA]]);
+
+  if (runnable){
+    const L = [["session total", pct(m.application.session_latency_ms)]];
+    Object.entries(m.application.step_latency_ms||{}).forEach(([k,v])=>L.push(["step: "+k, pct(v)]));
+    L.push(["booking completion", '<span class="na">NOT AVAILABLE</span>']);
+    rows($("e-latency"), L);
+
+    rows($("e-ai"), Object.entries(m.ai).map(([k,v]) =>
+      [k, (v && typeof v==="object" && v.p50!==undefined) ? pct(v) : na(v)]));
+
+    const t = m.telemetry;
+    rows($("e-gpu"), t.gpu===NA ? [["gpu", na(NA)]] : [
+      ["samples", `${t.sample_count} over ${t.span_s}s @ ${t.sample_interval_s}s interval`],
+      ["VRAM used", stat(t.gpu.vram_used_mib)],
+      ["VRAM total", t.gpu.vram_total_mib + " MiB"],
+      ["utilization", stat(t.gpu.utilization_pct)],
+      ["power", stat(t.gpu.power_w)],
+      ["temperature", stat(t.gpu.temperature_c)],
+      ["max simultaneous compute apps", t.gpu.max_simultaneous_compute_apps],
+      ["compute PIDs seen", JSON.stringify(t.gpu.compute_pids_seen)],
+    ]);
+    rows($("e-sys"), t.system===NA ? [["system", na(NA)]] : [
+      ["CPU", stat(t.system.cpu_pct)],
+      ["load1", stat(t.system.load1)],
+      ["RAM used", stat(t.system.ram_used_mib)],
+      ["RAM total", t.system.ram_total_mib + " MiB"],
+      ["swap used", stat(t.system.swap_used_mib)],
+      ["disk I/O", na(t.system.disk_io)],
+      ["network I/O", na(t.system.network_io)],
+    ]);
+    rows($("e-misc"), [
+      ["classification", cls],
+      ["errors", r.errors ? JSON.stringify(r.errors) : "none"],
+      ["cleanup state", JSON.stringify(r.cleanup)],
+      ["database", JSON.stringify(m.database)],
+      ["report path", r.report_path||NA],
+    ]);
+  }
+}
+
+// Load a report: ?report=<url>, or drag-and-drop / paste JSON.
+const q = new URLSearchParams(location.search).get("report");
+if (q) fetch(q).then(r=>r.json()).then(render).catch(e=>console.error(e));
+document.addEventListener("paste", e => {
+  try { render(JSON.parse(e.clipboardData.getData("text"))); } catch(_){}
+});
+document.addEventListener("dragover", e=>e.preventDefault());
+document.addEventListener("drop", e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0]; if(!f) return;
+  f.text().then(t=>{ try{ render(JSON.parse(t)); }catch(err){ alert("Not a run report."); } });
+});
+</script>

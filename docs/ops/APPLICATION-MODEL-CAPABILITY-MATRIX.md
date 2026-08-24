@@ -32,6 +32,7 @@ present but **runtime absent** · **`X`** named but weight absent · **`—`** n
 | **`studio`** (`symoneural_gguf` node) | — | — | — | — | — | **R** | — | — | — | — |
 | **`studio/plugins/reinforce`** | — | **R** | **R** | **R** | — | — | — | — | — | — |
 | **`voice`** | — | — | — | — | — | — | — | — | **W** | — |
+| **`dispatchos`** | — | — | — | — | — | — | — | — | — | — |
 | all other 11 app modules | — | — | — | — | — | — | — | — | — | — |
 
 ### The ten weights those columns name, by exact filename
@@ -60,6 +61,35 @@ was written; the adapter is the one that does **not** live under `backend/models
 `studio/plugins/reinforce/registry.py:588-589`, `jobs.py:852` · `voice/asr.py:53-54,56`.
 
 ### Three readings worth pulling out of that table
+
+**`dispatchos` names no weight, and that is the point of listing it.** Added 2026-08-24, it
+is a booking/ride state machine: a SQLite record, a transition whitelist and a set of
+in-flight mutations. It loads no model, holds no CUDA context and has no inference path of
+its own, so every cell in its row is `—` rather than blank. The AI assistance measured
+against it in the Capacity Lab comes from the **native benchmark Chat player**, a separate
+process that owns the GPU; DispatchOS remains the authoritative store for scheduling,
+booking identity, quote state, ride state, payment state and pickup/dropoff, and the model
+is never the transactional source of truth for any of them.
+
+What DispatchOS actually does today, so the row is not mistaken for an empty stub:
+
+| Capability | State |
+|---|---|
+| lean booking record (pickup, dropoff, scheduled time, passengers, bags, vehicle, instructions) | implemented |
+| ride state machine REQUEST → QUOTE_PENDING → QUOTED → CONFIRMED → SCHEDULED → DISPATCH → EN_ROUTE → ARRIVED → WAITING → IN_TRIP → PAYMENT_PENDING → COMPLETED → REVIEW | implemented, transitions whitelisted |
+| schedule / reschedule | implemented |
+| pickup confirmation | implemented |
+| quick stop (intermediate stop, bounded at 5) | implemented; no routing, no ETA, no price effect |
+| dropoff change mid-ride | implemented; counted, state unchanged |
+| quote handling | **manual entry only — no pricing rules exist.** No mileage/time/airport/wait/vehicle formula is implemented because none has been defined |
+| benchmark isolation | `synthetic=1` + `BENCH-YYYYMMDD-NNNN`; cleanup is doubly constrained and refuses anything that is not a run id |
+| payment | **internal state only. NO payment processor is contacted and no money moves** — there is no payment gateway in this application |
+| completion / review | **state only. NO external review request is sent** |
+| reminder | **state only. NO SMS or email is sent** — no messaging integration exists |
+| dispatch / en route / arrived / waiting | **internal state only. No vehicle tracking, no driver GPS, no maps or ETA integration** |
+| exposure | **none in production.** `routes.py` is an `APIRouter` that production `api.py` does not mount; it is served only by the local experimental control service on `127.0.0.1:8811` |
+| native SyMon AI integration | **experimental**, benchmark-only, via the run-scoped native Chat player
+
 
 **1. The FLUX bundle is shared by three consumers, not one.** `api.py:277-280`,
 `sigils/render.py:86-89` and `studio/workflows.py:48-51` name **the same four components**. That
