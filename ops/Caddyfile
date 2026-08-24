@@ -282,6 +282,64 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# The one password-protected page on this site, and the narrowest possible way to say so.
+	#
+	# `basicauth` and NOT `basic_auth`. The underscored spelling is Caddy 2.8+; this box runs
+	# **2.6.2**, where it is an unrecognized directive and the config fails to adapt. Measured
+	# rather than assumed, because the failure is at load time and would take the whole site
+	# down on reload, not just this page: `caddy validate` rejects `basic_auth` with
+	# "unrecognized directive" and accepts `basicauth`. If this box is ever upgraded past 2.8
+	# the old spelling still works -- it was kept as an alias -- so this line does not become
+	# a rename waiting to happen.
+	#
+	# `path` is EXACT and names one file, like @exp and @retired above and unlike @studio.
+	# There is no subtree here and there must not be: a prefix would put every future
+	# `/share-*` page behind one shared credential, which is the opposite of what a per-
+	# customer link is for. `caddy adapt` was diffed before and after this block and the whole
+	# semantic delta is one route -- the thirteen reverse_proxy handlers are byte-identical,
+	# so /api, /v1, /docs, /studio, /exp, /livestack/* and the retired names are untouched.
+	#
+	# `file_server` is repeated inside this block on purpose. `handle` blocks are mutually
+	# exclusive, so this path no longer reaches `handle { file_server }` below and would 404
+	# without it -- the same defect @sections, @studio and @exp each learned separately, in
+	# the one shape that would have looked like the auth was working.
+	#
+	# WHAT IS COMMITTED HERE IS A BCRYPT HASH, NOT A PASSWORD, and the distinction is the
+	# whole reason this is safe to keep in git. The plaintexts were handed over once, out of
+	# band; they are not in this repo, not in the page, and not in any doc. Nothing anywhere
+	# describes how they were built, and that omission is deliberate rather than an oversight:
+	# a note about the shape of a secret is a reduction of the space somebody has to search,
+	# which is the one thing a committed hash is not supposed to give away. Rotating a
+	# credential means re-running Caddy's own `hash-password` and replacing the line; the old
+	# hash is dead the moment it is overwritten.
+	#
+	# FOUR ACCOUNTS, ONE ACCESS LEVEL, and that is worth stating because the account names
+	# suggest otherwise. `basicauth` authenticates; it does not authorise. Every account here
+	# reaches exactly the same page and there is no role, tier or elevated view behind any of
+	# them -- the names exist so a login can be attributed and revoked individually, not so
+	# they can see more. Anything that genuinely must be internal-only needs its own path and
+	# its own block; do not reach for a role here, because there isn't one.
+	#
+	# `dispatchos-preview-test` is the shared customer-level account, and it is worth knowing
+	# exactly what it is and is not. It exists so the customer view can be checked without
+	# anyone signing in under their own name -- which, since every account sees the same page,
+	# is a discipline rather than a boundary. It is NOT a lower-privilege account, because
+	# there is no such thing here. If a genuinely customer-limited view is ever needed, this
+	# is not the mechanism and adding a fifth name would not make it one.
+	#
+	# This is edge auth over one static file. It is NOT the site's account system, shares
+	# nothing with `/api/accounts`, and grants nothing beyond this page.
+	@sharedispatchos path /share-dispatchos.html
+	handle @sharedispatchos {
+		basicauth {
+			donnie $2a$14$GfWGpa1dfPhml8JisH03bOeRTJd1buCbygPSdhgYd2bo.KH5fRofy
+			garrett $2a$14$vVsq.TaDmylggf38eMi1ou1axswQp94.ZKhx56k8B3Aualnu.4xoG
+			ben $2a$14$EuDncQEGfiy.x0ALzmOwj.u/Ag2OCg4RHD.XjUOiIT.NX7zudZmD.
+			dispatchos-preview-test $2a$14$F5l/C8r0/p68.vXYry2Cre7p30TJv91VbQEnoKwKgWFdE/ZIS9xQa
+		}
+		file_server
+	}
+
 	# Anything else is a static file.
 	handle {
 		file_server
