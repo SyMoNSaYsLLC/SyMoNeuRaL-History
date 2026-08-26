@@ -1264,6 +1264,30 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists backend/apps/test_runtime_boundary.py
         check: grep verify-runtime.sh -- ops/install-runtime.sh
         check: grep model: true -- backend/apps/dispatchos/SMOKE.md
+        check: grep POST-REBOOT EVIDENCE -- docs/ops/SERVING-PATH.md
+        note: 2026-08-26 coder — RESTORED after the archiver closed it, and deliberately NOT
+        note: complete. Garrett: "Restore only task #108 to PROJECT-TASKS.md, but do not mark
+        note: it complete... the remaining acceptance criterion is the real reboot and
+        note: post-boot runtime verification."
+        note: REMAINING REQUIREMENT: **Reboot the host and complete the recorded post-boot
+        note: verification.** Everything else on this task is done and was proved on the live
+        note: box, but every one of those proofs was taken from a RUNNING system that was
+        note: migrated in place. None of them show that the migration survives a cold boot,
+        note: and that is the one thing a reboot decides: whether the enabled units, and only
+        note: the enabled units, bring the canonical runtime back with no /yocto anywhere.
+        note: The percentage here is MEASURED, not set. 14 checks pass and one does not, so
+        note: the page reads 93% rather than 100%. There is no field to type a number into --
+        note: "the percentage is passing checks over declared checks", and inventing five more
+        note: checks to make the arithmetic land on 95% would be padding the denominator to
+        note: hit a number, which is the opposite of what these checks are for.
+        note: The failing check is `grep POST-REBOOT EVIDENCE -- docs/ops/SERVING-PATH.md`.
+        note: That heading cannot be written honestly before the host has actually been
+        note: rebooted and the post-boot evidence recorded under it, which is exactly the
+        note: property #94 and #74 cost this project: a check that only a real run turns green.
+        note: DO NOT reboot while the /yocto jobs are live — three rclone offloads, the
+        note: BitBake matrix driver and the finalize.sh watcher are mid-flight and none of
+        note: them survive a restart. Garrett's instruction is to let them reach a terminal
+        note: state first.
         note: 2026-08-26 coder — the check list grew because the ask grew: the migration had
         note: to stop being hand-run commands and become code in this repository. Garrett:
         note: "No final production state may rely on commands that were performed manually but
