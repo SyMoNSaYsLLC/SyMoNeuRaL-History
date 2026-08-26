@@ -308,3 +308,143 @@ This redesign is exactly that failure mode. So the task's binding check is a **r
 `tests/responsive.mjs` loads every page at all seven widths and asserts no horizontal
 overflow, no clipped control, reachable navigation and an in-viewport composer. Its result
 is stamped into `site/SMOKE.md`, which cannot be written honestly without running it.
+
+---
+
+# Part 2 — what was implemented, and what it measures
+
+Written after the work, same day. Task **#109**, commits `7f09c3b2`..`ddcc1563`.
+**Nothing here was deployed** — `sudo scripts/deploy.sh --prune` is Garrett's to run and an
+agent cannot. Every reading below is local, against `127.0.0.1:8800`.
+
+## 10. Implementation
+
+| # | Change | Files |
+|---|---|---|
+| 1 | `.bar` collision removed: the rack gauge is `.meterbar` | `symoneural.css`, `rack-detail.css`, `build_rack.py` |
+| 2 | Tokens: spacing, radius, control heights, shell geometry, elevation, transitions, focus | `symoneural.css` `:root` |
+| 3 | `.llc` un-inverted — hidden until 901px | `symoneural.css` |
+| 4 | Mobile navigation drawer, built from the existing `<nav>` | `site/shell.js` (new), `symoneural.css` |
+| 5 | Three overlapping header rules collapsed to one at 900px | `symoneural.css` |
+| 6 | 13 inlined helper copies → one cached file | `site/app.js` (new), `build_pages.py` |
+| 7 | Tables scroll in their own box | `symoneural.css` |
+| 8 | Streamer guide pill stops covering its page's controls | `build_pages.py` |
+| 9 | Application shell: no hero, callout relocated | `build_pages.py` `appify()`, `symoneural.css` |
+| 10 | Five importing generators opt in | `build_{exp,project,reinforce,sigils,studio}.py` |
+| 11 | `shell.js` wired into the hand-maintained pages | `index/documentation/account/coder/credits/live/build.html` |
+| 12 | Two new suites + one rewritten assertion | `tests/responsive.mjs`, `tests/chat_smoke.mjs`, `tests/frontend.mjs` |
+
+## 11. Responsive verification
+
+`node tests/responsive.mjs` — 24 pages × 8 viewports × news-bar off/on.
+
+| run | combinations | findings |
+|---|---|---|
+| baseline, `011aa4b1` | 192 | **78** (47 overflow, 31 unreachable) |
+| after header work | 192 | 54 |
+| after tables + drawer at 900px | 192 | 1 |
+| after the streamer pill | 192 | **0** |
+| news bar enabled (the hole) | 384 | 368 → 11 → **0** |
+| after the application shell | 384 | **0** |
+
+Header, measured on `/chat.html`:
+
+| | before | after |
+|---|---|---|
+| destinations reachable at 390px | **0 of 7** | **7 of 7** |
+| `a.cta` box at 360/390/430px | `336..405` — outside all three | inside |
+| `.wrap.bar` overflow | `hidden` (clipping the button away) | none |
+| toggle | did not exist | 44×44, inside the bar |
+
+Page chrome above the first control, 1440×900: chat and image **298 → 169px**; sigils 298 →
+238; studio 316 → 263; exp 341 → 286; project 290 → 263; reinforce 290 → 240.
+
+**The mutation test.** The scroll-to-centre refinement could have blunted the suite, so it was
+broken on purpose: removing the streamer pill fix and rebuilding turns it red at 360, 390 and
+430 (`.sn-x` covered by `div#tnfg` even when scrolled to centre). Fix restored, green restored.
+
+## 12. Functional smoke tests
+
+`node tests/chat_smoke.mjs` — **46/46**, at 1440×900 and 390×844. Typed into the composer,
+pressed Enter, and the 7B streamed back: `5 tokens in 0.22s · 22.5 tok/s measured on the card`,
+model indicator `SymonChat S1-7B`. Shift+Enter newline with the textarea growing 28→52px
+(desktop) and 27→50px (phone); empty state clears on submit; conversation enters history; new
+chat clears the log and keeps history; history survives a refresh; no page errors.
+
+Drawer, `/chat.html` at 390px: closed → 0 links reachable; opened → 7; focus moves to the first
+link; Escape closes; widening to 1440px while open closes it and restores the horizontal nav
+**with no reload**; no page errors.
+
+`node tests/frontend.mjs` — **66/66**. Three assertions went red first and were right to: they
+pinned the six-link nav laid out inside the bar at 781/800/860px. Rewritten to press the toggle
+and assert reachability, toggle size and wordmark width instead of deleting the check.
+
+Backend page guards: **227 passed** (`studio`, `exp`, `credential_header`, `desktop_client`,
+`maintenance_banner`, `streamer_migration`). Generator chain including `build_cachebust`:
+**run twice, byte-identical**. `build_intake.py` and `build_progress.py`: twice, no diff.
+`apps/test_build_progress.py` 28 passed.
+
+## 13. Browser-module verification
+
+There is no `.mjs` frontend layer (§0a). What ships is `site/*.js` plus inline blocks:
+
+| module | responsibility | pages | disposition | reason |
+|---|---|---|---|---|
+| `app.js` | `$`, `api()`, `status()`, Enter-to-send | 13 | **new — extracted** | was inlined byte-identically 13×; loaded **without `defer`** because each page's own inline script runs at parse time and would find `$` undefined |
+| `shell.js` | narrow-viewport navigation | all with a header | **new** | reads the existing `<nav>`, so no page can be missed and there is no markup to drift |
+| `ui.js` | doc tabs, lightbox, news bar, maintenance banner | 25 | retained, unchanged | four unrelated concerns in one file; a fifth IIFE would repeat the cost its own comments record |
+| `console.js` | GPU readings over WebSocket | 20 | retained, unchanged | not touched by the redesign |
+| `image/live/studio/exp/coder/reinforce/visualizer.js` | per-surface logic | 1 each | retained, unchanged | own their workspaces |
+| `hls.js` | vendored player | 3 | retained | vendor |
+| inline blobs (6 pages) | per-page logic | 1 each | **deferred → `AUDIT.md` Q14** | `build_pages.py:52`: *"a pattern proven on one page is worth more than nine half-migrations"* |
+
+No duplicate event registrations (`shell.js` guards on `nav.dataset.shellBound`), no console
+errors across 384 page loads, no stale selectors — the `cu-*` structure Chat's JS depends on was
+not touched, verified element by element in `chat_smoke.mjs`.
+
+## 14. Surfaces proven live before exclusion
+
+Asked for explicitly. Neither is obsolete; **neither was removed**, and both stay outside the
+application shell for stated reasons.
+
+**`streamer-watch.html` — live and required.** Linked from `site/streamer.html:512` (the
+playback handoff); routed — `api.py:3791` maps `/tuner-watch.html` → it, and `ops/Caddyfile:258`
+references it; three suites cover it (`tests/streamer_watch.mjs`, `tests/frontend.mjs`,
+`backend/apps/test_streamer_migration.py`); named in `docs/specs/symoneural-streamer-scope.md`.
+Its generator states the design intent: *"Not routed through `page()`: this surface has no
+header, no footer and no prose measure, because the picture is the page."* Chrome-less **by
+design** — retained, unchanged.
+
+**`share-dispatchos.html` — live and required.** An active credentialed customer preview behind
+`basicauth` for four named accounts (`ops/Caddyfile:332`), with a documented install-order
+safety property in `docs/share-previews/README.md`. Decisively,
+`backend/apps/test_maintenance_banner.py:139-144` asserts the file **exists** ("the customer
+preview page has gone missing") **and that it must not load `ui.js`**. Adding site navigation
+would put the internal surface list in front of a customer and break that test — retained,
+deliberately outside the shell.
+
+**`training.html` — intentional, outside the shell.** A 430KB converted manual with its own
+inline `<style>`, no shared stylesheet and no `ui.js`. Treated as a document, per instruction.
+
+## 15. Remaining defects and deferred work
+
+| item | status |
+|---|---|
+| `training.html` `<code>` blocks overflow to 6,248px | **open** — its own inline stylesheet; the responsive suite covers the page and it is the one surface still red on this axis if the shell rules are ever applied to it |
+| `miner.html` 333px / `gateway.html` 311px app head | **open** — their own six-line ledes, not the template. Copy, and #80 owns neighbouring strings, so not rewritten here |
+| Chat cannot cancel a generation | **`AUDIT.md` Q13** — one `AbortController` on the whole site and it is inside vendored `hls.js`. Functional change; reported, not built |
+| Inline JS blobs on six pages | **`AUDIT.md` Q14** — scope and order need authorizing |
+| 18 breakpoints reduced, not eliminated | partial — three named steps are defined and new rules use them; existing component rules were not rewritten, which would be churn without a measured defect |
+
+**Pre-existing, proven so rather than assumed** — the same tests run in worktrees at
+`01dc6205`, before any of this work:
+
+- 16 backend failures (`roster`, `status_rack`, `studio_models`, `desktop_shell`,
+  `enable_surfaces`, `control_plane_matrix`, `chat_model_identity`, `rack_probes`,
+  `gateway_unit`) fail **identically** there. Three more in the working tree come from the
+  uncommitted #108 runtime cutover.
+- `tools/check_links.py` — 3 broken (`/livestack/live`, `/studio`): routes, not files.
+- `apps/test_brand_boundary.py` — 3 errors, `ModuleNotFoundError: No module named 'steps'`
+  from `apps/ravencalc/ravencalc.py:45`.
+
+None of these were touched by #109 and none are claimed as fixed.
