@@ -328,3 +328,77 @@
   window.setInterval(load, POLL_MS);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) load(); });
 })();
+
+/* Maintenance banner.
+ *
+ * Garrett, 2026-08-26: "Maintenance banner would be great for the symoneural portion and we
+ * will be 100% powering dispatch through symoneural domain", and against a screenshot of the
+ * rack, "all of these in image can be taken off and maintenance banners up".
+ *
+ * Separate IIFE, for the reason the lightbox block above already documents: the first block
+ * in this file returns early on any page with no documentation tabs, which is nearly every
+ * page this banner has to appear on. Appending to that block would have shipped a banner that
+ * showed up on exactly one page.
+ *
+ * THE LIST IS NOT "EVERY PAGE". `docs/ops/MAINTENANCE-SURFACES.md` holds the same list with
+ * the reading each entry was put there on, and backend/apps/test_maintenance_banner.py fails
+ * if the two disagree. The reason it is a list is the house honesty rule read in the direction
+ * people forget: a surface that works and is labelled down is as false as a dead one labelled
+ * ready. RavenCalc, Coder, Project, Streamer and Live all read `ready` on /api/status at 08:23
+ * on 2026-08-26, so they are not here and must not be added without a reading that says
+ * otherwise.
+ *
+ * /demo/dispatchos is not on the list, and is additionally safe by construction: it is served
+ * by backend/api.py and does not load this file at all. Both facts are asserted by the test,
+ * because "it does not load ui.js" is true until somebody adds a script tag.
+ */
+(function () {
+  'use strict';
+
+  // Paths exactly as location.pathname. Both spellings are listed where the site answers on
+  // both -- /livestack is a route in ops/Caddyfile and /livestack.html is the file on disk,
+  // and a visitor can arrive by either.
+  var DOWN = [
+    '/livestack', '/livestack.html',
+    '/chat.html',
+    '/image.html',
+    '/remix.html',
+    '/reinforce.html',
+    '/miner.html',
+    '/sigils.html',
+    '/studio.html',
+    '/exp.html', '/exp'
+  ];
+
+  var here = (location.pathname || '').replace(/\/+$/, '') || '/';
+  if (DOWN.indexOf(here) === -1) return;
+
+  // Styles are created here rather than added to symoneural.css on purpose: the banner is
+  // meant to be deleted, and a rule left behind in a stylesheet after the markup stops being
+  // emitted is the kind of residue nobody goes looking for.
+  var css = document.createElement('style');
+  css.textContent =
+    '.maint{background:#3a2a00;border-bottom:1px solid #6b4f00;color:#ffd479;' +
+      'font-size:14.5px;line-height:1.5}' +
+    '.maint .wrap{display:flex;gap:12px;align-items:baseline;padding:11px 0}' +
+    '.maint b{color:#ffe6ad}' +
+    '.maint a{color:#ffe6ad}' +
+    '@media (prefers-reduced-motion:no-preference){.maint{transition:none}}';
+  document.head.appendChild(css);
+
+  var bar = document.createElement('div');
+  bar.className = 'maint';
+  bar.setAttribute('role', 'status');
+  bar.innerHTML =
+    '<div class="wrap">' +
+      '<b>Down for maintenance.</b>' +
+      '<span>This surface is not being attended to right now, so treat anything it shows as ' +
+      'stale. The rest of the site still works. Nothing here is lost &mdash; it is paused.</span>' +
+    '</div>';
+
+  // After the header, not before it: the masthead is how somebody navigates away from a page
+  // that just told them not to trust it.
+  var header = document.querySelector('header');
+  if (header && header.parentNode) header.parentNode.insertBefore(bar, header.nextSibling);
+  else document.body.insertBefore(bar, document.body.firstChild);
+})();

@@ -1321,9 +1321,39 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         Donnie's page.
 
         check: exists docs/ops/MAINTENANCE-SURFACES.md
-        check: grep maintenance -- tools/build_pages.py
+        check: grep Maintenance banner -- site/ui.js
         check: exists backend/apps/test_maintenance_banner.py
-        check: ngrep maintenance -- site/dispatchos.html
+        check: grep test_dispatch_never_carries -- backend/apps/test_maintenance_banner.py
+        check: exists docs/ops/SMOKE-maintenance-banner.md
+        note: 2026-08-26 coder — the SMOKE check was added the moment this task first read
+        note: 100%, and it was added because it read 100% while the banner existed only in
+        note: this repository. Nothing on symoneural.com had changed. The four checks above
+        note: are `exists` and `grep` over the working tree, and the working tree is not the
+        note: webroot: `scripts/deploy.sh` publishes `site/` into /var/www/symoneural, and
+        note: until it runs a visitor sees the old ui.js. With the archive timer on a
+        note: two-minute period this task was inside two minutes of filing itself as done with
+        note: a banner nobody could see — which is #94's failure with a different surface.
+        note: SMOKE-maintenance-banner.md records the deployed bytes: the webroot copy
+        note: compared against the repository copy, and the banner fetched over HTTPS from a
+        note: listed page and from a page that must not have it.
+        note: 2026-08-26 coder — TWO checks above were rewritten once the shape of the work
+        note: was known, and both were wrong in the direction that matters: they would have
+        note: gone green without the thing they name existing.
+        note: `grep maintenance -- tools/build_pages.py` was wrong about the FILE. That
+        note: generator writes eight pages — chat, image, ravencalc, remix, miner, gateway,
+        note: streamer and the watch page — and writes neither /livestack nor /overview, which
+        note: are the two Garrett actually sent screenshots of. The banner went into
+        note: `site/ui.js`, which all 23 chrome-carrying pages already load, so it is one
+        note: implementation rather than a stamp that has to reach two generators and cannot.
+        note: `ngrep maintenance -- site/dispatchos.html` was wrong about the PATH, and would
+        note: have passed for the worst possible reason: the customer page is
+        note: `/demo/dispatchos`, served by backend/api.py, so `site/dispatchos.html` does not
+        note: exist and an `ngrep` against a missing file is vacuously true. It asserted
+        note: nothing while looking like the load-bearing check. The replacement names the
+        note: test that actually holds the line, and that test was mutation-proved rather than
+        note: trusted: adding /demo/dispatchos to the list, adding a `ready` surface to the
+        note: list, dropping a row from the document, and emptying the list were each applied
+        note: on purpose and each turned the suite red before being reverted.
         note: 2026-08-26 coder — the `ngrep` is the load-bearing one and it is pointed at the
         note: page that must NOT carry the banner. The other three go green when the banner
         note: exists; only this one goes red if it leaks onto the customer surface, which is
