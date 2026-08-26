@@ -74,10 +74,11 @@ show() {
 # ---------------------------------------------------------------- arguments
 
 WANT_CODER=0 WANT_PROJECT=0 WANT_RACK=0 WANT_GATEWAY=0 WANT_STUDIO=0 WANT_ASIC=0
+WANT_DISPATCHOS=0
 GW_NETWORK="" GW_CONTRACT="" ASIC_RIGS=""
 
 [ $# -gt 0 ] || die "Nothing asked for." \
-  "Surfaces: coder project studio asic rack gateway (or --show)."
+  "Surfaces: coder project studio asic rack gateway dispatchos (or --show)."
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -87,6 +88,7 @@ while [ $# -gt 0 ]; do
     gateway) WANT_GATEWAY=1 ;;
     studio)  WANT_STUDIO=1 ;;
     asic)    WANT_ASIC=1 ;;
+    dispatchos) WANT_DISPATCHOS=1 ;;
     --network)  GW_NETWORK="${2:-}"; shift ;;
     --rigs)     ASIC_RIGS="${2:-}"; shift ;;
     --contract) GW_CONTRACT="${2:-}"; shift ;;
@@ -186,6 +188,22 @@ done
 # suggests a drop-in for it, which is fine for a rig address and wrong for the token beside it.
 # One file, one place to look. Empty stays empty: `rigs()` at asicminer/__init__.py:80 treats
 # unset and "" identically, so there is nothing to write when the operator gave no addresses.
+# DispatchOS: ONE switch and NO token, which is why it cannot join the loop above.
+#
+# Every surface in that loop pairs an ENABLED flag with a generated bearer token because none
+# of them has a login -- the token IS their authentication. DispatchOS has real accounts with
+# scrypt password hashes (backend/apps/dispatchos/store.py), so a shared bearer token beside
+# them would be a second and weaker credential for the same data, and one that would have to
+# be handed to a customer on top of the password he is already being given.
+#
+# It is also the reason this surface writes nothing secret here at all: there is no value in
+# this file that unlocks it. The accounts are in the store, and the passwords are set by
+# tools/dispatchos_accounts.py, which writes them to a root-owned 0600 file rather than to a
+# terminal -- a credential that has been displayed is spent (request ledger R-168).
+if [ "$WANT_DISPATCHOS" -eq 1 ]; then
+  set_kv SYMONEURAL_DISPATCHOS_ENABLED 1
+fi
+
 if [ "$WANT_ASIC" -eq 1 ] && [ -n "$ASIC_RIGS" ]; then
   set_kv SYMONEURAL_ASIC_RIGS "$ASIC_RIGS"
 fi
