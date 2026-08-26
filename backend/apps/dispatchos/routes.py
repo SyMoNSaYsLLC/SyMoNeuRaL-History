@@ -26,6 +26,7 @@ never challenged on.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -316,7 +317,19 @@ async def ask(body: AskBody, request: Request) -> dict:
     bookings = _visible(user)
     counts = store.counts() if user["role"] == "operator" else {}
     try:
-        out = ai.ask(body.question, bookings, counts)
+        # `asyncio.to_thread`, and it is NOT a tidy-up -- calling `ai.ask` directly from this
+        # coroutine DEADLOCKS THE WHOLE API. The injected callable is `guide_ask_model`, which
+        # does `asyncio.run_coroutine_threadsafe(...).result(timeout=45)`: it schedules work on
+        # this event loop and then blocks waiting for it. Blocking the loop from inside the
+        # loop means the scheduled coroutine can never run, so the call sits there until its
+        # timeout while every other request on the box waits behind it.
+        #
+        # This is exactly why `guide` calls it from a worker thread (`asyncio.to_thread` in
+        # its own path) and why `guide_ask_model`'s docstring says "called from a worker
+        # thread". Found by the end-to-end smoke run, not by the unit tests: those inject a
+        # plain synchronous stub, which cannot reproduce a deadlock that only exists when the
+        # callable needs the loop it is being called from.
+        out = await asyncio.to_thread(ai.ask, body.question, bookings, counts)
     except ai.ModelUnusable as exc:
         # Degrade, do not retry and do not start the model. The reason is carried to the UI
         # so the page can say the assistant was not consulted -- an answer that looks like

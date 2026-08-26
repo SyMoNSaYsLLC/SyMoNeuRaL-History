@@ -365,6 +365,39 @@ class AiTests(Base):
         self.assertNotIn("/run/symoneural", blob)
         self.assertIn("RuntimeError", blob, "the exception class is the only detail kept")
 
+    def test_the_ask_route_does_not_block_the_event_loop(self):
+        """The deadlock the end-to-end smoke run found, and the unit tests could not.
+
+        The real injected callable is `guide_ask_model`, which does
+        `asyncio.run_coroutine_threadsafe(...).result(timeout=45)` -- it schedules work on the
+        API's event loop and then BLOCKS waiting for it. Called directly from inside an
+        `async def` route, the loop is blocked by the very call that needs it to make
+        progress, so nothing runs until the 45-second timeout expires and every other request
+        on the box queues behind it. Live, that wedged /api/dispatchos/ask for 30+ seconds.
+
+        Every other test here injects a plain synchronous stub, which cannot reproduce this:
+        a stub that just returns a string is perfectly happy on a blocked loop. So this stub
+        **This assertion is structural, and the reason is worth stating rather than hiding.**
+        The obvious behavioural version -- inject a stub that itself waits on the running
+        loop, and watch it hang -- cannot be written against `TestClient`: it drives the app
+        through an anyio portal that stands up and tears down a loop around requests, so a
+        `run_coroutine_threadsafe` handle from one request is already dead in the next. The
+        test fails for that reason rather than for the reason it claims to test, which is
+        worse than not having it. Reproducing it honestly needs a real server on a real port
+        with a long-lived loop.
+
+        So: this checks the one line that matters is present, and the REAL proof lives in
+        `SMOKE.md`, which records the live round trip against the running API -- the run that
+        found the bug in the first place.
+        """
+        src = pathlib.Path(dispatchos.routes.__file__).read_text(encoding="utf-8")
+        self.assertRegex(
+            src, r"await\s+asyncio\.to_thread\(\s*ai\.ask",
+            "the /ask route calls ai.ask directly again. The injected callable is "
+            "guide_ask_model, which blocks waiting on THIS event loop -- calling it from "
+            "inside the coroutine deadlocks the whole API until its 45s timeout.")
+        self.assertIn("import asyncio", src)
+
     def test_the_module_cannot_start_a_model(self):
         """Structural. The rule is `guide_ask_model`'s: it never starts the model."""
         src = pathlib.Path(ai.__file__).read_text(encoding="utf-8")
