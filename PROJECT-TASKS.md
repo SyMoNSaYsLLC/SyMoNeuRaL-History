@@ -1210,3 +1210,123 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: 2026-08-23 coder -- no app code was touched. No starter changed, gpt-oss NOT
         note: activated, Qwen still CHAT_MODEL, commercial mode off, Phase 1 not started,
         note: nothing deployed, auth unchanged, no weight moved/deleted/committed.
+
+◻ #106 — DispatchOS: the webui Donnie was promised, behind the preview he has been shown
+        owner: coder
+        Garrett, 2026-08-26, and it displaces everything else: *"#1 priority is dispatch
+        site"*, then *"donnies site is getting 100% attention and 100% priority"*. The ask in
+        his words: *"donnie has requested to 'have one built' so we were creating him a custom
+        extension to the site with webui for /backend/apps/dispatchos ensure all request get
+        updated tested and committed and let me know when you are ready for me to test garrett
+        and ben logins (including test customer level garrett and ben logins) we will apply
+        tweaks and then i will send donnie email with url via email and his password i will
+        send by word of mouth"*. And: *"make sure to integrate my AI models into his
+        application"*.
+
+        **The spec is already written and a customer has read it.** `site/share-dispatchos.html`
+        is live and protected (401 unauthenticated, measured 2026-08-26). Its "Lean first
+        version / Included" column is the scope of this task and its "Deferred" column is not
+        a backlog — the page tells Donnie in writing that those are *"a deliberate omission
+        with a reason, not a gap to be quietly filled in later"*. Building one of them here
+        contradicts a document he is about to be emailed.
+
+        In scope, from that column: booking workflow; quote logic over the operator's own rate
+        rules; reminders and messaging; driver and dispatch workflow; review request path;
+        basic intake page; SyMon AI for DispatchOS.
+
+        Out, and deliberately: full customer dashboard, customer database dashboard, revenue
+        tracker, repeat-rider memory, call/text summaries, AI dashboard metrics, full inbound
+        AI call workflow, formal billing and payment terms.
+
+        **Two constraints the preview page makes binding, because Donnie will have read them.**
+        *"this preview carries no pricing of any kind"* — build the quote engine, ship no rate
+        table and no figure; the rider-facing estimate stays `——` until rate rules are
+        configured after written scope. And the record trail is *"preview/demo only — no live
+        email or storage is claimed"*: build the path, wire no live sender.
+
+        **Four logins, two tiers.** His acceptance test is `garrett` and `ben` at operator
+        level and `garrett` and `ben` at customer level. That is the app's own role model and
+        it is NOT the Caddy basicauth block, which is one flat tier and stays as the outer
+        door. Reuse `backend/apps/accounts` — it already has `User.role`, `OWNER_ROLES` and
+        `Identity.is_owner`; a second auth system on a customer-facing surface is how the two
+        drift apart.
+
+        **The AI half never starts the model.** `guide_ask_model` at `backend/api.py:1341` is
+        the template and its rule is the constraint: if chat is not already resident it
+        raises and the caller degrades and says so. A booking page that evicts an image render
+        to answer a rider is the wrong trade on a 15.92 GiB card where chat and image already
+        cannot co-reside. Copy its error hygiene too — it never surfaces the underlying
+        message because that can quote a socket path, and this surface faces a customer.
+
+        **Config first, page second — the order is the safety property.** `scripts/deploy.sh`
+        publishes `site/` at `-maxdepth 1`, and `ops/symoneural-deploy.service` is ENABLED with
+        `--prune`, so it runs at every boot with no person present. A page in `site/` with no
+        matching access-control block live is one reboot from being served unprotected. Install
+        the Caddy block, reload, verify 401 on the exact path, and only then write the page.
+        See `docs/share-previews/README.md`, which exists because this nearly went wrong once.
+
+        **Production serves `/yocto/Symoneural`, not this checkout.** `symoneural-api.service`
+        and `symoneural-deploy.service` both carry `WorkingDirectory=/yocto/Symoneural`. The
+        two checkouts had the identical tree hash `cf16d2f8` on 2026-08-26, and there is no
+        remote, so they are kept level by hand. Work lands here and is pulled into `/yocto`;
+        a change that is only in one of them is live in neither the way somebody thinks.
+
+        check: exists backend/apps/dispatchos/__init__.py
+        check: exists backend/apps/dispatchos/store.py
+        check: exists backend/apps/dispatchos/routes.py
+        check: exists backend/apps/dispatchos/quotes.py
+        check: exists backend/apps/dispatchos/ai.py
+        check: exists backend/apps/test_dispatchos.py
+        check: grep dispatchos -- backend/api.py
+        check: grep @dispatchosapp -- ops/Caddyfile
+        check: exists backend/apps/dispatchos/SMOKE.md
+        note: 2026-08-26 coder — the SMOKE check is declared in the same edit that opens this
+        note: task, before a line of it was written, for the reason #94 and #74 both cost this
+        note: project: the other eight are `exists` and `grep`, they all go green on files
+        note: written to disk, and not one of them can ask whether a booking was ever made,
+        note: whether four logins work, or whether SyMon AI answered. The timer that archives a
+        note: task at 100% is live on a two-minute period. SMOKE.md must record, from a real
+        note: run: the four auth statuses on the protected path (401 unauthenticated, 200 with
+        note: the credential, 401 wrong password, 401 unknown user — a 200 proves the door
+        note: opens, not that the lock works); the four logins at their two tiers; one booking
+        note: driven end to end through the lifecycle; one real SyMon AI round trip; and the
+        note: not-resident degradation path, which is the half that only shows up when the card
+        note: is busy.
+
+◻ #107 — A maintenance banner on the SyMoNeuRaL surfaces, while dispatch runs on the same domain
+        owner: coder
+        Garrett, 2026-08-26: *"I do not care about any of the livestack apps rn donnies site is
+        getting 100% attention and 100% priority 'livestack is down for maintenance'"*, then
+        *"Maintenance banner would be great for the symoneural portion and we will be 100%
+        powering dispatch through symoneural domain"*.
+
+        Two things follow, and the second is the reason this is not cosmetic. Dispatch is
+        served from the **same origin** as the rest of symoneural.com, so a visitor — and
+        Donnie — sees one domain. A SyMoNeuRaL surface that is half-finished or unattended is
+        therefore part of Donnie's first impression whether or not it is on his page. Saying
+        "down for maintenance" in a banner is the honest version of what is already true:
+        attention is on dispatch and these surfaces are not being watched this week.
+
+        What it must not become: a banner over something that actually works. The honesty rule
+        cuts both directions — a surface that answers requests correctly and is labelled down
+        is as false as a dead one labelled ready. So the banner is applied to a **named list**
+        of surfaces, written down, not to "everything except dispatch".
+
+        `tools/build_pages.py` is the generator for the site's pages; the banner belongs there
+        so it cannot be hand-applied to twenty-three pages and drift on one of them. The Symon
+        Say News bar (`site/ui.js`) is the nearest existing precedent for a site-wide strip.
+
+        Dispatch pages are explicitly OUT of the banner's scope, and a test should assert that
+        rather than trust the list — the failure that matters is the banner appearing on
+        Donnie's page.
+
+        check: exists docs/ops/MAINTENANCE-SURFACES.md
+        check: grep maintenance -- tools/build_pages.py
+        check: exists backend/apps/test_maintenance_banner.py
+        check: ngrep maintenance -- site/dispatchos.html
+        note: 2026-08-26 coder — the `ngrep` is the load-bearing one and it is pointed at the
+        note: page that must NOT carry the banner. The other three go green when the banner
+        note: exists; only this one goes red if it leaks onto the customer surface, which is
+        note: the single failure worth catching here. It also cannot pass until #106 has
+        note: written site/dispatchos.html, which is the dependency stated as a check rather
+        note: than as a sentence somebody has to remember.
