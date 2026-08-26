@@ -164,6 +164,12 @@ def main() -> int:
         html_out = html_out.replace(f"@@{key}@@", value)
 
     assert "@@" not in html_out, "unsubstituted placeholder left in the page"
+    # Opt in to the application shell: no marketing hero above the workspace, and the
+    # test-bench callout relocated out of it into a disclosure below the footer. This is a
+    # CALL rather than a new `@@...@@` in the shared SHELL, which is the whole reason it is
+    # shaped this way -- a placeholder added to SHELL would have broken the assert two lines
+    # above on a correct page, which is exactly what `@@PAGECSS@@` did here once already.
+    html_out = build_pages.appify(html_out)
     # Not tidiness. Every ellipsis rule on this site has been removed because two were caught
     # truncating real data. This page carries workspace paths, model filenames and tool
     # descriptions, all of which are exactly long enough to get cut. Asserted against the

@@ -1036,6 +1036,12 @@ def main() -> int:
     # A leftover marker means the shell grew a field this generator does not fill, which
     # would ship the literal '@@SOMETHING@@' to a visitor.
     assert "@@" not in html_out, "unsubstituted placeholder left in the page"
+    # Opt in to the application shell: no marketing hero above the workspace, and the
+    # test-bench callout relocated out of it into a disclosure below the footer. This is a
+    # CALL rather than a new `@@...@@` in the shared SHELL, which is the whole reason it is
+    # shaped this way -- a placeholder added to SHELL would have broken the assert two lines
+    # above on a correct page, which is exactly what `@@PAGECSS@@` did here once already.
+    html_out = build_pages.appify(html_out)
     assert "text-overflow" not in html_out, "an ellipsis rule reached the page"
     (SITE / "sigils.html").write_text(html_out)
     print("  sigils.html")

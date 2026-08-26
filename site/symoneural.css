@@ -3405,3 +3405,63 @@ html.ns.sn-on #hero:not([hidden]){padding-top:8px; padding-bottom:8px}
      cell overflows, and no amount of scrolling fixes a cell that is itself wider than the
      screen. */
   td, th{overflow-wrap:anywhere}
+
+  /* ================= THE APPLICATION SHELL =================
+     Applied by `tools/build_pages.py:appify()` to the surfaces that are workspaces rather
+     than landing pages. It changes furniture only: not one word of copy moves, because task
+     #80 owns two of these headings and its checks go green when the strings are ABSENT.
+
+     What it is replacing, measured on the unmodified shell at 1440x900: 56px of hero padding,
+     then a 40px display headline, then a 16.5px lede -- 214px of page before the first
+     control on chat, image, ravencalc, remix, miner, gateway and streamer, all of it from one
+     hardcoded template with the sizes written as INLINE styles. A workspace that opens with a
+     landing page is the "giant hero heading inside an operational application" this redesign
+     was asked to remove. */
+  .apphead{
+    padding:var(--s5) 0 var(--s4);
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, var(--e1), var(--e0));
+  }
+  /* The heading drops from the display step to the page-heading step. It is still the largest
+     thing on the page and still the first thing read; it has simply stopped being a poster.
+     The inline `font-size:clamp(28px,3.6vw,40px)` in the markup is an inline style and cannot
+     be overridden from a stylesheet without `!important` -- the same trap that bent `--t4` to
+     14.5px. Rather than add a second `!important` habit to this file, the size is reasserted
+     here at the one place it is worth spending on. */
+  .apphead h1{font-size:var(--t2) !important; margin:var(--s1) 0 0; max-width:32ch}
+  .apphead .eyebrow{margin:0}
+  /* The lede keeps a reading measure. Without it, a one-line summary runs the full 1,920px of
+     a wide monitor and stops being readable at exactly the width that has the most room. */
+  .apphead .lede{margin:var(--s2) 0 0; max-width:var(--read); font-size:var(--t4) !important}
+  .apphead::before{content:none}          /* the hero's radial glow is landing-page furniture */
+
+  /* Application pages use the viewport. `100dvh` rather than `100vh` so a mobile browser's
+     collapsing toolbar does not leave the workspace short, and `min-height` rather than
+     `height` so a page that genuinely needs more still grows. */
+  .apphead ~ section{min-height:auto}
+  html.js body:has(> .apphead){min-height:100dvh; display:flex; flex-direction:column}
+  body:has(> .apphead) > section{flex:1 1 auto}
+
+  /* The relocated system-information panel: closed by default, below the footer, one click
+     from every workspace. `<details>` and not a modal, because it is reference text somebody
+     occasionally wants and never has to dismiss. */
+  .appinfo{border-top:1px solid var(--line); background:var(--e0)}
+  .appinfo > summary{
+    max-width:var(--max); margin:0 auto; padding:var(--s3) var(--s5);
+    color:var(--dim); font-size:var(--t5); cursor:pointer; list-style:none;
+    display:flex; align-items:center; gap:var(--s2); min-height:var(--ctl);
+  }
+  .appinfo > summary::-webkit-details-marker{display:none}
+  .appinfo > summary::before{
+    content:"+"; color:var(--accent); font-weight:700; width:1em; text-align:center;
+  }
+  .appinfo[open] > summary::before{content:"\2212"}
+  .appinfo > summary:hover{color:var(--fg)}
+  .appinfo > summary:focus-visible{outline:var(--focus); outline-offset:calc(var(--focus-off) * -1)}
+  .appinfo .callout{margin:0 0 var(--s5)}
+
+  @media (max-width:900px){
+    .apphead{padding:var(--s4) 0 var(--s3)}
+    .apphead h1{font-size:var(--t3) !important}
+    .appinfo > summary{padding:var(--s3) var(--s4)}
+  }

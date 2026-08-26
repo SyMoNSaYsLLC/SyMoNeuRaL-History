@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Exp — a plugin runtime you can watch reload</title>
 <meta name="description" content="A service container with reversible registrations: mount a plugin into the running API, watch its fiber resolve, unmount it and watch every effect it registered come undone in reverse order.">
-<link rel="stylesheet" href="/symoneural.css?v=b4fed9e877">
+<link rel="stylesheet" href="/symoneural.css?v=ca0106af36">
 <link rel="stylesheet" href="/rack-detail.css?v=c2349ecce9">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -35,7 +35,7 @@
   </div>
 </header>
 
-<div class="hero" style="padding:56px 0 26px">
+<div class="apphead">
   <div class="wrap">
     <p class="eyebrow"><img src="/mark-64.png?v=ded4e8a102" alt="" width="20" height="20"
        style="display:inline-block;vertical-align:-4px;margin-right:8px">Live surface · in-process · operator token required for writes</p>
@@ -288,23 +288,6 @@
 </p>
 
     </div>
-
-    <div class="callout" style="margin-top:34px">
-      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
-      <p>
-        Chat and image never run at the same time here. A lock hands the GPU to exactly one
-        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
-        once &mdash; and when they swap, we wait for the driver to actually hand the memory
-        back before the next one starts. If you are queued behind someone, that is not a bug;
-        it is one card doing one thing at a time.
-      </p>
-      <p>
-        <strong>RavenCalc is the exception</strong> &mdash; it is symbolic algebra on the CPU, so it never
-        touches the GPU and never queues. Everything here is a demonstration of the stack on
-        the smallest machine we would ever ship, not a statement of capacity. A server we spec
-        for you would not be sharing one GPU with itself.
-      </p>
-    </div>
   </div>
 </section>
 
@@ -325,6 +308,29 @@
     </nav>
   </div>
 </footer>
+
+<details class="appinfo">
+  <summary>System information &mdash; one card, one surface at a time</summary>
+  <div class="wrap">
+    <div class="callout" style="margin-top:34px">
+      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <p>
+        Chat and image never run at the same time here. A lock hands the GPU to exactly one
+        surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
+        once &mdash; and when they swap, we wait for the driver to actually hand the memory
+        back before the next one starts. If you are queued behind someone, that is not a bug;
+        it is one card doing one thing at a time.
+      </p>
+      <p>
+        <strong>RavenCalc is the exception</strong> &mdash; it is symbolic algebra on the CPU, so it never
+        touches the GPU and never queues. Everything here is a demonstration of the stack on
+        the smallest machine we would ever ship, not a statement of capacity. A server we spec
+        for you would not be sharing one GPU with itself.
+      </p>
+    </div>
+  </div>
+</details>
+
 
 <script src="/app.js?v=632745179b"></script>
 <script src="/console.js?v=9824a6d1bb" defer></script>

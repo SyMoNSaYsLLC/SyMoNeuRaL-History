@@ -172,6 +172,12 @@ def main() -> int:
     # A leftover marker means the shell grew a field this generator does not fill, which would
     # ship the literal '@@SOMETHING@@' to a visitor.
     assert "@@" not in html_out, "unsubstituted placeholder left in the page"
+    # Opt in to the application shell: no marketing hero above the workspace, and the
+    # test-bench callout relocated out of it into a disclosure below the footer. This is a
+    # CALL rather than a new `@@...@@` in the shared SHELL, which is the whole reason it is
+    # shaped this way -- a placeholder added to SHELL would have broken the assert two lines
+    # above on a correct page, which is exactly what `@@PAGECSS@@` did here once already.
+    html_out = build_pages.appify(html_out)
     # Not a tidiness check. Every ellipsis rule on this site has been removed because two of
     # them were caught truncating real data -- `built on Qwen2.5-7B-Instruct`, which is an
     # Apache-2.0 licence condition, and a control-board reading mid-number. This page carries

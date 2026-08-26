@@ -19,6 +19,7 @@ node tests/streamer_guide.mjs       # the guide grid on streamer.html -- own API
 node tests/project.mjs              # /project -- needs tests/project-harness.py, no GPU
 node tests/live.mjs                 # /livestack/live -- needs tests/live-harness.py, no GPU, no OBS
 node tests/responsive.mjs           # 24 pages x 8 viewports, against a running API on :8800
+node tests/chat_smoke.mjs           # chat.html end to end -- TAKES THE GPU, run it alone
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
@@ -545,3 +546,25 @@ the first is a bare player with no chrome by design (`build_pages.py:watch_page(
 the second is a credential-gated customer preview that must not carry site navigation. Both were
 verified live and required on 2026-08-26 before being excluded — see
 `docs/ops/AUDIT-FRONTEND-2026-08-26.md`.
+
+## `tests/chat_smoke.mjs` — Chat exercised, not inspected
+
+```bash
+node tests/chat_smoke.mjs            # or pass a base URL; TAKES THE CARD
+```
+
+**46/46 passed, measured 2026-08-26 at `a5a30f1a`+working tree on `127.0.0.1:8800`**, at 1440×900
+and 390×844. Read `5 tokens in 0.22s · 22.5 tok/s measured on the card` off the status line and
+`SymonChat S1-7B` off the model indicator on both.
+
+It exists because of #94, which `.claude/CLAUDE.md` records at length: eighteen green checks on a
+chat surface that was dead on arrival, rendering one turn and then nothing with no error to read,
+archived by the timer two minutes later. Existence assertions are what #94 had. This types into
+the composer, presses Enter, waits for the 7B to stream back, and asserts the log grew and the
+status line printed a measured rate — then opens a new conversation, reloads, and asserts the
+history survived. Also covered: Shift+Enter makes a newline and the textarea grows with it
+(28→52px desktop, 27→50px phone), the empty state clears on submit, and no page raised a
+JavaScript error.
+
+**Run it alone.** Like `studio.mjs` and `frontend.mjs` it takes the GPU, and the governor hands
+the card to one surface at a time — a concurrent run evicts the other's model out from under it.

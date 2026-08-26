@@ -11,6 +11,7 @@ external request -- everything a visitor loads comes off this box.
 from __future__ import annotations
 
 import pathlib
+import re
 
 # The generators live in tools/, so the repo root is one level up. This exact
 # calculation has been wrong twice in this repo's history -- once when demo/ was
@@ -119,6 +120,64 @@ SHELL = """<!doctype html>
 """
 
 
+# ------------------------------------------------------------- the application shell
+# Every page `page()` writes is wrapped in SHELL, and SHELL is a MARKETING page: a 56px-padded
+# hero with a 40px display headline above the content, and the "16 GB consumer card / test
+# bench" callout below it. That is right for build.html and credits.html and wrong for the
+# fourteen surfaces that are workspaces -- on chat.html it puts two paragraphs of hardware
+# prose underneath the composer, inside the thing somebody is trying to use.
+#
+# This is a POST-PROCESS ON THE RENDERED HTML, deliberately, and not a new `@@...@@` in SHELL.
+# `page()` already carries the note explaining why, from the day `@@PAGECSS@@` was tried:
+# build_exp, build_project, build_reinforce, build_sigils and build_studio all import this
+# SHELL and substitute their own field dicts, which know nothing of a new placeholder, and
+# their own `assert "@@" not in html_out` guards went red on correct pages. A placeholder in a
+# shared shell is a contract with every consumer. A function they can call is a contract with
+# whoever calls it, so those five opt in by calling this rather than by being broken by it.
+#
+# WHAT IT DOES NOT DO: it does not touch a single word of copy. The heading and lede strings
+# are moved and resized, never rewritten. Task #80 owns two of them -- `Make it draw
+# something.` and `talk to the box` -- and carries `ngrep` checks against both this file and
+# site/image.html, which go green when the string is ABSENT. Rewriting a heading here would
+# hand #80 two free percentage points for work nobody did.
+
+_HERO = re.compile(
+    r'<div class="hero" style="padding:56px 0 26px">\s*'
+    r'<div class="wrap">\s*(.*?)\s*</div>\s*</div>', re.S)
+_CALLOUT = re.compile(r'\n\s*<div class="callout" style="margin-top:34px">.*?</div>\n', re.S)
+
+
+def appify(html: str) -> str:
+    """Turn a marketing page into an application page. Same words, different furniture.
+
+    Two structural edits, each asserted so a change to SHELL fails loudly here instead of
+    silently emitting a page that still has the hero on it.
+    """
+    hero = _HERO.search(html)
+    assert hero, "SHELL's hero block moved; the application shell cannot find it"
+    # The eyebrow, heading and lede survive verbatim -- `.apphead` simply sizes and spaces
+    # them as page furniture instead of as a landing page, and the lede is capped at a
+    # reading measure rather than running the width of a 1920px workspace.
+    html = html.replace(hero.group(0),
+                        '<div class="apphead">\n  <div class="wrap">\n    '
+                        + hero.group(1) + '\n  </div>\n</div>')
+
+    callout = _CALLOUT.search(html)
+    assert callout, "SHELL's test-bench callout moved; it would be left inside the workspace"
+    body = callout.group(0).strip()
+    html = html.replace(callout.group(0), "\n")
+    # RELOCATED, NOT DELETED. It is a true and useful statement about this machine -- one card,
+    # one surface at a time, and RavenCalc the exception -- and the honesty rules in
+    # docs/ENGINEERING.md are the reason it exists at all. It now sits below the footer as a
+    # closed disclosure, so it is one click from every workspace instead of two paragraphs
+    # inside one.
+    panel = ('<details class="appinfo">\n'
+             '  <summary>System information &mdash; one card, one surface at a time</summary>\n'
+             '  <div class="wrap">\n    ' + body + '\n  </div>\n</details>\n')
+    assert "</footer>" in html, "the footer moved; the system-information panel has no anchor"
+    return html.replace("</footer>", "</footer>\n\n" + panel, 1)
+
+
 # ---------------------------------------------------------------- the GPU panel
 # Reuses `site/console.js` outright rather than adding a second data path. That file
 # connects when it finds `#units` OR `#m-vram` on the page (console.js:266) and then writes
@@ -171,7 +230,7 @@ def gpu_panel(uses_gpu: bool, surface: str, why: str = "") -> str:
 
 
 def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
-         css: str = "", js: str = "", **kw) -> None:
+         css: str = "", js: str = "", app: bool = False, **kw) -> None:
     """Render one surface page.
 
     `gpu` places the live GPU panel at the top of the page's aside -- beside the prompt,
@@ -237,6 +296,8 @@ def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
         assert shared in html, "the shared stylesheet line moved; the css insertion is lost"
         html = html.replace(
             shared, f'{shared}\n<link rel="stylesheet" href="/{stem}.css">', 1)
+    if app:
+        html = appify(html)
     (SITE / name).write_text(html)
     print(f"  {name}")
 
@@ -5857,7 +5918,7 @@ def watch_page() -> None:
 
 def main() -> int:
     print("building surface pages:")
-    page("chat.html", gpu=True, surface="Chat",
+    page("chat.html", app=True, gpu=True, surface="Chat",
          title="SyMoNeuRaL Chat — talk to the box",
          desc="A 7B running locally on an RTX 5070 Ti. Nothing leaves the machine.",
          icon="/chat-64.png", eyebrow="Live surface",
@@ -5867,7 +5928,7 @@ def main() -> int:
               "measured, not claimed.",
          body=CHAT_BODY, script=CHAT_JS)
 
-    page("image.html", gpu=True, surface="Image",
+    page("image.html", app=True, gpu=True, surface="Image",
          title="SyMoNeuRaL Image — make it draw",
          desc="FLUX.1-schnell in four steps, rendered locally on a consumer GPU.",
          icon="/image-64.png", eyebrow="Live surface",
@@ -5880,7 +5941,7 @@ def main() -> int:
          # more than nine half-migrations."*
          body=IMAGE_BODY, css=IMAGE_CSS, js=IMAGE_JS)
 
-    page("ravencalc.html", gpu=False, surface="RavenCalc",
+    page("ravencalc.html", app=True, gpu=False, surface="RavenCalc",
          title="SyMoNeuRaL RavenCalc — exact mathematics",
          desc="Exact symbolic computation that checks its own work.",
          icon="/calc-64.png", eyebrow="Live surface · CPU",
@@ -5889,7 +5950,7 @@ def main() -> int:
               "runs on the CPU, so it is the one surface here that never waits for the GPU.",
          body=CALC_BODY, script=CALC_JS)
 
-    page("remix.html", gpu=True, surface="Remix",
+    page("remix.html", app=True, gpu=True, surface="Remix",
          title="SyMoNeuRaL Remix — playlists that are ordered sets",
          desc="Prompt to sequenced tracklist, generated locally.",
          icon="/dj-64.png", eyebrow="Live surface",
@@ -5899,7 +5960,7 @@ def main() -> int:
               "one page.",
          body=REMIX_BODY, script=REMIX_JS)
 
-    page("miner.html", gpu=True, surface="SyMoNeuRaL Miner",
+    page("miner.html", app=True, gpu=True, surface="SyMoNeuRaL Miner",
          why="<b>SyMoNeuRaL Miner</b> is the one surface here that holds the card for its "
              "whole process lifetime rather than for a single job, and it cannot be "
              "preempted. While <i>holding</i> reads <b>miner</b>, chat, image and remix will "
@@ -5932,7 +5993,7 @@ def main() -> int:
     # measured", which a deployment turns into a live page contradicting the API — this repo's
     # most-repeated failure. What the chain actually holds is not asserted here at all; it is
     # read from the chain and printed in the status line, verbatim.
-    page("gateway.html", gpu=False, surface="Gateway",
+    page("gateway.html", app=True, gpu=False, surface="Gateway",
          title="SyMoNeuRaL Gateway — stablecoin licensing, honestly labelled",
          desc="A TRON/USDT licensing and validation gateway. Its status is read from the chain.",
          icon="/terminal-64.png", eyebrow="Surface · network · TRON",
@@ -5944,7 +6005,7 @@ def main() -> int:
               "reading is.",
          body=GATEWAY_BODY, script=GATEWAY_JS)
 
-    page("streamer.html", gpu=False, surface="Streamer",
+    page("streamer.html", app=True, gpu=False, surface="Streamer",
          title="SyMoNeuRaL Streamer — your playlist, your credentials",
          desc="IPTV over ffmpeg stream copy. Credentials stay in your browser.",
          icon="/terminal-64.png", eyebrow="Live surface · network",
