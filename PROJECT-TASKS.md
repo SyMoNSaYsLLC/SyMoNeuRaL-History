@@ -1211,152 +1211,54 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: activated, Qwen still CHAT_MODEL, commercial mode off, Phase 1 not started,
         note: nothing deployed, auth unchanged, no weight moved/deleted/committed.
 
-◻ #106 — DispatchOS: the webui Donnie was promised, behind the preview he has been shown
+◻ #108 — Serve from /home/google/Symoneural, and prove SyMon AI answers from the model
         owner: coder
-        Garrett, 2026-08-26, and it displaces everything else: *"#1 priority is dispatch
-        site"*, then *"donnies site is getting 100% attention and 100% priority"*. The ask in
-        his words: *"donnie has requested to 'have one built' so we were creating him a custom
-        extension to the site with webui for /backend/apps/dispatchos ensure all request get
-        updated tested and committed and let me know when you are ready for me to test garrett
-        and ben logins (including test customer level garrett and ben logins) we will apply
-        tweaks and then i will send donnie email with url via email and his password i will
-        send by word of mouth"*. And: *"make sure to integrate my AI models into his
-        application"*.
+        Garrett, 2026-08-26, two messages minutes apart: *"do not use /yocto"* and *"use
+        /home/google/Symoneural/backend/models and if they arent there we need to add them"*,
+        then *"you can use yocto to help compile code in /home/google/Symoneural in but you
+        wont hardlink"*.
 
-        **The spec is already written and a customer has read it.** `site/share-dispatchos.html`
-        is live and protected (401 unauthenticated, measured 2026-08-26). Its "Lean first
-        version / Included" column is the scope of this task and its "Deferred" column is not
-        a backlog — the page tells Donnie in writing that those are *"a deliberate omission
-        with a reason, not a gap to be quietly filled in later"*. Building one of them here
-        contradicts a document he is about to be emailed.
+        **This is a serving-path change, not a tidy-up, and #106 archived before it.** #106
+        reached 100% and moved itself to `review/CLOSED-TASKS.md` on the strength of a SMOKE
+        record that is honest about what it did NOT prove: SyMon AI degraded correctly and has
+        never once answered from the model. That half was blocked on weights, and the weights
+        question is the same question as the path question.
 
-        In scope, from that column: booking workflow; quote logic over the operator's own rate
-        rules; reminders and messaging; driver and dispatch workflow; review request path;
-        basic intake page; SyMon AI for DispatchOS.
+        The conflict, stated plainly so nobody rediscovers it:
 
-        Out, and deliberately: full customer dashboard, customer database dashboard, revenue
-        tracker, repeat-rider memory, call/text summaries, AI dashboard metrics, full inbound
-        AI call workflow, formal billing and payment terms.
+        - `symoneural-api.service` and `symoneural-deploy.service` both carry
+          `WorkingDirectory=/yocto/Symoneural`. Production serves that checkout today.
+        - `backend/models/` in THAT checkout is an empty directory tree — 0 bytes. So
+          `CHAT_MODEL` (`backend/models/llm/symon-1.0-7b-q4_k_m.gguf`) is absent, `/api/chat`
+          answers "Chat surface is not available", and every GPU row on the rack reads
+          `offline`. That is why SyMon AI has only ever taken its fallback path.
+        - `backend/models/` in `/home/google/Symoneural` is **145 GB** and now also holds the
+          chat model: copied 2026-08-26 09:06 from the staged tree, `cmp`-verified identical,
+          4,683,074,240 bytes. A real copy, not a hardlink — they are different filesystems,
+          so a hardlink was never possible, and he ruled it out anyway.
 
-        **Two constraints the preview page makes binding, because Donnie will have read them.**
-        *"this preview carries no pricing of any kind"* — build the quote engine, ship no rate
-        table and no figure; the rider-facing estimate stays `——` until rate rules are
-        configured after written scope. And the record trail is *"preview/demo only — no live
-        email or storage is claimed"*: build the path, wire no live sender.
+        So the two checkouts disagree about where the weights are, and the one that serves is
+        the empty one. Pointing the units at `/home/google/Symoneural` resolves both
+        instructions at once. It is a production change to the serving path and wants his word
+        before the units are rewritten, which is why this is a task and not a commit.
 
-        **Four logins, two tiers.** His acceptance test is `garrett` and `ben` at operator
-        level and `garrett` and `ben` at customer level. That is the app's own role model and
-        it is NOT the Caddy basicauth block, which is one flat tier and stays as the outer
-        door. Reuse `backend/apps/accounts` — it already has `User.role`, `OWNER_ROLES` and
-        `Identity.is_owner`; a second auth system on a customer-facing surface is how the two
-        drift apart.
+        What has to be true before it is done:
+        1. The units point at `/home/google/Symoneural` and the API restarts clean.
+        2. `/api/chat` answers, and the rack `chat` row reads something other than `offline`.
+        3. `POST /api/dispatchos/ask` returns **`model: true`** with a real answer — the half
+           `backend/apps/dispatchos/SMOKE.md` explicitly refuses to claim today.
+        4. `scripts/deploy.sh` runs from the same checkout, or the next boot republishes the
+           other one over it and the #107 banner silently reverts.
 
-        **The AI half never starts the model.** `guide_ask_model` at `backend/api.py:1341` is
-        the template and its rule is the constraint: if chat is not already resident it
-        raises and the caller degrades and says so. A booking page that evicts an image render
-        to answer a rider is the wrong trade on a 15.92 GiB card where chat and image already
-        cannot co-reside. Copy its error hygiene too — it never surfaces the underlying
-        message because that can quote a socket path, and this surface faces a customer.
-
-        **Config first, page second — the order is the safety property.** `scripts/deploy.sh`
-        publishes `site/` at `-maxdepth 1`, and `ops/symoneural-deploy.service` is ENABLED with
-        `--prune`, so it runs at every boot with no person present. A page in `site/` with no
-        matching access-control block live is one reboot from being served unprotected. Install
-        the Caddy block, reload, verify 401 on the exact path, and only then write the page.
-        See `docs/share-previews/README.md`, which exists because this nearly went wrong once.
-
-        **Production serves `/yocto/Symoneural`, not this checkout.** `symoneural-api.service`
-        and `symoneural-deploy.service` both carry `WorkingDirectory=/yocto/Symoneural`. The
-        two checkouts had the identical tree hash `cf16d2f8` on 2026-08-26, and there is no
-        remote, so they are kept level by hand. Work lands here and is pulled into `/yocto`;
-        a change that is only in one of them is live in neither the way somebody thinks.
-
-        check: exists backend/apps/dispatchos/__init__.py
-        check: exists backend/apps/dispatchos/store.py
-        check: exists backend/apps/dispatchos/routes.py
-        check: exists backend/apps/dispatchos/quotes.py
-        check: exists backend/apps/dispatchos/ai.py
-        check: exists backend/apps/test_dispatchos.py
-        check: grep dispatchos -- backend/api.py
-        check: grep @dispatchosapp -- ops/Caddyfile
-        check: exists backend/apps/dispatchos/SMOKE.md
-        note: 2026-08-26 coder — the SMOKE check is declared in the same edit that opens this
-        note: task, before a line of it was written, for the reason #94 and #74 both cost this
-        note: project: the other eight are `exists` and `grep`, they all go green on files
-        note: written to disk, and not one of them can ask whether a booking was ever made,
-        note: whether four logins work, or whether SyMon AI answered. The timer that archives a
-        note: task at 100% is live on a two-minute period. SMOKE.md must record, from a real
-        note: run: the four auth statuses on the protected path (401 unauthenticated, 200 with
-        note: the credential, 401 wrong password, 401 unknown user — a 200 proves the door
-        note: opens, not that the lock works); the four logins at their two tiers; one booking
-        note: driven end to end through the lifecycle; one real SyMon AI round trip; and the
-        note: not-resident degradation path, which is the half that only shows up when the card
-        note: is busy.
-
-◻ #107 — A maintenance banner on the SyMoNeuRaL surfaces, while dispatch runs on the same domain
-        owner: coder
-        Garrett, 2026-08-26: *"I do not care about any of the livestack apps rn donnies site is
-        getting 100% attention and 100% priority 'livestack is down for maintenance'"*, then
-        *"Maintenance banner would be great for the symoneural portion and we will be 100%
-        powering dispatch through symoneural domain"*.
-
-        Two things follow, and the second is the reason this is not cosmetic. Dispatch is
-        served from the **same origin** as the rest of symoneural.com, so a visitor — and
-        Donnie — sees one domain. A SyMoNeuRaL surface that is half-finished or unattended is
-        therefore part of Donnie's first impression whether or not it is on his page. Saying
-        "down for maintenance" in a banner is the honest version of what is already true:
-        attention is on dispatch and these surfaces are not being watched this week.
-
-        What it must not become: a banner over something that actually works. The honesty rule
-        cuts both directions — a surface that answers requests correctly and is labelled down
-        is as false as a dead one labelled ready. So the banner is applied to a **named list**
-        of surfaces, written down, not to "everything except dispatch".
-
-        `tools/build_pages.py` is the generator for the site's pages; the banner belongs there
-        so it cannot be hand-applied to twenty-three pages and drift on one of them. The Symon
-        Say News bar (`site/ui.js`) is the nearest existing precedent for a site-wide strip.
-
-        Dispatch pages are explicitly OUT of the banner's scope, and a test should assert that
-        rather than trust the list — the failure that matters is the banner appearing on
-        Donnie's page.
-
-        check: exists docs/ops/MAINTENANCE-SURFACES.md
-        check: grep Maintenance banner -- site/ui.js
-        check: exists backend/apps/test_maintenance_banner.py
-        check: grep test_dispatch_never_carries -- backend/apps/test_maintenance_banner.py
-        check: exists docs/ops/SMOKE-maintenance-banner.md
-        note: 2026-08-26 coder — the SMOKE check was added the moment this task first read
-        note: 100%, and it was added because it read 100% while the banner existed only in
-        note: this repository. Nothing on symoneural.com had changed. The four checks above
-        note: are `exists` and `grep` over the working tree, and the working tree is not the
-        note: webroot: `scripts/deploy.sh` publishes `site/` into /var/www/symoneural, and
-        note: until it runs a visitor sees the old ui.js. With the archive timer on a
-        note: two-minute period this task was inside two minutes of filing itself as done with
-        note: a banner nobody could see — which is #94's failure with a different surface.
-        note: SMOKE-maintenance-banner.md records the deployed bytes: the webroot copy
-        note: compared against the repository copy, and the banner fetched over HTTPS from a
-        note: listed page and from a page that must not have it.
-        note: 2026-08-26 coder — TWO checks above were rewritten once the shape of the work
-        note: was known, and both were wrong in the direction that matters: they would have
-        note: gone green without the thing they name existing.
-        note: `grep maintenance -- tools/build_pages.py` was wrong about the FILE. That
-        note: generator writes eight pages — chat, image, ravencalc, remix, miner, gateway,
-        note: streamer and the watch page — and writes neither /livestack nor /overview, which
-        note: are the two Garrett actually sent screenshots of. The banner went into
-        note: `site/ui.js`, which all 23 chrome-carrying pages already load, so it is one
-        note: implementation rather than a stamp that has to reach two generators and cannot.
-        note: `ngrep maintenance -- site/dispatchos.html` was wrong about the PATH, and would
-        note: have passed for the worst possible reason: the customer page is
-        note: `/demo/dispatchos`, served by backend/api.py, so `site/dispatchos.html` does not
-        note: exist and an `ngrep` against a missing file is vacuously true. It asserted
-        note: nothing while looking like the load-bearing check. The replacement names the
-        note: test that actually holds the line, and that test was mutation-proved rather than
-        note: trusted: adding /demo/dispatchos to the list, adding a `ready` surface to the
-        note: list, dropping a row from the document, and emptying the list were each applied
-        note: on purpose and each turned the suite red before being reverted.
-        note: 2026-08-26 coder — the `ngrep` is the load-bearing one and it is pointed at the
-        note: page that must NOT carry the banner. The other three go green when the banner
-        note: exists; only this one goes red if it leaks onto the customer surface, which is
-        note: the single failure worth catching here. It also cannot pass until #106 has
-        note: written site/dispatchos.html, which is the dependency stated as a check rather
-        note: than as a sentence somebody has to remember.
+        check: exists docs/ops/SERVING-PATH.md
+        check: ngrep /yocto/Symoneural -- ops/symoneural-api.service
+        check: grep model.: true -- backend/apps/dispatchos/SMOKE.md
+        note: 2026-08-26 coder — the third check is the run-proving one and it is pointed at
+        note: the SMOKE record rather than at any source file, because no `exists` or `grep`
+        note: over this repository can tell whether a 7B answered a question. SMOKE.md today
+        note: says the opposite in as many words — "Do not claim it answers from the model
+        note: until this file records a run with model: true" — so that line cannot be written
+        note: honestly without the round trip having happened, and the check goes green only
+        note: when it is. The `ngrep` is on the REPO's unit template, not the installed copy:
+        note: an agent cannot verify a check against a root-owned file it may not read, and
+        note: install-service.sh substitutes the root in at install time anyway.
