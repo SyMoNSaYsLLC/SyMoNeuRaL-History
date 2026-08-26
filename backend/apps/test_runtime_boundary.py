@@ -101,6 +101,77 @@ class UnitTemplateTests(unittest.TestCase):
             self.assertIn(CANON, text, f"rendered {u}.service does not mention {CANON}")
 
 
+class DeployUnitContractTests(unittest.TestCase):
+    """`symoneural-deploy` must stay a oneshot that REMAINS ACTIVE after it publishes.
+
+    The defect these guard against is quiet rather than loud. A oneshot with
+    `RemainAfterExit=no` that publishes perfectly still lands on `inactive (dead)` with an
+    **empty** `ActiveEnterTimestamp` -- which is indistinguishable, at a glance, from a unit
+    that never ran at all. The only way to tell the two apart is to read the journal, so an
+    operator asking "did the site publish at boot?" gets no answer from unit state.
+
+    Both directives are asserted on the TRACKED TEMPLATE, because that is what
+    `ops/install-runtime.sh` renders on this box and on any other. The live-system half is in
+    `ops/verify-runtime.sh`, which now refuses to pass while the unit is inactive.
+
+    `Restart=always` is asserted ABSENT deliberately. It would make the state contract pass
+    for the wrong reason -- a publication job restarting forever republishes the site forever,
+    and "active" would then mean "looping", not "published".
+    """
+
+    def _template(self) -> str:
+        return (OPS / "symoneural-deploy.service").read_text(encoding="utf-8")
+
+    def _directives(self) -> dict:
+        out = {}
+        for line in self._template().splitlines():
+            if line.lstrip().startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            out.setdefault(k.strip(), v.strip())
+        return out
+
+    def test_type_is_oneshot(self):
+        self.assertEqual(
+            self._directives().get("Type"), "oneshot",
+            "symoneural-deploy must be Type=oneshot -- it is a finite publication job that "
+            "copies files and exits, not a daemon.")
+
+    def test_remain_after_exit_is_yes(self):
+        self.assertEqual(
+            self._directives().get("RemainAfterExit"), "yes",
+            "symoneural-deploy must set RemainAfterExit=yes. Without it a SUCCESSFUL boot-time "
+            "publish reports ActiveState=inactive / SubState=dead with an empty "
+            "ActiveEnterTimestamp, which reads exactly like 'it never ran'.")
+
+    def test_restart_always_is_not_used_to_fake_active(self):
+        d = self._directives()
+        self.assertNotEqual(d.get("Restart"), "always",
+                            "Restart=always on a publication job republishes the site forever; "
+                            "'active' would mean 'looping', not 'published'.")
+
+    def test_the_install_note_says_restart_not_start(self):
+        """With RemainAfterExit=yes a second `systemctl start` is a no-op.
+
+        The unit's own [Install] comment is the only thing in this repository that invokes it,
+        and it said `start` until 2026-08-26. Left uncorrected it would document a command
+        that silently does nothing.
+        """
+        body = self._template()
+        self.assertNotRegex(
+            body, r"systemctl start\s+symoneural-deploy",
+            "the unit still documents `systemctl start` for republishing, which is a no-op "
+            "once RemainAfterExit=yes")
+        self.assertRegex(body, r"systemctl restart\s+symoneural-deploy")
+
+    def test_the_verifier_enforces_the_state_contract(self):
+        v = (OPS / "verify-runtime.sh").read_text(encoding="utf-8")
+        for token in ("RemainAfterExit", "ActiveState", "SubState",
+                      "ActiveEnterTimestamp", "ExecMainStatus"):
+            self.assertIn(token, v,
+                          f"ops/verify-runtime.sh no longer checks {token} on symoneural-deploy")
+
+
 class OpsScriptTests(unittest.TestCase):
     """The coded migration path exists, is executable, and is wired together."""
 

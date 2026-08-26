@@ -183,6 +183,50 @@ esac
 DEPLOY_COND="$(sudo -n systemctl show symoneural-deploy -p ConditionPathIsDirectory --value 2>/dev/null)"
 case "$DEPLOY_COND" in *yocto*) fail "deploy ConditionPathIsDirectory names /yocto";; *) pass "deploy condition path: ${DEPLOY_COND:-none}";; esac
 
+# ---------------------------------------------------------------- the deploy state contract
+#
+# An ENABLED oneshot that has published successfully must be legible AS having published.
+# Without RemainAfterExit=yes it lands on inactive(dead) with an EMPTY ActiveEnterTimestamp,
+# which looks identical to "it never ran" and can only be told apart by reading the journal.
+# This block is why that cannot pass silently again.
+head_ "symoneural-deploy state contract"
+d_type="$(sudo -n systemctl show symoneural-deploy -p Type --value 2>/dev/null)"
+d_rae="$(sudo -n systemctl show symoneural-deploy -p RemainAfterExit --value 2>/dev/null)"
+d_act="$(sudo -n systemctl show symoneural-deploy -p ActiveState --value 2>/dev/null)"
+d_sub="$(sudo -n systemctl show symoneural-deploy -p SubState --value 2>/dev/null)"
+d_ufs="$(sudo -n systemctl show symoneural-deploy -p UnitFileState --value 2>/dev/null)"
+d_res="$(sudo -n systemctl show symoneural-deploy -p Result --value 2>/dev/null)"
+d_st="$(sudo -n systemctl show symoneural-deploy -p ExecMainStatus --value 2>/dev/null)"
+d_code="$(sudo -n systemctl show symoneural-deploy -p ExecMainCode --value 2>/dev/null)"
+d_ts="$(sudo -n systemctl show symoneural-deploy -p ActiveEnterTimestamp --value 2>/dev/null)"
+
+[ "$d_type" = "oneshot" ] && pass "deploy Type=oneshot" \
+                          || fail "deploy Type=$d_type, expected oneshot"
+[ "$d_rae" = "yes" ] && pass "deploy RemainAfterExit=yes" \
+                     || fail "deploy RemainAfterExit=$d_rae, expected yes" \
+                             "without it a successful publish reports inactive(dead) with no activation timestamp"
+[ "$d_ufs" = "enabled" ] && pass "deploy UnitFileState=enabled" \
+                         || fail "deploy UnitFileState=$d_ufs, expected enabled -- it will not publish at boot"
+[ "$d_act" = "active" ] && pass "deploy ActiveState=active" \
+                        || fail "deploy ActiveState=$d_act, expected active" \
+                                "an enabled deploy unit that is not active has not published this boot"
+[ "$d_sub" = "exited" ] && pass "deploy SubState=exited" \
+                        || fail "deploy SubState=$d_sub, expected exited"
+[ "$d_res" = "success" ] && pass "deploy Result=success" \
+                         || fail "deploy Result=$d_res, expected success"
+[ "$d_st" = "0" ] && pass "deploy ExecMainStatus=0" \
+                  || fail "deploy ExecMainStatus=$d_st, expected 0"
+# ExecMainCode is the si_code, and systemd reports it as an INTEGER: 1 == CLD_EXITED. The word
+# "exited" is what `systemctl status` prints; `show` gives the number. Accept either so this
+# does not fail on a systemd that renders it differently.
+case "$d_code" in
+    1|exited) pass "deploy ExecMainCode=$d_code (CLD_EXITED)" ;;
+    *)        fail "deploy ExecMainCode=$d_code, expected 1/exited (CLD_EXITED)" ;;
+esac
+[ -n "$d_ts" ] && pass "deploy ActiveEnterTimestamp=$d_ts" \
+               || fail "deploy ActiveEnterTimestamp is EMPTY" \
+                       "a successful publish must be visible in unit state, not only in the journal"
+
 # ---------------------------------------------------------------- 6. mounts and links
 head_ "mounts, symlinks, indirection"
 if findmnt -rno TARGET,SOURCE 2>/dev/null | grep -E "$CANON|/yocto" | grep -q "$CANON"; then

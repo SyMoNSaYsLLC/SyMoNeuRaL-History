@@ -33,7 +33,27 @@ ConditionPathIsDirectory=@@ROOT@@/site
 
 [Service]
 Type=oneshot
-RemainAfterExit=no
+# RemainAfterExit=yes, and this is a state contract rather than a preference.
+#
+# With `no`, a oneshot that succeeds lands on ActiveState=inactive / SubState=dead with an
+# EMPTY ActiveEnterTimestamp. `systemctl status` then shows an ENABLED unit as inactive(dead)
+# after a perfectly successful boot-time publish, which is indistinguishable at a glance from
+# "it never ran" -- and the only way to tell them apart is to read the journal. An operator
+# checking whether the site published at boot should be able to see that it did.
+#
+# With `yes` the unit stays active(exited) after the process exits, carrying a populated
+# activation timestamp: the publish is recorded in the unit's own state, not only in the log.
+#
+# THE COST, stated because it changes an operator workflow: once the unit is active, a second
+# `systemctl start` is a NO-OP until it is stopped or restarted. Republishing is therefore
+# `systemctl restart`, not `start` -- corrected in the [Install] note below. Nothing else in
+# this repository invokes the unit; every documented manual republish calls
+# `sudo scripts/deploy.sh --prune` directly, which is unaffected.
+#
+# NOT Restart=always. This is a finite publication job, not a daemon: it copies files between
+# two local directories and exits, with PrivateNetwork=yes so it could not serve anything even
+# if it wanted to. Restarting it on a loop would republish the site forever.
+RemainAfterExit=yes
 WorkingDirectory=@@ROOT@@
 
 # ## Why --prune, and why that is not a decision this file makes lightly
@@ -106,7 +126,11 @@ TasksMax=64
 # the person who owns the box, taken after reading the --prune paragraph above.
 #
 #     sudo systemctl enable symoneural-deploy.service     # arm it for the next boot
-#     sudo systemctl start  symoneural-deploy.service     # publish right now
+#     sudo systemctl restart symoneural-deploy.service    # publish right now
+#
+# `restart`, NOT `start`: RemainAfterExit=yes leaves the unit active after a successful
+# publish, so a second `start` does nothing at all. This line said `start` until
+# 2026-08-26 and would have silently stopped working the moment that flag was set.
 #
 # Deliberately not a .path unit watching site/. The generators rewrite pages in place and
 # build_cachebust.py stamps them afterwards, so a watcher would fire mid-sequence and publish
