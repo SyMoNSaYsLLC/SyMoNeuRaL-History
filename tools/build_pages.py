@@ -109,38 +109,10 @@ SHELL = """<!doctype html>
   </div>
 </footer>
 
-<script>
-// Shared helpers. Every bound below is also enforced on the server -- these exist to make
-// the UI honest about the limits, not to be the limits.
-const $ = (s, r=document) => r.querySelector(s);
-function status(el, text, busy) {
-  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
-  const grow = $('.grow', el); if (grow) grow.textContent = text;
-}
-// These three surfaces use a <textarea> rather than an <input> so a long prompt WRAPS and
-// can be read back. A textarea takes Enter as a newline, so submit is restored explicitly;
-// Shift+Enter still gives a deliberate line break. Applied to whichever box the page has.
-document.addEventListener('DOMContentLoaded', () => {
-  const box = $('#prompt') || $('#expr') || $('#brief');
-  const f = $('#form');
-  if (!box || !f || box.tagName !== 'TEXTAREA' || box.dataset.enterBound) return;
-  box.dataset.enterBound = '1';
-  box.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
-  });
-});
-async function api(path, payload) {
-  const r = await fetch(path, {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  });
-  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
-  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
-  return body;
-}
-</script>
+<script src="/app.js"></script>
 <script src="/console.js" defer></script>
 <script src="/ui.js" defer></script>
+<script src="/shell.js" defer></script>
 @@SCRIPT@@
 </body>
 </html>

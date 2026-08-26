@@ -131,11 +131,11 @@ RACK = f"""{BEGIN}
       <div class="chassis">
         <div class="gauge">
           <label>VRAM <b id="g-vram">&mdash;</b></label>
-          <div class="bar" id="g-vrambar"><i style="width:0%"></i></div>
+          <div class="meterbar" id="g-vrambar"><i style="width:0%"></i></div>
         </div>
         <div class="gauge">
           <label>Power <b id="g-pwr">&mdash;</b></label>
-          <div class="bar" id="g-pwrbar"><i style="width:0%"></i></div>
+          <div class="meterbar" id="g-pwrbar"><i style="width:0%"></i></div>
         </div>
         <div class="gauge chassis-id">
           <label>Chassis</label>

@@ -56,6 +56,76 @@
     --t5: 12.5px;
     --t6: 11.5px;
     --t7: 10.5px;
+
+    /* ---------- THE REST OF THE SYSTEM ----------
+       The block above governs colour and type and is enforced. Everything else on
+       this site was a one-off number until now: the shell alone carried
+       `padding:56px 0 26px`, `margin-top:34px`, `font-size:16.5px` and
+       `font-size:clamp(28px,3.6vw,40px)` as INLINE styles, which is how `--t4` came
+       to be 14.5px -- the token was bent to match markup rather than the markup
+       fixed. These are the same idea applied to the other axes, so a component can
+       be built without inventing a number.
+
+       Spacing is a 4px-based ramp. Nothing here is new visual language; the values
+       are the ones already most used in this file, promoted to names. */
+    --s1: 4px;
+    --s2: 8px;
+    --s3: 12px;
+    --s4: 16px;
+    --s5: 24px;
+    --s6: 32px;
+    --s7: 48px;
+    --s8: 64px;
+
+    /* Radius. The site's existing vocabulary is small-and-square for panels, full
+       round for pills; there is deliberately no large decorative radius, which
+       CLAUDE.md's "engineered rather than templated" reading argues against. */
+    --r1: 4px;
+    --r2: 8px;
+    --r3: 12px;
+    --rpill: 999px;
+
+    /* Control heights. 36px is the existing `.cta` box (9px padding + 12.5px text +
+       borders) measured, not chosen; 44px is the touch target the brief requires and
+       is what coarse pointers get. Anything a finger must hit uses --ctl-touch. */
+    --ctl-sm: 28px;
+    --ctl: 36px;
+    --ctl-touch: 44px;
+
+    /* Shell geometry. The chat rail is 248px today and every other surface that grows
+       a sidebar should be the same width rather than a near-miss. */
+    --rail: 248px;
+    --rail-collapsed: 0px;
+    --bar-h: 66px;              /* header height, matching `header .bar` */
+    --read: 46rem;              /* prose measure -- a reading width, not a layout width */
+
+    /* Elevation, as surfaces rather than shadows: this is a dark UI and a drop shadow
+       on near-black reads as smudge. Depth comes from the surface stepping lighter. */
+    --e0: var(--bg);
+    --e1: var(--panel);
+    --e2: var(--panel2);
+    --e3: #232a25;
+
+    --dur: .12s;
+    --ease: ease;
+    --focus: 2px solid var(--accent);
+    --focus-off: 3px;
+
+    /* ---------- BREAKPOINTS, AS NAMES ----------
+       Custom properties cannot be used in a media query, so these cannot be
+       referenced by `@media` -- they are here as the written record of the three
+       steps this stylesheet is being consolidated onto, because it currently
+       branches at EIGHTEEN distinct widths (520, 560, 620, 760, 780, 820, 860, 900,
+       1040, 1280, 1300, 1360, 1601, 1700, 2000 and four height-coupled compounds),
+       with neighbouring components changing layout at 860 and 900 for no shared
+       reason. New rules use these three and nothing else.
+
+         --bp-phone   700px   below: one column, drawer navigation
+         --bp-tablet  1024px  below: rail collapses, workspace stays full width
+         --bp-wide    1440px  above: rail plus workspace plus room to spare */
+    --bp-phone: 700px;
+    --bp-tablet: 1024px;
+    --bp-wide: 1440px;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth; scroll-padding-top:92px}
@@ -118,16 +188,87 @@
   .cta:hover{background:#4af09e; transform:translateY(-1px)}
   .cta.ghost{background:transparent; color:var(--fg); border-color:var(--line)}
   .cta.ghost:hover{background:var(--panel2); border-color:#3a453e}
-  /* One breakpoint, and it applies to everything in the nav.
-     There used to be two: 940px hid the nav links, and 560px hid the two dropdowns --
-     which were <button>, so the first rule never touched them. Measured at 390px the nav
-     ran to x=512 on a 390px viewport, pushing "Have one built" off screen and overlapping
-     the wordmark. The dropdowns are plain links now, so one rule covers the lot, and it
-     moved down to 780px because five links plus the CTA measure ~714px with the logo and
-     gutters -- hiding them at 940 gave a tablet a header with nothing in it. Below that
-     the header keeps the wordmark and the one action; the full index is the card grid on
-     the front page and the footer. */
-  @media (max-width:780px){ nav a:not(.cta){display:none} }
+  /* ---------- narrow header: a drawer, not a deletion ----------
+     What stood here was `@media (max-width:780px){ nav a:not(.cta){display:none} }`, and
+     it had two consequences that were never measured together.
+
+     The first is that on a phone the CTA became the ONLY navigation on the site. No
+     Account, no Documentation, no Live stack, no API -- the note that used to sit here
+     said "the full index is the card grid on the front page and the footer", which asks
+     a visitor on /chat.html to navigate by scrolling to the bottom of a different page.
+     chat.html's own markup records the knock-on: its conversation rail is a
+     `<div role=navigation>` rather than a `<nav>` specifically so this rule would not
+     delete every conversation link on a phone. That is a workaround for this rule.
+
+     The second is that hiding the links did not even fix the overflow. Measured at 360,
+     390 and 430px the header laid out IDENTICALLY -- `.logo` 108px, `.llc` 140px, and
+     `a.cta` at left=336, right=405 -- so the button sat outside every one of those
+     viewports. Nothing was shrinking; the bar was laid out at min-content and clipped by
+     the stray `overflow:hidden` documented at `.meterbar`. Removing that clip is what
+     makes the geometry below actually observable.
+
+     So: below the phone step the links move into a drawer, which keeps every destination
+     reachable, and the header carries three things that fit -- wordmark, drawer toggle,
+     one action. `.llc` is the piece that goes, and it went the wrong way round before:
+     it was `display:none` only between 781 and 900px, so the 140px "a SymonSays LLC
+     company" descriptor was hidden on desktop where there is room and shown on a phone
+     where there is not. It is now hidden until there is width for it. */
+  .llc{display:none}
+  @media (min-width:901px){ .llc{display:inline} }
+
+  /* The toggle is built by site/shell.js and does not exist without JavaScript, so the
+     links must survive that: with no JS the drawer never appears and `nav` keeps its
+     normal flow layout, wrapping onto a second row rather than vanishing. That is the
+     same folding-not-dropping rule the 781-900px band below already follows. */
+  .navtoggle{display:none}
+  @media (max-width:700px){
+    header .bar{gap:var(--s2); min-width:0; height:auto; min-height:var(--bar-h); padding:var(--s2) 0}
+    header .logo{flex:0 1 auto; min-width:0}
+    header .logo b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+    /* WITHOUT JavaScript this is the whole narrow-header story: the nav stays in flow and
+       wraps onto a second row. Folding, not dropping -- every link stays clickable. Each
+       drawer rule below is gated on `html.js`, which site/shell.js sets on itself before
+       anything paints, so the no-JS page never sees a drawer it cannot open. */
+    header nav{flex-wrap:wrap; justify-content:flex-end; gap:var(--s2) var(--s3); margin-left:auto}
+    html.js .navtoggle{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:var(--ctl-touch); height:var(--ctl-touch); flex:0 0 auto;
+      margin-left:auto; padding:0;
+      background:transparent; border:1px solid var(--line); border-radius:var(--r2);
+      color:var(--fg); font-size:var(--t4); line-height:1; cursor:pointer;
+      transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    }
+    html.js .navtoggle:hover{background:var(--e2)}
+    html.js .navtoggle[aria-expanded="true"]{background:var(--e2); border-color:var(--accent)}
+    html.js .navtoggle svg{width:20px; height:20px; display:block}
+
+    /* The nav becomes the drawer panel. `position:fixed` with `inset` rather than a
+       width in px: a fixed pixel width is the thing that overflows a 360px screen, and
+       this has none. `100dvh` not `100vh` so the mobile browser's collapsing toolbar
+       cannot push the last link under the chrome. */
+    html.js header nav{
+      position:fixed; inset:var(--bar-h) 0 auto 0; margin:0;
+      max-height:calc(100dvh - var(--bar-h)); overflow-y:auto; overscroll-behavior:contain;
+      flex-direction:column; align-items:stretch; gap:0;
+      background:var(--e1); border-bottom:1px solid var(--line);
+      padding:var(--s2) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));
+      box-shadow:0 18px 40px rgba(0,0,0,.55);
+      display:none;
+    }
+    html.js header nav.open{display:flex}
+    html.js header nav a{
+      display:flex; align-items:center; min-height:var(--ctl-touch);
+      font-size:var(--t4); color:var(--fg); padding:var(--s2) 0;
+      border-bottom:1px solid var(--line);
+    }
+    html.js header nav a:last-child{border-bottom:0}
+    /* The action keeps its shape rather than flattening into the list: it is the one
+       thing in here that is not a destination. */
+    html.js header nav a.cta{
+      justify-content:center; margin-top:var(--s3); min-height:var(--ctl-touch);
+      border-bottom:0; color:var(--accent-ink);
+    }
+  }
 
   /* THE BAND JUST ABOVE THAT BREAKPOINT WAS BROKEN, and it is live on the site today.
      The note above sizes the 780px cutoff from "five links plus the CTA". The four prompt
@@ -164,8 +305,9 @@
   @media (min-width:781px) and (max-width:900px){
     header nav{gap:10px 12px; flex-wrap:wrap; justify-content:flex-end}
     header .logo{flex:0 0 auto}
-    .llc{display:none}
-    header .bar{height:auto; min-height:66px; padding:9px 0}
+    /* `.llc{display:none}` used to be here and is gone: the descriptor is now hidden
+       until 901px by default, so this band no longer has to special-case it. */
+    header .bar{height:auto; min-height:var(--bar-h); padding:9px 0}
   }
 
   /* ---------- hero ---------- */
@@ -566,10 +708,19 @@
     letter-spacing:.14em; text-transform:uppercase; color:var(--faint); margin-bottom:8px;
   }
   .gauge label b{color:var(--accent); font-variant-numeric:tabular-nums; letter-spacing:.04em}
-  .bar{height:7px; border-radius:4px; background:#0b0d0c; overflow:hidden; box-shadow:inset 0 0 3px rgba(0,0,0,.9)}
-  .bar i{display:block; height:100%; background:linear-gradient(90deg,var(--accent-dim,#12a866),var(--accent));
+  /* `.meterbar`, not `.bar`. The site header is `<div class="wrap bar">` on all 24 pages,
+     so a bare `.bar` here matched it too, and the collision was dodged three separate times
+     instead of being removed: `header .bar` was scoped up to win back `height`, `header .bar i`
+     was scoped up to stop the gradient painting the wordmark, rack-detail.css carries
+     `header .bar::after{content:none}`, and the newer GPU panel was written as `.gbar`
+     specifically to avoid this rule. What none of those caught is that `overflow:hidden`
+     below ALSO applied to the header -- which is why at 360px the "Have one built" button
+     laid out at left=336 in a bar clipped at 328 and simply disappeared, with no horizontal
+     scrollbar to show for it. One rename ends the whole family. */
+  .meterbar{height:7px; border-radius:4px; background:#0b0d0c; overflow:hidden; box-shadow:inset 0 0 3px rgba(0,0,0,.9)}
+  .meterbar i{display:block; height:100%; background:linear-gradient(90deg,var(--accent-dim,#12a866),var(--accent));
     box-shadow:0 0 8px rgba(46,224,138,.55); transition:width .5s ease}
-  .bar.warn i{background:linear-gradient(90deg,#b8792a,var(--amber)); box-shadow:0 0 8px rgba(255,171,61,.55)}
+  .meterbar.warn i{background:linear-gradient(90deg,#b8792a,var(--amber)); box-shadow:0 0 8px rgba(255,171,61,.55)}
 
   /* chassis identity. These are measured facts about the card, so they get the same
      lit treatment as the gauge values rather than sitting flat in --faint. */

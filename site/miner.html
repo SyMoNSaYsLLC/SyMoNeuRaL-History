@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Miner — the GPU in this box, and ASIC rigs on your network</title>
 <meta name="description" content="The GPU + ASIC operator surface for mining experiments and hardware control. Measured readings only, and a benchmark says it is a benchmark.">
-<link rel="stylesheet" href="/symoneural.css?v=14f22191c1">
-<link rel="stylesheet" href="/rack-detail.css?v=a374bc9373">
+<link rel="stylesheet" href="/symoneural.css?v=1d3ab248a0">
+<link rel="stylesheet" href="/rack-detail.css?v=c2349ecce9">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0823a86bfe">
@@ -329,38 +329,10 @@
   </div>
 </footer>
 
-<script>
-// Shared helpers. Every bound below is also enforced on the server -- these exist to make
-// the UI honest about the limits, not to be the limits.
-const $ = (s, r=document) => r.querySelector(s);
-function status(el, text, busy) {
-  const dot = $('s', el); if (dot) dot.className = busy ? 'busy' : 'on';
-  const grow = $('.grow', el); if (grow) grow.textContent = text;
-}
-// These three surfaces use a <textarea> rather than an <input> so a long prompt WRAPS and
-// can be read back. A textarea takes Enter as a newline, so submit is restored explicitly;
-// Shift+Enter still gives a deliberate line break. Applied to whichever box the page has.
-document.addEventListener('DOMContentLoaded', () => {
-  const box = $('#prompt') || $('#expr') || $('#brief');
-  const f = $('#form');
-  if (!box || !f || box.tagName !== 'TEXTAREA' || box.dataset.enterBound) return;
-  box.dataset.enterBound = '1';
-  box.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
-  });
-});
-async function api(path, payload) {
-  const r = await fetch(path, {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload)
-  });
-  const body = await r.json().catch(() => ({error: 'Unreadable response.'}));
-  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
-  return body;
-}
-</script>
+<script src="/app.js?v=632745179b"></script>
 <script src="/console.js?v=9824a6d1bb" defer></script>
-<script src="/ui.js?v=9972072f21" defer></script>
+<script src="/ui.js?v=c334a9f106" defer></script>
+<script src="/shell.js?v=85fc09758b" defer></script>
 <script>
 (function () {
   'use strict';

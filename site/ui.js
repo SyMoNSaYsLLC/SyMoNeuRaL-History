@@ -359,14 +359,13 @@
   // both -- /livestack is a route in ops/Caddyfile and /livestack.html is the file on disk,
   // and a visitor can arrive by either.
   var DOWN = [
-    '/livestack', '/livestack.html',
-    '/chat.html',
-    '/image.html',
-    '/remix.html',
-    '/reinforce.html',
+    // Corrected 2026-08-26 after the runtime cutover. chat, image, remix, reinforce,
+    // sigils and studio were all on this list and all six now read `ready` on
+    // /api/status -- the engines were rebuilt, the FLUX weights restored and the render
+    // UI started, so the banner had become the exact falsehood the list was written to
+    // prevent: "a surface that works and is labelled down is as false as a dead one
+    // labelled ready". Only surfaces measured NOT ready remain.
     '/miner.html',
-    '/sigils.html',
-    '/studio.html',
     '/exp.html', '/exp'
   ];
 
