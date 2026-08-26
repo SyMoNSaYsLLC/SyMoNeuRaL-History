@@ -421,6 +421,30 @@ class ScopeTests(Base):
 
 class StatusTests(Base):
 
+    def test_the_row_validates_against_the_real_Unit_model(self):
+        """This test exists because its absence took /api/status down.
+
+        The first version of `status()` returned `"sub": "transport dispatch"`. `Unit.sub` is
+        `list[SubUnit] | None`, so pydantic raised on every call to `build_status()` -- and
+        `build_status()` is what the rack websocket and every visitor's status poll run. The
+        surface itself was fine; the ROW killed the page.
+
+        Asserting on `status()["state"]` could never have caught it, because the state was
+        correct. The only thing that catches a shape error is constructing the real model, so
+        that is what this does -- importing `Unit` from `api` rather than restating its fields
+        here, since a local copy of the schema would drift and pass while production failed.
+        """
+        import importlib
+        api = importlib.import_module("api")
+        for want in ("1", "0"):
+            os.environ["SYMONEURAL_DISPATCHOS_ENABLED"] = want
+            with self.subTest(enabled=want):
+                # Raises pydantic.ValidationError on any wrong key, type or literal.
+                unit = api.Unit(**dispatchos.status())
+                self.assertEqual(unit.id, "dispatchos")
+                self.assertIn(unit.state, ("ready", "busy", "queued", "offline"))
+                self.assertEqual(unit.bus, "cpu")
+
     def test_the_rack_row_reads_its_switch(self):
         os.environ["SYMONEURAL_DISPATCHOS_ENABLED"] = "1"
         self.assertEqual(dispatchos.status()["state"], "ready")

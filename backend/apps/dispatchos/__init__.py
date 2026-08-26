@@ -64,7 +64,7 @@ def status() -> dict:
             "id": "dispatchos", "label": "SyMoNeuRaL DispatchOS", "bus": "cpu", "slot": "1U",
             "state": "offline", "spec": "dispatch",
             "detail": "SYMONEURAL_DISPATCHOS_ENABLED is not set",
-            "sub": "transport dispatch", "href": "/demo/dispatchos",
+            "href": "/demo/dispatchos",
         }
     try:
         c = store.counts()
@@ -76,10 +76,10 @@ def status() -> dict:
         return {
             "id": "dispatchos", "label": "SyMoNeuRaL DispatchOS", "bus": "cpu", "slot": "1U",
             "state": "offline", "spec": "dispatch", "detail": "the store is unreadable",
-            "sub": "transport dispatch", "href": "/demo/dispatchos",
+            "href": "/demo/dispatchos",
         }
     return {
         "id": "dispatchos", "label": "SyMoNeuRaL DispatchOS", "bus": "cpu", "slot": "1U",
         "state": "ready", "spec": "dispatch", "detail": detail,
-        "sub": "transport dispatch", "href": "/demo/dispatchos",
+        "href": "/demo/dispatchos",
     }
