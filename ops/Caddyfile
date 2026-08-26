@@ -340,6 +340,63 @@ symoneural.com, www.symoneural.com {
 		file_server
 	}
 
+	# The DispatchOS application page. The block above is the customer PREVIEW -- a static
+	# document describing what would be built. This is the thing itself (#106).
+	#
+	# THE SAME FOUR ACCOUNTS, DELIBERATELY, and reusing them is the point rather than a
+	# shortcut. Donnie is about to be sent one URL and told one password out of band; a second
+	# credential for the application half would mean a second word-of-mouth handover for the
+	# same person on the same day, which is how one of them ends up written down somewhere. The
+	# hashes are not duplicated by copy-paste drift either -- they are the same four bcrypt
+	# lines, and rotating a person means re-running `caddy hash-password` and replacing that
+	# name in both blocks. If the two lists ever disagree, the newer one is not automatically
+	# right: check which page the person was actually given.
+	#
+	# Everything the block above says still applies and is not restated: `basicauth` not
+	# `basic_auth` on Caddy 2.6.2, exact `path` and no subtree, `file_server` repeated because
+	# `handle` blocks are mutually exclusive, and a committed bcrypt hash is not a password.
+	#
+	# STILL ONE ACCESS LEVEL AT THE EDGE. This is the door, not the roles. `basicauth`
+	# authenticates and does not authorise, so all four names reach the same page here -- and
+	# unlike the preview, that page then asks WHO you are a second time, because DispatchOS
+	# genuinely does have an operator view and a customer view. Those two tiers live in
+	# `/api/dispatchos` behind the site's own session cookie, and they are the four logins
+	# Garrett asked to test. Do not try to express a tier in this block; there is nothing here
+	# to express it with, and a fifth name would look like a role without being one -- exactly
+	# the trap `dispatchos-preview-test` is documented as above.
+	#
+	# `/api/dispatchos/*` is deliberately NOT listed here, and that is a decision rather than an
+	# omission. It is guarded by the application's own session auth and its own fail-closed
+	# enable flag, the same posture as /api/accounts, /api/project and /api/studio, so it
+	# answers 401 to a stranger and 503 when the surface is switched off. Putting edge auth in
+	# front of it as well would mean every XHR from this page depended on the browser
+	# volunteering basicauth credentials for a path it was not challenged on -- which mostly
+	# works, and "mostly" is not a property to hand a customer on presentation day.
+	#
+	# `reverse_proxy`, NOT `file_server`, and the path has no extension. Garrett named the URL
+	# himself -- "our link will bypass that straight to https://symoneural.com/demo/dispatchos"
+	# -- and an extensionless path cannot be a file under a publisher that copies `site/` at
+	# `-maxdepth 1`. So this is served by the API the same way @sections, @studio and @exp are,
+	# which is also what makes the maintenance banner of #107 skippable here: the banner is
+	# stamped into the generated static pages, and this page is not one of them.
+	#
+	# The subtree IS included here, unlike the preview block above, because the application has
+	# more than one view behind one entry point. That is a real difference in kind and not a
+	# loosening: the preview is one document and a prefix there would have put every future
+	# `/share-*` page behind one shared credential, whereas everything under
+	# `/demo/dispatchos/` is this one application and is meant to be reached by the same four
+	# people.
+	@dispatchosapp path /demo/dispatchos /demo/dispatchos/*
+	handle @dispatchosapp {
+		basicauth {
+			donnie $2a$14$GfWGpa1dfPhml8JisH03bOeRTJd1buCbygPSdhgYd2bo.KH5fRofy
+			garrett $2a$14$vVsq.TaDmylggf38eMi1ou1axswQp94.ZKhx56k8B3Aualnu.4xoG
+			ben $2a$14$EuDncQEGfiy.x0ALzmOwj.u/Ag2OCg4RHD.XjUOiIT.NX7zudZmD.
+			dispatchos-preview-test $2a$14$F5l/C8r0/p68.vXYry2Cre7p30TJv91VbQEnoKwKgWFdE/ZIS9xQa
+		}
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# Anything else is a static file.
 	handle {
 		file_server
