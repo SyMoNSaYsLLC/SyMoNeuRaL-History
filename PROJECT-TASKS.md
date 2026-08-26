@@ -1308,3 +1308,62 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: when it is. The `ngrep` is on the REPO's unit template, not the installed copy:
         note: an agent cannot verify a check against a root-owned file it may not read, and
         note: install-service.sh substitutes the root in at install time anyway.
+
+◻ #109 — The site as one application: a shared shell, real tokens, and a header that fits a phone
+        owner: coder
+        Garrett, 2026-08-26: *"Transform SyMoNeuRaL from pages that feel like individually
+        designed website/marketing surfaces into a cohesive, responsive application
+        interface"* — llama.cpp-like application ergonomics, SyMoNeuRaL visual identity, and
+        explicitly *"Do not turn SyMoNeuRaL into a llama.cpp clone."*
+
+        The audit is `docs/ops/AUDIT-FRONTEND-2026-08-26.md` and it is measured, not asserted.
+        Three findings set the shape of the work:
+
+        1. **The mobile header is broken and clipping hides it.** At 360px the "Have one
+           built" button lays out at left=336 inside a bar clipped at 328 — outside the
+           viewport, unreachable, on 14 pages. `scrollWidth` reads 360, so no overflow check
+           could ever have caught it: `.wrap.bar` sets `overflow-x:hidden`. The cause is an
+           inverted rule — `.llc` ("a SymonSays LLC company", 140px) is `display:block` below
+           820px and `display:none` at 820px and above, so the descriptor is hidden on desktop
+           where there is room and shown on a phone where there is not. And because
+           `nav a:not(.cta){display:none}` below 820px, the CTA is the *only* nav item on a
+           phone: there is no Account, no Documentation, no Live stack. 46 of 168 page×width
+           combinations overflow; `documentation.html` is 1072px wide at a 1024px viewport.
+
+        2. **Every generated application page wears a marketing shell.** `build_pages.py:33`
+           hardcodes a 56px-padded hero with a 40px headline above `@@BODY@@`, and the
+           "16 GB consumer card / test bench" callout below it, on all eight pages it writes.
+           On Chat that callout sits under the composer — the thing the brief's §4 names.
+
+        3. **Chat is already most of the way there.** The `cu-*` rail/composer/model-indicator
+           structure is the llama.cpp-shaped surface the brief asks for. The work is to
+           *promote* it into a shared shell, not to author a second one beside it.
+
+        Two premises in the brief do not match this repo, recorded so they are not re-argued:
+        there is **no frontend `.mjs`** — the 13 `.mjs` files are the Playwright suites, and
+        the browser code is classic `site/*.js` plus inline blobs — and **neither screenshot
+        it references was attached**, so the header was located by measurement.
+
+        Not in scope, and deliberately: no route renames, no backend contract changes, no SPA
+        conversion. The site stays multi-page and server-rendered.
+
+        **The deploy is Garrett's.** `sudo scripts/deploy.sh --prune` cannot be run by an
+        agent, so everything here is proved locally on `127.0.0.1:8800` and reported as local.
+
+        check: exists docs/ops/AUDIT-FRONTEND-2026-08-26.md
+        check: exists tests/responsive.mjs
+        check: exists site/app.js
+        check: ngrep overflow-x:hidden -- site/symoneural.css
+        check: exists docs/ops/SMOKE-FRONTEND.md
+        check: ngrep OVERFLOW -- docs/ops/SMOKE-FRONTEND.md
+        note: 2026-08-26 coder — the last two checks are the run-proving pair, and they are
+        note: here because this task is precisely the #94/#74 failure mode: a redesign whose
+        note: `exists` and `grep` checks all go green while the page is visually broken, and
+        note: `archive_tasks.py` archives it two minutes later. `tests/responsive.mjs` loads
+        note: every page at 360/390/430/768/1024/1440/1920 in a real Chrome and writes
+        note: docs/ops/SMOKE-FRONTEND.md with what it found; it writes the word OVERFLOW into that
+        note: file for every page×width that still overflows. So `ngrep OVERFLOW` can only go
+        note: green after a run that found none, and neither check can be satisfied by editing
+        note: a source file. `ngrep overflow-x:hidden` is the third: the header defect was
+        note: survivable for as long as it was because clipping hid it, and a fix that
+        note: reintroduces the clip would otherwise look identical to a fix that works.
