@@ -11,7 +11,9 @@
  *
  * ## What it replaces
  *
- * Below 780px the stylesheet used to carry `nav a:not(.cta){display:none}`. That left the
+ * Below 780px the stylesheet used to carry `nav a:not(.cta){display:none}`, and between 781
+ * and 900px a second block tightened the gap and let the row wrap. Both are gone; this file
+ * and one media query cover the whole range. The first of them left the
  * "Have one built" button as the only navigation anywhere on the site at phone widths -- no
  * Account, no Documentation, no Live stack, no API -- and it did not fix the overflow it was
  * written for: measured at 360, 390 and 430px the header laid out identically with the CTA at
@@ -40,9 +42,11 @@
   var root = document.documentElement;
   root.classList.add('js');
 
-  var PHONE = '(max-width:700px)';   // --bp-phone in symoneural.css; a media query cannot
-                                     // read a custom property, so this is the one place the
-                                     // number is repeated and it is stated in both.
+  // Must match the drawer's media query in symoneural.css exactly. A media query cannot read
+  // a custom property, so this number is repeated in exactly two places and both say so.
+  // 900px is measured, not a device class: the six-link nav runs ~634px and only clears the
+  // bar at 860px.
+  var NARROW = '(max-width:900px)';
 
   // The site header, not a page's own. `header > .bar > nav` is the shape all 24 pages share;
   // chat's conversation rail is a `<div role=navigation>` and the footer's is `.foot nav`, and
@@ -124,10 +128,10 @@
   });
 
   // Crossing back to a wide viewport must not leave `open` set: the drawer rules stop applying
-  // above the phone step, so the class would sit on a normal horizontal nav doing nothing
+  // above 900px, so the class would sit on a normal horizontal nav doing nothing
   // visible -- and then reappear as an already-open drawer the next time the window narrowed.
   // The brief asks that responsive transitions not require a reload; this is that.
-  var mq = window.matchMedia(PHONE);
+  var mq = window.matchMedia(NARROW);
   var onChange = function (e) { if (!e.matches) close(false); };
   if (mq.addEventListener) mq.addEventListener('change', onChange);
   else if (mq.addListener) mq.addListener(onChange);        // Safari < 14

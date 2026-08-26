@@ -190,38 +190,66 @@ try {
   // Why this exists, and why the 390px check above could never have caught it. That one
   // runs on /index.html, whose nav is five links plus the CTA; the four prompt surfaces and
   // the operator pages carry SIX plus the CTA -- they add "Live stack". The hide rule at
-  // symoneural.css:123 is `max-width:780px`, and it was sized against the FIVE-link nav, so
+  // symoneural.css WAS `max-width:780px` -- #109 replaced it with a drawer at 900px -- and it
+  // had been sized against the FIVE-link nav, so
   // at 781px the longer nav became visible and immediately overflowed: measured 66px past
   // `header .bar`'s right edge at 781px, 47px at 800px, 27px at 820px, clear only at 860px,
   // with the wordmark squeezed 138px -> 108px across the whole band because flex shrinks
   // `.logo` before it gives up on the nav. It was live on the site.
   //
-  // Asserting on the six-link nav, at 781px because that is one pixel inside the hide rule
-  // and therefore the worst case by construction. Two separate things are checked: that no
-  // nav item extends past the bar, and that the wordmark keeps its natural width -- the
-  // second is what tells you the nav is being given room rather than taking it from the
-  // brand.
+  // REWRITTEN FOR #109, and the reason the old version of this check had to change is worth
+  // stating rather than quietly editing. It asserted that all seven items were laid out
+  // INSIDE the bar at these widths -- which was the right assertion for the fix it shipped
+  // with (tighten the gap to 12px, let the row wrap) and is the wrong one now. Below 900px
+  // the links live in a drawer, so `items.length` in the bar is legitimately 0 and the old
+  // assertion failed on all three widths the moment the drawer landed. That failure is the
+  // signal CLAUDE.md asks for -- behaviour changed and a test noticed -- so it is answered
+  // here by asserting what actually has to be true, not by deleting the check.
+  //
+  // What still has to be true is the thing the old check was protecting: every destination
+  // is REACHABLE, nothing spills, and the wordmark is not being eaten to pay for the nav.
+  // Reachability is now a two-step interaction, so it is exercised as one: press the toggle,
+  // then measure. A drawer that opens to nothing would pass a "does not overflow" check and
+  // fail this one.
   for (const bandW of [781, 800, 860]) {
     const probe = await ctx.newPage();
     await probe.setViewportSize({ width: bandW, height: 900 });
     await probe.goto(new URL('/chat.html', BASE).href, { waitUntil: 'networkidle' });
     await probe.waitForTimeout(250);
+    const toggle = await probe.$('.navtoggle');
+    if (toggle) { await toggle.click(); await probe.waitForTimeout(200); }
     const band = await probe.evaluate(() => {
       const bar = document.querySelector('header .bar');
-      const nav = document.querySelector('header nav');
+      const nav = document.querySelector('header .bar > nav');
       const logo = document.querySelector('header .logo');
+      const t = document.querySelector('.navtoggle');
+      const vw = document.documentElement.clientWidth;
       const barR = bar.getBoundingClientRect().right;
-      const items = [...nav.children].filter(e => e.getBoundingClientRect().width > 0);
-      const past = Math.max(0, ...items.map(e => Math.round(e.getBoundingClientRect().right - barR)));
-      return { past, links: items.length, logoW: Math.round(logo.getBoundingClientRect().width),
-               spillX: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+      // Reachable means laid out AND inside the viewport -- the old defect was an item with
+      // a box that nobody could ever touch, so a bare `width > 0` would have passed it.
+      const items = [...nav.children].filter(e => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.left >= -1 && r.right <= vw + 1;
+      });
+      const tr = t ? t.getBoundingClientRect() : null;
+      return {
+        links: items.length,
+        logoW: Math.round(logo.getBoundingClientRect().width),
+        spillX: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        // The toggle itself must be in the bar and be a real touch target, or the drawer is
+        // reachable only in theory.
+        toggleOk: !!tr && tr.width >= 40 && tr.height >= 40 && tr.right <= barR + 1,
+        expanded: t ? t.getAttribute('aria-expanded') : null,
+      };
     });
     await probe.close();
     // 130px is the wordmark's natural width at this size (measured 138px); anything much
     // under it means flex has started eating the brand to pay for the nav.
-    record(`the header holds a six-link nav at ${bandW}px`,
-           band.past === 0 && band.spillX === 0 && band.links >= 7 && band.logoW >= 130,
-           `${band.links} items, ${band.past}px past the bar, logo ${band.logoW}px, page spill ${band.spillX}`);
+    record(`every destination is reachable at ${bandW}px`,
+           band.links >= 7 && band.spillX === 0 && band.logoW >= 130
+             && band.toggleOk && band.expanded === 'true',
+           `${band.links} reachable, logo ${band.logoW}px, page spill ${band.spillX}, `
+           + `toggle ${band.toggleOk ? 'ok' : 'BAD'}, aria-expanded=${band.expanded}`);
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
 

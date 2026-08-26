@@ -1907,6 +1907,23 @@ STREAMER_BODY = """    <style>
     @media (max-width:520px){
       #tnbody .tn-fg{right:12px; bottom:12px; left:12px; max-width:none; align-items:stretch}
       #tnbody .tn-fgbody{width:auto}
+      /* ...but NOT the collapsed pill. Stretching the container is right for the panel --
+         it wants every pixel at this width -- and wrong for the pill, which needs its own
+         label and nothing more. Measured at 390px it came out 366px wide, a bar across the
+         whole bottom of the screen at z-index:70, and `elementFromPoint` at the centre of
+         the two view tabs (#tnvguide, #tnvlist, x=49..169) returned the pill: a click aimed
+         at either one hit the guide instead. `align-self` overrides the container's
+         `align-items` for this one child, so the pill shrinks back to ~110px at the right
+         and the tabs beside it are clickable again. */
+      #tnbody .tn-fgpill{align-self:flex-end}
+      /* Shrinking the pill is not enough on its own: the CONTAINER still spans left:12px to
+         right:12px and is `position:fixed` at z-index:70, so it went on swallowing clicks
+         across the whole width in the space beside the pill, where there is nothing to see
+         at all. A transparent box that eats input is worse than a visible one, because
+         nothing on screen explains why the tab underneath stopped responding. The container
+         stops being a click target; its two real children take it back. */
+      #tnbody .tn-fg{pointer-events:none}
+      #tnbody .tn-fgpill, #tnbody .tn-fgbody{pointer-events:auto}
     }
 
     #tnbody .tn-cats{display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 10px}

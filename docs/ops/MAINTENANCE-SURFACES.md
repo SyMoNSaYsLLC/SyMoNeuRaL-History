@@ -41,14 +41,7 @@ still listed here is exactly the false claim described above. Note the rack call
 
 | path | surface | why it is on the list |
 |---|---|---|
-| `/livestack` | Live stack | The rack page Garrett sent. Nine of its thirteen units are not `ready`. |
-| `/chat.html` | Chat | `offline` |
-| `/image.html` | Image | `offline` |
-| `/remix.html` | Remix | `offline` |
-| `/reinforce.html` | Reinforce | `offline` (id `train`) |
 | `/miner.html` | Miner | `offline`; started by hand, and nobody is starting it this week |
-| `/sigils.html` | Sigils | `offline` |
-| `/studio.html` | Studio | `offline` |
 | `/exp.html` | Exp | `queued` — waiting on a card nobody is attending, which is a wait with no end |
 
 ## Deliberately NOT on the list

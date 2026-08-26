@@ -83,12 +83,31 @@ const probe = () => {
     return b.width > 0 || b.height > 0;
   };
 
+  // A wide element is only a defect if the reader cannot get to it. Two ancestors can put
+  // it past the right edge and they are opposites:
+  //
+  //   overflow-x: auto|scroll   a SCROLL CONTAINER. The far columns of a wide data table are
+  //                             reachable by dragging it, the page itself does not move, and
+  //                             this is the correct treatment for a table that will not fit.
+  //   overflow-x: hidden|clip   a CLIP. The content is gone with no way to reach it. This is
+  //                             the header defect exactly, and it must stay a finding.
+  //
+  // Without this distinction the check reports `#reinforce .rf-scroll`'s seven tables -- which
+  // work correctly -- and reporting working code as broken is how a check stops being read.
+  const scrollable = (el) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const ox = getComputedStyle(p).overflowX;
+      if ((ox === 'auto' || ox === 'scroll') && p.scrollWidth > p.clientWidth + 1) return true;
+    }
+    return false;
+  };
+
   // (2) right edges
   const over = [];
   for (const el of document.querySelectorAll('body *')) {
     if (!shown(el)) continue;
     const b = el.getBoundingClientRect();
-    if (b.right > vw + 1) over.push({ el: name(el), right: Math.round(b.right) });
+    if (b.right > vw + 1 && !scrollable(el)) over.push({ el: name(el), right: Math.round(b.right) });
   }
 
   // (3) reachability of interactive elements. Off-screen-below is fine -- that is scrolling,
@@ -99,10 +118,11 @@ const probe = () => {
   for (const el of document.querySelectorAll('a[href], button, input, select, textarea, [role="button"], [role="tab"]')) {
     if (!shown(el)) continue;
     const b = el.getBoundingClientRect();
-    if (b.left < -1 || b.right > vw + 1) {
+    if ((b.left < -1 || b.right > vw + 1) && !scrollable(el)) {
       unreachable.push({ el: name(el), why: `x ${Math.round(b.left)}..${Math.round(b.right)} outside 0..${vw}` });
       continue;
     }
+    if (b.left < -1 || b.right > vw + 1) continue;   // reachable by scrolling its container
     if (b.top < 0 || b.bottom > vh) continue;          // simply below the fold
     const hit = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
     if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) {

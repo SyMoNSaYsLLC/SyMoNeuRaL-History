@@ -18,6 +18,7 @@ node tests/studio.mjs               # /studio -- needs the surface on, ComfyUI u
 node tests/streamer_guide.mjs       # the guide grid on streamer.html -- own API, no GPU, no provider
 node tests/project.mjs              # /project -- needs tests/project-harness.py, no GPU
 node tests/live.mjs                 # /livestack/live -- needs tests/live-harness.py, no GPU, no OBS
+node tests/responsive.mjs           # 24 pages x 8 viewports, against a running API on :8800
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
@@ -511,3 +512,36 @@ come from generic class names colliding across components: `.bar` (collapsed the
 (a section rule outranking `.mod .sub`, rendering a footnote larger than the sentence above it).
 Render the page and measure.
 
+
+## `tests/responsive.mjs` — the layout suite, and the one check a clip cannot fake
+
+```bash
+node tests/responsive.mjs            # or pass a base URL; needs the API on :8800
+```
+
+**24 pages × 8 viewports = 192 combinations, 0 findings, measured 2026-08-26 at `9b3d1166`
+on `127.0.0.1:8800`.** It was **78** when the suite was first run that morning — 47 overflow
+and 31 unreachable — and `docs/ops/SMOKE-FRONTEND.md` is the record it writes, regenerated on
+every run. Do not hand-edit that file; a hand-edited reading is worth nothing.
+
+Widths 360, 390, 430, 768, 1024, 1440, 1920, plus 1440×700 for a short window.
+
+**Why it does not simply check `scrollWidth`.** The defect it was written for was invisible to
+one. At 360px the header's "Have one built" button laid out at left=336 inside a bar that set
+`overflow-x:hidden` and clipped at 328: the document never scrolled sideways, so
+`documentElement.scrollWidth` read exactly 360, `frontend.mjs` passed, and the button sat
+outside the viewport on fourteen pages. So three things are measured instead — `scrollWidth`,
+every visible element's right edge *including clipped ones*, and whether `elementFromPoint` at
+a control's own centre returns that control. The third is the part a clip cannot fake.
+
+**It distinguishes a scroll container from a clip, and the difference is the whole point.** An
+element past the right edge inside an `overflow-x:auto` ancestor is reachable by dragging it and
+is not reported; the same element inside an `overflow:hidden` ancestor is gone and is. Without
+that distinction the suite reported `#reinforce .rf-scroll`'s seven tables, which work
+correctly — and a check that calls working code broken stops being read.
+
+`streamer-watch.html` and `share-dispatchos.html` are deliberately **not** in its page list:
+the first is a bare player with no chrome by design (`build_pages.py:watch_page()` says so) and
+the second is a credential-gated customer preview that must not carry site navigation. Both were
+verified live and required on 2026-08-26 before being excluded — see
+`docs/ops/AUDIT-FRONTEND-2026-08-26.md`.

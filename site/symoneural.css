@@ -220,8 +220,15 @@
      links must survive that: with no JS the drawer never appears and `nav` keeps its
      normal flow layout, wrapping onto a second row rather than vanishing. That is the
      same folding-not-dropping rule the 781-900px band below already follows. */
+  /* 900px, not the 700px phone step. The threshold is set by MEASUREMENT, not by which
+     device it is: the six-link nav these surfaces carry runs ~634px, and the note on the
+     781-900px band below recorded it sticking out 66px past the bar at 781px, 47px at 800px,
+     27px at 820px and clearing only at 860px. So the drawer has to take over wherever the
+     links do not fit, which is everything under ~900px, and the tablet band is squarely
+     inside that. Setting it at 700px left 701-780px with the full nav and no accommodation
+     at all -- measured after the first pass, that band overflowed to 815px on a 768px screen. */
   .navtoggle{display:none}
-  @media (max-width:700px){
+  @media (max-width:900px){
     header .bar{gap:var(--s2); min-width:0; height:auto; min-height:var(--bar-h); padding:var(--s2) 0}
     header .logo{flex:0 1 auto; min-width:0}
     header .logo b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -270,45 +277,13 @@
     }
   }
 
-  /* THE BAND JUST ABOVE THAT BREAKPOINT WAS BROKEN, and it is live on the site today.
-     The note above sizes the 780px cutoff from "five links plus the CTA". The four prompt
-     surfaces and the operator pages carry SIX plus the CTA -- they add "Live stack" -- so the
-     breakpoint was calibrated against the shorter of the site's two navs and the longer one
-     overflowed the moment the links became visible. Measured on the unmodified production
-     stylesheet, /chat.html, how far the furthest nav item sticks out past `header .bar`'s own
-     right edge:
-
-       781px  66px past      800px  47px past      820px  27px past      860px  clear
-
-     and across that whole band the wordmark is squeezed from 138px to 108px, because flex
-     shrinks `.logo` before it gives up on the nav. It reproduces on chat, image, ravencalc,
-     remix, streamer, miner, gateway and sigils -- every page with the six-link nav -- and not on
-     overview/livestack/controlboard/receipts, which have five.
-
-     Tightening the gap is the fix rather than hiding a link: six gaps at 24px are 144px of
-     the 634px the nav occupies, so the space is in the spacing, not in the words. 12px across
-     the band recovers 72px, which clears the worst case (66px) with room. CLAUDE.md permits
-     folding and forbids dropping, and this drops nothing at all -- every link stays clickable
-     at every width in the band. `.logo` is pinned with `flex:0 0 auto` so the wordmark stops
-     paying for the nav's overflow; it is the site's name and should be the last thing to
-     shrink, not the first.
-
-     Tightening alone was not quite enough and the second half matters. At 12px the worst case
-     went 66px past to 24px past -- better, still broken. So the nav is also allowed to WRAP in
-     this band, with the bar's fixed 66px height becoming a 66px minimum. A flex row with the
-     default `nowrap` has nowhere to put an item that does not fit, so it spills outside the
-     container and over the page; given `flex-wrap:wrap` the same overflow becomes a second
-     row and the header grows by one line to hold it. That is folding, which is allowed, in
-     place of spilling, which is a bug. Safe here specifically because the one-screen gate is
-     `min-width:1301px` -- no page in this band is in no-scroll mode, so a header one row
-     taller cannot eat a panel's height budget. */
-  @media (min-width:781px) and (max-width:900px){
-    header nav{gap:10px 12px; flex-wrap:wrap; justify-content:flex-end}
-    header .logo{flex:0 0 auto}
-    /* `.llc{display:none}` used to be here and is gone: the descriptor is now hidden
-       until 901px by default, so this band no longer has to special-case it. */
-    header .bar{height:auto; min-height:var(--bar-h); padding:9px 0}
-  }
+  /* The `@media (min-width:781px) and (max-width:900px)` block that stood here is gone, and
+     so is the long note explaining it. It tightened the nav gap to 12px and allowed the row
+     to wrap, because six links plus the CTA stuck out 66px past the bar at 781px and only
+     came clear at 860px. The drawer above now owns that whole range, so the band has nothing
+     left to fix -- and one rule at one threshold is what stops this header growing a fourth
+     special case the next time a link is added. The measurements it was built on are kept
+     with the drawer, since they are what chose 900px. */
 
   /* ---------- hero ---------- */
   .hero{padding:80px 0 64px; position:relative; overflow:hidden}
@@ -3402,3 +3377,31 @@ html.ns.sn-on #hero:not([hidden]){padding-top:8px; padding-bottom:8px}
   #symonsaynews .sn-item:hover{color:var(--dim); background:none}
   #symonsaynews:hover .sn-run{animation-play-state:running}
 }
+
+  /* ---------- data tables scroll inside their own box ----------
+     Measured 2026-08-26: not one table on this site responded to width. documentation.html
+     rendered 1,072px of table into a 1,024px viewport -- it overflowed on a LAPTOP, not
+     just a phone -- and credits, exp and reinforce all spilled from 430px down. The page
+     could not scroll sideways to reach the far columns either, so the right-hand data was
+     simply unreadable rather than merely awkward.
+
+     `display:block` turns the table element itself into the scroll container, so no wrapper
+     div has to be threaded through four generators and two hand-written pages. The inner
+     rows still lay out as a table via the anonymous table box the block generates, and
+     `width:max-content` is what keeps that from collapsing to the narrowest fit: without it
+     a shrink-to-fit anonymous table would squeeze every column to its longest word and the
+     numbers would wrap mid-figure. `min-width:100%` keeps a NARROW table filling the measure
+     the way it does today, so the wide ones gain scrolling without the small ones shrinking.
+
+     Verified in both directions at 1440px, where nothing may change, and at 360px, where
+     everything must. */
+  table{display:block; max-width:100%; overflow-x:auto; overscroll-behavior-x:contain}
+  table > *{width:max-content; min-width:100%}
+  /* A caption is a label, not data: it should wrap in the measure rather than set the
+     scroll width of the thing it labels. */
+  table > caption{width:auto; min-width:0}
+
+  /* Long single-token strings -- model ids, file paths, hashes -- are the other way a data
+     cell overflows, and no amount of scrolling fixes a cell that is itself wider than the
+     screen. */
+  td, th{overflow-wrap:anywhere}
