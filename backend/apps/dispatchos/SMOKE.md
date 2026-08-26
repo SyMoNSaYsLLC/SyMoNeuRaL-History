@@ -66,27 +66,47 @@ Ref `DX-8A5BF7`, requested by `garrett-rider`, driven by `garrett`:
 the package; the test suite asserts that structurally by grepping for one, because a test that
 only checks the column passes on a package that sends and forgets to write it.
 
-## SyMon AI: the degradation path is proved, the model path is NOT
+## SyMon AI: BOTH paths now proved
 
-    POST /ask  ->  200
+### The degradation path (run 09:05, and again after every restart)
+
+    POST /ask -> 200
     model: false
     reason: the assistant is not available right now (ModelUnusable)
     answer: "The live job is DX-BCBC8A: A to B, later."
 
-**This is the designed behaviour and it is only half the proof.** The assistant refused to
-start the model, degraded to the deterministic local answer, and the response is labelled
-`model: false` so the page can say the assistant was not consulted. That is the path that
-matters on a contended card and it works.
+The assistant refused to start the model, degraded to the deterministic local answer, and
+labelled it `model: false` so the page can say the assistant was not consulted. This is the
+path that matters on a contended card, and it is the path taken after any API restart until
+something warms chat -- DispatchOS never starts the engine itself, by design.
 
-**What is NOT proved is a real model round trip**, and the reason is not a defect in this
-code: the chat weights are not on the serving path. `backend/models/` under the serving
-checkout is an empty directory tree — `CHAT_MODEL` points at
-`backend/models/llm/symon-1.0-7b-q4_k_m.gguf`, which is absent, so `/api/chat` answers "Chat
-surface is not available" and every GPU row on the rack reads `offline`. Garrett already knew:
-*"nothing set in those models are currently in production"*.
+### The model path -- `model: true`, 09:33, after the canonical-runtime migration
 
-So SyMon AI is wired, injected and proved on the failure path. **Do not claim it answers from
-the model until this file records a run with `model: true`.**
+Earlier revisions of this file said the model path was NOT proved, because `CHAT_MODEL` was
+absent from the checkout that served. That is fixed: the runtime now serves from
+`/home/google/Symoneural`, where the weights are. Seeded booking `DX-5CD40A`,
+*Harbour Street -> Central rail station*, pax 3, bags 1:
+
+    Q  Which pickup address is on the board for the rail station trip?
+    model: true   0.42 s
+    A  "Harbour Street. The rider is Smoke Rider and the quote is blank..."
+
+    Q  How many passengers are on the Friday evening job?
+    model: true   0.44 s
+    A  "The Friday evening job has three passengers. The job board states 'pax 3 bags 1'
+        for the job DX-5CD40A, which is the only job listed for Friday evening."
+
+**Why this is the model and not the fallback, beyond the flag.** `ai.local_answer()` can only
+emit one of three fixed shapes -- "On the board right now: ...", "The live job is X: A to
+B, ...", or the not-available sentence. It cannot read a pickup address, a rider name, or
+`pax 3 bags 1` off the board. These answers quote all three.
+
+**GPU, measured at the same moment:** engine pid holding **8330 MiB** on the RTX 5070 Ti, 96%
+utilisation, 178.39 W, launched with `-ngl 99` (every layer offloaded, so no CPU fallback),
+mapping `libcuda.so.610.57.04` / `libcudart.so.13.3.29`, and the canonical GGUF. Chat measured
+**90.9 tok/s** on a 67-token generation.
+
+Full evidence and the coded migration path: `docs/ops/SERVING-PATH.md`.
 
 ## The bug this run found, which 37 unit tests could not
 

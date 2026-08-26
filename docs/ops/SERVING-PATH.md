@@ -1,166 +1,188 @@
-# Serving path audit — `/yocto` out, `/home/google/Symoneural` canonical
+# Serving path — canonical runtime under `/home/google/Symoneural`
 
-**Audited 2026-08-26, 09:15–09:25 EDT. Nothing was changed. No service was restarted.**
+**Migration completed 2026-08-26. Verified on the live box.** Supersedes the audit-only
+version of this file.
 
-Garrett, 2026-08-26, setting the boundary: *"`/home/google/Symoneural` is the sole canonical
-source, runtime, deployment, engine, and model location for the live Debian machine"*, and
-*"Nothing under `/yocto` may remain in any live service working directory, executable path,
-Python import path, model path, environment setting, Caddy target, symlink, hardlink, or bind
-mount."* `/yocto` may be a temporary build workspace and a **read-only** source for an
-existing model artifact; anything retained becomes an independent regular file under
-`/home/google/Symoneural`.
-
-Also standing: **`/home/google/yocto` was permanently deleted.** Do not recreate or reference
-it. The top-level `/yocto` mount is a different thing and is the one discussed below.
+The boundary and the machine baseline live in **`docs/ops/BUILD-BOUNDARY.md`**; this file is
+the completion record — final paths, the coded path that produced them, and the evidence.
 
 Classified with the Repo Update Audit System (`docs/ops/REPOSITORY-PURPOSE.md`): **PROD** =
-proven working on this box, **AUDIT** = unverified or scaffold, **REMOVED** = wrong, dead, or
-contradicted by the box.
+proven working on this box · **AUDIT** = unverified or scaffold · **REMOVED** = wrong, dead,
+or contradicted by the box.
 
 ---
 
-## 1. Live systemd services — what they actually use
+## PROD — proven on this box
 
-| unit | WorkingDirectory | ExecStart | EnvironmentFile | verdict |
-|---|---|---|---|---|
-| `symoneural-api.service` | `/yocto/Symoneural` | `/usr/bin/python3 /yocto/Symoneural/backend/api.py` | `-/etc/symoneural/api.env` | **REMOVED** — must move |
-| `symoneural-gateway.service` | `/yocto/Symoneural` | `/yocto/Symoneural/backend/apps/gateway/target/release/symon-gateway` | (none) | **REMOVED** — must move |
-| `symoneural-deploy.service` | `/yocto/Symoneural` | `bash /yocto/Symoneural/scripts/deploy.sh --prune` | `-/etc/symoneural/deploy.env` | **REMOVED** — must move |
-| `caddy.service` | (none) | `/usr/bin/caddy run --config /etc/caddy/Caddyfile` | — | **PROD** — no `/yocto` anywhere |
+### Canonical paths, all live
 
-Fragment paths: `/etc/systemd/system/symoneural-{api,gateway,deploy}.service`, plus one
-drop-in `/etc/systemd/system/symoneural-api.service.d/10-surfaces.conf` (EnvironmentFile only,
-no path). `symoneural-api` runs as `google`, `Environment=PYTHONUNBUFFERED=1
-SYMONEURAL_PORT=8800`.
-
-**`symoneural-deploy.service` is ENABLED**, so it republishes `site/` from its
-WorkingDirectory at every boot. Until it moves, a reboot reverts anything deployed from the
-canonical checkout — including the #107 maintenance banner.
-
-## 2. Every live reference to `/yocto`
-
-| where | finding | verdict |
-|---|---|---|
-| API process (pid 3869716) | `cwd=/yocto/Symoneural`, argv `/yocto/Symoneural/backend/api.py`, **6 open fds** under `/yocto`, **1 mapped file** under `/yocto` | **REMOVED** |
-| Gateway process (pid 1868) | `cwd=/yocto/Symoneural`, **exe itself** is `/yocto/Symoneural/backend/apps/gateway/target/release/symon-gateway` | **REMOVED** |
-| systemd units | 3 files reference `/yocto` (api, gateway, deploy) | **REMOVED** |
-| `/etc/caddy/Caddyfile` | **zero** `/yocto` references; `root * /var/www/symoneural` | **PROD** |
-| `/etc/symoneural/api.env` | **zero** `/yocto` references | **PROD** |
-| bitbake (pids 22388/22429) | `cwd=/yocto/build-symoneural` — the **build workspace**, not a live service | **AUDIT** — allowed use |
-
-Non-live: 15 tracked files in the canonical repo mention `/yocto` in prose, plus the
-`yocto/` layer directory. Those are documentation and build-layer sources, not runtime
-references. Not a blocker; listed so nobody mistakes a grep hit for a live path.
-
-## 3. Host baseline — verified, and it differs from the expectation
-
-| item | expected | **measured** | verdict |
-|---|---|---|---|
-| Architecture | AMD64 | `x86_64`, dpkg `amd64` | **PROD** |
-| OS | Debian 13 | **Debian 13.6 (trixie)**, kernel `6.12.105+deb13-amd64` | **PROD** |
-| Python ABI | — | `3.13.5`, SOABI `cpython-313-x86_64-linux-gnu`, multiarch `x86_64-linux-gnu` | **PROD** |
-| GPU | RTX 5070 Ti | **NVIDIA GeForce RTX 5070 Ti**, compute cap **12.0**, 16303 MiB | **PROD** |
-| NVIDIA driver | 590.48.01 | **610.57.04** (`nvidia-driver`, `nvidia-kernel-open-dkms` 610.57.04-1) | **corrected** |
-| CUDA toolkit | 13.1 | **13.3** (`nvcc` V13.3.73, `/usr/local/cuda -> cuda-13.3`) | **corrected** |
-
-The two corrections are **not blockers**: the engine links `libcudart.so.13` / `libcublas.so.13`
-and targets `sm_120a`, which is exactly compute capability 12.0. Recorded because the
-instruction was to verify rather than assume, and a doc that repeats the wrong driver version
-is how the wrong one gets installed later.
-
-## 4. The native inference engine — already correct for this host
-
-**Path discrepancy, and it needs a ruling.** The instruction names
-`/home/google/Symoneural/backend/engines/symoneural-llm/build/bin/symoneural-llm`. That path
-**does not exist**. `backend/api.py:183` computes `LLM_ENGINE = ROOT / "engines" / ...` where
-`ROOT` is the repo root, so the real path is
-`/home/google/Symoneural/engines/symoneural-llm/build/bin/symoneural-llm` — no `backend/`.
-The engine is there. Moving it to match the expected string would break `api.py` unless that
-line changes too, so nothing has been moved.
-
-Measured at `/home/google/Symoneural/engines/symoneural-llm/build/bin/symoneural-llm`:
-
-| property | value | verdict |
-|---|---|---|
-| `file` | ELF 64-bit LSB **pie executable, x86-64**, dynamically linked, GNU/Linux 3.2.0, not stripped | **PROD** |
-| size / sha256 | 17,952 bytes / `0c4f804a5b18f754…3fe4c1` | **PROD** |
-| `ldd` | **every dependency resolves; no "not found"** | **PROD** |
-| CUDA linkage | `libcudart.so.13`, `libcublas.so.13`, `libcublasLt.so.13` (from `/usr/local/cuda/lib64`), `libcuda.so.1` | **PROD** |
-| CUDA backend | `libsymoneural_tensor_cuda.so.0` present and linked | **PROD** |
-| `cuobjdump` targets | **`sm_120a`** — native SASS for GB203 / compute 12.0 | **PROD** |
-| `CMAKE_CUDA_ARCHITECTURES` | **120** | **PROD** |
-| build type / compilers | `Release`; `/usr/local/cuda/bin/nvcc`, `/usr/bin/c++` | **PROD** |
-| `GGML_CUDA` | `ON` (FA on, graphs on, NCCL on) | **PROD** |
-| `/yocto` contamination | **0 references** in `CMakeCache.txt`; none in the binaries | **PROD** |
-
-**Conclusion: this is a native Debian AMD64 build matched to this GPU. No rebuild is
-required, and no Yocto cross-compiled binary is involved.**
-
-Layer separation, as instructed: `guide_ask_model` is a Python adapter, the GGUF is weight
-data, and this engine is the compiled component. Only the third had to be proven for this host
-and GPU, and it is.
-
-## 5. Disk, and the model file
-
-    /home   885G total, 380G available     <- canonical
-    /yocto  492G total, 129G available     <- build workspace only
-
-`/home/google/Symoneural/backend/models/` is **145 GB** and already the larger tree.
-`/yocto/Symoneural/backend/models/` is an **empty directory tree, 0 bytes** — which is exactly
-why the chat surface answers "Chat surface is not available" and every GPU row on the rack
-reads `offline`.
-
-The chat model was copied in from the staged tree as a read-only source. **The `/yocto` copy
-was not moved, modified or deleted.**
-
-| property | value |
+| what | path |
 |---|---|
-| path | `/home/google/Symoneural/backend/models/llm/symon-1.0-7b-q4_k_m.gguf` |
-| size | **4,683,074,240 bytes** |
-| sha256 | `65b8fcd92af6b4fefa935c625d1ac27ea29dcb6ee14589c55a8f115ceaaa1423` |
-| source sha256 | **identical** (`/yocto/sendtodrive/models/llm/…`, unmodified) |
-| type | regular file, **links = 1**, mode `-rw-rw-r--` |
-| symlink? | **no** |
-| inode / device | `18364700` on dev `66308` vs source `18350088` on dev `66306` — **different inode, different filesystem: independent file, hardlink impossible** |
-| format | **GGUF v3**, 339 tensors, 38 kv pairs |
-| identity | `general.architecture=qwen2`, `general.name=Qwen2.5 7B Instruct`, `size_label=7B`, `file_type=15` (Q4_K_M), 28 blocks, ctx 32768, apache-2.0 |
+| Repository / runtime root | `/home/google/Symoneural` |
+| Models | `/home/google/Symoneural/backend/models` |
+| Chat model | `/home/google/Symoneural/backend/models/llm/symon-1.0-7b-q4_k_m.gguf` |
+| **Inference engine** | `/home/google/Symoneural/engines/symoneural-llm/build/bin/symoneural-llm` |
+| Gateway | `/home/google/Symoneural/backend/apps/gateway/target/release/symon-gateway` |
+| Deploy script | `/home/google/Symoneural/scripts/deploy.sh` |
+| Webroot | `/var/www/symoneural` (unchanged) |
 
-**Not a rename.** The filename claims 7B/Q4_K_M and the header independently says 7B and
-file_type 15. The file already carried this name in the source tree.
+### Services
 
-## 6. Canonical checkout completeness
+All three carry `WorkingDirectory=/home/google/Symoneural`, and **no enabled unit references
+`/yocto` in any directive**:
 
-Every path the service needs is present under `/home/google/Symoneural`:
+    symoneural-api      ExecStart=/usr/bin/python3 /home/google/Symoneural/backend/api.py
+    symoneural-gateway  ExecStart=/home/google/Symoneural/backend/apps/gateway/target/release/symon-gateway
+    symoneural-deploy   ExecStart=/usr/bin/env bash /home/google/Symoneural/scripts/deploy.sh --prune
+    caddy               unchanged — it never referenced /yocto
 
-    backend/api.py                                  present
-    site/index.html                                 present
-    engines/symoneural-llm/build/bin/symoneural-llm present   (note the path, §4)
-    backend/models/llm/symon-1.0-7b-q4_k_m.gguf     present
-    scripts/deploy.sh                               present
-    ops/Caddyfile                                   present
-    scripts/gpu-governor.sh                         present
+**A reboot cannot republish `/yocto` content**: `symoneural-deploy` is enabled and both its
+`ExecStart` and `ConditionPathIsDirectory` name the canonical tree.
 
-The gateway binary already exists under the canonical tree and is **byte-identical** to the
-live one: 27,232,992 bytes, sha256 `41b9eda87550c6b2…` both sides. No rebuild needed to move
-that service.
+### Live processes — zero `/yocto`
+
+| process | cwd | exe | fds | maps | env |
+|---|---|---|---|---|---|
+| `symoneural-api` | `/home/google/Symoneural` | `/usr/bin/python3.13` | 0 | 0 | 0 |
+| `symoneural-gateway` | `/home/google/Symoneural` | canonical gateway binary | 0 | 0 | 0 |
+| `symoneural-llm` (engine) | `/home/google/Symoneural` | canonical engine | 0 | 0 | 0 |
+
+`PYTHONPATH` unset; no `.py` open from `/yocto`; no mount over the canonical tree; no symlink
+under it pointing into `/yocto`.
+
+### ELF artifacts
+
+| artifact | interpreter | RPATH | RUNPATH | unresolved | `st_nlink` |
+|---|---|---|---|---|---|
+| gateway | `/lib64/ld-linux-x86-64.so.2` | none | none | 0 | 1 |
+| engine | `/lib64/ld-linux-x86-64.so.2` | none | `…/engines/symoneural-llm/build/bin:` | 0 | 1 |
+
+Neither resolves a library from `/yocto`. The engine's RUNPATH is inside the canonical tree.
+
+### The engine on the GPU — no CPU fallback
+
+    exe    /home/google/Symoneural/engines/symoneural-llm/build/bin/symoneural-llm
+    argv   -m /home/google/Symoneural/backend/models/llm/symon-1.0-7b-q4_k_m.gguf
+           -ngl 99 --host 127.0.0.1 --port 8081 -c 65536 --no-warmup -cb -np 2
+           --lora /home/google/Symoneural/training/adapter/symoneural-lora.gguf
+    VRAM   8330 MiB on the RTX 5070 Ti      GPU util 96%      178.39 W
+    CUDA   libcuda.so.610.57.04  libcudart.so.13.3.29  libcublas.so.13.6.0.2  libcublasLt.so.13.6.0.2
+    GGUF   canonical path mapped into the process
+
+`-ngl 99` offloads every layer; the mapped CUDA libraries match the audited driver
+(610.57.04) and toolkit (13.3) exactly. **PROD.**
+
+### The real model round trip — `model: true`
+
+Seeded booking `DX-5CD40A`, *Harbour Street → Central rail station*, pax 3, bags 1:
+
+    Q  Which pickup address is on the board for the rail station trip?
+    model: true   0.42 s
+    A  "Harbour Street. The rider is Smoke Rider and the quote is blank…"
+
+    Q  How many passengers are on the Friday evening job?
+    model: true   0.44 s
+    A  "The Friday evening job has three passengers. The job board states 'pax 3 bags 1'
+        for the job DX-5CD40A…"
+
+**Why this is not the fallback, beyond the flag.** `ai.local_answer()` can only ever emit one
+of three fixed shapes — *"On the board right now: …"*, *"The live job is X: A to B, …"*, or
+the "not available" sentence. It cannot read a pickup address, a rider name, or `pax 3 bags 1`
+out of the board. These answers quote all of them. Chat also measured **90.9 tok/s** on a
+67-token generation, which is GPU throughput.
+
+### Health
+
+    local  http://127.0.0.1:8800/api/status   200
+    public https://symoneural.com/api/status  200
+    public https://symoneural.com/overview    200
+    public https://symoneural.com/demo/dispatchos  401 unauthenticated (edge auth intact)
+
+### Tests
+
+    apps/test_dispatchos.py  test_runtime_boundary.py  test_maintenance_banner.py
+    apps/test_build_progress.py                              87 passed
+
+Mutation-proved rather than trusted — each applied, caught, reverted:
+
+| sabotage | caught by |
+|---|---|
+| unit template hardcodes `/yocto` in `ExecStart` | `test_no_template_hardcodes_yocto_in_a_path_directive` (+1 more) |
+| template loses its `@@ROOT@@` placeholder | `test_templates_use_the_placeholder` |
+| model manifest SHA truncated | `test_the_chat_model_manifest_is_present_and_complete` |
+| installer stops running the verifier | `test_the_installer_runs_the_verifier` |
+| customer isolation removed (DispatchOS) | `test_a_customer_sees_only_their_own_trips` |
+| a default tariff appears | 6 quote tests |
+| `sent_at` populated on a message | `test_a_composed_message_is_never_marked_sent` |
+| operator role check dropped | `test_a_customer_cannot_quote_dispatch_or_set_rates` |
+| lifecycle order not enforced | 2 lifecycle tests |
+
+### The coded migration path, exercised end to end
+
+Not a description — this was actually run, in this order, on the live box:
+
+1. `ops/rollback-runtime.sh` → production **back onto the `/yocto` units**, health 200.
+2. `ops/verify-runtime.sh` → **exit 1**, ten specific violations (cwd, argv, exe, 4 open fds,
+   mapped files, deploy would republish from `/yocto`). That is the verifier's own proof.
+3. `sudo ops/install-runtime.sh` → preflight, backup to
+   `/etc/symoneural/unit-backups/20260826-092957`, atomic install of three units,
+   `daemon-reload`, controlled restart (gateway then API), local 200 after ~4 s, public 200,
+   verifier **clean**.
+4. `ops/install-runtime.sh --dry-run` re-run → *"every unit is already correct — nothing to
+   install"*. **Idempotent.**
+
+### The gateway is built, not copied
+
+`ops/build-gateway.sh --force` after deleting the binary **and** cargo's `deps/` copy: a real
+43-second relink produced **byte-identical `sha256 41b9eda8…ad74`**, 27,232,992 bytes,
+`st_nlink=1`, 0 unresolved deps, 0 `/yocto` linkage, no `/yocto` string in the binary. Record
+in `ops/manifests/gateway-build.json`.
+
+Built **natively** (`cargo 1.97.1`, `rustc 1.97.1`, host `x86_64-unknown-linux-gnu`) and not
+with the Yocto SDK, because that SDK's `TARGET_SYS` is **`aarch64-oe-linux`** and cannot
+produce a binary that runs on this host at all. See `docs/ops/BUILD-BOUNDARY.md`.
+
+### The model is verified, not assumed
+
+4,683,074,240 bytes · `sha256 65b8fcd9…aa1423` · GGUF v3 · 339 tensors · `qwen2` ·
+*Qwen2.5 7B Instruct* · `file_type 15` (Q4_K_M) · `st_nlink=1` · not a symlink · different
+inode **and different filesystem** from the read-only source, so a hardlink was never
+possible. Manifest: `ops/manifests/llm-chat-model.json`. The `/yocto` source copy was **not**
+moved, modified or deleted.
 
 ---
 
-## Blockers and rulings needed before anything restarts
+## REMOVED — wrong, dead, or contradicted by the box
 
-1. **Engine path.** `backend/engines/…` (as instructed) vs `engines/…` (as `api.py:183`
-   computes and where the binary is). Move the tree and change `api.py`, or keep the current
-   path? Nothing moved pending this.
-2. **Three units to rewrite**, each backed up first: `symoneural-api`, `symoneural-gateway`,
-   `symoneural-deploy`. The deploy unit matters most — it is enabled and republishes `site/`
-   at every boot from wherever it points.
-3. **Restarting the API takes the live site down for a few seconds** and is the step that
-   proves or disproves the canonical checkout. It has not been done.
+- **`WorkingDirectory=/yocto/Symoneural`** on all three units. Replaced.
+- **Gateway executed from `/yocto`.** Now the canonical, independently built artifact.
+- **`symoneural-deploy` publishing from `/yocto`** — the one that would have silently reverted
+  the site at every boot.
+- **`backend/engines/…` as the native engine path.** It does not exist. `backend/api.py:183`
+  computes `ROOT / "engines" / …`. Corrected here and in `docs/ops/BUILD-BOUNDARY.md`.
+  *(Not to be confused with `.claude/HANDOVER.md`'s planned Python adapter package, also
+  called `backend/engines/` — a different thing, correct as written.)*
+- **Driver 590.48.01 / CUDA 13.1.** The box reads **610.57.04** and **13.3**.
+- **Hand-run migration commands.** Replaced by `ops/install-runtime.sh` and friends. The
+  installer's dry run proving "nothing to install" is the evidence that what was done by hand
+  and what the repository does are the same thing.
 
-## What is still unproven, and must not be claimed
+---
 
-`POST /api/dispatchos/ask` has **never returned `model: true`**. Every observed answer took the
-deterministic fallback with `model: false`, because `CHAT_MODEL` is absent from the checkout
-that currently serves. The engine and the weights are now both correct **on the canonical
-side**, but no round trip has run there. Per `backend/apps/dispatchos/SMOKE.md`: do not claim
-the model path works until a run records `model: true`.
+## AUDIT — true but not proven here, or deliberately not claimed
+
+- **Reboot behaviour is inferred, not observed.** Every enabled unit names the canonical root
+  and the deploy condition path does too, so a reboot cannot republish `/yocto` content. The
+  box has not actually been rebooted to watch it happen.
+- **The engine is not resident at boot.** It starts on demand from a chat request and
+  DispatchOS never starts it — by design, so a rider's question cannot evict a render. After
+  any restart the first `/ask` will take the labelled fallback until something warms chat.
+  That is correct behaviour, not a regression.
+- **Rate rules remain unconfigured**, so every quote shows `——`. Required by the customer
+  preview, which states it carries no pricing of any kind.
+- **`/etc/symoneural/dispatchos-logins.txt`** holds the four application passwords, root-only
+  0600, never printed. Read once, hand over, `shred -u`.
+- **The four-status edge check on `/demo/dispatchos`** is 401/401/401 verified; the
+  authenticated 200 is Garrett's own login to prove, because this repo holds bcrypt hashes.
+- **`/yocto` build workspace continues to run** (BitBake, the 8-cell matrix). Untouched by
+  this migration and explicitly allowed.

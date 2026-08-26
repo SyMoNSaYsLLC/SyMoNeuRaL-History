@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Build record for the Debian-host gateway. Written by ops/build-gateway.sh.",
+    "The BINARY is not committed (.gitignore excludes backend/apps/gateway/target/);",
+    "this record is how a rebuilt binary is compared against the one that was verified.",
+    "Built natively for this host, NOT with the Yocto SDK -- that SDK targets aarch64-oe-linux",
+    "and cannot produce a binary that runs on Debian x86_64 at all."
+  ],
+  "relative_path": "backend/apps/gateway/target/release/symon-gateway",
+  "size_bytes": 27232992,
+  "sha256": "41b9eda87550c6b23b416e2b253f1a9339e52cd82b990d37adb73e8b8f46ad74",
+  "st_nlink": 1,
+  "elf_interpreter": "/lib64/ld-linux-x86-64.so.2",
+  "rpath": "",
+  "runpath": "",
+  "unresolved_deps": 0,
+  "deps_from_yocto": 0,
+  "contains_yocto_string": false,
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "host_triple": "x86_64-unknown-linux-gnu",
+  "locked": true,
+  "built_on": "2026-08-26T09:28:37-04:00"
+}

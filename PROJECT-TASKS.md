@@ -1251,8 +1251,30 @@ better, resolving a folder move against the disk, survives as `resolve:`.
            other one over it and the #107 banner silently reverts.
 
         check: exists docs/ops/SERVING-PATH.md
+        check: exists docs/ops/BUILD-BOUNDARY.md
         check: ngrep /yocto/Symoneural -- ops/symoneural-api.service
-        check: grep model.: true -- backend/apps/dispatchos/SMOKE.md
+        check: ngrep /yocto/Symoneural -- ops/symoneural-gateway.service
+        check: ngrep /yocto/Symoneural -- ops/symoneural-deploy.service
+        check: exists ops/install-runtime.sh
+        check: exists ops/rollback-runtime.sh
+        check: exists ops/verify-runtime.sh
+        check: exists ops/build-gateway.sh
+        check: exists ops/manifests/llm-chat-model.json
+        check: exists ops/manifests/gateway-build.json
+        check: exists backend/apps/test_runtime_boundary.py
+        check: grep verify-runtime.sh -- ops/install-runtime.sh
+        check: grep model: true -- backend/apps/dispatchos/SMOKE.md
+        note: 2026-08-26 coder — the check list grew because the ask grew: the migration had
+        note: to stop being hand-run commands and become code in this repository. Garrett:
+        note: "No final production state may rely on commands that were performed manually but
+        note: not represented in the repository." The three `ngrep`s are the ones that would
+        note: catch a regression on ANY box rather than only this one — a template with
+        note: /yocto baked in reinstalls the dependency the next time anybody runs the
+        note: installer. `grep verify-runtime.sh -- ops/install-runtime.sh` exists because an
+        note: installer that does not verify can succeed while wrong.
+        note: The SMOKE check is still the only one no `exists` or `grep` could fake: it goes
+        note: green only when that file records a real GPU-backed round trip, and the file
+        note: previously said in as many words that the model path was NOT proved.
         note: 2026-08-26 coder — the third check is the run-proving one and it is pointed at
         note: the SMOKE record rather than at any source file, because no `exists` or `grep`
         note: over this repository can tell whether a 7B answered a question. SMOKE.md today

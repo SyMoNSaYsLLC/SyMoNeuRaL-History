@@ -2,6 +2,49 @@
 
 **Last updated 2026-08-22. Written for a fresh agent with zero prior context.**
 
+> ## 2026-08-26 — THE RUNTIME MOVED. Read this before you touch a service.
+>
+> **`/home/google/Symoneural` is now the sole canonical source repository and installed
+> runtime root.** All three systemd units (`symoneural-api`, `symoneural-gateway`,
+> `symoneural-deploy`) previously carried `WorkingDirectory=/yocto/Symoneural` and served
+> from a checkout whose `backend/models/` was an **empty directory tree** — which is why
+> every GPU row on the rack read `offline` and SyMon AI could only ever take its fallback.
+>
+> **The rule is not "never touch `/yocto`."** Garrett, 2026-08-26: *"Build from `/yocto`
+> when appropriate, but never require `/yocto` at runtime."* `/yocto` remains an authorized
+> build environment — extensible SDK, toolchains, BitBake, sstate, downloads, staging — and
+> the 8-cell image matrix still builds there. Build-time `/yocto` paths in logs and
+> CMake/BitBake metadata are fine. A **live component depending on it** is not.
+>
+> **`/home/google/yocto` was permanently deleted. Never recreate or reference it.** That is a
+> different path from the top-level `/yocto` mount, and `ops/verify-runtime.sh` fails if it
+> reappears.
+>
+> **Do not migrate anything by hand.** The path is coded and idempotent:
+>
+>     ops/build-gateway.sh              native Debian build from canonical source
+>     sudo ops/install-runtime.sh       preflight, backup, atomic install, daemon-reload,
+>                                       controlled restart, health check, AUTO-ROLLBACK
+>     ops/verify-runtime.sh             proves the boundary; exit 1 on any violation
+>     sudo ops/rollback-runtime.sh      restore a backup later, by hand
+>
+> `--dry-run` on the installer answers "what would change" without changing it.
+>
+> **The engine is at `engines/`, NOT `backend/engines/`** —
+> `/home/google/Symoneural/engines/symoneural-llm/build/bin/symoneural-llm`, because
+> `backend/api.py:183` computes `ROOT / "engines"`. Beware the collision: §12 of this file
+> discusses a *planned Python adapter package* also called `backend/engines/`
+> (`llamacpp.py`, `sdcpp.py`). That is a different thing and those references are correct.
+>
+> **Machine baseline, audited 2026-08-26 and superseding earlier figures:** Debian 13.6
+> Trixie AMD64 · Python 3.13.5 · RTX 5070 Ti, compute 12.0 · **driver 610.57.04** · **CUDA
+> 13.3** · engine target `sm_120a` · GPU only, no CPU fallback. Two figures previously
+> carried as 590.48.01 and CUDA 13.1 were simply wrong.
+>
+> Full detail: **`docs/ops/BUILD-BOUNDARY.md`** (the boundary and the baseline) and
+> **`docs/ops/SERVING-PATH.md`** (the completion record, with PROD/REMOVED/AUDIT evidence).
+> Task **#108**.
+
 > **CORRECTION 2026-08-22 — the warning that stood here is now stale, and it was the first thing
 > a fresh agent read.** It said the backend suite *"does not collect at HEAD"* because
 > `apps/ravencalc/test_ravencalc.py` raised `NameError: name 'convert_xor' is not defined`, and
