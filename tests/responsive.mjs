@@ -68,7 +68,7 @@ const PAGES = [
   '/documentation.html', '/build.html', '/training.html',
 ];
 
-const probe = () => {
+const probe = (expectNews) => {
   const vw = document.documentElement.clientWidth;
   const vh = document.documentElement.clientHeight;
   const name = (el) => {
@@ -102,12 +102,24 @@ const probe = () => {
     return false;
   };
 
+  // The one clip on this site that is not a defect, exempted BY NAME rather than by relaxing
+  // the rule above -- relaxing it would re-admit the header bug this whole file exists for.
+  //
+  // Symon Say News is a marquee. `.sn-window` is `overflow:hidden` and `.sn-run` is
+  // `width:max-content`, so the lane is deliberately about 2,000px wide inside a 360px
+  // window and every headline sits past the right edge until the animation carries it in.
+  // That is content arriving over TIME rather than content thrown away, and the bar itself
+  // is `left:0; right:0`, i.e. bounded to the viewport. What still has to hold about the bar
+  // is that the bar does not COVER anything -- and that is checked, not exempted, because
+  // `elementFromPoint` below would name `aside#symonsaynews` as the thing a click hits.
+  const inTicker = (el) => !!el.closest('#symonsaynews .sn-window');
+
   // (2) right edges
   const over = [];
   for (const el of document.querySelectorAll('body *')) {
     if (!shown(el)) continue;
     const b = el.getBoundingClientRect();
-    if (b.right > vw + 1 && !scrollable(el)) over.push({ el: name(el), right: Math.round(b.right) });
+    if (b.right > vw + 1 && !scrollable(el) && !inTicker(el)) over.push({ el: name(el), right: Math.round(b.right) });
   }
 
   // (3) reachability of interactive elements. Off-screen-below is fine -- that is scrolling,
@@ -115,35 +127,86 @@ const probe = () => {
   // controls currently within the vertical viewport (elementFromPoint cannot answer for the
   // rest without scrolling them into view).
   const unreachable = [];
+  const covered = [];
   for (const el of document.querySelectorAll('a[href], button, input, select, textarea, [role="button"], [role="tab"]')) {
     if (!shown(el)) continue;
     const b = el.getBoundingClientRect();
-    if ((b.left < -1 || b.right > vw + 1) && !scrollable(el)) {
+    if ((b.left < -1 || b.right > vw + 1) && !scrollable(el) && !inTicker(el)) {
       unreachable.push({ el: name(el), why: `x ${Math.round(b.left)}..${Math.round(b.right)} outside 0..${vw}` });
       continue;
     }
-    if (b.left < -1 || b.right > vw + 1) continue;   // reachable by scrolling its container
+    if (b.left < -1 || b.right > vw + 1) continue;   // reachable by scrolling, or by waiting for the crawl
     if (b.top < 0 || b.bottom > vh) continue;          // simply below the fold
     const hit = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
-    if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) {
-      unreachable.push({ el: name(el), why: `covered by ${name(hit)}` });
-    }
+    if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) covered.push(el);
   }
 
+  // SECOND CHANCE, and it is what separates a real defect from a fixed overlay.
+  //
+  // Symon Say News is `position:fixed` along the bottom of a page that scrolls, so at any
+  // given scroll offset SOME control is under it -- at 1024x768 the chat send button sits at
+  // y=725..755 and the bar occupies 741..768, so its centre point lands on the bar. That is
+  // the same relationship a fixed header has with the top of a page: the control is not gone,
+  // it is one scroll away, and `html.sn-on body{padding-bottom:var(--sn-h)}` already
+  // guarantees the END of the document clears the bar.
+  //
+  // A control clipped outside the viewport, by contrast, is unreachable at EVERY scroll
+  // offset. So rather than exempting the bar -- which would blunt the check the same way
+  // relaxing the clip rule would -- each covered control is scrolled to the middle of the
+  // viewport and re-tested. Whatever is still covered dead centre is genuinely unreachable
+  // and stays a finding.
+  const stillCovered = [];
+  for (const el of covered) {
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const b = el.getBoundingClientRect();
+    const hit = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
+    if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) {
+      stillCovered.push({ el: name(el), why: `covered by ${name(hit)} even when scrolled to centre` });
+    }
+  }
+  window.scrollTo(0, 0);
+  unreachable.push(...stillCovered);
+
   return {
+    newsOn: document.documentElement.classList.contains('sn-on'),
     vw, scrollW: document.documentElement.scrollWidth,
     over: over.slice(0, 25), overCount: over.length,
     unreachable: unreachable.slice(0, 25), unreachableCount: unreachable.length,
   };
 };
 
+// The Symon Say News bar is `position:fixed` along the bottom of EVERY page, and it does not
+// exist until the endpoint returns headlines. `SYMONEURAL_NEWS_ENABLED` is unset by default,
+// so a run against this box measures the site with the bar absent -- which is a real state,
+// and also exactly half of the states this site ships. The first pass of this suite reported
+// "0 findings" having never once seen `html.sn-on`, and the composer is at the bottom of the
+// page too. So the whole matrix runs twice and the endpoint is intercepted for the second
+// pass. Nothing here reaches a publisher; the payload is fabricated, the same way
+// `tests/frontend.mjs` drives its two age branches.
+const NEWS = {
+  enabled: true, count: 2, at: 1, age_s: 30, stale: false,
+  newest_at: 1, newest_age_s: 900, interval_s: 900, sources: [], error: null,
+  items: [
+    { title: 'A synthetic headline, served by tests/responsive.mjs', url: 'https://example.com/a',
+      source: 'Test', topic: 'releases', at: 1, score: 1 },
+    { title: 'A second synthetic headline, long enough to make the lane measure something',
+      url: 'https://example.com/b', source: 'Test', topic: 'models', at: 1, score: 0.9 },
+  ],
+};
+
 const browser = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] });
 const findings = [];
 let checked = 0;
 
+for (const newsOn of [false, true]) {
 for (const vp of VIEWPORTS) {
   const ctx = await browser.newContext({ viewport: { width: vp.w, height: vp.h } });
   const page = await ctx.newPage();
+  if (newsOn) {
+    await page.route('**/api/news/ticker', r => r.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(NEWS),
+    }));
+  }
   const jsErrors = [];
   page.on('pageerror', e => jsErrors.push(e.message.split('\n')[0]));
 
@@ -156,27 +219,34 @@ for (const vp of VIEWPORTS) {
       await page.waitForTimeout(400);          // let the news bar and rack paint
       r = await page.evaluate(probe);
     } catch (e) {
-      findings.push({ vp: vp.label, path, kind: 'ERROR', detail: e.message.split('\n')[0] });
+      findings.push({ vp: vp.label + (newsOn ? ' +news' : ''), path, kind: 'ERROR', detail: e.message.split('\n')[0] });
       continue;
     }
     if (r.scrollW > r.vw + 1 || r.overCount) {
       findings.push({
-        vp: vp.label, path, kind: 'OVERFLOW',
+        vp: vp.label + (newsOn ? ' +news' : ''), path, kind: 'OVERFLOW',
         detail: `scrollWidth ${r.scrollW} vs ${r.vw}; ${r.overCount} element(s) past the right edge: `
               + r.over.map(o => `${o.el}@${o.right}`).join(', '),
       });
     }
     if (r.unreachableCount) {
       findings.push({
-        vp: vp.label, path, kind: 'UNREACHABLE',
+        vp: vp.label + (newsOn ? ' +news' : ''), path, kind: 'UNREACHABLE',
         detail: `${r.unreachableCount}: ` + r.unreachable.map(u => `${u.el} (${u.why})`).join(', '),
       });
     }
+    // A "+news" pass that never rendered the bar tests nothing, and would report green for
+    // the wrong reason -- the exact failure this second pass was added to fix.
+    if (newsOn && !r.newsOn && path !== '/training.html') {
+      findings.push({ vp: vp.label + ' +news', path, kind: 'NEWSMISSING',
+                      detail: 'the news bar was served headlines and did not appear' });
+    }
     if (jsErrors.length) {
-      findings.push({ vp: vp.label, path, kind: 'JSERROR', detail: [...new Set(jsErrors)].join(' | ') });
+      findings.push({ vp: vp.label + (newsOn ? ' +news' : ''), path, kind: 'JSERROR', detail: [...new Set(jsErrors)].join(' | ') });
     }
   }
   await ctx.close();
+}
 }
 await browser.close();
 
@@ -193,7 +263,7 @@ const lines = [
   `Written by \`tests/responsive.mjs\` against \`${BASE}\`.`,
   'Do not hand-edit this file. It is a reading, and a hand-edited reading is worth nothing.',
   '',
-  `- pages x viewports checked: **${checked}**`,
+  `- page x viewport x news-bar combinations checked: **${checked}**`,
   `- findings: **${findings.length}**`,
   ...Object.entries(counts).map(([k, v]) => `  - ${k}: ${v}`),
   '',
@@ -219,6 +289,9 @@ lines.push('## What was checked', '',
   '4. Uncaught JavaScript errors on load.',
   '',
   `Viewports: ${VIEWPORTS.map(v => v.label).join(', ')}.`,
+  'Each runs twice: once as this box serves today (news bar off) and once with',
+  '`/api/news/ticker` intercepted and answered with a fabricated payload, because the bar is',
+  '`position:fixed` along the bottom of every page and the composers are at the bottom too.',
   `Pages: ${PAGES.length}.`);
 
 writeFileSync(OUT, lines.join('\n') + '\n');

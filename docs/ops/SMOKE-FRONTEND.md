@@ -3,7 +3,7 @@
 Written by `tests/responsive.mjs` against `http://127.0.0.1:8800`.
 Do not hand-edit this file. It is a reading, and a hand-edited reading is worth nothing.
 
-- pages x viewports checked: **192**
+- page x viewport x news-bar combinations checked: **384**
 - findings: **0**
 
 Every page laid out inside its viewport at every width, every interactive element was inside the viewport and received its own clicks, and no page raised a JavaScript error.
@@ -18,4 +18,7 @@ Every page laid out inside its viewport at every width, every interactive elemen
 4. Uncaught JavaScript errors on load.
 
 Viewports: 360, 390, 430, 768, 1024, 1440, 1920, 1440x700 (short).
+Each runs twice: once as this box serves today (news bar off) and once with
+`/api/news/ticker` intercepted and answered with a fabricated payload, because the bar is
+`position:fixed` along the bottom of every page and the composers are at the bottom too.
 Pages: 24.
