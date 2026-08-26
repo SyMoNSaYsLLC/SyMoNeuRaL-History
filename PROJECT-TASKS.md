@@ -207,6 +207,18 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         check: exists .claude/hooks/capture-prompt.sh
         check: grep UserPromptSubmit -- .claude/settings.json
         check: grep barrier -- tools/build_intake.py
+        check: exists .claude/hooks/SMOKE-capture.md
+        note: 2026-08-26 coder — the SMOKE check above is declared BEFORE any of the other five
+        note: was worked, and it is the check that stops this task archiving itself. The other
+        note: five are `exists`, `grep` and `maxcount`: every one of them goes green on a file
+        note: written to disk, and none of them can ask whether the hook ever FIRED. That is
+        note: #94 exactly — eighteen green checks on a client whose chat surface was dead, and
+        note: the timer archived it two minutes later. The timer is live here too:
+        note: `systemctl --user list-timers` shows symoneural-progress.timer on a 2-minute
+        note: period, measured 2026-08-26 08:02. SMOKE-capture.md cannot be written honestly
+        note: without a prompt having been captured end to end, and it must record the
+        note: fail-open proof as well: item 1 says a broken hook must never block a prompt, so
+        note: the smoke record names the deliberate break and what happened to the prompt.
 ◻ #79 — SyMoNeuRaL Image: image-to-image, and parameters the visitor can actually turn
         owner: coder
         R-152. "add image to image as well as parameter adjustment to symoneural image."
