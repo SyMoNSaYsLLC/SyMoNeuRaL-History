@@ -155,6 +155,12 @@ from apps import live  # noqa: E402  -- his OBS stream, watchable while it runs 
 # constructs the bridge but connects only when `start()` is awaited in `lifespan` below, and
 # `hls.py` touches the disk only inside a request. Placed above `rackpower` because that
 # import claims the last word and should keep it.
+from apps import dispatchos  # noqa: E402  -- the transport dispatch application for a named
+# customer, served at /demo/dispatchos behind basicauth in ops/Caddyfile. Bound to the package
+# because it exports a bare `enabled` and a bare `status`, either of which would shadow
+# something here. Importing it is free with the switch off: it opens no socket, touches no
+# database until `enabled()` passes inside a request, and takes no governor lease ever -- its
+# only model call goes back out through `set_ask_model` below and refuses to start anything.
 from apps import controlboard as rackpower  # noqa: E402  -- the per-unit power switch. Bound to the package
 # so its bare `enabled`/`status_rows`/`apply` cannot shadow anything here. Importing it is
 # free and safe with the switch off: it reads no file until `enabled()` passes, spawns
@@ -1408,6 +1414,18 @@ async def lifespan(_: FastAPI):
     metered = ", ".join(f"{s} {p}/min {h}/hr" for s, (p, h) in LIMITS.items() if p) or "none"
     log.info("caps: prompt<=%d chars, queue %d, rate limited: %s",
              MAX_PROMPT_CHARS, QUEUE_DEPTH, metered)
+    # DispatchOS creates its tables once at startup rather than on the first request, so an
+    # operator opening the page never races two requests both running CREATE TABLE. Guarded
+    # by the switch: with the surface off this touches no disk at all, which keeps the
+    # default state of this box free of a database nobody asked for.
+    if dispatchos.enabled():
+        try:
+            dispatchos.init_db()
+            log.info("dispatchos surface enabled; store at %s", dispatchos.store.db_path())
+        except Exception:
+            # A store that will not open is a reason for that surface to answer 503, not a
+            # reason for the whole API to fail to start. `status()` reports it as offline.
+            log.exception("dispatchos store could not be initialised; surface stays down")
     ticker = asyncio.create_task(telemetry_loop())
     # Only run when an operator has switched the surface on. With the env unset this task
     # would loop forever doing nothing, so it is not started at all -- and the rack still
@@ -2245,6 +2263,15 @@ def build_status() -> Status:
             # count it against the drain floor, so putting this row in the rack's "who holds
             # the card" readout would advertise management that does not exist.
             Unit(**live.status()),
+            # SyMoNeuRaL DispatchOS. `bus="cpu"` because it is: booking, quoting and
+            # dispatching are reads and writes to a small SQLite store, and no code path in
+            # that package takes a governor lease. Its one model call goes out through
+            # `guide_ask_model`, which refuses to start the card -- so this row can never be
+            # the reason `holding` names something. The state READS the switch rather than
+            # asserting one: `offline` when SYMONEURAL_DISPATCHOS_ENABLED is unset, which is
+            # what miner, coder, gateway and studio already do and what #95 exists to settle
+            # for the one row that does not.
+            Unit(**dispatchos.status()),
         ]),
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
@@ -3013,6 +3040,18 @@ app.include_router(news.routes.router, prefix="/api/news", tags=["news"])
 # websocket for every visitor on the site. Making them `async` again would look like a
 # tidy-up and would be a regression.
 app.include_router(live.router, prefix="/api/live", tags=["live"])
+
+# DispatchOS. Two routers: the JSON API under /api/dispatchos, and the page itself at
+# /demo/dispatchos -- an extensionless path, so it cannot be a file under a publisher that
+# copies site/ at -maxdepth 1, and `ops/Caddyfile` reverse-proxies it here behind basicauth.
+# `include_in_schema=False` on the UI half keeps a customer page out of the public API docs.
+app.include_router(dispatchos.router, prefix="/api/dispatchos", tags=["dispatchos"])
+app.include_router(dispatchos.ui_router)
+
+# SyMon AI for DispatchOS, wired to the same local chat surface Guide uses -- and wired to the
+# same PROMISE: `guide_ask_model` raises rather than starting the model, so a rider's question
+# can never evict a render somebody is waiting on. The assistant degrades and says so.
+dispatchos.set_ask_model(guide_ask_model)
 
 
 # ---- the studio model list -------------------------------------------------
