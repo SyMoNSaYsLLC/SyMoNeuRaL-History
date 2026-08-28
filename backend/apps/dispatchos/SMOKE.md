@@ -142,3 +142,70 @@ banner's list, and the page does not load the file that draws it.
   "rates_configured":false,...}`.
 - Rack row: `dispatchos ready · N bookings, M live`.
 - `/api/status` 200, 14 units.
+
+---
+
+# 2026-08-28 — the hardened v1 surface is already what production serves
+
+Read-only. **Nothing was deployed, installed or restarted to produce this section**, and that
+is the finding rather than a caveat: the security work committed as `e346b246`
+(*fix(dispatchos): complete and secure the v1 workflow*) was already on disk before the API
+last started, so the running process has been serving it since. No deployment step is owed.
+
+The two halves of that claim are not equally strong and are kept apart on purpose.
+
+## Observed behaviour — the live process did these things
+
+| probe | result |
+|---|---|
+| `GET /api/dispatchos/status` | 200, `cache-control: no-store`, `pragma: no-cache` |
+| `GET /demo/dispatchos` | 200, same two headers |
+| `GET /api/dispatchos/board`, no cookie | **401** |
+| `https://symoneural.com/demo/dispatchos`, no credentials | **401** at the Caddy door |
+| `login_attempts` table in `run/dispatchos.db` | present, **and written by the live process** |
+| a `429` carrying `Retry-After` from `/api/dispatchos/login` | observed |
+
+The last two are the load-bearing ones. Neither the table nor a 429 exists anywhere in the
+pre-`e346b246` code, so the process that produced them was running the hardened store. That is
+proof, not inference.
+
+**Probe with GET, not HEAD.** `curl -I` returns 200 with no `cache-control` on either path and
+briefly led this author to report the header missing. `curl -s -D - -o /dev/null` shows both
+headers. Anyone re-checking must use a real GET or they will file a bug that is not there.
+
+## Established by file identity — NOT by exercising it
+
+The accounts half — `SCRYPT_N = 2^17`, the `_SCRYPT_SLOTS` concurrency cap, and
+`check_password_or_dummy` — has **no behavioural probe here**. `/api/accounts/selftest` is not
+a route on this box (404), and the alternative was signing in, which is covered below under
+what was deliberately not done.
+
+What is established instead is that the running interpreter loaded files byte-identical to the
+commit:
+
+```
+git diff e346b246 -- backend/apps/accounts backend/apps/dispatchos   ->  0 lines
+mtime of all four files            2026-08-26 21:54:27 EDT
+symoneural-api ActiveEnterTimestamp 2026-08-28 13:38:22 EDT
+ExecStart      /usr/bin/python3 /home/google/Symoneural/backend/api.py
+WorkingDirectory + /proc/<pid>/cwd  /home/google/Symoneural
+```
+
+Files older than the process, in the checkout the unit actually runs, identical to what was
+committed. That is a strong statement and it is still not the same as having exercised the
+code, which is why it is in its own section.
+
+## Deliberately not done, and why
+
+- **The four application logins were not re-run.** The passwords are Garrett's and were handed
+  over out of band; this file has said so since the first run and that has not changed.
+- **The throttle was not exercised on purpose.** The 429 above was observed incidentally, not
+  provoked. The `ip / 127.0.0.1` counter in the live store stands at **17 of a free allowance
+  of 20**; four more failures would lock loopback logins for up to 900 s. Proving a lock-out
+  by causing one, on the surface that is about to be shown to a customer, is not a test worth
+  running.
+- **No write of any kind.** No booking, driver, message, session, rule or user was created or
+  changed by this section.
+- **DispatchOS does not rehash on login.** The four existing account hashes therefore remain at
+  the previous scrypt cost until an operator resets them, and a reset rolls a password already
+  handed over. That is a recorded decision, not an oversight.

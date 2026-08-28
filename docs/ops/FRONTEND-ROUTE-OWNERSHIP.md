@@ -142,6 +142,20 @@ wrong password and an unknown user; intake → quote → confirm → dispatch-wi
 refused; a quote carrying no figure when rate rules are unconfigured; a message recorded as
 never sent; and no credential, bcrypt hash or absolute host path in any browser artifact.
 
+### Named parity deltas against the legacy page
+
+The 17 assertions verify what the migrated slice *does*. **None of them compares it to
+`backend/apps/dispatchos/page.py`, the page it would replace**, so a missing panel cannot turn
+one of them red. Parity is the gate for retiring the legacy route, and an undocumented gap
+makes that gate meaningless. The two known differences, recorded rather than discovered later:
+
+| legacy page has | migrated slice | why |
+|---|---|---|
+| `<h2>Rate rules</h2>` — an editor, backed by `GET`/`PUT /api/dispatchos/rules` | a **read-only status note** saying whether rules are configured. The typed client has neither call. | Defensible while "not configured" is the documented normal state and the preview promises no pricing — but it **is** a missing operator capability, not an intentional simplification of an empty one. Closing it is one typed call pair plus a form. |
+| `<h2>SyMon AI</h2>` — the assistant panel over `POST /api/dispatchos/ask` | absent | Correct and deliberate. `/ask` is outside the v1 workflow list, and `#108` criterion 3 owns it. Not a parity gap to close here. |
+
+Neither is a defect. Both must be settled before anyone calls the route at parity.
+
 **Not verified, and no assertion above should be read as implying otherwise:**
 
 - **Responsive rendering and visual parity with `site/`.** These need a real browser. The CSS
