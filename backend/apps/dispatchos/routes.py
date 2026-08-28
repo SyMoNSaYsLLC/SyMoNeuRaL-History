@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -37,7 +37,13 @@ from . import ai, page, quotes, store
 
 log = logging.getLogger("symoneural.dispatchos")
 
-router = APIRouter(tags=["dispatchos"])
+def _no_store(response: Response) -> None:
+    """Dispatch data and session responses must not be reusable from a cache."""
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+
+
+router = APIRouter(tags=["dispatchos"], dependencies=[Depends(_no_store)])
 ui_router = APIRouter(include_in_schema=False)
 
 COOKIE = "symon_dispatchos"
@@ -123,6 +129,14 @@ def _set_cookie(request: Request, response: Response, token: str) -> None:
         secure=request.url.scheme == "https", path="/")
 
 
+def _client_ip(request: Request) -> str:
+    """The address written by the trusted Caddy hop, or the socket as a fallback."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()[:64]
+    return (request.client.host if request.client else "")[:64]
+
+
 def _visible(user: dict) -> list[dict]:
     """The board this user is allowed to see. One place, so no route can forget."""
     if user["role"] == "operator":
@@ -155,7 +169,12 @@ async def status_route() -> dict:
 @router.post("/login", summary="Sign in to DispatchOS")
 async def login(body: LoginBody, request: Request, response: Response) -> dict:
     _require_enabled()
-    token = store.login(body.username, body.password)
+    try:
+        token = await asyncio.to_thread(store.login, body.username, body.password,
+                                        ip=_client_ip(request))
+    except store.DispatchThrottled as exc:
+        raise HTTPException(429, str(exc),
+                            headers={"Retry-After": str(exc.retry_after)}) from None
     if not token:
         # One answer for a wrong password and for an unknown username.
         raise HTTPException(401, "that username and password do not match an account")
@@ -349,4 +368,5 @@ async def dispatchos_page() -> HTMLResponse:
     `scripts/deploy.sh` publishes `site/` at `-maxdepth 1`. That also keeps it out of the
     #107 maintenance banner, which is stamped into the generated static pages.
     """
-    return HTMLResponse(page.PAGE)
+    return HTMLResponse(page.PAGE, headers={"Cache-Control": "no-store",
+                                            "Pragma": "no-cache"})

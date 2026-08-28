@@ -3,9 +3,8 @@
     python3 backend/apps/accounts/test_accounts.py     # the tests
     docs/specs/accounts-spec.md                        # routes, page changes, threat model
 
-This is the backend half of the Account tab. Today `site/account.html` says "Not open yet"
-and that is still true until somebody wires these functions to routes; nothing here is
-reachable from the internet by existing.
+This is the backend half of the Account tab. The routes and page exist, but the surface
+remains off unless both configuration switches below are present.
 
 ## Zero new packages, and why that is not a compromise
 
@@ -27,11 +26,12 @@ RFC-standardised memory-hard KDF, it is what OpenSSL ships, and OWASP still list
 acceptable choice with parameters given below. What *would* be a downgrade is a hand-rolled
 PBKDF2 loop or an unsalted digest, and neither is here.
 
-## Cost parameters, measured on this box
+## Cost parameters
 
-`SCRYPT_N=65536, r=8, p=1` -- 64 MiB and **123 ms measured** on this machine
-(i9-10900KF @ 3.70 GHz, best of five, `hashlib.scrypt` with `maxmem` set). That figure is
-**measured**, not vendor and not projected.
+`SCRYPT_N=131072, r=8, p=1` -- 128 MiB, the current OWASP scrypt baseline. The previous
+N=65536 setting measured **123 ms** on this machine (i9-10900KF @ 3.70 GHz, best of five,
+`hashlib.scrypt` with `maxmem` set); the 128 MiB candidate measured 248 ms in the same run.
+Those figures are **measured**, not vendor and not projected.
 
 Reasoning, in the order it actually constrains the choice:
 
@@ -40,13 +40,10 @@ Reasoning, in the order it actually constrains the choice:
   2. OWASP's current guidance is a set of equivalent-work rows starting at N=2^17, r=8, p=1
      (128 MiB) and including N=2^16, r=8, p=2 (also 128 MiB). Measured here those are
      248 ms and 231 ms.
-  3. **The event loop is what rules out 128 MiB.** `backend/api.py` is one uvicorn process
-     that also serves the live status WebSocket. A synchronous 231 ms hash inside a route
-     handler stalls that socket for every connected visitor. 123 ms halves it.
-     Even so: **any call from an async route MUST go through `asyncio.to_thread`.**
-     `create_account_async()` and `verify_async()` below do exactly that -- use them.
-  4. Memory is the anti-GPU lever, and 64 MiB per attempt is still ~4,000x the memory a
-     bcrypt candidate needs, which is the whole reason to prefer a memory-hard KDF.
+  3. The web routes move every hash to a worker thread. A process-wide bounded semaphore
+     permits at most two scrypt calls at once, so a burst cannot turn 128 MiB per attempt
+     into unbounded memory pressure while the event loop remains responsive.
+  4. Memory is the anti-GPU lever, which is the whole reason to prefer a memory-hard KDF.
 
 The parameters are stored **inside each hash string**, so raising them later is a
 per-user upgrade on next login (`needs_rehash`) rather than a flag day.
@@ -98,6 +95,7 @@ import pathlib
 import re
 import secrets
 import sqlite3
+import threading
 import time
 import unicodedata
 from contextlib import contextmanager
@@ -111,11 +109,13 @@ SCHEMA_VERSION = 1
 # --------------------------------------------------------------------------- knobs
 
 # scrypt. See the module docstring for the measurement and the reasoning.
-SCRYPT_N = 65536
+SCRYPT_N = 131072
 SCRYPT_R = 8
 SCRYPT_P = 1
 SCRYPT_DKLEN = 32
 SCRYPT_SALT_BYTES = 16
+SCRYPT_MAX_CONCURRENT = 2
+_SCRYPT_SLOTS = threading.BoundedSemaphore(SCRYPT_MAX_CONCURRENT)
 
 
 def _maxmem(n: int, r: int, p: int) -> int:
@@ -129,7 +129,7 @@ def _maxmem(n: int, r: int, p: int) -> int:
 
 # Password policy. Length is the only lever that reliably buys entropy; NIST SP 800-63B
 # explicitly discourages composition rules ("must contain a symbol"), so there are none.
-MIN_PASSWORD_CHARS = 12
+MIN_PASSWORD_CHARS = 15
 MAX_PASSWORD_CHARS = 1024      # a 10 MB password is a memory-hard DoS with extra steps
 MAX_EMAIL_CHARS = 254          # RFC 5321 §4.5.3.1.3 path limit
 
@@ -161,8 +161,8 @@ _EMAIL_RE = re.compile(
 # this when the email is unknown, so a wrong address and a wrong password cost the same
 # wall-clock and the endpoint does not answer "does this person have an account" for free.
 # Precomputed rather than derived at import so importing this module costs nothing.
-_DUMMY_HASH = ("scrypt$n=65536,r=8,p=1$Dx7t9Xt0XwWmgbUN0lXinw"
-               "$fBlv70Ubh0cTfhhQElW7E3XUFgNcmFbTB2tS4ywvM5E")
+_DUMMY_HASH = ("scrypt$n=131072,r=8,p=1$auXU912RqNFEGqdUQE69vg"
+               "$e3R3TsPR5L9wAvtr2HVtFK6zlPKfQjRlNfYt-DLXzdk")
 
 # Rejected outright regardless of length. Deliberately tiny: there is no breach corpus on
 # this box and no network call to one, so this catches the obvious and claims nothing more.
@@ -333,7 +333,7 @@ def _conn():
     Deliberately not a module-level singleton. uvicorn runs handlers on a thread pool once
     anything goes through `asyncio.to_thread`, and a shared sqlite3 connection across
     threads is either an error or a data race depending on `check_same_thread`. Opening a
-    connection is microseconds; the scrypt call next to it is 123 ms.
+    connection is microseconds; the scrypt call next to it is hundreds of milliseconds.
     """
     path = db_path()
     first = not path.exists()
@@ -356,7 +356,7 @@ def _conn():
             except OSError:
                 pass
         # Every connection, not only the first. `CREATE TABLE IF NOT EXISTS` is cheap next
-        # to a 123 ms hash, and doing it here means a database file that exists but is
+        # to a password hash, and doing it here means a database file that exists but is
         # empty -- a truncated copy, a half-finished restore -- self-heals instead of
         # raising `no such table` from somewhere three calls deep.
         c.executescript(_SCHEMA)
@@ -389,10 +389,13 @@ def _b64d(s: str) -> bytes:
 
 
 def _derive(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
-    return hashlib.scrypt(
-        _normalise_password(password).encode("utf-8"),
-        salt=salt, n=n, r=r, p=p, dklen=SCRYPT_DKLEN, maxmem=_maxmem(n, r, p),
-    )
+    # A login burst must not allocate 128 MiB times the thread-pool size.  The semaphore
+    # limits process memory while asyncio.to_thread keeps this work off the event loop.
+    with _SCRYPT_SLOTS:
+        return hashlib.scrypt(
+            _normalise_password(password).encode("utf-8"),
+            salt=salt, n=n, r=r, p=p, dklen=SCRYPT_DKLEN, maxmem=_maxmem(n, r, p),
+        )
 
 
 def _normalise_password(password: str) -> str:
@@ -436,6 +439,15 @@ def check_password(stored: str, password: str) -> bool:
     except ValueError:
         return False
     return hmac.compare_digest(got, expect)
+
+
+def check_password_or_dummy(stored: str | None, password: str) -> bool:
+    """Check a stored hash, paying the same current cost when no account exists.
+
+    Other account surfaces use this instead of constructing a fresh dummy hash per
+    request.  That avoids both a timing oracle and an attacker-controlled extra hash.
+    """
+    return check_password(stored if stored is not None else _DUMMY_HASH, password)
 
 
 def needs_rehash(stored: str) -> bool:
@@ -483,7 +495,7 @@ def validate_password(password: str, email: str = "") -> str:
         raise WeakPassword("that password is one of the first anybody tries")
     local = normalise_email(email).split("@", 1)[0]
     if len(local) >= 3 and local in low:
-        raise WeakPassword("the password contains your email address")
+        raise WeakPassword("the password contains your account identifier")
     return pw
 
 
@@ -515,7 +527,7 @@ def _throttle_fail(c: sqlite3.Connection, scope: str, key: str, now: float,
     locked = 0.0 if row is None else float(row["locked_until"])
     # A clean hour forgets the counter, so an ordinary person who mistypes once a month is
     # never locked out. An attacker gets ACCOUNT_FREE_FAILS guesses per hour for free,
-    # which against a 12-character minimum is not a threat worth trading usability for.
+    # which against a 15-character minimum is not a threat worth trading usability for.
     if locked <= now and (now - last) > ATTEMPT_DECAY_S:
         fails = 0
     fails += 1
@@ -641,8 +653,8 @@ def verify(email: str, password: str, *, ip: str = "", now: float | None = None
         if ip:
             _throttle_check(c, "ip", ip, now)
         row = c.execute("SELECT * FROM accounts WHERE email=?", (norm,)).fetchone()
-        stored = row["pw_hash"] if row is not None else _DUMMY_HASH
-        ok = check_password(stored, password) and row is not None
+        stored = row["pw_hash"] if row is not None else None
+        ok = check_password_or_dummy(stored, password) and row is not None
         if ok and row["disabled"]:
             ok = False              # a disabled account is not a credential decision to leak
         if not ok:
@@ -837,7 +849,7 @@ async def create_account_async(*a, **kw) -> dict:
 async def verify_async(*a, **kw) -> dict | None:
     """`verify` off the event loop.
 
-    NOT optional. scrypt is 123 ms of blocking CPU here, and `backend/api.py` is one
+    NOT optional. scrypt is hundreds of milliseconds of blocking CPU, and `backend/api.py` is one
     uvicorn process that also serves the live status WebSocket -- a synchronous hash in a
     handler stalls that socket for every connected visitor.
     """

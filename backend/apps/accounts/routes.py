@@ -29,19 +29,25 @@ from __future__ import annotations
 import contextlib
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict
 
 from . import (AccountExists, AccountsError, AccountsUnavailable, InvalidEmail,
-               Throttled, WeakPassword, change_password, create_account, enabled,
-               init_db, issue_session, read_session, revoke_all_sessions,
-               revoke_session, session_ttl_s, sessions_for, unit_state, verify)
+               Throttled, WeakPassword, change_password_async, create_account_async,
+               enabled, init_db, issue_session, read_session, revoke_all_sessions,
+               revoke_session, session_ttl_s, sessions_for, unit_state, verify_async)
 
 log = logging.getLogger("symoneural.accounts")
 
 from .module import SESSION_COOKIE
 
-router = APIRouter(tags=["accounts"])
+def _no_store(response: Response) -> None:
+    """Authenticated/session responses must never be reused from a browser cache."""
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+
+
+router = APIRouter(tags=["accounts"], dependencies=[Depends(_no_store)])
 
 # One spelling, defined in `module.py` and imported here. It was a literal in this file and
 # a second literal would have appeared the moment a second surface needed it.
@@ -132,9 +138,10 @@ async def signup(body: SignupBody, request: Request, response: Response) -> dict
     _require_enabled()
     try:
         init_db()
-        acct = create_account(body.email, body.password,
-                              display_name=(body.display_name or None),
-                              quote_id=(body.quote_id or None))
+        acct = await create_account_async(
+            body.email, body.password,
+            display_name=(body.display_name or None),
+            quote_id=(body.quote_id or None))
         token = issue_session(acct["id"])
     except (InvalidEmail, WeakPassword) as exc:
         # These messages are about what the visitor typed and are safe to repeat --
@@ -156,7 +163,7 @@ async def login(body: LoginBody, request: Request, response: Response) -> dict:
     _require_enabled()
     try:
         init_db()
-        acct = verify(body.email, body.password, ip=_client_ip(request))
+        acct = await verify_async(body.email, body.password, ip=_client_ip(request))
     except Throttled as exc:
         # 429 with Retry-After, because a lockout nobody can see reads as a broken login.
         raise HTTPException(429, str(exc),
@@ -213,7 +220,7 @@ async def password(body: PasswordBody, request: Request, response: Response) -> 
         # Returns False for a wrong current password -- it does not raise for that, and
         # treating a False as success would be a password change that silently did not
         # happen. Throttled DOES raise, and shares the login counter on purpose.
-        if not change_password(sess["account_id"], body.old, body.new):
+        if not await change_password_async(sess["account_id"], body.old, body.new):
             raise HTTPException(403, "the current password is not correct")
     except Throttled as exc:
         raise HTTPException(429, str(exc),
@@ -274,7 +281,8 @@ def build_router(accounts, *, secure_cookies: bool = False,
     behind anything, so its operator states the answer (`DJ_SECURE_COOKIES`) rather than
     having it inferred from a header an attacker can set.
     """
-    api = APIRouter(tags=[f"accounts:{app_name}" if app_name else "accounts"])
+    api = APIRouter(tags=[f"accounts:{app_name}" if app_name else "accounts"],
+                   dependencies=[Depends(_no_store)])
     cookie_name = accounts.cookie_name()
 
     def _issue(response: Response, token: str) -> None:
@@ -305,8 +313,9 @@ def build_router(accounts, *, secure_cookies: bool = False,
         try:
             with accounts.bind():
                 init_db()
-                acct = create_account(body.email, body.password,
-                                      display_name=(body.display_name or None))
+                acct = await create_account_async(
+                    body.email, body.password,
+                    display_name=(body.display_name or None))
                 token = issue_session(acct["id"])
         except (InvalidEmail, WeakPassword) as exc:
             raise HTTPException(400, str(exc)) from None
@@ -324,7 +333,8 @@ def build_router(accounts, *, secure_cookies: bool = False,
         try:
             with accounts.bind():
                 init_db()
-                acct = verify(body.email, body.password, ip=_client_ip(request))
+                acct = await verify_async(body.email, body.password,
+                                          ip=_client_ip(request))
                 if not acct:
                     # Same answer for a wrong password and an unknown address.
                     raise HTTPException(401,
@@ -406,6 +416,6 @@ def status() -> dict:
     return {
         "id": "accounts", "label": "SyMoNeuRaL Account", "slot": "1U",
         "state": state, "bus": "cpu", "href": "/account.html",
-        "spec": "scrypt N=2^16 \u00b7 server-side sessions",
+        "spec": "scrypt N=2^17 \u00b7 server-side sessions",
         "detail": detail,
     }

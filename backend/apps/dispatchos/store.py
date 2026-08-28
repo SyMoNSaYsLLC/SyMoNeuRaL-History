@@ -47,7 +47,8 @@ import sqlite3
 import time
 from typing import Any, Iterable
 
-from apps.accounts import check_password, hash_password
+from apps.accounts import (WeakPassword, check_password_or_dummy, hash_password,
+                           validate_password)
 
 #: The lifecycle, in order, taken from the six panels of the customer preview's "booking
 #: loop" section: Request, Quote, Confirm, Dispatch, Reminder, Review. `cancelled` is a
@@ -86,6 +87,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at REAL NOT NULL,
     expires_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS login_attempts (
+    scope        TEXT NOT NULL,          -- 'account' | 'ip'
+    key          TEXT NOT NULL,
+    fails        INTEGER NOT NULL DEFAULT 0,
+    last_fail    REAL NOT NULL DEFAULT 0,
+    locked_until REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (scope, key)
 );
 CREATE TABLE IF NOT EXISTS bookings (
     id          INTEGER PRIMARY KEY,
@@ -145,10 +154,27 @@ CREATE INDEX IF NOT EXISTS ix_messages_booking ON messages(booking_id, at);
 """
 
 SESSION_TTL_S = 12 * 3600
+ACCOUNT_FREE_FAILS = 3
+ACCOUNT_BASE_LOCK_S = 5.0
+ACCOUNT_MAX_LOCK_S = 900.0
+IP_FREE_FAILS = 20
+IP_BASE_LOCK_S = 5.0
+IP_MAX_LOCK_S = 900.0
+ATTEMPT_DECAY_S = 3600.0
 
 
 class DispatchError(Exception):
     """Anything a caller did wrong. Carries a message safe to show a signed-in user."""
+
+
+class DispatchThrottled(DispatchError):
+    """Too many failed logins. ``retry_after`` is rounded up seconds."""
+
+    def __init__(self, scope: str, retry_after: float):
+        self.scope = scope
+        self.retry_after = max(1, int(retry_after + 0.999))
+        super().__init__(f"too many failed attempts ({scope}); retry in "
+                         f"{self.retry_after}s")
 
 
 def db_path() -> pathlib.Path:
@@ -201,14 +227,20 @@ def _row_user(r: sqlite3.Row) -> dict:
     return {"id": r["id"], "username": r["username"], "role": r["role"], "label": r["label"]}
 
 
+def _validated_password(password: str, username: str) -> str:
+    try:
+        return validate_password(password, email=username)
+    except WeakPassword as exc:
+        raise DispatchError(str(exc)) from None
+
+
 def create_user(username: str, password: str, role: str, label: str = "") -> dict:
     username = (username or "").strip()
     if not username:
         raise DispatchError("a username is required")
     if role not in ROLES:
         raise DispatchError(f"role must be one of {', '.join(ROLES)}")
-    if len(password or "") < 10:
-        raise DispatchError("password must be at least 10 characters")
+    password = _validated_password(password, username)
     with _conn() as c:
         try:
             cur = c.execute(
@@ -221,13 +253,15 @@ def create_user(username: str, password: str, role: str, label: str = "") -> dic
 
 
 def set_password(username: str, password: str) -> None:
-    if len(password or "") < 10:
-        raise DispatchError("password must be at least 10 characters")
+    password = _validated_password(password, username)
+    replacement = hash_password(password)
     with _conn() as c:
-        n = c.execute("UPDATE users SET pw_hash=? WHERE username=?",
-                      (hash_password(password), username)).rowcount
-    if not n:
-        raise DispatchError("no such user")
+        row = c.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+        if not row:
+            raise DispatchError("no such user")
+        c.execute("UPDATE users SET pw_hash=? WHERE id=?", (replacement, row["id"]))
+        # A reset is also an incident-response action: every existing cookie must stop.
+        c.execute("DELETE FROM sessions WHERE user_id=?", (row["id"],))
 
 
 def list_users() -> list[dict]:
@@ -236,26 +270,84 @@ def list_users() -> list[dict]:
                 c.execute("SELECT * FROM users ORDER BY role, username")]
 
 
-def login(username: str, password: str) -> str | None:
+def _attempt(c: sqlite3.Connection, scope: str, key: str) -> sqlite3.Row | None:
+    return c.execute("SELECT * FROM login_attempts WHERE scope=? AND key=?",
+                     (scope, key)).fetchone()
+
+
+def _throttle_check(c: sqlite3.Connection, scope: str, key: str, now: float) -> None:
+    row = _attempt(c, scope, key)
+    if row is not None and row["locked_until"] > now:
+        raise DispatchThrottled(scope, row["locked_until"] - now)
+
+
+def _throttle_fail(c: sqlite3.Connection, scope: str, key: str, now: float,
+                   free: int, base: float, cap: float) -> None:
+    row = _attempt(c, scope, key)
+    fails = int(row["fails"]) if row is not None else 0
+    last = float(row["last_fail"]) if row is not None else 0.0
+    locked = float(row["locked_until"]) if row is not None else 0.0
+    if locked <= now and (now - last) > ATTEMPT_DECAY_S:
+        fails = 0
+    fails += 1
+    if fails > free:
+        locked = now + min(base * (2.0 ** (fails - free - 1)), cap)
+    c.execute(
+        "INSERT INTO login_attempts(scope,key,fails,last_fail,locked_until) VALUES(?,?,?,?,?) "
+        "ON CONFLICT(scope,key) DO UPDATE SET fails=excluded.fails, "
+        "last_fail=excluded.last_fail, locked_until=excluded.locked_until",
+        (scope, key, fails, now, locked))
+
+
+def _throttle_clear(c: sqlite3.Connection, scope: str, key: str) -> None:
+    c.execute("DELETE FROM login_attempts WHERE scope=? AND key=?", (scope, key))
+
+
+def login(username: str, password: str, *, ip: str = "", now: float | None = None
+          ) -> str | None:
     """Verify and issue a session token, or return None.
 
     One answer for a wrong password and for an unknown user, and the scrypt call runs in
     both cases -- `apps/accounts` documents why at length and the reasoning is identical:
     returning early on an unknown name turns response time into a user-enumeration oracle.
     """
+    username = (username or "").strip()
+    account_key = username.casefold()
+    ip = (ip or "").strip()
+    now = time.time() if now is None else now
     with _conn() as c:
-        r = c.execute("SELECT * FROM users WHERE username=?", ((username or "").strip(),)).fetchone()
-        stored = r["pw_hash"] if r else (
-            # A real hash of a value nobody holds, so the failing path pays the same cost.
-            hash_password(secrets.token_urlsafe(32)))
-        ok = check_password(stored, password or "")
-        if not (r and ok):
+        if account_key:
+            _throttle_check(c, "account", account_key, now)
+        if ip:
+            _throttle_check(c, "ip", ip, now)
+        r = c.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+        stored = r["pw_hash"] if r else None
+
+    # The current precomputed dummy costs the same as a real current hash.  Never generate
+    # a new one here: doing so adds a second attacker-controlled scrypt for unknown users.
+    ok = check_password_or_dummy(stored, password or "")
+    with _conn() as c:
+        current = c.execute("SELECT id, pw_hash FROM users WHERE username=?",
+                            (username,)).fetchone()
+        # Re-read before issuing. If an operator changed the password while scrypt was
+        # running, the old hash must not mint one final session after that reset.
+        unchanged = bool(r and current and current["id"] == r["id"] and
+                         current["pw_hash"] == stored)
+        if not (unchanged and ok):
+            if account_key:
+                _throttle_fail(c, "account", account_key, now,
+                               ACCOUNT_FREE_FAILS, ACCOUNT_BASE_LOCK_S, ACCOUNT_MAX_LOCK_S)
+            if ip:
+                _throttle_fail(c, "ip", ip, now,
+                               IP_FREE_FAILS, IP_BASE_LOCK_S, IP_MAX_LOCK_S)
             return None
+        _throttle_clear(c, "account", account_key)
+        if ip:
+            _throttle_clear(c, "ip", ip)
         token = secrets.token_urlsafe(32)
-        now = time.time()
         c.execute("INSERT INTO sessions(token_hash, user_id, created_at, expires_at) "
                   "VALUES(?,?,?,?)",
-                  (_token_hash(token), r["id"], now, now + SESSION_TTL_S))
+                  (_token_hash(token), current["id"], now, now + SESSION_TTL_S))
         return token
 
 

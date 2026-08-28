@@ -16,8 +16,8 @@ The cases that matter most are the ones where a bug looks like success:
     serious open finding in `.claude/HANDOVER.md` §5 item 1
 
 Time is injected via the `now=` argument rather than slept, so the expiry and backoff tests
-are exact and take no wall-clock. Real scrypt parameters are used throughout: ~123 ms per
-hash on this box, so the suite is seconds rather than milliseconds, and that is the point --
+are exact and take no wall-clock. Real scrypt parameters are used throughout, so the suite
+is seconds rather than milliseconds, and that is the point --
 testing a cheap parameter set proves nothing about the one that ships.
 """
 from __future__ import annotations
@@ -160,6 +160,22 @@ class TestPasswords(Base):
         self.assertFalse(accounts.needs_rehash(h))
         self.assertTrue(accounts.needs_rehash("scrypt$n=16384,r=8,p=1$AAAA$BBBB"))
         self.assertTrue(accounts.needs_rehash("not-a-hash"))
+
+    def test_a_legacy_hash_upgrades_after_a_successful_login(self):
+        made = accounts.create_account(EMAIL, PASSWORD)
+        salt = b"legacy-salt-1234"
+        dk = accounts._derive(PASSWORD, salt, 65536, 8, 1)
+        legacy = f"scrypt$n=65536,r=8,p=1${accounts._b64e(salt)}${accounts._b64e(dk)}"
+        with sqlite3.connect(os.environ["SYMONEURAL_ACCOUNTS_DB"]) as c:
+            c.execute("UPDATE accounts SET pw_hash=? WHERE id=?", (legacy, made["id"]))
+        self.assertTrue(accounts.needs_rehash(self.stored_hash()))
+        self.assertIsNotNone(accounts.verify(EMAIL, PASSWORD))
+        upgraded = self.stored_hash()
+        self.assertFalse(accounts.needs_rehash(upgraded))
+        self.assertTrue(upgraded.startswith("scrypt$n=131072,r=8,p=1$"))
+
+    def test_the_unknown_account_dummy_uses_the_current_cost(self):
+        self.assertFalse(accounts.needs_rehash(accounts._DUMMY_HASH))
 
     def test_a_corrupt_hash_rejects_rather_than_raising(self):
         for bad in ("", "x", "scrypt$", "argon2$n=1$a$b", "scrypt$n=z,r=8,p=1$a$b"):
@@ -509,7 +525,7 @@ class TestSelftest(Base):
         self.assertTrue(r["ok"], r)
         self.assertIsNone(r["error"])
         self.assertEqual(r["accounts"], 0)
-        self.assertEqual(r["scrypt"]["mem_mib"], 64)
+        self.assertEqual(r["scrypt"]["mem_mib"], 128)
         self.assertGreater(r["hash_ms"], 0)
 
     def test_selftest_reports_the_fail_closed_path_rather_than_raising(self):

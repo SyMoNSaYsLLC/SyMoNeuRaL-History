@@ -1,12 +1,11 @@
 # Accounts and user setup — spec
 
-**Status: proposed.** `docs/specs/README.md` applies — this is an argument to evaluate, not
-a decision taken. The **backend module is built and tested**
-(`backend/apps/accounts/__init__.py`, 46 tests passing); the **routes and the page are
-not**, and nothing in this document is live. `site/account.html` still says "Not open yet"
-and that remains true until someone wires the routes below.
+**Status: implemented in the repository, off by default.** The core, routes and account
+page exist. The core has 48 passing tests plus focused route/security contracts. Whether
+the public host has the required switches is a live reading and must be verified; this
+document does not claim deployment.
 
-Written 2026-08-17.
+Written 2026-08-17. Security decision updated 2026-08-26.
 
 ---
 
@@ -22,8 +21,8 @@ Written 2026-08-17.
 - It carries **no price, no plan, no tier and no amount**, anywhere. An account may hold an
   opaque `quote_id`; a test asserts the schema has no price-shaped column.
 - Storage is `run/accounts/accounts.db`. It cannot touch `run/gpu.lock.d`.
-- **Nothing here is reachable from the internet by existing.** Adding a route is a separate,
-  deliberate act, and §3 is what it takes.
+- The routes remain closed unless both configuration switches are present. §3 records the
+  boundary requirements and the host-side checks needed before enabling them.
 
 ---
 
@@ -31,7 +30,7 @@ Written 2026-08-17.
 
 ### 1.1 Password hashing — scrypt, and the parameters are measured
 
-    SCRYPT_N = 65536, r = 8, p = 1     ->  64 MiB, 123 ms   [MEASURED on this box]
+    SCRYPT_N = 131072, r = 8, p = 1    -> 128 MiB, 248 ms   [MEASURED candidate]
 
 Measured on the serving machine: Intel i9-10900KF @ 3.70 GHz, `hashlib.scrypt`, best of five.
 The full sweep, all **measured**, none projected:
@@ -40,8 +39,8 @@ The full sweep, all **measured**, none projected:
 |---|---|---|---|---|
 | 2^14 | 8 | 1 | 16.0 MiB | 26.1 ms |
 | 2^15 | 8 | 1 | 32.0 MiB | 60.7 ms |
-| **2^16** | **8** | **1** | **64.0 MiB** | **122.8 ms** |
-| 2^17 | 8 | 1 | 128.0 MiB | 248.3 ms |
+| 2^16 | 8 | 1 | 64.0 MiB | 122.8 ms |
+| **2^17** | **8** | **1** | **128.0 MiB** | **248.3 ms** |
 | 2^15 | 8 | 2 | 64.0 MiB | 113.7 ms |
 | 2^16 | 8 | 2 | 128.0 MiB | 231.0 ms |
 | 2^14 | 8 | 4 | 64.0 MiB | 103.4 ms |
@@ -51,16 +50,10 @@ logins". That recommendation is from 2016 and costs 26 ms / 16 MiB on this hardw
 order of magnitude cheaper than it was meant to be, because the hardware moved and the
 constant did not.
 
-**Why not OWASP's headline row.** Current OWASP guidance starts at N=2^17, r=8, p=1
-(128 MiB) with equivalent-work alternatives including N=2^16, r=8, p=2. Both measure at
-231–248 ms here. **The event loop is what rules them out.** `backend/api.py` is one uvicorn
-process that also serves the live status WebSocket the rack depends on; a synchronous
-231 ms hash inside a handler stalls that socket for every connected visitor. 2^16/8/1 halves
-that at the same 64 MiB working set as two of the "equivalent" rows.
-
-**This is a trade, and it is the one decision here most worth a second opinion.** 64 MiB is
-half the memory OWASP's floor asks for. If the owner would rather pay the latency, changing
-`SCRYPT_N` to `131072` is a one-line change and existing hashes keep verifying — see below.
+**Why the OWASP baseline now ships.** Current OWASP guidance starts at N=2^17, r=8, p=1
+(128 MiB). Every route sends the hash to a worker thread, so the status WebSocket is not
+blocked. A process-wide bounded semaphore permits no more than two hashes concurrently,
+bounding scrypt working memory to roughly 256 MiB even if the thread pool has a queue.
 
 **Requirement, not advice:** any call from an async route **must** go through
 `asyncio.to_thread`. `create_account_async()`, `verify_async()` and
@@ -68,7 +61,7 @@ half the memory OWASP's floor asks for. If the owner would rather pay the latenc
 
 **Parameters live inside the hash string:**
 
-    scrypt$n=65536,r=8,p=1$<b64url salt>$<b64url dk>
+    scrypt$n=131072,r=8,p=1$<b64url salt>$<b64url dk>
 
 so raising the cost later is a per-user upgrade on next login (`needs_rehash()` +
 re-hash inside `verify()`) rather than a flag day that invalidates every password.
@@ -85,6 +78,10 @@ down to the salt field rather than the whole string. Comparison is
 `hmac.compare_digest` on the derived key. No function that feeds a response ever returns
 the hash: `account_public()` builds from an **allowlist** (`PUBLIC_FIELDS`), so a column
 added in six months is invisible until somebody adds it there deliberately.
+
+**Password length.** New and changed single-factor passwords require at least 15
+characters, matching NIST SP 800-63B-4. Existing shorter passwords are not invalidated;
+they continue to verify and can be changed normally.
 
 ### 1.2 Sessions — server-side rows, keyed verifier
 
@@ -144,7 +141,7 @@ the distinction is real rather than a technicality:
 | turning it off means | he can hammer his own hardware | anyone can guess anyone's password at line rate |
 
 A login endpoint with no failed-attempt cost is brute-forceable by definition: an unmetered
-attacker at ~8 attempts/second/core against a 12-character minimum is still slow, but the
+attacker at ~8 attempts/second/core against a 15-character minimum is still slow, but the
 first person to reuse a breached password loses their account and we will not know.
 
 Shape, all constants at the top of the module:
@@ -219,8 +216,9 @@ facts rather than engineering gaps.
    is the obvious next step if accounts ever gate anything valuable. It is not here because
    nothing has been decided about what accounts are *for*.
 
-5. **No cookie handling, no CSRF token, no CORS policy.** Those are route-layer decisions
-   and the routes are not built. §3 states the requirements; it does not implement them.
+5. **Cookie handling exists; CSRF tokens and a route-specific CORS policy do not.** Cookies
+   are HttpOnly, SameSite=Lax, Secure on HTTPS, and sensitive responses are `no-store`.
+   §3.2 records the remaining CSRF trade.
 
 6. **No admin UI.** `set_disabled()`, `revoke_all_sessions()` and `sessions_for()` exist as
    functions. There is no page and no route for them, and an admin route on a public origin
@@ -230,7 +228,7 @@ facts rather than engineering gaps.
 
 ---
 
-## 3. Proposed API routes
+## 3. Implemented API routes
 
 All under `/api/accounts/`. Nothing outside `/api`.
 
@@ -283,8 +281,9 @@ the *only* 429 the API emits, since the global limiter is off.
    accounts module, or the project has two versions of it to drift apart.
 
 4. **Use the `_async` wrappers.** `await accounts.verify_async(...)`, not
-   `accounts.verify(...)`. 123 ms of synchronous CPU in a handler is 123 ms the status
-   WebSocket is not being served.
+   `accounts.verify(...)`. Hundreds of milliseconds of synchronous CPU in a handler is
+   time the status WebSocket is not being served. Static regression tests assert this for
+   both account routers.
 
 ### 3.2 Cookie requirements
 
@@ -305,6 +304,10 @@ only on these routes, never `Form(...)`.** If the owner wants belt and braces re
 double-submit token is a small addition and should be decided before the routes ship, not
 after.
 
+Every account route also sets `Cache-Control: no-store` and `Pragma: no-cache`, including
+the bound application router, so authenticated account and session data is not reusable
+from a browser cache.
+
 ### 3.3 What must never appear in a response or a log
 
 - the hash, the salt, the session verifier, or any password. `account_public()` is the only
@@ -317,15 +320,11 @@ after.
 
 ## 4. Page changes — `site/account.html`
 
-**None of this should be built until §2's answers are agreed**, because the page has to be
-honest about them and today's copy is honest about there being nothing.
-
 The page is not generated — it is hand-maintained HTML with the site's normal
-header/footer, and it does not currently carry any JS beyond `/ui.js`. Changes needed:
+header/footer and inline account controller. Implemented behavior:
 
-1. **Replace the "Not open yet" hero** with a signed-out state: a sign-in form and a
-   sign-up form, or one form with a toggle. Keep the eyebrow/`h1`/`lede` structure so it
-   matches every other page.
+1. **Signed-out state:** one form toggles between sign-in and signup while keeping the
+   normal eyebrow/`h1`/`lede` page structure.
 
 2. **Add a signed-in state** rendered from `GET /api/accounts/me`: the address, when the
    account was created, live sessions with a "sign out everywhere" button, and change
@@ -367,9 +366,9 @@ leak here damages them elsewhere, not just us), **live sessions**, **the email l
 
 | Threat | Control | Residual risk |
 |---|---|---|
-| Online password guessing | account-scoped exponential backoff (§1.3), address counter, 12-char minimum | 3 guesses/hour/account survive the decay window. Accepted; the alternative is locking people out permanently. |
+| Online password guessing | account-scoped exponential backoff (§1.3), address counter, 15-char minimum | 3 guesses/hour/account survive the decay window. Accepted; the alternative is locking people out permanently. |
 | Password spraying across many accounts | address-scoped counter | `X-Forwarded-For` is client-settable if anything ever reaches `:8800` without going through Caddy, so this is a speed bump. **The account-scoped backoff is the real control** and does not depend on the address being truthful. |
-| Offline cracking after a database leak | scrypt, 64 MiB per candidate, per-user 128-bit salt, no reversible storage | 64 MiB is half OWASP's floor (§1.1). A weak password still falls. |
+| Offline cracking after a database leak | scrypt, 128 MiB per candidate, per-user 128-bit salt, no reversible storage | A weak or reused password still falls; memory-hard hashing buys time, not immunity. |
 | Session theft via XSS | `HttpOnly` cookie; the module never puts a token in a response body | The site has inline JS on several pages; an XSS anywhere on the origin can still act *as* the user even without reading the cookie. Not solved here. |
 | Session theft from the database file | DB stores `hmac_sha256(secret, token)`, not the token | Anyone who can read the DB file can usually read the environment too, and that has the secret. This defends against a *copy* of the file, not against root. |
 | Forged session | 256-bit random token + keyed verifier + server-side row | none worth stating |
@@ -377,8 +376,8 @@ leak here damages them elsewhere, not just us), **live sessions**, **the email l
 | Account enumeration via login | unknown addresses pay a full scrypt against a dummy hash | timing is equalised; error strings must not differentiate, and that is on the route |
 | Account enumeration via signup | none — a duplicate returns 409 | **accepted and deliberate.** A signup form that will not say "that address is taken" is unusable. The email list is the asset at risk and it is low value. |
 | CSRF | `SameSite=Lax` + JSON-only mutating POSTs | see §3.2; a double-submit token is the upgrade if wanted |
-| Memory-exhaustion DoS via login | 64 MiB × concurrent attempts, on a box with 94 GB; per-address counter; `MAX_PASSWORD_CHARS` caps input | An attacker who can open many connections can still burn CPU and RAM. **This is the strongest argument for a `SYMONEURAL_RATE_ACCOUNTS` bucket** — the mechanism already exists and is switched off, and turning it on for *this* surface only is the owner's call. |
-| Memory-exhaustion DoS via **signup** | `MAX_PASSWORD_CHARS`; nothing else | **Unthrottled, and cheaper than the login lever.** Every `create_account()` call is a 123 ms / 64 MiB scrypt, and the address counter only increments on failed *logins*, so a signup flood pays no attempt cost at all. It also fills the accounts table. This is the concrete reason §6 item 4 matters and the reason §6 item 6 (invite-only) removes the problem outright rather than mitigating it. |
+| Memory-exhaustion DoS via login | 128 MiB per attempt; process-wide cap of two concurrent scrypt calls; per-address counter; `MAX_PASSWORD_CHARS` caps input | Memory is bounded, but an attacker can still queue work and burn CPU. A route-level request bucket remains an operator decision. |
+| Memory/CPU DoS via **signup** | `MAX_PASSWORD_CHARS`; process-wide two-hash cap | **Still unthrottled.** A signup flood can queue hashes and fill the accounts table even though memory is bounded. This is the concrete reason §6 item 4 matters and invite-only signup removes the problem rather than mitigating it. |
 | A wedged lockout as self-DoS | the lockout lifts; tested with an injected clock | none |
 | Privilege escalation via a leaked hash in a response | `PUBLIC_FIELDS` allowlist, tested against a column added after the fact | none |
 | SQL injection | parameterised queries throughout; no string-built SQL | none |
@@ -404,9 +403,9 @@ Numbered so they can be answered individually.
    reaches git. **But if accounts ever hold anything you care about, this needs a backup or
    a different home.** Today the file does not exist and losing it costs nothing.
 
-2. **scrypt at 64 MiB / 123 ms, or 128 MiB / 231 ms?** §1.1 has the measurements. 123 ms was
-   chosen to protect the status WebSocket. Raising it is one constant and old hashes keep
-   working.
+2. **Re-measure scrypt after deployment.** The repository now uses N=2^17, r=8, p=1 with
+   two concurrent hashes maximum. The historical 248 ms reading is from the named host;
+   verify latency and memory on the actual serving runtime before increasing the cap.
 
 3. **Keep the account throttle?** §1.3. It is not the limiter you removed and the table
    there says why, but it is your call and disabling it is one edit.
@@ -417,8 +416,8 @@ Numbered so they can be answered individually.
    attempts against *many* accounts from one address:
 
    - **login**, where the account throttle is the primary control and a bucket is depth;
-   - **signup**, where there is currently no attempt cost of any kind and every call is a
-     123 ms / 64 MiB hash (see the threat table).
+   - **signup**, where there is currently no failed-attempt counter and every call queues a
+     128 MiB hash (see the threat table).
 
    Recommend a loose one (e.g. `30/300`) if you want any global limit anywhere; recommend
    nothing if you would rather keep the API uniformly unmetered — in which case take
@@ -456,7 +455,8 @@ export SYMONEURAL_SESSION_SECRET='<the value above>'
 python3 backend/apps/accounts/__init__.py         # selftest as JSON
                                                   # (the file, not the directory --
                                                   #  a package has no __main__.py)
-python3 backend/apps/accounts/test_accounts.py    # 46 tests, ~16s (real scrypt)
+python3 backend/apps/accounts/test_accounts.py    # 48 tests, ~45s here (real scrypt)
+python3 backend/apps/test_account_security.py     # focused policy/route contracts
 ```
 
 `selftest()` reports `ok:false` with a clear error when the secret is missing. **That is
