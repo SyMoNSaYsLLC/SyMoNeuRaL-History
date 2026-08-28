@@ -17,9 +17,26 @@ import type { NextConfig } from "next";
  * well as the passthrough -- because rule 1 is the kind of thing a later feature adds without
  * noticing what it took away.
  *
- * The upstream is an environment variable rather than a literal because the port is a
- * deployment fact, not a source fact. The default is the port `ops/Caddyfile` and
- * `symoneural-api.service` already use, so an unset variable behaves like this box.
+ * ## SYMONEURAL_API_UPSTREAM IS READ AT BUILD TIME, NOT AT RUN TIME
+ *
+ * Measured, because an earlier version of this comment claimed otherwise and was wrong.
+ * `next build` evaluates `rewrites()` and writes the resolved destination into
+ * `.next/routes-manifest.json`; `next start` serves that manifest and does NOT re-resolve the
+ * variable. Setting it before `next start` has no effect at all.
+ *
+ * The cost of believing otherwise is not theoretical: the first draft of the slice test set
+ * this variable when starting the server and pointed its assertions through the proxy, so
+ * every /api call went to the DEFAULT destination -- the LIVE API on :8800 -- and the suite
+ * authenticated fixture credentials against production. The test now exercises the API on the
+ * fixture's own origin and never sends a credential through this rewrite.
+ *
+ * So: this rewrite is a DEVELOPMENT convenience. In production `ops/Caddyfile` is the front
+ * door and routes /api/* to the gateway on :8000, which forwards to FastAPI on :8800; Next
+ * never sees an /api request there. Relying on this rewrite in production would pin the API
+ * host to whatever machine happened to run `next build`.
+ *
+ * The default is the port `ops/Caddyfile` and `symoneural-api.service` already use, so an
+ * unset variable behaves like this box.
  */
 const API_UPSTREAM = process.env.SYMONEURAL_API_UPSTREAM ?? "http://127.0.0.1:8800";
 
