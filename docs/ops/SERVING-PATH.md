@@ -186,3 +186,108 @@ moved, modified or deleted.
   authenticated 200 is Garrett's own login to prove, because this repo holds bcrypt hashes.
 - **`/yocto` build workspace continues to run** (BitBake, the 8-cell matrix). Untouched by
   this migration and explicitly allowed.
+
+---
+
+## REBOOT OBSERVATION — 2026-08-28 17:19:34 (provisional; #108 remains open)
+
+A host reboot happened and the canonical runtime came back without help. That is the thing
+`#108` has been waiting for, and it is recorded here **provisionally**: the reboot proved the
+boundary, and then showed that the engine which actually served is not the engine this
+document, the installer and the verifier all name. `#108` stays open for that reason. This
+section deliberately does not carry the closing-check phrase, so no check flips on it.
+
+**The reboot was independent.** Boot at `2026-08-28 17:19:34 EDT`, boot id
+`2bc801b6-9d2b-498b-be68-f006317aecaf`. It occurred between two read-only measurements of the
+`/yocto` Phase 2 audit and was **neither initiated nor caused by that audit**. No service was
+manually restarted during this evidence-collection task; the recorded activations are boot
+activations. There is no evidence that `symoneural-deploy.service` was restarted or modified,
+and none is claimed: it activated at boot like the other three.
+
+### What the boot proved
+
+**The runtime boundary survived with zero live `/yocto` dependency.** Measured per process
+across cwd, exe, argv, environ, memory maps and open file descriptors:
+
+| process | pid | `/yocto` references |
+|---|---|---|
+| `symoneural-api` | 1840 | 0 |
+| `symoneural-gateway` | 1865 | 0 |
+| `symoneural-web` | 1791 | 0 (read via sudo; it runs as `caddy`) |
+| inference engine | 54394 | 0 |
+
+`ops/verify-runtime.sh` exits **0 — `RUNTIME BOUNDARY CLEAN`**. All four units report
+`active`, `enabled`, `Result=success`. Current-boot journals hold **277 lines across the four
+units and not one mentions `/yocto`**. No mount over the canonical tree; no symlink under it
+pointing into `/yocto`.
+
+**The boot deploy published from the canonical tree, not `/yocto`.** Of 96 webroot files, 95
+are byte-identical to `site/`; the 96th is `index.prev-20260828-171944.html`, deploy's own
+backup. The decisive part is the disagreement set: in **all 28 files where `site/` and
+`/yocto/Symoneural/site/` differ, the webroot matches the canonical copy**.
+
+**Health.** Local `:8800/api/status` 200, gateway `:8000/healthz` 200. Public
+`/api/status` 200, `/overview` 200, `/` 302 → `/overview`, and both `/demo/dispatchos` and
+`/share-dispatchos.html` **401 unauthenticated** — edge auth intact, no credential sent.
+`symoneural-web` (pid 1791) owns `:80` and `:443`; the vendor `caddy` unit is disabled.
+
+**A real GPU generation.** `POST /api/chat` started the engine on demand and returned
+`tokens 55, seconds 0.59, tok_per_s 93.4, model symon-1.0-7b-q4_k_m, adapter true`. VRAM
+climbed 222 → 4392 → 8316 → **8330 MiB**, GPU 96%, 108.72 W, `-ngl 99` (every layer offloaded).
+CUDA mapped: `libcuda.so.610.57.04`, `libcudart.so.13.3.29`, `libcublas.so.13.6.0.2`,
+`libcublasLt.so.13.6.0.2` — the audited driver and toolkit. The GGUF is mapped from the
+canonical path. 93.4 tok/s is GPU throughput; **there is no CPU fallback here.**
+
+**Tests.** `test_dispatchos.py`, `test_runtime_boundary.py`, `test_maintenance_banner.py`,
+`test_build_progress.py` — **92 passed**, each against a throwaway store.
+
+### Qualifications — why this is provisional
+
+**1. The live engine is not the documented engine.** Same size, different builds:
+
+    documented / installed / verified
+      engines/symoneural-llm/build/bin/symoneural-llm
+      sha256 0c4f804a5b18f754376acef6d73595eb191dafd6855cd81831844c941e3fe4c1
+      RUNPATH /home/google/Symoneural/engines/symoneural-llm/build/bin:
+      BuildID 5afe9f09b33992611830ed59d6fccdafd9844ba5
+
+    what actually served this boot
+      engines/symoneural-llm/staged-20260826-153043/bin/symoneural-llm
+      sha256 619b918f3f0ac3629c1270320460893627fb8c78d0d4cb22f08e827380d0f35a
+      RUNPATH $ORIGIN
+      BuildID 22570837ba0a18e8a7e0dcca832f40401da5c805
+
+Both are 17,952-byte launchers that link `libsymoneural_llm_server_impl.so`, and each `bin/`
+holds 23 `.so` files beside it — the engine is a whole runtime directory, not one file. The
+`$ORIGIN` RUNPATH is what makes the staged set relocatable; the `build/bin` copy hardcodes its
+own absolute path. `ops/install-runtime.sh:78`, `ops/verify-runtime.sh:110` and
+`ops/verify-runtime.sh:152` all name `build/bin`.
+
+**A demonstrated consequence, not a theoretical one:** with the engine resident at pid 54394,
+`verify-runtime.sh` still printed *"engine not resident … skipped"*, because line 110 greps for
+the `build/bin` path. The verifier's engine checks never ran against the engine that served.
+
+**2. The selection depends on uncommitted behaviour.** `/etc/symoneural/api.env` sets
+`SYMONEURAL_LLM_ENGINE`, and the `_engine_path()` override that reads it exists **only in the
+dirty working tree** — 59 uncommitted lines in `backend/api.py`. From a clean checkout of
+`HEAD` the variable is ignored and the API resolves the *other* binary. The running production
+service therefore depends on code that is not in git.
+
+**3. `web/` is untracked and unpackaged.** `git ls-files web/` returns **0 files**. The live
+`:443` binary `web/symoneural-web/build/symoneural-web`
+(`b0d3234f9543bce2f83f01e1e010031b4b3928e859bd616d2ce7ae7d15d6eb06`, 76,206,670 bytes) is
+explicitly ignored by `.gitignore:243`, and neither `scripts/build-deb.sh`,
+`ops/install-runtime.sh` nor `ops/manifests/` references it. There is no source-to-live chain
+in the repository for the process that currently serves the public site.
+
+**4. The authenticated DispatchOS `model: true` response was not freshly proved.** That field
+belongs to `POST /api/dispatchos/ask`, which requires a credential this repo does not hold and
+which DispatchOS's freeze forbids probing. The model path was proved this boot through
+`/api/chat` instead. The `model: true` record elsewhere remains its original 2026-08-26
+measurement and has not been re-dated.
+
+**5. There was no saved pre-reboot webroot hash.** The matching aggregate
+`636646ee9c8d5ec7503b26e4b53c25c3dd7caeb82521dcf96550cc63640e646a` is a **within-boot
+pre/post-model comparison** proving that running the model did not alter the published site.
+It is not a pre-reboot versus post-reboot comparison, because no earlier baseline existed to
+compare against.

@@ -1308,3 +1308,46 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: when it is. The `ngrep` is on the REPO's unit template, not the installed copy:
         note: an agent cannot verify a check against a root-owned file it may not read, and
         note: install-service.sh substitutes the root in at install time anyway.
+        note: 2026-08-28 coder — THE REBOOT HAPPENED, AND THIS TASK STAYS OPEN ANYWAY.
+        note: A host reboot occurred independently at 17:19:34 (boot id 2bc801b6-9d2b-498b-
+        note: be68-f006317aecaf), between two read-only measurements of the /yocto Phase 2
+        note: audit. It was neither initiated nor caused by that audit. No service was
+        note: manually restarted during this evidence-collection task; the recorded
+        note: activations are boot activations. There is no evidence symoneural-deploy.service
+        note: was restarted or modified, so none is claimed.
+        note: The boundary held: all four units active/enabled/Result=success, zero /yocto in
+        note: cwd/exe/argv/environ/maps/fds for api 1840, gateway 1865, web 1791 and engine
+        note: 54394, 277 journal lines with no /yocto mention, verify-runtime.sh exit 0, and
+        note: the boot deploy published from the canonical tree — in all 28 files where site/
+        note: and /yocto/Symoneural/site/ differ, the webroot matches canonical. A real GPU
+        note: generation ran at 93.4 tok/s with 8330 MiB VRAM and no CPU fallback. 92 tests
+        note: passed. The observation is recorded in docs/ops/SERVING-PATH.md under a
+        note: PROVISIONAL heading that deliberately does not carry this task's closing phrase.
+        note: WHY IT IS NOT DONE: the engine that served is not the engine this project
+        note: documents. It ran from engines/symoneural-llm/staged-20260826-153043/bin/
+        note: symoneural-llm (sha256 619b918f3f0ac3629c1270320460893627fb8c78d0d4cb22f08e827
+        note: 380d0f35a, RUNPATH $ORIGIN) while install-runtime.sh:78, verify-runtime.sh:110
+        note: and verify-runtime.sh:152 all name build/bin/symoneural-llm (sha256
+        note: 0c4f804a5b18f754376acef6d73595eb191dafd6855cd81831844c941e3fe4c1, RUNPATH the
+        note: absolute build/bin path). Demonstrated, not theorised: with the engine resident
+        note: at pid 54394 the verifier still printed "engine not resident -- skipped",
+        note: because line 110 greps the build/bin path. Its engine checks never ran.
+        note: The selection also depends on uncommitted behaviour: /etc/symoneural/api.env
+        note: sets SYMONEURAL_LLM_ENGINE, and the _engine_path() override that reads it lives
+        note: only in the dirty working tree (59 uncommitted lines in backend/api.py). From a
+        note: clean HEAD the variable is ignored and the other binary is resolved.
+        note: Separately, web/ is untracked (git ls-files web/ = 0 files) and its live :443
+        note: binary is gitignored at .gitignore:243 and named by no packaging manifest, so
+        note: the process serving the public site has no source-to-live chain in this repo.
+        note: THIS TASK REMAINS OPEN UNTIL, all five:
+        note:   1. one canonical engine binary and path are selected from evidence;
+        note:   2. that runtime selection is present in TRACKED source, not a dirty file;
+        note:   3. installer, verifier, manifest, documentation, environment configuration
+        note:      and the live executable all agree on that one identity;
+        note:   4. the symoneural-web runtime has a reproducible tracked or packaged
+        note:      source-to-live chain;
+        note:   5. a final deliberate reboot is performed from that reconciled state.
+        note: No check was added, removed or marked complete for this observation. The task
+        note: still measures 14/15 and the archiver leaves it open, which is correct: a
+        note: reboot that only works because of an uncommitted file has not proved the thing
+        note: this task exists to prove.
