@@ -55,19 +55,59 @@ for m in fastapi uvicorn pydantic sympy; do
 done
 
 say "Engines"
-for e in engines/symoneural-llm/build/bin/symoneural-llm \
-         engines/symoneural-llm/build/bin/symoneural-llm-cli \
-         engines/symoneural-diffuse/build/bin/symoneural-diffuse; do
-  if [ -x "$e" ]; then
-    if ldd "$e" 2>/dev/null | grep -q 'not found'; then
-      bad "$e is present but has unresolved libraries: $(ldd "$e" | grep 'not found' | head -1 | xargs)"
-    else
-      pass "$e"
-    fi
-  else
-    bad "$e not built — run tools/fork_engines.sh"
+# An engine that is present, executable and fully linked can still be the WRONG engine. That
+# is not hypothetical here: the 2026-08-26 promotion left the superseded build sitting beside
+# the promoted one, both executable, both resolving every library. So where a manifest exists
+# the check is against the manifest, and this reports identity rather than existence.
+#
+# It also no longer says "run tools/fork_engines.sh" for the LLM engine. That instruction was
+# wrong: `ops/manifests/llm-engine.json` records the promoted artifact as NOT reproducible
+# from source -- no commit identity, no build record -- so rebuilding it does not produce it.
+# The right answer is to restore the verified copy, and the manifest carries that command.
+. "$ROOT/ops/manifests/artifact.sh"
+
+engine_links_ok() {   # engine_links_ok <path> <label>
+  if ldd "$1" 2>/dev/null | grep -q 'not found'; then
+    bad "$2 has unresolved libraries: $(ldd "$1" | grep 'not found' | head -1 | xargs)"
+    return 1
   fi
-done
+  return 0
+}
+
+if artifact_load llm-engine.json; then
+  out="$(artifact_verify)"; st=$?
+  case "$st" in
+    # Each binary's own link check gates its own ok line. Crossing them -- reporting the CLI
+    # as ok because the SERVER linked -- would print a contradiction on the one machine that
+    # needs the answer: a box where something is actually wrong.
+    0) engine_links_ok "$ART_SERVER_ABS" "the inference engine" && \
+         pass "$ART_SERVER_REL (matches llm-engine.json)"
+       engine_links_ok "$ART_CLI_ABS" "the inference engine CLI" && \
+         pass "$ART_CLI_REL (matches llm-engine.json)" ;;
+    2) bad "$ART_REL not present — restore the verified copy: $ART_RESTORE" ;;
+    *) bad "$ART_REL is present but is NOT the verified engine:"
+       printf '        %s\n' "$out"
+       printf '        restore the verified copy: %s\n' "$ART_RESTORE" ;;
+  esac
+else
+  # A missing or malformed manifest is a tooling problem, not a statement about this machine's
+  # ability to serve, so it is a note. The path check below still happens.
+  note "ops/manifests/llm-engine.json unreadable — falling back to a presence check"
+  for e in engines/symoneural-llm/build/bin/symoneural-llm \
+           engines/symoneural-llm/build/bin/symoneural-llm-cli; do
+    [ -x "$e" ] && engine_links_ok "$e" "$e" && pass "$e (unverified: no manifest)" \
+                || bad "$e not present"
+  done
+fi
+
+# The diffuse engine has no manifest yet. Saying so is the point: an unverified artifact that
+# reports the same "ok" as a verified one teaches you to read the two as equivalent.
+DIFFUSE=engines/symoneural-diffuse/build/bin/symoneural-diffuse
+if [ -x "$DIFFUSE" ]; then
+  engine_links_ok "$DIFFUSE" "$DIFFUSE" && note "$DIFFUSE present but UNVERIFIED — no manifest in ops/manifests/"
+else
+  bad "$DIFFUSE not built — run tools/fork_engines.sh"
+fi
 
 say "Weights"
 missing_w=0

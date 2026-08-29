@@ -19,8 +19,23 @@
 #   unit files          WorkingDirectory / Exec* / Environment / paths
 #   live processes      cwd, exe, argv, environ, open fds, mapped files
 #   ELF artifacts       interpreter, RPATH, RUNPATH, unresolved deps
+#   artifact identity   sha256 against ops/manifests/*.json
 #   python              sys.path of the serving interpreter
 #   boot behaviour      what an enabled unit would republish
+#
+# ## "runs what we think it runs" used to mean "a file exists at the path we expected"
+#
+# Those are different claims and this script only made the weaker one. It checked
+# `.../release/symon-gateway`, that file was present, and it passed -- while the unit had been
+# launching `symoneural-gateway` since the 2026-08-26 cutover. A pathname check cannot tell a
+# promoted artifact from the one it superseded when both are still on disk, which is the normal
+# state of affairs after a promotion.
+#
+# So identity now comes from `ops/manifests/*.json` via `ops/manifests/artifact.sh`. No hash is
+# written in this file: a second copy of a hash is a second thing to go stale, and staleness is
+# the failure being fixed. Where a manifest names a systemd unit, the unit's ExecStart is
+# checked against it too -- hash-consistency and being-the-deployed-artifact are separate
+# claims, and the gateway satisfied the first for three days while failing the second.
 #
 # `/home/google/yocto` was permanently deleted and must never be recreated; that is checked
 # too, because a path that no longer exists is exactly the kind of thing a script recreates
@@ -42,6 +57,53 @@ UNITS=(symoneural-api symoneural-gateway symoneural-deploy)
 
 # `sudo -n`: this script must be runnable unprivileged and say so rather than prompting.
 have_sudo() { sudo -n true 2>/dev/null; }
+
+# ---------------------------------------------------------------- artifact identity
+# Sourcing this defines functions and runs nothing. It is the only reader of the manifests;
+# see its header for why the alternative -- a hash pasted into each consumer -- is what put
+# `gateway-build.json` three days out of date without anything noticing.
+. "$ROOT/ops/manifests/artifact.sh"
+
+# `artifact.sh` anchors itself to ITS OWN location; everything else in this script is anchored
+# to the hardcoded $CANON. Those must be the same tree or this script proves nothing: run from
+# a second checkout it would hash that checkout's engine, compare it to that checkout's
+# manifests, pass -- and then read the CANONICAL units and pass those too. A clean verdict
+# about the wrong tree is a stronger version of the failure this file was just fixed for.
+[ "$ART_ROOT" = "$CANON" ] || fail "artifact.sh resolves to $ART_ROOT, not $CANON" \
+    "this run would check another checkout's artifacts against the canonical units"
+
+# check_artifact <manifest.json> <label>
+#
+# Leaves ART_* set for the caller, so the ELF checks below can use the manifested path rather
+# than a literal. Returns the verify status: 0 match, 1 present-but-wrong, 2 absent.
+check_artifact() {
+    local mf="$1" label="$2" out st exec_path
+    if ! artifact_load "$mf"; then
+        fail "$label: cannot read ops/manifests/$mf"
+        return 2
+    fi
+    out="$(artifact_verify)"; st=$?
+    case "$st" in
+        0) pass "$label matches $mf" ;;
+        2) fail "$label is ABSENT at the path its manifest names" "$out" ;;
+        *) fail "$label does NOT match $mf -- this is not the verified artifact" "$out" ;;
+    esac
+    # Matching the manifest is not the same as BEING what the unit launches. Both binaries
+    # were on disk and both hashed correctly; only one of them was running.
+    if [ -n "${ART_UNIT:-}" ]; then
+        exec_path="$(sudo -n systemctl show -p ExecStart "$ART_UNIT" --value 2>/dev/null \
+                     | tr ';' '\n' | sed -n 's/.*path=\([^ ]*\).*/\1/p' | head -1)"
+        if [ -z "$exec_path" ]; then
+            info "$label: cannot read $ART_UNIT ExecStart (need sudo); deployment check skipped"
+        elif [ "$exec_path" = "$ART_ABS" ]; then
+            pass "$label is what $ART_UNIT launches"
+        else
+            fail "$label is NOT the artifact $ART_UNIT launches" \
+                 "manifest names $ART_ABS, the unit launches $exec_path"
+        fi
+    fi
+    return "$st"
+}
 
 # ---------------------------------------------------------------- 0. the deleted directory
 head_ "the permanently deleted directory"
@@ -107,10 +169,37 @@ for u in symoneural-api symoneural-gateway; do
 done
 
 head_ "the inference engine, if resident"
-ENG_PID="$(pgrep -f "$CANON/engines/symoneural-llm/build/bin/symoneural-llm" 2>/dev/null | head -1)"
+#
+# `/proc/<pid>/exe` is the process's identity. `pgrep -f` is a substring match on a command
+# line, and during #108 it repeatedly reported the shell that was running the check as an
+# engine -- the pattern appears in the shell's own argv. The Phase 2 handshake ruled the
+# substitution out in those words: *"Do not substitute pgrep, pathname expectations,
+# verify-runtime.sh, environment configuration, or the hash of a file merely sitting at the
+# canonical path for /proc/<engine-child-pid>/exe evidence."* This is that ruling applied here.
+#
+# The engine has no `deployed_by_unit`, because api.py spawns it and systemd does not, so
+# there is no ExecStart to cross-check. This walk is the engine's equivalent of that check:
+# it asks what the running process IS, not what a path says it should be.
+if artifact_load llm-engine.json; then ENG_EXE="$ART_SERVER_ABS"; else ENG_EXE=""; fi
+ENG_PID=""
+if [ -n "$ENG_EXE" ]; then
+    for _p in /proc/[0-9]*; do
+        _exe="$(sudo -n readlink "$_p/exe" 2>/dev/null || readlink "$_p/exe" 2>/dev/null)"
+        # A replaced-on-disk binary keeps serving and `readlink` marks it. Strip the marker so
+        # such a process is still recognised as the engine -- and then reported, below, as the
+        # stale one it is, rather than silently not being found at all.
+        case "$_exe" in *" (deleted)") _exe="${_exe% (deleted)}"; _stale=1 ;; *) _stale=0 ;; esac
+        if [ "$_exe" = "$ENG_EXE" ]; then ENG_PID="${_p#/proc/}"; break; fi
+    done
+else
+    fail "cannot read ops/manifests/llm-engine.json, so the engine cannot be identified"
+fi
 if [ -z "$ENG_PID" ]; then
     info "engine not resident (it is started on demand and never at boot) -- skipped"
 else
+    info "engine identified by /proc/$ENG_PID/exe = $ENG_EXE"
+    [ "${_stale:-0}" -eq 1 ] && fail "the resident engine's binary was replaced on disk" \
+        "pid $ENG_PID is serving a deleted inode; it is not the artifact now at that path"
     fds="$(sudo -n ls -l /proc/$ENG_PID/fd 2>/dev/null | grep -c '/yocto')"
     maps="$(sudo -n grep -c '/yocto' /proc/$ENG_PID/maps 2>/dev/null)"
     if [ "${fds:-0}" -eq 0 ] && [ "${maps:-0}" -eq 0 ]; then
@@ -148,8 +237,18 @@ check_elf() {   # check_elf <path> <label>
     [ "${unres:-0}" -gt 0 ] && { fail "$label has $unres unresolved dependencies"; return; }
     pass "$label: interp=${interp:-none} rpath=${rpath:-none} runpath=${runpath:-none} unresolved=0 links=$links"
 }
-check_elf "$CANON/backend/apps/gateway/target/release/symon-gateway" "gateway"
-check_elf "$CANON/engines/symoneural-llm/build/bin/symoneural-llm"   "inference engine"
+# The paths come from the manifests, not from literals here. The literal this replaced was
+# `.../release/symon-gateway`, which stopped being the deployed binary on 2026-08-26 and went
+# on passing for three days because the superseded file was still sitting there.
+check_artifact gateway-build.json "the gateway binary"
+[ -f "${ART_ABS:-}" ] && check_elf "$ART_ABS" "gateway"
+
+check_artifact llm-engine.json "the inference engine tree"
+[ -f "${ART_SERVER_ABS:-}" ] && check_elf "$ART_SERVER_ABS" "inference engine"
+# The CLI is retained byte-for-byte and deliberately NOT promoted with the server; the skew is
+# recorded in the manifest. Checking it here is what makes "retained byte-for-byte" a claim
+# something enforces rather than a sentence in a document.
+[ -f "${ART_CLI_ABS:-}" ] && check_elf "$ART_CLI_ABS" "inference engine CLI"
 
 # ---------------------------------------------------------------- 4. python import path
 head_ "python import path of the serving interpreter"

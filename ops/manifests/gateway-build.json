@@ -1,14 +1,31 @@
 {
   "_comment": [
-    "Build record for the Debian-host gateway. Written by ops/build-gateway.sh.",
-    "The BINARY is not committed (.gitignore excludes backend/apps/gateway/target/);",
-    "this record is how a rebuilt binary is compared against the one that was verified.",
-    "Built natively for this host, NOT with the Yocto SDK -- that SDK targets aarch64-oe-linux",
-    "and cannot produce a binary that runs on Debian x86_64 at all."
+    "Build record for the Debian-host gateway.",
+    "",
+    "RETARGETED 2026-08-29. This manifest described `symon-gateway` at 41b9eda8... for three",
+    "days after the 2026-08-26 cutover promoted `symoneural-gateway` at 61f8df5b... and made it",
+    "the binary the unit launches. The old binary is still on disk, so the manifest verified",
+    "cleanly against it and nothing noticed -- a manifest can be internally consistent and still",
+    "describe an artifact that no longer serves. `regenerate.sh --check` now cross-checks the",
+    "recorded path against the unit's ExecStart for exactly that reason.",
+    "",
+    "KNOWN DEPENDENCY, NOT YET RESOLVED: `ops/build-gateway.sh` still sets",
+    "OUT=$SRC/target/release/symon-gateway and writes this file. A gateway build will therefore",
+    "re-stale this manifest. That script is outside the artifact-custody scope, and the",
+    "underlying cause -- a half-completed gateway rename, which also holds",
+    "apps/test_gateway_unit.py red -- needs its own authorization. Recorded here rather than",
+    "silently patched.",
+    "",
+    "Toolchain fields are carried forward from the 2026-08-26 migration record, which names the",
+    "same rustc/cargo for that day's builds. `built_on` is NOT carried forward: the previous",
+    "value belonged to the 09:28 build of the OLD binary, and this artifact's build time was",
+    "never recorded. `file_mtime` is an observation, not a build timestamp."
   ],
-  "relative_path": "backend/apps/gateway/target/release/symon-gateway",
-  "size_bytes": 27232992,
-  "sha256": "41b9eda87550c6b23b416e2b253f1a9339e52cd82b990d37adb73e8b8f46ad74",
+  "artifact_role": "platform-gateway",
+  "relative_path": "backend/apps/gateway/target/release/symoneural-gateway",
+  "size_bytes": 27231968,
+  "sha256": "61f8df5bc8ca4b4ba907834ff3a70b15e3addd87ae3c212ef634bd6ce8ea2a8d",
+  "build_id": "ed8af179ab853f44705d81b7975b3502303bcc6b",
   "st_nlink": 1,
   "elf_interpreter": "/lib64/ld-linux-x86-64.so.2",
   "rpath": "",
@@ -20,5 +37,15 @@
   "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
   "host_triple": "x86_64-unknown-linux-gnu",
   "locked": true,
-  "built_on": "2026-08-26T09:28:37-04:00"
+  "file_mtime": "2026-08-26 15:16:37.259691676 -0400",
+  "deployed_by_unit": "symoneural-gateway.service",
+  "promoted_on": "2026-08-26",
+  "promotion_evidence": "symoneural-gateway-publish-migration-20260826-122026/CANDIDATE-SHA256SUMS",
+  "superseded_artifact": {
+    "relative_path": "backend/apps/gateway/target/release/symon-gateway",
+    "sha256": "41b9eda87550c6b23b416e2b253f1a9339e52cd82b990d37adb73e8b8f46ad74",
+    "note": "pre-cutover control, still on disk, no longer launched"
+  },
+  "source_reproducible": "unverified -- no reproducibility experiment has been run for this artifact",
+  "verified_on": "2026-08-29"
 }

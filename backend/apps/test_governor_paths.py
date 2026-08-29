@@ -101,5 +101,65 @@ class EvictionKillsNameOurEngines(unittest.TestCase):
                           f"the default eviction arm does not reach {name}")
 
 
+class TheGovernorTracksTheManifestedEngine(unittest.TestCase):
+    """The manifest is authoritative for the engine's location; the governor holds a literal.
+
+    `scripts/gpu-governor.sh` deliberately does not read `ops/manifests/llm-engine.json` at
+    runtime -- it runs from `ExecStartPre` on the path that hands the card over, and a failed
+    read would produce an empty pattern, which `pgrep -f` matches against every process on the
+    box. The governor would then log a successful eviction of a tenant that still holds the
+    memory, which is worse than the staleness it would be guarding against.
+
+    So the literal is checked HERE instead. Moving the engine now fails a test rather than
+    quietly breaking eviction, and there is still exactly one authored source for where the
+    engine lives.
+    """
+
+    def manifest(self):
+        import json
+        return json.loads((ROOT / "ops" / "manifests" / "llm-engine.json").read_text())
+
+    def test_the_chat_probe_pattern_still_covers_the_manifested_engine(self):
+        """`surface_pattern chat` is what decides whether chat is resident. If it stops being
+        a prefix of the manifested engine path, the probe answers "nothing is running" about a
+        process that is -- and `evict` logs a stale-marker message and hands the card over."""
+        rel = self.manifest()["relative_path"]
+        m = re.search(r'chat\)\s+echo "\$ROOT/([^"]+)"', CODE)
+        self.assertIsNotNone(m, "the chat arm of surface_pattern is gone or has been reshaped; "
+                                "move this check with it rather than letting it pass vacuously")
+        pattern = m.group(1)
+        self.assertTrue(
+            rel.startswith(pattern.rstrip("/") + "/") or rel == pattern.rstrip("/"),
+            f"gpu-governor.sh probes for {pattern!r} but ops/manifests/llm-engine.json says "
+            f"the engine is at {rel!r}. The probe would not find a running engine.")
+
+    def test_the_chat_and_default_kills_name_the_manifested_binary(self):
+        """The pkill patterns are unanchored by design (see the governor's own comment), so
+        what is checked is that the tail they match is the manifested binary's, not that the
+        whole path agrees."""
+        server = self.manifest()["server"]["relative_path"]
+        tail = "/".join(pathlib.PurePosixPath(server).parts[-2:])   # bin/symoneural-llm
+        kills = [l for l in CODE.splitlines() if "pkill" in l and "symoneural-llm" in l]
+        self.assertTrue(kills, "no eviction arm kills the inference engine any more")
+        for line in kills:
+            with self.subTest(line=line.strip()[:60]):
+                self.assertIn(tail, line,
+                              f"an eviction kills by a pattern that does not name {tail!r}, "
+                              "which is what ops/manifests/llm-engine.json records")
+
+    def test_the_governor_introduces_no_second_identity_source(self):
+        """A hash pasted in here would be a second thing to go stale, and the manifest would
+        stop being the single source of truth the moment it disagreed. `gateway-build.json`
+        spent three days disagreeing with reality precisely because nothing read it."""
+        self.assertNotRegex(CODE, r"\b[0-9a-f]{64}\b",
+                            "gpu-governor.sh contains what looks like a sha256; artifact "
+                            "identity belongs in ops/manifests/, read via artifact.sh")
+        engine_paths = set(re.findall(r"engines/symoneural-llm[A-Za-z0-9._/-]*", CODE))
+        self.assertLessEqual(len(engine_paths), 1,
+                             f"the governor names the LLM engine by {len(engine_paths)} "
+                             f"different paths: {sorted(engine_paths)}. One is the pattern; "
+                             "any more is a second identity source.")
+
+
 if __name__ == "__main__":
     unittest.main()

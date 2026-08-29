@@ -64,30 +64,90 @@ if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
 fi
 
 # ---------------------------------------------------------------- preflight
+#
+# ## Existence was never the question
+#
+# This block used to ask whether a file was present at a path written here. That check passed
+# on 2026-08-26 while naming the wrong gateway binary, and would have gone on passing forever:
+# a promotion leaves the superseded artifact on disk, so "a file exists there" is true of both
+# the right one and the wrong one. The paths now come from `ops/manifests/*.json` and the
+# artifacts are checked by hash, so installing the wrong build is a refusal rather than a
+# success. No hash is written in this file -- the manifest is the only place one lives.
 step "preflight: the canonical tree has what the units will point at"
+. "$ROOT/ops/manifests/artifact.sh"
 PREFLIGHT_OK=1
 need() {  # need <relative path> <what it is>
     if [ -e "$ROOT/$1" ]; then say "OK      $1  ($2)"
     else say "MISSING $1  ($2)"; PREFLIGHT_OK=0; fi
 }
+
+# manifested <manifest.json> <what it is> -- check identity, not presence.
+#
+# On a mismatch it prints the custody bundle and the exact restore command from the manifest,
+# because "the installer knows how to obtain the right artifact" is the difference between a
+# refusal you can act on and one you have to research. It quotes the manifest's own `restore`
+# string rather than composing a command here; it does not RUN it. Extracting a bundle over a
+# live engine is a binary replacement and is nobody's idea of a preflight check.
+manifested() {
+    local mf="$1" what="$2" out st
+    if ! artifact_load "$mf"; then
+        say "MISSING ops/manifests/$mf  ($what) -- the manifest itself is unreadable"
+        PREFLIGHT_OK=0; return
+    fi
+    out="$(artifact_verify)"; st=$?
+    case "$st" in
+        0) say "OK      $ART_REL  ($what, matches $mf)" ;;
+        2) say "MISSING $ART_REL  ($what)"; PREFLIGHT_OK=0 ;;
+        *) say "WRONG   $ART_REL  ($what) does not match $mf:"
+           printf '          %s\n' "$out"
+           PREFLIGHT_OK=0 ;;
+    esac
+    if [ "$st" -ne 0 ] && [ -n "${ART_RESTORE:-}" ]; then
+        say "        a verified copy is kept at ${ART_BUNDLE#$ROOT/}"
+        say "        restore it with:  $ART_RESTORE"
+    fi
+}
+
 need backend/api.py                                          "the API"
 need scripts/deploy.sh                                       "the publisher"
 need scripts/gpu-governor.sh                                 "governor, called by ExecStartPre"
 need site                                                    "what deploy publishes"
-need backend/apps/gateway/target/release/symon-gateway       "gateway binary (ops/build-gateway.sh)"
-need engines/symoneural-llm/build/bin/symoneural-llm         "inference engine"
-need backend/models/llm/symon-1.0-7b-q4_k_m.gguf             "chat model"
+manifested gateway-build.json                                "gateway binary"
+manifested llm-engine.json                                   "inference engine runtime tree"
+# The chat model is 4.6 GB and hashing it would add ten seconds to every run, including
+# --dry-run. Its PATH still comes from the manifest, which is the part that goes stale; the
+# full hash is one command away and is named here rather than assumed.
+if artifact_load llm-chat-model.json; then
+    need "$ART_REL"                                          "chat model (hash: ops/manifests/regenerate.sh --check llm-chat-model.json)"
+else
+    say "MISSING ops/manifests/llm-chat-model.json"; PREFLIGHT_OK=0
+fi
 for u in "${UNITS[@]}"; do need "ops/$u.service" "unit template"; done
 if [ "$PREFLIGHT_OK" -eq 0 ]; then
     echo >&2
-    echo "Refusing to install: the canonical tree is incomplete (see MISSING above)." >&2
-    echo "A unit pointing at a path that does not exist fails at boot, not now." >&2
+    echo "Refusing to install: the canonical tree is not the verified one (see above)." >&2
+    echo "A unit pointing at a path that does not exist fails at boot, not now -- and a unit" >&2
+    echo "pointing at the WRONG artifact does not fail at all, which is worse." >&2
+    echo >&2
+    echo "If the gateway line reports MISSING: the rename from symon-gateway to" >&2
+    echo "symoneural-gateway is half-complete, and these two still write or check the OLD name:" >&2
+    echo "  ops/build-gateway.sh        OUT=\$SRC/target/release/symon-gateway, and it writes" >&2
+    echo "                              ops/manifests/gateway-build.json with that path too --" >&2
+    echo "                              so building the gateway RE-STALES the manifest. Run" >&2
+    echo "                              ops/manifests/regenerate.sh --check afterwards; the" >&2
+    echo "                              unit cross-check catches it." >&2
+    echo "  scripts/install-gateway.sh  BIN=\$ROOT/.../release/symon-gateway" >&2
+    echo "The unit, the manifest and this script use the new name. apps/test_gateway_unit.py is" >&2
+    echo "red on exactly this. Finishing that rename is a separate change; it is not something" >&2
+    echo "this script should paper over by accepting whichever file happens to be there." >&2
     exit 1
 fi
 
-# The gateway binary must be an independent regular file, not a hardlink into a build tree
-# and never a symlink into /yocto.
-GW="$ROOT/backend/apps/gateway/target/release/symon-gateway"
+# Identity is settled above. What is left is the shape of the file: the gateway binary must be
+# an independent regular file, not a hardlink into a build tree and never a symlink into
+# /yocto. `artifact_load gateway-build.json` above left ART_ABS naming it.
+artifact_load gateway-build.json
+GW="$ART_ABS"
 if [ -L "$GW" ]; then say "REFUSING: the gateway binary is a symlink"; exit 1; fi
 case "$(readlink -f "$GW")" in *yocto*) say "REFUSING: the gateway binary resolves into /yocto"; exit 1;; esac
 if ldd "$GW" 2>/dev/null | grep -q '/yocto'; then say "REFUSING: gateway links a library from /yocto"; exit 1; fi

@@ -203,6 +203,24 @@ drain() {
 # is actually in the process table -- measured here 2026-08-21:
 #   /home/google/Symoneural/engines/symoneural-ui/.venv/bin/python \
 #       /home/google/Symoneural/engines/symoneural-ui/main.py --listen 127.0.0.1 --port 8188
+#
+# ## The chat pattern is the manifested runtime, and it is a literal ON PURPOSE
+#
+# `ops/manifests/llm-engine.json` is the authority on where the inference engine lives. This
+# function does NOT read it, and that is a deliberate decision rather than an omission:
+#
+#   - this runs from `ExecStartPre`, on the path that hands the card over, and a JSON parse
+#     there is a dependency the eviction path does not need;
+#   - a failed read would yield an EMPTY pattern, and `pgrep -f ""` matches every process on
+#     the box. That is the false positive the paragraph above says has no backstop -- the
+#     governor would log a successful eviction and hand over memory that is still held. A
+#     mechanism whose failure mode is worse than the problem it solves is not an improvement.
+#
+# So the manifest stays authoritative by TEST instead: `apps/test_governor_paths.py` asserts
+# this literal against `llm-engine.json`, so moving the engine fails a test rather than
+# silently breaking eviction. That is the same arrangement `tools/page_families.py` uses, and
+# it is why there is no second copy of the engine's identity anywhere in this file -- no path
+# beyond this one, and no hash at all.
 surface_pattern() {
   case "${1:-}" in
     chat)  echo "$ROOT/engines/symoneural-llm/" ;;
