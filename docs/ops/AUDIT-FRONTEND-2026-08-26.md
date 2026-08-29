@@ -305,9 +305,9 @@ because `exists`/`grep` checks ask what is written on disk and cannot ask whethe
 works — and that a `note:` saying so is ignored, since `archive_tasks.py` reads checks.
 
 This redesign is exactly that failure mode. So the task's binding check is a **real run**:
-`tests/responsive.mjs` loads every page at all seven widths and asserts no horizontal
+`tests/responsive.mjs` loads every shell-bearing page at eight viewport sizes and asserts no horizontal
 overflow, no clipped control, reachable navigation and an in-viewport composer. Its result
-is stamped into `site/SMOKE.md`, which cannot be written honestly without running it.
+is stamped into `docs/ops/SMOKE-FRONTEND.md`, which cannot be written honestly without running it.
 
 ---
 
@@ -430,11 +430,16 @@ inline `<style>`, no shared stylesheet and no `ui.js`. Treated as a document, pe
 
 | item | status |
 |---|---|
-| `training.html` `<code>` blocks overflow to 6,248px | **open** — its own inline stylesheet; the responsive suite covers the page and it is the one surface still red on this axis if the shell rules are ever applied to it |
 | `miner.html` 333px / `gateway.html` 311px app head | **open** — their own six-line ledes, not the template. Copy, and #80 owns neighbouring strings, so not rewritten here |
 | Chat cannot cancel a generation | **`AUDIT.md` Q13** — one `AbortController` on the whole site and it is inside vendored `hls.js`. Functional change; reported, not built |
 | Inline JS blobs on six pages | **`AUDIT.md` Q14** — scope and order need authorizing |
 | 18 breakpoints reduced, not eliminated | partial — three named steps are defined and new rules use them; existing component rules were not rewritten, which would be churn without a measured defect |
+
+**Correction, 2026-08-26:** the exploratory Training finding was invalidated before the
+responsive suite was written. Its wide code blocks live inside named horizontal scroll
+containers and the page itself does not overflow. `training.html` is one of the 24 pages in
+the recorded 384-combination run and passes. Carrying the exploratory result into this final
+table was an error; it is removed rather than softened.
 
 **Pre-existing, proven so rather than assumed** — the same tests run in worktrees at
 `01dc6205`, before any of this work:
@@ -448,3 +453,38 @@ inline `<style>`, no shared stylesheet and no `ui.js`. Treated as a document, pe
   from `apps/ravencalc/ravencalc.py:45`.
 
 None of these were touched by #109 and none are claimed as fixed.
+
+---
+
+# Part 3 — reopened completion pass
+
+Task #109 was reopened after its declared checks reached 100% before the brief did. The
+responsive result was real, but it measured layout and shell reachability rather than every
+functional requirement.
+
+## 16. Scope and provenance corrections
+
+- The inventory names **14 application workspaces**. The first implementation converted 12;
+  the two hand-maintained exceptions were `coder.html` and `live.html`. Both now use
+  `.apphead apphead-after`, retain their instrument-first order, load `shell.js`, and no
+  longer carry the marketing `.hero` chrome.
+- `site/ui.js` and `docs/ops/MAINTENANCE-SURFACES.md` entered commits `9b3d1166` and
+  `9eadca7d` from the pre-existing runtime-cutover working tree. They are mutually consistent
+  and their maintenance-surface test passes, but they are not UI-redesign work. This record
+  corrects attribution without rewriting or discarding their content.
+- `streamer-watch.html` and `share-dispatchos.html` remain outside the 24-page shell matrix for
+  their documented no-chrome and credential-gated boundaries. They require their own
+  functional verification; exclusion from the shell matrix is not a verified verdict.
+
+## 17. Completion boundary
+
+Responsive rendering is not functional smoke. Task #109 remains open until the sequential UI
+verification runner records every required browser suite as passing in
+`docs/ops/SMOKE-APPLICATIONS.md`. A generated record containing a failure cannot satisfy the
+task check, and no source-file edit can manufacture the required success line.
+
+The runner is `node tests/run_ui_verification.mjs [baseURL]`. Its canonical order is
+`applications_smoke.mjs`, `responsive.mjs`, `frontend.mjs`, then `chat_smoke.mjs`; the two
+GPU-using suites are therefore never concurrent. Each child gets a complete log under
+`run/ui-verification/`. `--dry-run` shows the exact commands without launching a browser,
+and an interrupt is forwarded to the active process group so Chrome is not orphaned.
