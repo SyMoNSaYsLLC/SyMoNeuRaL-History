@@ -94,6 +94,15 @@ put("ART_BUNDLE", root / cust["bundle"] if cust.get("bundle") else "")
 put("ART_BUNDLE_SHA", cust.get("bundle_sha256", ""))
 put("ART_RESTORE", cust.get("restore", ""))
 
+# Distribution is TRANSPORT. `ART_BUNDLE_SHA` above stays the acceptance criterion, and
+# `artifact_fetch` checks the downloaded bytes against it rather than against anything the
+# provider says. No credential is ever read from here: retrieval is anonymous by design.
+dist = cust.get("distribution") or {}
+put("ART_DIST_PROVIDER", dist.get("provider", ""))
+put("ART_DIST_URL", dist.get("url", ""))
+put("ART_DIST_TAG", dist.get("release_tag", ""))
+put("ART_DIST_ASSET", dist.get("asset_name", ""))
+
 for k, v in out.items():
     print(f"{k}={shlex.quote(v)}")
 PY
@@ -103,7 +112,8 @@ PY
 # `compgen -v ART_` sweep would also take ART_ROOT and ART_DIR, which are this file's own.
 _ART_FIELDS="ART_MANIFEST ART_REL ART_ABS ART_IS_DIR ART_SHA ART_SIZE ART_UNIT ART_ROLE
              ART_REPRODUCIBLE ART_SERVER_REL ART_SERVER_ABS ART_SERVER_SHA ART_CLI_REL
-             ART_CLI_ABS ART_CLI_SHA ART_BUNDLE ART_BUNDLE_SHA ART_RESTORE"
+             ART_CLI_ABS ART_CLI_SHA ART_BUNDLE ART_BUNDLE_SHA ART_RESTORE
+             ART_DIST_PROVIDER ART_DIST_URL ART_DIST_TAG ART_DIST_ASSET"
 
 # artifact_load <manifest.json> -- set ART_* in the CALLER's shell. Returns non-zero and
 # leaves every field UNSET if the manifest cannot be read.
@@ -192,4 +202,49 @@ if bad:
     sys.exit(1)
 print(f"matches the manifest ({m['relative_path']})")
 PY
+}
+
+# artifact_fetch <destination-file> -- download the bundle named by the loaded manifest and
+# verify it against the manifest's recorded hash. Call artifact_load first.
+#
+#   0  downloaded and the bytes match
+#   1  downloaded and the bytes are WRONG, or the download failed
+#   2  this manifest records no distribution reference
+#
+# ## The direction of the check is the whole design
+#
+# The hash compared against is `custody.bundle_sha256` from the manifest -- a file in git --
+# and never anything the provider reports. GitHub is custody and transport; it does not get to
+# say what the right binary is. Reversed, this would be "download whatever currently has this
+# name and trust it", which is the failure the manifests exist to prevent.
+#
+# It is anonymous on purpose. A private release would work and would need a credential
+# provisioned onto the rebuilt machine, which moves half of disaster recovery into a second
+# custody problem. `--no-netrc` and the unset tokens are not belt-and-braces: they are what
+# makes a passing run EVIDENCE that a machine with no account can do this, rather than proof
+# that this machine's keyring works.
+artifact_fetch() {
+    local dest="${1:?usage: artifact_fetch <destination-file>}" got
+    [ -n "${ART_MANIFEST:-}" ] || { echo "artifact_fetch: nothing loaded"; return 1; }
+    if [ -z "${ART_DIST_URL:-}" ]; then
+        echo "artifact_fetch: $ART_MANIFEST records no custody.distribution.url"
+        return 2
+    fi
+    [ -n "${ART_BUNDLE_SHA:-}" ] || {
+        echo "artifact_fetch: refusing to download with no recorded hash to check it against"
+        return 1; }
+
+    echo "  fetching $ART_DIST_ASSET from $ART_DIST_PROVIDER ($ART_DIST_TAG)"
+    if ! env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN          curl -fsSL --no-netrc -o "$dest" "$ART_DIST_URL"; then
+        echo "  download failed: $ART_DIST_URL"
+        return 1
+    fi
+    got="$(sha256sum "$dest" | cut -d" " -f1)"
+    if [ "$got" != "$ART_BUNDLE_SHA" ]; then
+        echo "  REJECTED: the downloaded bytes are not the artifact this manifest names"
+        echo "    manifest $ART_BUNDLE_SHA"
+        echo "    download $got"
+        return 1
+    fi
+    echo "  verified against the manifest: $got"
 }
