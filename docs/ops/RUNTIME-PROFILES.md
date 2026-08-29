@@ -10,6 +10,12 @@ which of these runtimes actually exists on this box today — and the answer for
 Consumers: `docs/specs/symoneural-runtime-registry.md`,
 `docs/specs/symoneural-model-hot-swap.md`, and the planned `GET /api/runtimes`.
 
+> **Portable-repo boundary, audited 2026-08-26.** The uploaded HEAD archive contains none
+> of the four `engines/symoneural-*` homes and no `references/` build inputs. “Built” rows
+> below are dated readings from the original host, not claims about a clone or `.deb`.
+> `python3 tools/audit_runtime_dependencies.py` reports the portable state; full findings
+> are in `docs/ops/AUDIT-DEPENDENCY-RUNTIME-2026-08-26.md`.
+
 ---
 
 ## The maturity ladder — used everywhere in these docs

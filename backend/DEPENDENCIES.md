@@ -36,6 +36,12 @@ packages, no virtualenv on purpose), and training, sigils, asicminer, studio and
 have their own venv. The interpreter is named in every row. Nothing in this table was copied
 from a lockfile or carried forward.
 
+> **Staleness boundary, audited 2026-08-26.** These are dated host readings, not the current
+> install contract. Several requirement lower bounds now differ, training still has no
+> tracked declaration/lock, and the Rust/Node/Yocto toolchains are outside this Python
+> ledger. See `docs/ops/AUDIT-DEPENDENCY-RUNTIME-2026-08-26.md` and run
+> `python3 tools/audit_runtime_dependencies.py` before using this file to prepare a host.
+
 ---
 
 ## The serving path — system interpreter, no virtualenv
