@@ -2,6 +2,7 @@
 # Build the symoneural .deb from this checkout.
 #
 #     ./scripts/build-deb.sh [-o OUTDIR]        # default OUTDIR is ~/Downloads
+#     ./scripts/build-deb.sh --list             # print the exact shipping manifest only
 #
 # Needs no root: the payload is staged with `fakeroot`-free `dpkg-deb --root-owner-group`,
 # which writes root:root ownership into the archive without becoming root.
@@ -11,7 +12,8 @@
 # exclusions lived in a scrollback buffer, and nothing recorded why `training/corpus.jsonl`
 # was absent. The exclusion list below is the same one, written down and asserted.
 #
-# WHAT IS IN IT: every tracked file, minus the exclusions. Tracked-ness is the rule because
+# WHAT IS IN IT: tracked production files, minus protected and non-production exclusions.
+# Tracked-ness is the first rule because
 # `.gitignore` already encodes "build output, weights and secrets do not travel" -- the
 # 104 GiB of `backend/models/`, every `.venv`, `contrib/`, `engines/`, `references/`, `run/`.
 # Using `git ls-files` rather than `find` means those cannot be re-included by accident.
@@ -22,15 +24,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 OUT="$HOME/Downloads"
+LIST_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -o|--output) OUT="$2"; shift 2;;
+    --list) LIST_ONLY=1; shift;;
     *) echo "unknown argument: $1" >&2; exit 2;;
   esac
 done
-mkdir -p "$OUT"
-
-command -v dpkg-deb >/dev/null || { echo "dpkg-deb not found" >&2; exit 1; }
 
 # --- version -----------------------------------------------------------------
 # It must be MONOTONIC, or `apt upgrade` will not offer it. A bare commit SHA is not:
@@ -72,8 +73,35 @@ mkdir -p "$DEST/DEBIAN" "$DEST/opt/symoneural" "$DEST/usr/bin" "$DEST/usr/share/
 EXCLUDE_RE='^(training/(corpus\.jsonl|build_dataset\.py|project-history/|adapter)'
 EXCLUDE_RE="$EXCLUDE_RE"'|backend/apps/remix/\.env$|\.claude/|\.github/|\.gitignore$)'
 
-git ls-files -z | tr '\0' '\n' | grep -Ev "$EXCLUDE_RE" > "$STAGE/manifest.txt"
+# Source that is useful in the repository but is not part of the main runtime package.
+# Nothing is deleted from the checkout. Separate deliverables keep their own source; test
+# and reference trees stay available to Coder without becoming customer payload.
+#
+#  backend/vendor/       adopted SDK/reference source; no serving module imports it
+#  deploy/bento/         explicitly non-live alternate serving experiment
+#  desktop-client/, yocto/
+#                        separate build/package targets, not Python runtime payload
+#  garbo/, incoming/     review/import staging records
+#  tests and test_*.py   verification source, never imported by the running product
+#  root work ledgers     agent/review state rather than product or operator docs
+NONPROD_RE='^(backend/vendor/|deploy/bento/|desktop-client/|yocto/|garbo/|incoming/|tests/)'
+# `.mjs` as well as `.py`: `backend/apps/studio/plugins/reinforce/test_page.mjs` and
+# `ops/gateway/test_contracts.mjs` both shipped in the manifest while this rule read `.py`
+# only -- measured with `--list`. A rule that names one extension of a two-extension test
+# suite excludes the half you happened to think of.
+NONPROD_RE="$NONPROD_RE"'|(^|/)tests/|(^|/)test_[^/]*\.(py|mjs)$'
+NONPROD_RE="$NONPROD_RE"'|^(AUDIT-SURFACE-[^/]*|CLAUDE\.md|GARRETT-INBOX\.md|GUARDRAILS\.md|PROJECT-TASKS\.md|\.mailmap)$'
+
+git ls-files -z | tr '\0' '\n' | grep -Ev "$EXCLUDE_RE|$NONPROD_RE" > "$STAGE/manifest.txt"
 FILES="$(wc -l < "$STAGE/manifest.txt")"
+
+if [ "$LIST_ONLY" -eq 1 ]; then
+  cat "$STAGE/manifest.txt"
+  exit 0
+fi
+
+mkdir -p "$OUT"
+command -v dpkg-deb >/dev/null || { echo "dpkg-deb not found" >&2; exit 1; }
 
 # Copy with the tree structure intact. `--parents` is what keeps backend/apps/... nested
 # rather than flattening 645 files into one directory.

@@ -64,6 +64,17 @@ def make_sandbox(tmp: Path) -> Path:
     sandbox = tmp / "repo"
     for rel, text in {
         "backend/api.py": "# sandbox stub -- the root check at build-deb.sh:21 wants me\n",
+        "backend/apps/demo.py": "# ordinary production source\n",
+        "backend/apps/test_demo.py": "# test source must not ship\n",
+        "backend/apps/demo/tests/test_nested.py": "# nested test source must not ship\n",
+        "backend/vendor/sdk/example.py": "# adopted reference source must not ship\n",
+        "deploy/bento/service.py": "# alternate non-live serving path\n",
+        "desktop-client/src-tauri/Cargo.toml": "# separate deliverable\n",
+        "yocto/oematch/pyproject.toml": "# separate package\n",
+        "garbo/review.md": "# review residue\n",
+        "incoming/example/PROVENANCE.md": "# import staging\n",
+        "tests/frontend.mjs": "// browser test source\n",
+        "PROJECT-TASKS.md": "# work ledger\n",
         "backend/apps/remix/.env": (
             "SPOTIFY_CLIENT_SECRET=fake-sandbox-value-for-the-leak-guard-test\n"
             "DJ_TOKEN=fake-sandbox-value-for-the-leak-guard-test\n"),
@@ -90,7 +101,8 @@ def make_sandbox(tmp: Path) -> Path:
     return sandbox
 
 
-def run_build(tmp: Path, script_text: str) -> tuple[subprocess.CompletedProcess, Path]:
+def run_build(tmp: Path, script_text: str, *extra_args: str
+              ) -> tuple[subprocess.CompletedProcess, Path]:
     """Drop `script_text` into the sandbox as its build-deb.sh and run it.
 
     TMPDIR is pointed inside the test's own directory so the script's `mktemp -d` stage
@@ -104,7 +116,7 @@ def run_build(tmp: Path, script_text: str) -> tuple[subprocess.CompletedProcess,
     stage = tmp / "stage"
     out.mkdir()
     stage.mkdir()
-    proc = subprocess.run(["bash", str(script), "-o", str(out)],
+    proc = subprocess.run(["bash", str(script), *extra_args, "-o", str(out)],
                           capture_output=True, text=True, env={
                               "PATH": "/usr/bin:/bin:/usr/sbin", "TMPDIR": str(stage),
                               "HOME": str(tmp)})  # set -u: the script reads $HOME at :24
@@ -153,8 +165,22 @@ class BuildDebLeakGuardTests(unittest.TestCase):
         listing = payload_listing(out)
         self.assertIn("opt/symoneural/backend/api.py", listing,
                       "payload is empty -- the leak checks below would pass vacuously")
+        self.assertIn("opt/symoneural/backend/apps/demo.py", listing)
         for leak in ("remix/.env", "corpus.jsonl", "build_dataset.py"):
             self.assertNotIn(leak, listing, f"{leak} shipped in a clean build")
+        for nonprod in ("backend/vendor/", "test_demo.py", "/tests/", "deploy/bento/",
+                        "desktop-client/", "yocto/", "garbo/", "incoming/",
+                        "PROJECT-TASKS.md"):
+            self.assertNotIn(nonprod, listing, f"non-production path {nonprod} shipped")
+
+    def test_list_mode_previews_the_same_production_boundary_without_building(self):
+        proc, out = run_build(self.tmp, self.real, "--list")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("backend/api.py", proc.stdout)
+        self.assertIn("backend/apps/demo.py", proc.stdout)
+        self.assertNotIn("backend/vendor/", proc.stdout)
+        self.assertNotIn("test_demo.py", proc.stdout)
+        self.assertEqual(list(out.glob("*.deb")), [])
 
     def test_the_guard_fires_when_the_exclusion_regex_regresses(self):
         """The event the guard exists for: EXCLUDE_RE loses its remix clause.
