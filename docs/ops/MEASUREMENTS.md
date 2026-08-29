@@ -11,6 +11,8 @@ paths, so every `tests/*.mjs` suite must be named here or that test goes red.
 ## Test in a real browser, not with curl
 
 ```bash
+node tests/run_ui_verification.mjs   # required UI suites, one at a time; canonical record
+node tests/applications_smoke.mjs    # self-contained fixture for the application workspaces
 node tests/frontend.mjs             # every page, against a running API on :8800
 node tests/streamer_failpaths.mjs   # streamer.html, self-contained -- starts its own fake provider
 node tests/streamer_watch.mjs       # streamer-watch.html, ditto -- no account, no real stream
@@ -26,6 +28,13 @@ cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
+
+`run_ui_verification.mjs` is the normal entry point for the four application-wide suites:
+applications, responsive, frontend, then chat. It awaits each child before launching the
+next, preserves complete logs under `run/ui-verification/`, forwards interrupts to the
+active browser process group, and writes `docs/ops/SMOKE-APPLICATIONS.md`. The canonical
+success marker appears only when all four exit zero; a partial or interrupted run cannot
+manufacture it. Use `--dry-run` to inspect the order without an API or browser.
 
 **1818 pass, 0 fail and 14 skip at `ca0571b7`, measured 2026-08-22 from `backend/` in
 143.73 s, with `--collect-only` collecting 1832 in 1.24 s and `apps/remix` 28/28 in 0.44 s —
