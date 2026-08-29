@@ -2616,7 +2616,7 @@ STREAMER_BODY = """    <style>
 
       <aside class="side">
         <div class="callout">
-          <h3>Where your credentials go</h3>
+          <h2>Where your credentials go</h2>
           <p><b>Nowhere.</b> They stay in this browser&rsquo;s localStorage and travel with
             each request. The server holds them only for the life of a stream and keeps them
             out of process arguments and error text. Nothing is written to disk.</p>
@@ -2625,7 +2625,7 @@ STREAMER_BODY = """    <style>
             box.</p>
         </div>
         <div class="callout">
-          <h3>Why there is no &ldquo;Trending&rdquo;</h3>
+          <h2>Why there is no &ldquo;Trending&rdquo;</h2>
           <p>A playlist is a list of names and URLs. It carries <b>no view counts, no
             ratings and no trend feed</b>, so a tab called Trending would be a number this
             machine cannot read &mdash; the same dishonest pixel as a status light that is
@@ -2638,7 +2638,7 @@ STREAMER_BODY = """    <style>
             it.</p>
         </div>
         <div class="callout">
-          <h3>How the stream is handled</h3>
+          <h2>How the stream is handled</h2>
           <p>ffmpeg copies the stream rather than re-encoding it, so it costs muxing and
             network rather than compute &mdash; this surface never queues behind the GPU. The
             upstream socket is opened in Python against a pinned, validated address and the
@@ -2648,7 +2648,7 @@ STREAMER_BODY = """    <style>
             Chrome and Firefox will not play an <code>.m3u8</code> natively.</p>
         </div>
         <div class="callout">
-          <h3>What the model actually does here</h3>
+          <h2>What the model actually does here</h2>
           <p><b>Your filter runs before the model does.</b> Matching your words against the
             list already in this browser is pure JavaScript over an array &mdash; it is done
             in single-digit milliseconds and the page prints the measurement. Results appear
@@ -2662,7 +2662,7 @@ STREAMER_BODY = """    <style>
             <i>added nothing</i>, or <i>unavailable</i>.</p>
         </div>
         <div class="callout">
-          <h3>Known gaps, stated rather than hidden</h3>
+          <h2>Known gaps, stated rather than hidden</h2>
           <p>The vendored hls.js is the <b>light</b> build: no subtitle or alternate-audio
             rendering. The Xtream client has <b>never been tested against a live panel</b>
             beyond channel listing. Series episodes list without URLs rather than with guessed

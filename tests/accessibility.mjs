@@ -25,11 +25,12 @@
 //      does not. `backend/apps/test_page_families.py` names those pages as known exemptions
 //      precisely because a static reader cannot see them.
 //
-//   2. FOCUS INDICATOR -- every keyboard-focusable control must show a visible change when
-//      focused. Measured by focusing the element and diffing its computed outline, box-shadow
-//      and border against the same element unfocused. A stylesheet that sets `outline:none`
-//      and supplies nothing else leaves a keyboard user with no cursor: the page still works
-//      and there is no way to see where you are.
+//   2. FOCUS INDICATOR -- focusing a control must visibly change something. Measured by
+//      diffing computed style on the element AND its three nearest ancestors, before and
+//      after focus, because `:focus-within` on a wrapper is a legitimate way to draw the
+//      ring and an element-only check calls it a defect. A stylesheet that sets
+//      `outline:none` and supplies nothing anywhere leaves a keyboard user with no cursor:
+//      the page still works and there is no way to see where you are.
 //
 //      Both readings are computed style on a laid-out element, which is the browser's answer
 //      and not a guess from a selector.
@@ -151,12 +152,26 @@ for (const vp of VIEWPORTS) {
         return [s.outlineStyle, s.outlineWidth, s.outlineColor, s.outlineOffset,
                 s.boxShadow, s.borderColor, s.borderWidth, s.backgroundColor].join('|');
       };
+      // The indicator does not have to be ON the focused element. `:focus-within` on a
+      // wrapper is a normal and deliberate pattern -- chat's composer draws the ring on
+      // `.cu-composer` and leaves the textarea itself bare, which looks like a missing
+      // indicator to anything that only inspects the element. Measured: the wrapper's
+      // border goes rgb(40,48,43) -> rgba(46,224,138,.45) on focus. That is the indicator.
+      //
+      // So the snapshot covers the element and its nearest ancestors, and a finding requires
+      // that NONE of them responded. Reporting the bare element would have sent someone to
+      // add a redundant outline and break a working design -- which is worse than the bug it
+      // would have been reported as.
+      const chain = el => { const c = [el]; let n = el.parentElement;
+                            for (let i = 0; i < 3 && n; i++, n = n.parentElement) c.push(n);
+                            return c; };
+      const snapAll = el => chain(el).map(snap).join('#');
       const els = [...document.querySelectorAll(sel)].filter(vis);
       for (const el of els) {
-        const before = snap(el);
+        const before = snapAll(el);
         try { el.focus({ preventScroll: true }); } catch { continue; }
         if (document.activeElement !== el) continue;   // not actually focusable
-        const after = snap(el);
+        const after = snapAll(el);
         // `:focus-visible` is the browser's own answer to "is this a keyboard focus that
         // deserves a ring". Requiring it means an element whose indicator is legitimately
         // mouse-only is not reported, and an element the browser HAS decided deserves a ring

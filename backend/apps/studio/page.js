@@ -70,7 +70,7 @@
   /* ---- status strip ------------------------------------------------------ */
   function cell(title, value, cls, sub) {
     var c = el('div', 'st-cell');
-    c.appendChild(el('h4', null, title));
+    c.appendChild(el('h3', null, title));
     var p = el('p', cls || null, value);
     c.appendChild(p);
     if (sub) c.appendChild(el('p', 'sub', sub));
@@ -135,7 +135,7 @@
     g.hidden = false;
 
     if (state && state.enabled === false) {
-      g.appendChild(el('h3', null, 'This surface is switched off'));
+      g.appendChild(el('h2', null, 'This surface is switched off'));
       var p = el('p', null, 'It reaches the whole filesystem and can run commands, so it is off '
         + 'unless the operator sets both switches and restarts the API:');
       g.appendChild(p);
@@ -148,7 +148,7 @@
       return;
     }
 
-    g.appendChild(el('h3', null, reason === 'bad' ? 'That token was not accepted'
+    g.appendChild(el('h2', null, reason === 'bad' ? 'That token was not accepted'
                                                   : 'Operator token'));
     g.appendChild(el('p', null,
       'The agent, the bench and the renderer all need it. It is held for this tab only and is '
@@ -186,7 +186,7 @@
     if (kind === 'done') {
       var used = ev.tools_used || 0;
       var d = el('div', 'st-ev');
-      d.appendChild(el('h5', null, LABEL.done));
+      d.appendChild(el('h4', null, LABEL.done));
       d.appendChild(el('p', null,
         ev.steps + ' step' + (ev.steps === 1 ? '' : 's') + ' · '
         /* `tools_used` is a count, not a list. `agent.py:270` opens `used = 0`, `:327`
@@ -206,7 +206,7 @@
       + (kind === 'tool_call' ? ' call' : '')
       + (kind === 'error' ? ' err' : '')
       + (kind === 'answer' ? ' answer' : ''));
-    box.appendChild(el('h5', null, LABEL[kind] || kind));
+    box.appendChild(el('h4', null, LABEL[kind] || kind));
 
     if (kind === 'backend') {
       box.appendChild(el('p', null, ev.name + ' · ' + ev.url));
@@ -234,7 +234,7 @@
     send.disabled = true;
     $('st-agent-note').textContent = '';
     var box = el('div', 'st-ev');
-    box.appendChild(el('h5', null, 'you'));
+    box.appendChild(el('h4', null, 'you'));
     box.appendChild(el('p', null, query));
     $('st-log').appendChild(box);
 

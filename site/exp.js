@@ -117,7 +117,7 @@
   /* ---- status strip ------------------------------------------------------ */
   function cell(title, value, cls, sub) {
     var c = el('div', 'ex-cell');
-    c.appendChild(el('h4', null, title));
+    c.appendChild(el('h3', null, title));
     c.appendChild(el('p', cls || null, value));
     if (sub) c.appendChild(el('p', 'sub', sub));
     return c;
@@ -175,7 +175,7 @@
     g.hidden = false;
 
     if (reason === 'off' || (state && state.enabled === false)) {
-      g.appendChild(el('h3', null, 'Writes are switched off'));
+      g.appendChild(el('h2', null, 'Writes are switched off'));
       g.appendChild(el('p', null,
         'Reads are open and the tables below are live. Mounting, patching, reloading and '
         + 'calling into a service change what runs inside the API process, so they need both '
@@ -188,7 +188,7 @@
       return;
     }
 
-    g.appendChild(el('h3', null, reason === 'bad' ? 'That token was not accepted'
+    g.appendChild(el('h2', null, reason === 'bad' ? 'That token was not accepted'
                                                   : 'Operator token'));
     g.appendChild(el('p', null,
       'The surface is switched on. Mounting a plugin, patching a config, reloading a module and '
@@ -486,7 +486,7 @@
       if (e.seq <= seq) return;
       seq = e.seq;
       var node = el('div', evClass(e.event));
-      var h = el('h5', null, e.event);
+      var h = el('h4', null, e.event);
       h.appendChild(document.createTextNode(' '));
       h.appendChild(el('span', 'ex-seq', '#' + e.seq));
       node.appendChild(h);
