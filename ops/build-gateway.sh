@@ -42,8 +42,58 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT" >&2; exit 1; }
 
 SRC="$ROOT/backend/apps/gateway"
-OUT="$SRC/target/release/symon-gateway"
 RECORD="$ROOT/ops/manifests/gateway-build.json"
+
+# ---------------------------------------------------------------- what is being built
+#
+# ## `OUT` is DERIVED, because the literal it replaced went stale and re-staled the manifest
+#
+# This said `OUT="$SRC/target/release/symon-gateway"`. The crate was renamed to
+# `symoneural-gateway` on 2026-08-26 -- the runtime-identity contract requires first-party
+# executables to begin with `symoneural-`, and this binary was the one live violation -- and
+# this line was not moved with it. The result was not a build failure, which is what makes it
+# worth this many words:
+#
+#   cargo emitted target/release/symoneural-gateway, as Cargo.toml told it to;
+#   the superseded target/release/symon-gateway was STILL ON DISK from the previous build;
+#   `[ -f "$OUT" ]` therefore passed;
+#   and everything below hashed, proved and RECORDED a binary cargo had not just produced.
+#
+# So the builder would report a successful build and write a build record describing the
+# artifact it had just superseded. `ops/manifests/gateway-build.json` was in exactly that
+# state for three days.
+#
+# Cargo's output name comes from `[[bin]] name` and from nothing else, so that is the only
+# honest source for this. It is NOT read from the manifest: the manifest records what was
+# built, Cargo.toml determines what will be, and deriving the second from the first inverts
+# the dependency and would let a stale manifest dictate the build.
+BIN_NAME="$(python3 - "$SRC/Cargo.toml" <<'PY'
+import re, sys
+src = open(sys.argv[1]).read()
+m = re.search(r'^\[\[bin\]\](.*?)(?=^\[|\Z)', src, re.M | re.S)
+section = m.group(1) if m else src.split("[dependencies]")[0]
+n = re.search(r'^\s*name\s*=\s*"([^"]+)"', section, re.M)
+print(n.group(1) if n else "")
+PY
+)"
+[ -n "$BIN_NAME" ] || { echo "  cannot read the binary name from $SRC/Cargo.toml" >&2; exit 1; }
+OUT="$SRC/target/release/$BIN_NAME"
+
+# The manifest must name the same artifact. These are two independent statements of one
+# identity -- Cargo.toml says what gets produced, the manifest says what is canonical -- and
+# a build that quietly writes a record about a different filename is the failure above.
+[ -f "$RECORD" ] || {
+    echo "  no build record at $RECORD." >&2
+    echo "  This script UPDATES that record; it does not invent one, because a record with no" >&2
+    echo "  provenance fields is a claim nobody made. Restore it from git first." >&2
+    exit 1; }
+RECORD_NAME="$(python3 -c 'import json,sys,os; print(os.path.basename(json.load(open(sys.argv[1]))["relative_path"]))' "$RECORD")"
+if [ "$BIN_NAME" != "$RECORD_NAME" ]; then
+    echo "  REFUSING: Cargo.toml builds '$BIN_NAME' but $RECORD names '$RECORD_NAME'." >&2
+    echo "  One of the two is stale. Building would record the wrong artifact -- which is" >&2
+    echo "  precisely how this record came to describe a superseded binary for three days." >&2
+    exit 1
+fi
 
 MODE=build
 case "${1:-}" in
@@ -84,10 +134,23 @@ LOCKED=--locked
 [ -f "$SRC/Cargo.lock" ] || { say "no Cargo.lock -- building without --locked (NOT reproducible)"; LOCKED=; }
 
 say "building (cargo build --release $LOCKED) ..."
+BUILD_STARTED="$(date +%s)"
 ( cd "$SRC" && CARGO_TERM_COLOR=never cargo build --release $LOCKED ) || {
     echo "  BUILD FAILED -- the existing binary was left untouched" >&2; exit 1; }
 
 [ -f "$OUT" ] || { echo "  build reported success but $OUT is absent" >&2; exit 1; }
+
+# Existence is not freshness. The name-drift above was one instance of a general bug -- cargo
+# reporting success while the file this script goes on to hash was produced by some earlier
+# run -- and deriving OUT correctly closes that instance without closing the class. A binary
+# older than the build that supposedly made it is the reading that catches the rest.
+if [ "$(stat -c %Y "$OUT")" -lt "$BUILD_STARTED" ]; then
+    echo "  REFUSING: cargo reported success but $OUT is older than the build." >&2
+    echo "  mtime $(stat -c %y "$OUT"), build started $(date -d @"$BUILD_STARTED" -Is)." >&2
+    echo "  Whatever cargo produced, it was not this file, and recording it would attribute" >&2
+    echo "  a build to an artifact that did not come from it." >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------- independence
 # Cargo hardlinks target/release/<name> from target/release/deps/<name>-<hash>, so the
@@ -135,32 +198,56 @@ else
 fi
 
 # ---------------------------------------------------------------- build record
-mkdir -p "$(dirname "$RECORD")"
-cat > "$RECORD" <<JSON
-{
-  "_comment": [
-    "Build record for the Debian-host gateway. Written by ops/build-gateway.sh.",
-    "The BINARY is not committed (.gitignore excludes backend/apps/gateway/target/);",
-    "this record is how a rebuilt binary is compared against the one that was verified.",
-    "Built natively for this host, NOT with the Yocto SDK -- that SDK targets aarch64-oe-linux",
-    "and cannot produce a binary that runs on Debian x86_64 at all."
-  ],
-  "relative_path": "backend/apps/gateway/target/release/symon-gateway",
-  "size_bytes": $(stat -c %s "$OUT"),
-  "sha256": "$AFTER",
-  "st_nlink": $(stat -c %h "$OUT"),
-  "elf_interpreter": "${INTERP:-}",
-  "rpath": "${RPATH:-}",
-  "runpath": "${RUNPATH:-}",
-  "unresolved_deps": ${UNRES:-0},
-  "deps_from_yocto": ${YOCTO:-0},
-  "contains_yocto_string": $HAS_STR,
-  "rustc": "$(rustc --version)",
-  "cargo": "$(cargo --version)",
-  "host_triple": "$HOST_TRIPLE",
-  "locked": $( [ -n "$LOCKED" ] && echo true || echo false ),
-  "built_on": "$(date -Is)"
-}
-JSON
+#
+# ## This MERGES. It used to overwrite, and overwriting was the second half of the bug.
+#
+# The old version was a `cat > "$RECORD"` heredoc that rewrote the whole file. Every field the
+# 2026-08-29 reconciliation added -- `deployed_by_unit`, `superseded_artifact`, `promoted_on`,
+# `promotion_evidence`, `source_reproducible`, `verified_on` -- would have been destroyed by
+# the next build. `deployed_by_unit` is the field that carries the unit cross-check, so the
+# builder would have removed the one mechanism capable of reporting what it had just done.
+#
+# The split is the same one `ops/manifests/regenerate.sh` is built on, and for the same
+# reason: this script writes ONLY what it uniquely knows -- which toolchain compiled this, on
+# which host triple, whether the lock file was honoured, and when -- and then hands off to the
+# generator for everything derivable from the bytes. Nothing here can invent a claim about
+# provenance or reproducibility, because nothing here writes those fields.
+say "recording the build"
+python3 - "$RECORD" "$(rustc --version)" "$(cargo --version)" "$HOST_TRIPLE" \
+         "$( [ -n "$LOCKED" ] && echo true || echo false )" "$HAS_STR" \
+         "${UNRES:-0}" "${YOCTO:-0}" <<'PY'
+import json, pathlib, subprocess, sys
+
+record = pathlib.Path(sys.argv[1])
+m = json.loads(record.read_text())
+
+# Provenance only. The byte-facts -- size, sha256, st_nlink, elf_interpreter, rpath, runpath,
+# build_id -- are deliberately absent from this dict and are filled in by regenerate.sh.
+m.update({
+    "rustc": sys.argv[2],
+    "cargo": sys.argv[3],
+    "host_triple": sys.argv[4],
+    "locked": sys.argv[5] == "true",
+    "contains_yocto_string": sys.argv[6] == "true",
+    "unresolved_deps": int(sys.argv[7]),
+    "deps_from_yocto": int(sys.argv[8]),
+    "built_on": subprocess.run(["date", "-Is"], capture_output=True, text=True).stdout.strip(),
+})
+record.write_text(json.dumps(m, indent=2) + "\n")
+print(f"  provenance merged into {record.name}; descriptive fields preserved")
+PY
+
+# The byte-facts, from the generator that owns them. `--check` afterwards is not belt-and-
+# braces: it is what proves the record now agrees with the binary AND that the unit launches
+# the artifact just recorded. A build that leaves those disagreeing should not report OK.
+"$ROOT/ops/manifests/regenerate.sh" gateway-build.json || {
+    echo "  the build record could not be regenerated" >&2; exit 1; }
+if ! "$ROOT/ops/manifests/regenerate.sh" --check gateway-build.json; then
+    echo >&2
+    echo "  The build succeeded but the record does not agree with the deployed runtime." >&2
+    echo "  Most likely the new binary is built and the unit is still running the old one," >&2
+    echo "  which is expected until ops/install-runtime.sh restarts it. Nothing was installed." >&2
+    exit 1
+fi
 say "build record: $RECORD"
 say "OK"

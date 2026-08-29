@@ -59,13 +59,83 @@ class GatewayUnitPathTests(unittest.TestCase):
             "writes the package name, so the unit would ENOENT on every start")
 
     def test_the_installer_and_the_unit_agree_on_the_path(self):
-        """Two files holding one path is how the stale one went unnoticed for four hours."""
-        m = re.search(r'^BIN="\$ROOT/(.+)"$', INSTALLER.read_text(), re.M)
-        self.assertIsNotNone(m, "install-gateway.sh no longer sets BIN in the expected form")
+        """One gateway identity across builder, installer, manifest and unit.
+
+        This used to read `^BIN="\\$ROOT/(.+)"$` out of the installer and compare that literal
+        with the unit's. It was right about the problem -- two files holding one path is how
+        the stale one went unnoticed for four hours -- and it scaled badly: the answer to "two
+        copies" is not "a test that checks the two copies match", it is one copy. There are
+        now four statements of this identity and none of them is a second path:
+
+            Cargo.toml [[bin]] name        what cargo will produce
+            gateway-build.json             what is canonical, and its hash
+            ops/symoneural-gateway.service what systemd launches
+            the two scripts                DERIVE from the first two, holding no literal
+
+        So this compares the three declarations and then asserts the scripts declare nothing.
+        A version of this test that pinned the installer's line SHAPE would have gone red when
+        `BIN` became manifest-derived -- a stale-regex failure wearing the costume of a
+        stale-path one.
+        """
+        import json
+
+        unit_rel = _exec_start().removeprefix("@@ROOT@@/")
+        manifest = json.loads(
+            (ROOT / "ops" / "manifests" / "gateway-build.json").read_text())
         self.assertEqual(
-            m.group(1), _exec_start().removeprefix("@@ROOT@@/"),
-            "the installer checks for one path and the unit launches another, so the "
-            "installer's refuse-rather-than-crash-loop guard guards the wrong file")
+            manifest["relative_path"], unit_rel,
+            "ops/manifests/gateway-build.json names one artifact and the unit launches "
+            "another. Both files can be individually plausible while the box serves the "
+            "binary neither of them describes -- which is the 2026-08-26 state.")
+
+        cargo = (ROOT / "backend" / "apps" / "gateway" / "Cargo.toml").read_text()
+        bin_section = re.search(r"^\[\[bin\]\](.*?)(?=^\[|\Z)", cargo, re.M | re.S)
+        self.assertIsNotNone(bin_section, "the gateway crate declares no [[bin]] section")
+        bin_name = re.search(r'^\s*name = "([^"]+)"', bin_section.group(1), re.M)
+        self.assertIsNotNone(bin_name, "the [[bin]] section declares no name")
+        self.assertEqual(
+            bin_name.group(1), pathlib.PurePosixPath(unit_rel).name,
+            "cargo would build one filename and the unit launches another, so the unit "
+            "ENOENTs on every start")
+
+    def test_neither_script_holds_its_own_copy_of_the_gateway_path(self):
+        """The scripts derive; they do not declare.
+
+        `scripts/install-gateway.sh` reads the binary from `ops/manifests/gateway-build.json`
+        and `ops/build-gateway.sh` reads it from `Cargo.toml`, and the direction of each is
+        deliberate: the manifest records what IS canonical, Cargo.toml determines what WILL be
+        produced, and deriving the builder from the manifest would let a stale record dictate
+        a build.
+
+        A literal reappearing in either is not a style complaint. It is the same edit that put
+        `symon-gateway` in both of these files and left it there through the rename, so that
+        the builder recorded a superseded binary and the installer guarded a file the unit did
+        not launch.
+        """
+        builder = (ROOT / "ops" / "build-gateway.sh").read_text()
+        installer = INSTALLER.read_text()
+        for label, text in (("ops/build-gateway.sh", builder),
+                            ("scripts/install-gateway.sh", installer)):
+            code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+            with self.subTest(script=label):
+                self.assertNotRegex(
+                    code, r"target/release/[A-Za-z]",
+                    f"{label} spells out a release-binary path. It should derive one: the "
+                    "installer from the manifest, the builder from Cargo.toml.")
+
+    def test_the_superseded_binary_name_is_gone_from_both_scripts(self):
+        """`symon-gateway` may survive in prose -- the comments explaining the rename are the
+        reason the next reader will not undo it -- but not in anything executed."""
+        for path in (ROOT / "ops" / "build-gateway.sh", INSTALLER):
+            code = "\n".join(l for l in path.read_text().splitlines()
+                             if not l.lstrip().startswith("#"))
+            with self.subTest(script=path.name):
+                self.assertNotIn(
+                    "symon-gateway", code,
+                    f"{path.name} still names the superseded binary in code. Both files did, "
+                    "for three days after the rename, and neither the build nor the install "
+                    "failed -- the old file was still on disk, so every guard passed while "
+                    "guarding the wrong artifact.")
 
 
 INSTALLED = pathlib.Path("/etc/systemd/system/symoneural-gateway.service")

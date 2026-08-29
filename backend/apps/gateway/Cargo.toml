@@ -1,14 +1,22 @@
 [package]
-name = "symon-gateway"
+name = "symoneural-gateway"
 version = "0.1.0"
 edition = "2021"
 description = "Front-door HTTP gateway for symoneural.com: proxies to the FastAPI control plane, validates payloads in WASM."
 license = "Apache-2.0"
 
-# The binary is `symon-gateway`. Note the hyphen: an earlier spec called it `symon_gateway`,
-# and `ops/systemd/*.service` plus scripts/symoneural.sh must agree with whatever is here.
+# The binary is `symoneural-gateway`.
+#
+# RENAMED from `symon-gateway` on 2026-08-26. The runtime-identity contract requires every
+# first-party executable, argv[0] and process `comm` to begin with `symoneural-`, and this
+# binary was the one live violation: the unit was `symoneural-gateway.service`, but the thing
+# it executed was called `symon-gateway`, so `ss -lptn` and `/proc/<pid>/comm` both reported
+# a name that exists nowhere in the approved roster.
+#
+# `ops/symoneural-gateway.service` must agree with whatever is here -- an ExecStart pointing
+# at the old filename is a unit that fails to start, and it fails at boot rather than now.
 [[bin]]
-name = "symon-gateway"
+name = "symoneural-gateway"
 path = "src/main.rs"
 
 [dependencies]

@@ -35,7 +35,7 @@ WorkingDirectory=@@ROOT@@
 # API itself was healthy on :8800 and every rack unit read `ready`. Nothing in any test went
 # red: the suites exercise `api.py`, and no check anywhere asserted that the string in this
 # ExecStart names a file that exists. That is what `test_gateway_unit.py` now does.
-ExecStart=@@ROOT@@/backend/apps/gateway/target/release/symon-gateway
+ExecStart=@@ROOT@@/backend/apps/gateway/target/release/symoneural-gateway
 
 # --- environment -------------------------------------------------------------------------
 Environment=SYMON_GATEWAY_BIND=127.0.0.1:8000

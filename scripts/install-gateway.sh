@@ -11,12 +11,28 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 UNIT=/etc/systemd/system/symoneural-gateway.service
-# Under backend/apps/gateway/, with every other app. See the note in
-# ops/symoneural-gateway.service for what the stale spelling of this path cost.
-BIN="$ROOT/backend/apps/gateway/target/release/symon-gateway"
 
 [ "$(id -u)" -eq 0 ] || { echo "run me with sudo" >&2; exit 1; }
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
+
+# ---------------------------------------------------------------- which binary
+#
+# From the manifest, not from a literal here. This line read
+# `.../target/release/symon-gateway` and went on doing so after the 2026-08-26 rename, so this
+# script would have installed a unit whose ExecStart names `symoneural-gateway` while
+# refusing-or-not based on whether the SUPERSEDED file existed. Both were on disk, so the
+# guard on the next block passed while guarding the wrong file -- which is the exact thing
+# that guard was added to prevent.
+#
+# `ops/manifests/artifact.sh` is the only reader of the manifests; see its header for why a
+# path repeated across scripts is what went stale in the first place.
+. "$ROOT/ops/manifests/artifact.sh"
+# `set -e` is on, so the status has to be captured rather than tested in place, or a failed
+# load aborts at the assignment and the message below is never printed.
+if artifact_load gateway-build.json; then LOADED=1; else LOADED=0; fi
+[ "$LOADED" -eq 1 ] || { echo "cannot read ops/manifests/gateway-build.json -- it names the binary to install" >&2; exit 1; }
+[ "$ART_ROOT" = "$ROOT" ] || { echo "artifact.sh resolves to $ART_ROOT, not $ROOT; refusing to install another checkout's artifact" >&2; exit 1; }
+BIN="$ART_ABS"
 
 # Refuse rather than install a unit that will crash-loop on ENOENT. Restart=always means a
 # missing binary is five restarts and then a silent dead unit, which is a poor way to find
@@ -51,12 +67,30 @@ echo "  unit points at $ROOT"
 # their executable is vim/cargo/bash. That was the reason for the original `-f`, and a bare
 # `pkill -f` on this path once killed the invoking shell (an unexplained exit 144); resolving
 # the image sidesteps both problems rather than trading one for the other.
-for pid in $(pgrep -x symon-gateway 2>/dev/null || true); do
+#
+# ## THE `pgrep` PRE-FILTER IS GONE, AND MUST NOT COME BACK
+#
+# It was `pgrep -x symon-gateway`. `-x` matches `comm`, and the kernel caps `comm` at 15
+# characters (TASK_COMM_LEN). `symoneural-gateway` is 18, so the live gateway's `comm` is
+# `symoneural-gate` -- measured on this box, pid 1877. Renaming the literal to the new binary
+# name would therefore have matched NOTHING, silently, and the "obvious" fix would have
+# disabled the orphan-killer entirely while looking like it had completed the rename.
+# `symoneural-gate` would work and is a landmine: it is a truncation, not a name, and the next
+# person to correct it "back" breaks this again.
+#
+# So the loop walks /proc directly and compares resolved images, which is what the paragraph
+# above already argued the check should be. `pgrep` was only ever a cheap pre-filter, and
+# there is no spelling of it that is correct here.
+BIN_REAL="$(readlink -f "$BIN")"
+for procdir in /proc/[0-9]*; do
   # readlink needs root for another user's pid; we are root, checked above.
-  if [ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" = "$(readlink -f "$BIN")" ]; then
-    echo "  stopping hand-started gateway (pid $pid) holding the port"
-    kill "$pid" 2>/dev/null || true
-  fi
+  [ "$(readlink -f "$procdir/exe" 2>/dev/null || true)" = "$BIN_REAL" ] || continue
+  pid="${procdir#/proc/}"
+  # Never the unit's own process: systemctl restart below owns that one, and killing it here
+  # would race the restart.
+  [ "$pid" = "$(systemctl show -p MainPID --value symoneural-gateway.service 2>/dev/null)" ] && continue
+  echo "  stopping hand-started gateway (pid $pid) holding the port"
+  kill "$pid" 2>/dev/null || true
 done
 sleep 1
 
