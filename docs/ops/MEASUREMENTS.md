@@ -19,6 +19,7 @@ node tests/streamer_guide.mjs       # the guide grid on streamer.html -- own API
 node tests/project.mjs              # /project -- needs tests/project-harness.py, no GPU
 node tests/live.mjs                 # /livestack/live -- needs tests/live-harness.py, no GPU, no OBS
 node tests/responsive.mjs           # 24 pages x 8 viewports, against a running API on :8800
+node tests/architecture.mjs         # the readability and ownership floors responsive.mjs cannot see
 node tests/chat_smoke.mjs           # chat.html end to end -- TAKES THE GPU, run it alone
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
