@@ -108,6 +108,42 @@ def _extensionless_page_routes() -> set[str]:
             for key in node.value.keys:
                 routes.add(f"livestack/{key.value}")
                 routes.add(f"live-stack/{key.value}")
+
+    # A THIRD declaration form, and the one this parser was blind to until 2026-08-29: a page
+    # route declared on an APPLICATION'S OWN ROUTER rather than in api.py at all.
+    #
+    # `/demo/dispatchos` is `@ui_router.get("/demo/dispatchos")` in `apps/dispatchos/routes.py`,
+    # mounted with `app.include_router(dispatchos.ui_router)` and no prefix. Nothing above can
+    # see it: the regex reads `@app.get` in api.py and the AST walk reads `LIVESTACK_PAGES`.
+    # So when `dispatchos` was written into ROSTER.md and the generated rack fallback grew an
+    # `<a class="unit" href="/demo/dispatchos">`, this file's intersection stayed empty and
+    # `test_every_linked_api_route_is_known_to_the_deploy_check` passed -- while `deploy.sh`
+    # would have reported `MISSING demo/dispatchos` and exited 1 on a page answering 200.
+    #
+    # That is the third time in this file's history the parser and the allowlist have been
+    # blind to the same entry in the same way, which is the failure its own docstring warns
+    # about: a guard that encodes an assumption the thing it guards does not share. One
+    # segment was the assumption in 2026-08-21; "declared in api.py" was the assumption here.
+    #
+    # Only NO-PREFIX routers are read. A router included with a prefix declares its paths
+    # relative to it, and reconstructing the mounted path means matching every
+    # `include_router(module.name, prefix=...)` back to the file defining `name` -- a second,
+    # weaker copy of the route table, which `apps/route_matrix.py` argues at length against
+    # building. Page routes are mounted without a prefix; api routes are not, and `is_route()`
+    # exempts `api/*` regardless. The narrow scan answers the narrow question.
+    for routes_py in sorted((APPS := API.parent / "apps").rglob("routes.py")):
+        text = "\n".join(
+            "" if line.lstrip().startswith("#") else line
+            for line in routes_py.read_text(encoding="utf-8").splitlines())
+        for m in re.finditer(
+                r'@(\w+)\.get\(\s*"/([A-Za-z][\w/-]*)"', text):
+            router, path = m.group(1), m.group(2)
+            if "." in path:
+                continue
+            # Mounted without a prefix? Only then is the declared literal the served path.
+            if re.search(rf"include_router\(\s*\w+\.{re.escape(router)}\s*\)",
+                         API.read_text()):
+                routes.add(path)
     return routes
 
 

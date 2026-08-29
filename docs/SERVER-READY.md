@@ -34,31 +34,46 @@ document covers every roster row and can re-take the live half on demand.
 `page` is the HTTP status of the row's `href`. `api` is its read-only endpoint. `state` is what
 the row renders on the rack, straight out of `/api/status`.
 
-| id | href | page | api | api default | state default | api on | state on |
-|---|---|---|---|---|---|---|---|
-| chat | /chat.html | 200 | POST only | - | ready | - | ready |
-| image | /image.html | 200 | POST only | - | ready | - | ready |
-| remix | /remix.html | 200 | POST only | - | ready | - | ready |
-| ravencalc | /ravencalc.html | 200 | /api/ravencalc | 200 | ready | 200 | ready |
-| train | /reinforce.html | 200 | /api/train/status | 503 | ready | 503 | ready |
-| miner | /miner.html | 200 | /api/gpuminer/status | 503 | offline | 503 | offline |
-| streamer | /streamer.html | 200 | /api/streamer/state | 200 | ready | 200 | ready |
-| coder | /documentation.html | 200 | no route by design | - | offline | - | ready |
-| project | /project.html | 200 | /api/project/state | 503 | offline | 200 | ready |
-| sigils | /sigils.html | 200 | /api/sigils/state | 200 | ready | 200 | ready |
-| studio | /studio | 200 | /api/studio/state | 200 | offline | 200 | offline |
-| exp | /exp | 200 | /api/exp/state | 200 | queued | 200 | queued |
-| live | /livestack/live | 200 | /api/live/state | 200 | ready | 200 | ready |
+| id | href | page | api | api read | state |
+|---|---|---|---|---|---|
+| chat | /chat.html | 200 | POST only | - | ready |
+| image | /image.html | 200 | POST only | - | ready |
+| remix | /remix.html | 200 | POST only | - | ready |
+| ravencalc | /ravencalc.html | 200 | POST only | - | ready |
+| miner | /miner.html | 200 | /api/gpuminer/status | 503 | offline |
+| streamer | /streamer.html | 200 | /api/streamer/state | 200 | ready |
+| coder | /livestack/coder | 200 | no route by design | - | offline |
+| project | /project.html | 200 | /api/project/state | 503 | offline |
+| sigils | /sigils.html | 200 | /api/sigils/state | 200 | ready |
+| studio | /studio | 200 | /api/studio/state | 200 | offline |
+| live | /livestack/live | 200 | /api/live/state | 200 | ready |
+| dispatchos | /demo/dispatchos | 200 | /api/dispatchos/status | 200 | offline |
 
-**All thirteen roster rows answer 200 on their own href, in both environments.** That is the
-sentence #73 asked for, and it is now measured rather than believed. It said fourteen until
-2026-08-22: `gateway` was folded into the miner row as a third `sub` (R-175, commit
-`c779e2cb`), so it left this table when it left the roster. Its readings did not vanish —
-`/gateway.html` still answers 200 and still renders its state out of `/api/status`'s miner
-`sub` list, and `/api/gateway/state` still answers 503-with-its-switch-name off and 200 on.
-The two gateway cells this table used to carry (page 200 / api 503→200) were readings of
-exactly that behaviour and were true when taken; they now live in the miner row's story
-rather than in a row of their own.
+**All twelve roster rows answer 200 on their own href.** That is the sentence #73 asked for,
+and it is measured rather than believed. Re-taken 2026-08-29 on `de73110d` against a server on
+port 8899 -- a spare port, so the reading did not require restarting the live service and did
+not disturb it.
+
+**THE TABLE LOST TWO COLUMNS AND THAT IS A CORRECTION, NOT A TRIM.** It carried
+`api default / state default / api on / state on`: two environments, switches off and
+switches on. This reading was taken in ONE environment, so filling four columns from it would
+have been the carry-forward-and-re-date failure this repository has a rule about -- two of the
+four numbers would have been copied from a measurement nobody re-took. One reading, one pair
+of columns, and the environment is named above.
+
+`ravencalc` moved from `/api/ravencalc | 200` to `POST only`. `/api/ravencalc` accepts POST
+and nothing else, so a GET measures the StaticFiles mount at `/` 404ing rather than the
+surface -- the same fact chat, image and remix have always been recorded with. The old `200`
+was a reading of something, but not of that row's endpoint.
+
+It said thirteen rows until 2026-08-29 and fourteen until 2026-08-22. `gateway` left on the
+earlier date, folded into the miner row as a third `sub` (R-175, commit `c779e2cb`).
+`train` and `exp` left on the later one, folded under `studio`; `dispatchos` joined, having
+been a built row since #95 that no description of the rack carried. None of the three that
+left lost its readings: `/gateway.html`, `/reinforce.html` and `/exp` all still answer 200 and
+all still render their own state out of `/api/status`, now from a `sub` list rather than a
+top-level row. **Folded is not deleted, and a table that stops carrying a row has to say
+which of the two happened.**
 
 **`live` is the one row whose two `state` columns are identical for a reason that is not a
 defect** — read the `train` section below before assuming otherwise, because that row is

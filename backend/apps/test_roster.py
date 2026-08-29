@@ -22,6 +22,7 @@ helpers are imported from there rather than copied, so there is one reader of
 from __future__ import annotations
 
 import pathlib
+import re
 import unittest
 
 from apps import roster
@@ -65,19 +66,57 @@ def _module_rows() -> dict:
     return published
 
 
+def _router_paths() -> set[str]:
+    """Every path declared by a route decorator anywhere in this repo's routers.
+
+    Read as SOURCE and never imported, for the reason `test_status_rack.py` states: importing
+    the serving module builds every rate limiter, resolves the GPU governor and mounts
+    `site/`. The same discipline is applied to the routers under `apps/`.
+
+    It exists because a rack href can be served by a ROUTER rather than by a literal decorator
+    in `api.py` -- `/demo/dispatchos` is the first one -- and grepping only `api.py` for it
+    reports a working surface as unrouted.
+
+    **Prefixes are deliberately not resolved and this set is deliberately not complete.** A
+    router included at `/api/dispatchos` declares its routes as `"/status"`, so what lands
+    here is `/status` and not the mounted path. Reconstructing the mounted paths means
+    matching every `include_router(module.name, prefix=...)` to the file that defines
+    `name` -- a second, weaker copy of the route table, which is the exact thing
+    `apps/route_matrix.py` exists to argue against building. This set is used for ONE
+    question, asked of hrefs the roster declares: is this page path declared by some router
+    at all. A page route is mounted without a prefix (`app.include_router(ui_router)`), so
+    its literal is what appears here, which is what makes the narrow question answerable
+    from a narrow scan. Do not widen the caller without widening this.
+    """
+    paths: set[str] = set()
+    decorator = re.compile(
+        r"@[A-Za-z_][A-Za-z_0-9]*\.(?:get|post|put|patch|delete|websocket)"
+        r"\(\s*[fr]?[\"']([^\"']*)[\"']")
+    for f in [REPO / "backend" / "api.py",
+              *sorted((REPO / "backend" / "apps").rglob("routes.py"))]:
+        for m in decorator.finditer(f.read_text(encoding="utf-8")):
+            if m.group(1).startswith("/"):
+                paths.add(m.group(1))
+    return paths
+
+
 class RosterParsesTests(unittest.TestCase):
     def test_the_roster_reads_and_is_not_empty(self):
         rows = roster.rows()
-        # 14 until the gateway fold, 2026-08-22. Thirteen rows, and the slot total on the
-        # next line moves with it -- the two must always move together or the roster is
-        # claiming units its own table does not carry.
-        self.assertEqual(len(rows), 13)
-        # 21 until 2026-08-22, when gateway's 1U was folded into the miner row. A fold gives
-        # a slot BACK, which is the opposite direction from every previous change to this
-        # number and the reason it is worth a comment: the one-screen budget in
-        # .claude/HANDOVER.md §0 was measured against fourteen rows, so thirteen is inside
-        # what was measured rather than past it.
-        self.assertEqual(roster.slots(), 20)
+        # 14 until the gateway fold, 2026-08-22; 13 until the Studio fold, 2026-08-29, which
+        # took `train` and `exp` under `studio`; and 12 rather than 11 because the same change
+        # finally WROTE DOWN `dispatchos`, which `build_status()` had been building since #95
+        # while every description of the rack omitted it. The slot total on the next line
+        # moves with this one -- the two must always move together or the roster is claiming
+        # units its own table does not carry.
+        self.assertEqual(len(rows), 12)
+        # 21 until 2026-08-22, when gateway's 1U was folded into the miner row; 20 until
+        # 2026-08-29, when train's 2U and exp's 1U were folded into studio and dispatchos's
+        # 1U was added -- net minus two. A fold gives a slot BACK, which is the opposite
+        # direction from most changes to this number and the reason it is worth a comment:
+        # the one-screen budget in .claude/HANDOVER.md §0 was measured against fourteen rows,
+        # so twelve is comfortably inside what was measured rather than past it.
+        self.assertEqual(roster.slots(), 18)
 
     def test_a_malformed_row_raises_instead_of_being_skipped(self):
         """The failure mode that would make the roster a fourth disagreeing list.
@@ -127,8 +166,14 @@ class RosterMatchesApiTests(unittest.TestCase):
 
     def test_every_field_matches_the_module_that_publishes_the_row(self):
         published_rows = _module_rows()
+        # `exp` left this list on 2026-08-29 and `dispatchos` joined it, and the two changes
+        # are unrelated despite landing together. `exp` left because its row was folded under
+        # `studio` -- `api.py` still reads `exp.status()`, but it spreads the result onto a
+        # `SubUnit` now, and this list is about TOP-LEVEL rows built by spreading a module's
+        # dict. `dispatchos` joined because it had been spread that way since #95 and this
+        # hand-typed list, like every other description of the rack, had never been told.
         self.assertEqual(sorted(published_rows),
-                         ["exp", "live", "project", "sigils", "streamer", "studio"],
+                         ["dispatchos", "live", "project", "sigils", "streamer", "studio"],
                          "the set of rows api.py spreads from a module changed")
         for row in roster.rows():
             published = published_rows.get(row["id"])
@@ -163,6 +208,14 @@ class RosterMatchesDiskTests(unittest.TestCase):
                 if href.endswith(".html"):
                     self.assertTrue((REPO / "site" / href.lstrip("/")).is_file(),
                                     f"the rack links to {href}, which is not in site/")
+                elif href == "/demo/dispatchos":
+                    # Routed by `apps/dispatchos/routes.py`, not by a literal decorator in
+                    # api.py, so the source grep below cannot see it and would report a
+                    # working surface as an unrouted one. Asserted against the ROUTER, which
+                    # is the structure requests are actually matched against -- the same
+                    # discipline `apps/route_matrix.py` exists to enforce.
+                    self.assertIn(href, _router_paths(),
+                                  f"the rack links to {href}, which no router serves")
                 else:
                     self.assertIn(f'"{href}"', source,
                                   f"the rack links to {href}, which api.py does not route")
@@ -267,15 +320,26 @@ class PluginRowsMatchRosterTests(unittest.TestCase):
         self.assertTrue([_row_id(c) for c in _unit_calls()], "build_status() yielded no rows")
         self.assertTrue(roster.rows(), "ROSTER.md yielded no rows")
 
-    def test_exactly_one_plugin_has_a_row_and_it_is_exp(self):
+    def test_no_studio_plugin_has_a_rack_row_of_its_own(self):
+        """The Studio fold, asserted from the direction that omission cannot check.
+
+        `exp` was the one plugin with a row and `reinforce` published its state through a
+        hand-written `train` row beside it, so the rack showed two Studio plugins standing
+        as peers of their own parent. Both became `sub` entries on `studio` on 2026-08-29.
+
+        This asserts the rows are GONE. That they are not merely deleted is asserted
+        separately, by `test_status_rack.py::FOLDED`, which requires each folded id to come
+        back as a `SubUnit` -- two halves of one fold, and only one of them is checked by a
+        name being absent from a list.
+        """
         rows = {_row_id(call) for call in _unit_calls()}
         with_rows = sorted(set(self._plugin_names()) & rows)
         self.assertEqual(
-            with_rows, ["exp"],
-            "ROSTER.md says exp is the only Studio plugin with a rack row of its own. "
-            f"build_status() now gives rows to {with_rows}. Whichever is wrong, they cannot "
-            "both stand -- and adding or removing a row is the five-step procedure in "
-            "ROSTER.md's `Adding a row`, not a one-line edit to api.py")
+            with_rows, [],
+            "ROSTER.md says every Studio plugin is a child surface of the studio row. "
+            f"build_status() gives top-level rows to {with_rows}. Whichever is wrong, they "
+            "cannot both stand -- and adding or removing a row is the five-step procedure "
+            "in ROSTER.md's `Adding a row`, not a one-line edit to api.py")
 
     def test_the_roster_and_build_status_agree_on_which_plugins_are_rows(self):
         """The two are compared, never derived one from the other -- see this file's docstring."""
@@ -286,19 +350,30 @@ class PluginRowsMatchRosterTests(unittest.TestCase):
             sorted(in_api), sorted(in_roster),
             "a Studio plugin is a rack row in one of ROSTER.md / api.py and not the other")
 
-    def test_the_roster_points_exps_implementation_at_the_plugin_directory(self):
-        """A row whose `implementation` says `backend/api.py` would read as a surface of its
-        own. `exp` is a plugin that happens to have a row, and the column has to say so."""
-        exp = next(row for row in roster.rows() if row["id"] == "exp")
-        self.assertEqual(exp["implementation"], "backend/apps/studio/plugins/exp")
-        self.assertTrue((REPO / exp["implementation"]).is_dir())
+    def test_the_roster_records_both_studio_plugins_as_folded_rather_than_absent(self):
+        """A fold that loses the write-up is indistinguishable from a deletion.
+
+        `exp` had a row and an `implementation` column pointing at its plugin directory; the
+        column existed so a row could not read as a surface of its own. With the row gone the
+        column is gone too, and the claim that has to survive is the one this replaces it
+        with: `ROSTER.md`'s not-a-rack-row section must NAME both plugins, because that
+        section is what `roster.excluded()` parses and what stops a directory being silently
+        neither a row nor explained.
+        """
+        excluded = roster.excluded()
+        for name in ("reinforce", "exp"):
+            with self.subTest(plugin=name):
+                self.assertIn(
+                    name, excluded,
+                    f"{name} is a Studio plugin with no rack row of its own, so ROSTER.md's "
+                    "not-a-rack-row section has to say so -- otherwise the directory is "
+                    "ambiguous, which is the state this file exists to remove")
 
 
 def _tempfile():
     """A context manager yielding a temp path, so `enterContext` cleans it up."""
     import contextlib
     import tempfile
-
     @contextlib.contextmanager
     def _cm():
         with tempfile.TemporaryDirectory() as d:

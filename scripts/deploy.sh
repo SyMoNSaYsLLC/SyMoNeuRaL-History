@@ -203,6 +203,28 @@ is_route() {
     # genuinely absent file -- which is the whole failure mode this function's comments
     # keep returning to. apps/test_deploy_routes.py asserts both directions.
     live-stack/image|livestack/image) return 0;;
+    # The DispatchOS application page. Listed for the fourth time this function has been
+    # taught a working route -- and the first one declared on an app's OWN router
+    # (`apps/dispatchos/routes.py`, `@ui_router.get("/demo/dispatchos")`) rather than as a
+    # literal `@app.get` in backend/api.py. It arrived in the published markup on 2026-08-29,
+    # when `dispatchos` was finally written into ROSTER.md and the generated pre-JS rack
+    # fallback grew an `<a class="unit" href="/demo/dispatchos">`.
+    #
+    # Without this line the reference check reports `MISSING demo/dispatchos` and exits 1 on a
+    # deploy where the path answers 200 -- and `ops/symoneural-deploy.service` deliberately
+    # carries no SuccessExitStatus, so the boot-time publish would have gone red every time.
+    # Exactly the failure the four paragraphs above this function describe, arriving again.
+    #
+    # Exact path, never `demo/*`: a glob would exempt every future child of /demo including a
+    # typo, and an exemption that over-matches stops this check catching a genuinely absent
+    # file, which is the whole point of it.
+    # `/demo/dispatchos/docs` is the customer-scoped documentation page, served by the same
+    # router behind the same Caddy door. Nothing in site/ links it today -- the DispatchOS
+    # page is rendered BY the API and never published -- so it cannot currently reach this
+    # check. Listed anyway, and deliberately: the alternative is that the day somebody links
+    # it from a published page, a working route becomes `MISSING` and takes the boot-time
+    # deploy red. Cheap now, silent failure later.
+    demo/dispatchos|demo/dispatchos/docs) return 0;;
     *) return 1;;
   esac
 }

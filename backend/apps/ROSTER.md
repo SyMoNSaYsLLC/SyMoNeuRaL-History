@@ -1,6 +1,6 @@
 # The rack roster
 
-The rack has **fourteen rows**, and this file is where they are written down. It exists
+The rack has **twelve rows**, and this file is where they are written down. It exists
 because the roster was living in four places that could disagree — `backend/apps/` on disk,
 the hand-written `Unit(...)` rows in `api.py:build_status()`, `apps/controlboard`'s
 `TOGGLEABLE`, and `apps/test_status_rack.py`'s hand-typed `EXPECTED` — and three lists that
@@ -25,21 +25,41 @@ Read in the order `build_status()` emits them, which is the order the rack rende
 | image | SyMoNeuRaL Image | 2U | gpu | /image.html | backend/api.py | yes |
 | remix | SyMoNeuRaL Remix | 1U | gpu | /remix.html | backend/apps/remix | yes |
 | ravencalc | SyMoNeuRaL RavenCalc | 1U | cpu | /ravencalc.html | backend/apps/ravencalc | yes |
-| train | SyMoNeuRaL Reinforce | 2U | gpu | /reinforce.html | backend/api.py | no |
 | miner | SyMoNeuRaL Miner | 6U | gpu | /miner.html | backend/apps/cryptominer | no |
 | streamer | SyMoNeuRaL Streamer | 1U | net | /streamer.html | backend/apps/streamer | no |
-| coder | SyMoNeuRaL Coder | 1U | cpu | /documentation.html | backend/apps/coder | no |
+| coder | SyMoNeuRaL Coder | 1U | cpu | /livestack/coder | backend/apps/coder | no |
 | project | SyMoNeuRaL Project | 1U | cpu | /project.html | backend/apps/project | no |
 | sigils | SyMoNeuRaL Sigils | 1U | gpu | /sigils.html | backend/apps/sigils | yes |
 | studio | SyMoNeuRaL Studio | 1U | gpu | /studio | backend/apps/studio | no |
-| exp | SyMoNeuRaL Exp | 1U | cpu | /exp | backend/apps/studio/plugins/exp | no |
 | live | SyMoNeuRaL Live | 1U | net | /livestack/live | backend/apps/live | no |
+| dispatchos | SyMoNeuRaL DispatchOS | 1U | cpu | /demo/dispatchos | backend/apps/dispatchos | no |
 
-Thirteen rows, twenty rack units. The slot figures are what the one-screen budget is
+Twelve rows, eighteen rack units. The slot figures are what the one-screen budget is
 spent on; `.claude/HANDOVER.md` §0 has the viewport table and says fourteen rows fit
-everywhere -- so the fold below **gave a slot back** rather than spending one, and the next
-row to land has that slack and no more. Measure with a cloned `.unit`, never with
+everywhere -- so the folds below have **given slots back** rather than spending them, and the
+next rows to land have that slack and no more. Measure with a cloned `.unit`, never with
 `scrollHeight`.
+
+**`dispatchos` was a row that was never written here, and that is the more instructive half
+of this file's history.** `build_status()` has been building it since #95; `ROSTER.md`, the
+`EXPECTED` list in `apps/test_status_rack.py`, the hand-typed count in the comment above it
+and `docs/specs/symoneural-live-stack.md` all went on describing a rack without it. Six tests
+were red on that disagreement on 2026-08-29. This is exactly the failure the file's own
+opening paragraph names -- a roster living in several places that can disagree -- arriving
+from the direction nobody guarded: not a row invented in one copy, but a row omitted from
+every copy except the code. The tripwire worked. It just had to be run.
+
+**`train` and `exp` are not rows any more.** Folded into `studio` as its two `sub` entries on
+2026-08-29. Reinforce and Exp are Studio plugins in the implementation -- `/api/train/*` is
+served by `apps.studio.plugins.reinforce.routes` and `/api/exp/*` by
+`apps.studio.plugins.exp.routes`, both mounted from inside the Studio package -- and a
+top-level row for each presented two plugins of one application as independent runtimes
+sitting beside their own parent. `docs/specs/symoneural-live-stack.md` §4 carried both as
+*"target architecture; may stay separately addressable during transition"*. They stayed
+separately addressable: `/reinforce.html` and `/exp` both still answer, neither redirects,
+and the `SubUnit` ids are unchanged at `train` and `exp` so `site/reinforce.html`,
+`site/exp.html`, the governor's holder name and `apps/controlboard`'s exclusion list all
+still find what they look for. What changed is the rack's claim about what they are.
 
 **`gateway` is not a row any more.** Folded into `miner` as a third `sub` on 2026-08-22 --
 Garrett: *"gateway is a miner app so it can merge into miner"*, *"gatway should be a sub app
@@ -104,8 +124,11 @@ A directory here is not a claim to a row on the front page. These are not omissi
   with its own `net` bus (see the fold note above the table). The thirteen TRON settlement
   modules stay in this directory and `/gateway.html` still reads their state off
   `/api/status`; what it no longer has is a rack row of its own.
-- **`discovery`** and **`reinforce`** (under `studio/plugins/`) — Studio plugins. `exp` is
-  the only plugin with a row of its own.
+- **`discovery`**, **`reinforce`** and **`exp`** (under `studio/plugins/`) — Studio
+  plugins. None of them is a row: `reinforce` and `exp` became `sub` entries on the `studio`
+  row on 2026-08-29 (see the fold note above the table) and `discovery` has never had a
+  surface. `exp` was the only plugin with a row of its own and the sentence that stood here
+  said so; that is the sentence the fold retired.
 - **`accounts`**, **`capture`**, **`controlboard`**, **`licensing`**, **`news`** —
   infrastructure behind the surfaces, not surfaces. `controlboard` *drives* the rack's
   operator overrides; a row for it would be the rack reporting on itself. `news` renders the

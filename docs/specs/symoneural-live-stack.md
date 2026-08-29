@@ -36,17 +36,27 @@ survive any migration.
 | `image` | SyMoNeuRaL Image | 2U | gpu | `/image.html` |
 | `remix` | SyMoNeuRaL Remix | 1U | gpu | `/remix.html` |
 | `ravencalc` | SyMoNeuRaL RavenCalc | 1U | **cpu** | `/ravencalc.html` |
-| `train` | SyMoNeuRaL Reinforce | 2U | gpu | `/reinforce.html` |
 | `miner` | SyMoNeuRaL Miner | 6U | gpu | `/miner.html` |
 | `streamer` | SyMoNeuRaL Streamer | 1U | net | `/streamer.html` |
-| `coder` | SyMoNeuRaL Coder | 1U | cpu | **`/documentation.html`** — see §5 |
+| `coder` | SyMoNeuRaL Coder | 1U | cpu | `/livestack/coder` — §5 is fixed |
 | `project` | SyMoNeuRaL Project | 1U | cpu | `/project.html` |
 | `sigils` | SyMoNeuRaL Sigils | 1U | gpu | `/sigils.html` |
 | `studio` | SyMoNeuRaL Studio | 1U | gpu | `/studio` |
-| `exp` | SyMoNeuRaL Exp | 1U | cpu | `/exp` |
 | `live` | SyMoNeuRaL Live | 1U | net | `/livestack/live` |
+| `dispatchos` | SyMoNeuRaL DispatchOS | 1U | cpu | `/demo/dispatchos` |
+
+**Twelve rows, eighteen rack units, as of 2026-08-29.** Two changes landed together and they
+are unrelated. `train` and `exp` left the table because they were folded under `studio` (§4);
+`dispatchos` joined it because it had been a row `build_status()` actually built since #95
+while **every** description of the rack — this file, `ROSTER.md`, `EXPECTED` and the hand-typed
+count in `api.py` — omitted it. Six tests were red on that omission. Recorded here because
+omission is the harder drift to see: a missing row reads as a shorter list, not as a mistake.
 
 Plus `miner`'s three subunits: `gpuminer` (gpu), `asicminer` (asic), `gateway` (net).
+
+**Reinforce and Exp are no longer rows; their ids are unchanged.** Both are `sub` entries on
+the `studio` row since 2026-08-29 — see §4. `/reinforce.html` and `/exp` both still answer and
+neither redirects.
 
 **Note the `id` for Reinforce is `train`, not `reinforce`.** The label was renamed and the id
 was not. Any migration that "tidies" the id breaks `/api/status` consumers and
@@ -79,8 +89,8 @@ tested, never averaged away.**
 |---|---|
 | **Gateway → under Miner** | done 2026-08-22. `/gateway.html` still answers and still owns the surface; the fold kept the **id `gateway`** on the `SubUnit` rather than renaming it. `apps/test_status_rack.py::FOLDED` asserts **both** halves: not a row, and not deleted either |
 | **Tuner + Guide → under Streamer** | one product name, guide routes nested under `/api/streamer/guide/*` |
-| **Exp → Studio family** | target architecture; may stay separately addressable during transition |
-| **Reinforce → Studio family** | target architecture; may stay separately addressable during transition |
+| **Exp → Studio family** | **done 2026-08-29.** `SubUnit(id="exp")` on the `studio` row. `/exp` still answers and still owns the surface; the fold kept the id so `site/exp.html` keeps finding its own reading in `/api/status` |
+| **Reinforce → Studio family** | **done 2026-08-29.** `SubUnit(id="train")` on the `studio` row. `/reinforce.html` still answers; the id `train` is unchanged, which is what `site/reinforce.html`, the governor's holder name and `apps/controlboard`'s exclusion list all depend on. `apps/test_status_rack.py::FOLDED` now asserts both halves for both, as it does for `gateway` |
 | **Project → Chat cowork** | target; the current row may remain during transition. Open task **#83** |
 | **Coder** | stays its own privileged developer surface — not folded |
 
@@ -94,17 +104,25 @@ present"* for one; the rack count is **tested**; the generated fallback must mat
 frontend smoke must assert **no duplicate page/bus rows**; and status detail must carry the
 important folded behaviour rather than dropping it.
 
-## 5. The one defect this audit found
+## 5. The defect this audit found — FIXED 2026-08-29
 
-**`coder`'s href is `/documentation.html`.** The Coder rack row — a privileged browser terminal
-— points at the documentation page. The brief predicted this and the roster confirms it.
+**`coder`'s href was `/documentation.html`.** The Coder rack row — a privileged browser
+terminal — pointed at the documentation page.
 
 Per `symoneural-coder-project-cli-scope.md` §4 the real surface is `/livestack/coder` (with
-`/live-stack/coder` as compatibility only), and the underlying app is 2,748 lines with a stamped
-smoke record. So this is a **wrong href on a working surface**, not a missing surface.
+`/live-stack/coder` as compatibility only), and the underlying app is 2,748 lines with a
+stamped smoke record. So this was a **wrong href on a working surface**, not a missing surface.
 
-**Not fixed here** — that is an implementation change and this scope is docs-only. Recorded so
-it is not rediscovered.
+**It is fixed.** `build_status()` had in fact already been corrected; what had not been was
+`ROSTER.md`, which is the identity AUTHORITY, and this file, which is the spec — so
+`test_roster.py::test_every_field_matches_the_module_that_publishes_the_row` was red and the
+generated pre-JS fallback in `site/index.html` still shipped the wrong link to anyone without
+JavaScript. Both are corrected and the roster reconciliation is green.
+
+The lesson is the one this document keeps arriving at from new directions: **the code being
+right is not the same as the surface being right.** A row's href reaches a visitor through
+`/api/status` for a JavaScript client and through the generated fallback for everyone else,
+and only one of those two paths had the fix.
 
 ## 6. `toggle` — a cross-check, not the source
 
@@ -130,11 +148,20 @@ test that they match is the point** — deriving one from the other would delete
 - **Current rack reality and target architecture are stated separately.** A row that exists
   today is reported as existing today even when the target folds it.
 
-## 8. Not authorized
+## 8. What this document is now allowed to describe
 
-No rack-assembly rewrite in `api.py` · no Live Stack / Control Board / rackpower move · no
-`ROSTER.md` identity change · no href fix (§5) · no folder migration · no deploy.
+The 2026-08-22 scope was docs-only and this section listed what it could not touch: no rack
+assembly change in `api.py`, no `ROSTER.md` identity change, no href fix, no deploy.
+
+**Handshake 6.0 authorised all four, and they are done.** What did NOT change, and is still
+not this document's to change: no folder migration (`backend/apps/gateway/` and
+`backend/apps/studio/plugins/` are where they were — folding a rack row is a display decision,
+moving a package is a migration), no runtime built, selected or reconfigured, no Control Board
+or rackpower move, no raw ComfyUI exposure, and no change to what `/api/status` MEASURES —
+only to how the rack is composed from it.
 
 Related: `docs/specs/symoneural-control-board.md` (the operator half),
 `docs/specs/symoneural-api-surface.md` (where status comes from),
-`backend/apps/ROSTER.md` (identity, and the authority).
+`backend/apps/ROSTER.md` (identity, and the authority),
+`backend/apps/appdocs.py` (per-application documentation ownership, and the partition that
+makes a scoped page unable to show another application's routes).

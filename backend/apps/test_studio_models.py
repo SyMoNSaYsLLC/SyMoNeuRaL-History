@@ -131,11 +131,34 @@ class RouteIsReachable(unittest.TestCase):
         (`/api/live/hls/{name}`) rather than by a static mount, because `site/` is a staging
         directory and a file written there 404s for every visitor until `deploy.sh` runs --
         a live stream that only appears after a deploy is not a live stream.
+
+        Then 14 -> 15 for `apps/dispatchos`, which mounts TWO routers -- `router` under
+        `/api/dispatchos` and `ui_router` with no prefix for the page at `/demo/dispatchos`.
+        This is the first surface to move the count by two, and the reason is the one the
+        `/exp` paragraph above rules out for everything before it: its page is not a
+        `@app.get` on a generated file, it is a route on the application's own router,
+        because the path has no extension and `scripts/deploy.sh` publishes `site/` at
+        `-maxdepth 1`. The count was 14 and the tree had 15 for days -- this tripwire was
+        red at 2026-08-29 and had been, which is what it is for.
+
+        14 -> 16, and BOTH of those are dispatchos. Verified against the tree rather than
+        reasoned from the history above: the sixteen calls are streamer, accounts, gateway,
+        streamer.guide, project, rackpower, reinforce, voice, sigils, studio, studio.ui,
+        exp, news, live, dispatchos and dispatchos.ui. Nothing was added by the 2026-08-29
+        documentation work -- `apps/appdocs` mounts NO router at all. It is a registry and a
+        renderer, and the two routes that use it, `/docs/{app_id}` and
+        `/demo/dispatchos/docs`, are plain `@app.get` declarations in this file.
+
+        So this tripwire had been red for the same reason `EXPECTED`, `ROSTER.md` and the
+        rack-count comment were: dispatchos landed and the descriptions did not follow. Four
+        separate hand-maintained counts, one omission, four red tests -- which is precisely
+        the argument for keeping them hand-maintained instead of deriving them from
+        each other.
         """
         calls = [n for n in ast.walk(TREE)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "include_router"]
-        self.assertEqual(len(calls), 14)
+        self.assertEqual(len(calls), 16)
 
 
 class ValidatorRejectsJunk(unittest.TestCase):

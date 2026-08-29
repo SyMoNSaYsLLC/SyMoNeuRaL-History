@@ -9,8 +9,15 @@ existed only in prose -- which is exactly the kind of number that drifts.
 `apps/test_studio_models.py`: importing the serving module builds every rate limiter, resolves
 the GPU governor and mounts `site/`.
 
-This is a tripwire, not a design constraint. A fifteenth surface is welcome; typing the new
+This is a tripwire, not a design constraint. A thirteenth surface is welcome; typing the new
 number here is the point, the way `test_the_router_count_is_unchanged` works for routers.
+
+It caught a second drift on 2026-08-29, in the direction the first one did not go. `dispatchos`
+had been a built row since #95 and was in NONE of the descriptions -- not `EXPECTED`, not the
+comment, not `ROSTER.md`, not the Live Stack spec -- so this file was red and stayed red while
+the rack served a row nothing admitted existed. Omission is the harder half to notice, because
+a missing name looks like a shorter list rather than like a mistake, and it is the reason the
+count is asserted as a NUMBER as well as as a set of names.
 
 **Green here is not proof the rack is live, and cannot be.** Everything below compares the
 number, the names and the comment *with each other*, inside one file on disk. All three can agree
@@ -33,8 +40,8 @@ TREE = ast.parse(SOURCE)
 
 #: The rows, in the order `build_status()` builds them. Read from `/api/status` on the running
 #: API for the live truth; this is the source's own order and is what the comment must match.
-EXPECTED = ["chat", "image", "remix", "ravencalc", "train", "miner", "streamer", "coder",
-            "project", "sigils", "studio", "exp", "live"]
+EXPECTED = ["chat", "image", "remix", "ravencalc", "miner", "streamer", "coder",
+            "project", "sigils", "studio", "live", "dispatchos"]
 
 #: Rows that are NOT top-level units and must not come back as one. `gateway` was a 1U tile
 #: until 2026-08-22, when Garrett folded it into the Miner row -- *"gateway is a miner app so
@@ -47,7 +54,15 @@ EXPECTED = ["chat", "image", "remix", "ravencalc", "train", "miner", "streamer",
 #: fold or was quietly deleted, and a fold that loses the reading is the failure worth having
 #: a test for -- `/gateway.html` renders whatever `/api/status` says about it, so a gateway
 #: that stops being reported anywhere makes that page read "not present" to every visitor.
-FOLDED = {"gateway": "miner", "guide": "streamer"}
+#:
+#: `train` and `exp` joined them on 2026-08-29. Both were top-level rows and both are Studio
+#: plugins in the code, so the rows were claiming two plugins of one application were
+#: independent runtimes standing beside their own parent. Same rule as `gateway`: the id is
+#: unchanged, `/reinforce.html` and `/exp` still answer, and this map is what asserts the
+#: reading survived rather than the surface being quietly deleted -- `site/reinforce.html`
+#: and `site/exp.html` read their own state out of `/api/status`, so a child that stopped
+#: being reported anywhere would make both pages read "not present" to every visitor.
+FOLDED = {"gateway": "miner", "guide": "streamer", "train": "studio", "exp": "studio"}
 
 
 #: There is deliberately NO module->row map here any more. There used to be one, holding a
@@ -111,7 +126,7 @@ def _row_id(call: ast.Call) -> str:
 
 
 class RackCountTests(unittest.TestCase):
-    def test_the_rack_is_thirteen_units(self):
+    def test_the_rack_is_twelve_units(self):
         self.assertEqual(len(_unit_calls()), len(EXPECTED))
 
     def test_a_folded_surface_is_a_subunit_and_not_a_missing_one(self):

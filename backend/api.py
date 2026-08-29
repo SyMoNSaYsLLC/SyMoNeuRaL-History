@@ -2040,6 +2040,26 @@ def build_status() -> Status:
     # reading from one is a reading from the other. No ellipsis: the rack wraps.
     miner_detail = f"GPU: {gpuminer_detail} · ASIC: {asic_detail}"
 
+    # ---- the Studio family --------------------------------------------------------------
+    # Studio is the parent application and the runtime owner; Reinforce and Exp are child
+    # surfaces of it, not runtimes of their own. Both were top-level rows until 2026-08-29
+    # and are now `SubUnit`s, which is the shape `gateway` under `miner` established: the id
+    # survives, the page survives, the reading survives, and only the top-level row goes.
+    #
+    # These are computed HERE rather than inline in the row below because `train`'s state has
+    # to stay a reading of `adapter_applies()` and the governor holder -- see the long note
+    # at the fold site further down. Splatting `reinforce.status()` over it would assert a
+    # different true thing (whether the HTTP surface accepts work) in place of this one
+    # (whether an adapter is loaded), which is the merge that comment refuses.
+    train_state = ("busy" if holder == "train"
+                   else ("ready" if adapter_applies() else "offline"))
+    train_detail = ("fine-tune in progress — serving surfaces queue" if holder == "train"
+                    else ("adapter loaded · for model/adapter tuning"
+                          if adapter_applies() else "no adapter built"))
+    # `exp` keeps publishing its own status dict; only the shape it is carried in changes.
+    # Read once so the child and any future reader of it cannot disagree within one response.
+    exp_row = exp.status()
+
     free, total = smi("memory.free"), smi("memory.total")
     return Status(
         license=licensing.disclosure(),
@@ -2108,14 +2128,22 @@ def build_status() -> Status:
             # unit that reads `ready` to `offline` the moment the env vars are unset, which
             # is not what a visitor is being told here. The merge is available and is a
             # separate decision.
-            Unit(id="train", label="SyMoNeuRaL Reinforce", slot="2U",
-                 state="busy" if holder == "train" else
-                       ("ready" if adapter_applies() else "offline"),
-                 bus="gpu", href="/reinforce.html",
-                 spec="SymonChat persona adapter · 4-bit low-rank",
-                 detail="fine-tune in progress — serving surfaces queue" if holder == "train"
-                        else ("adapter loaded · for model/adapter tuning"
-                              if adapter_applies() else "no adapter built")),
+            # THE REINFORCE ROW IS GONE FROM HERE AND ITS READING IS NOT. It was folded into
+            # `studio` on 2026-08-29, the same way `gateway` was folded into `miner` on
+            # 2026-08-22 -- the row stops being a top-level unit, the `id` does not change,
+            # and the reading moves onto a `SubUnit` so nothing that reads `/api/status`
+            # loses it. The state above is still computed, at `train_state` below, and is
+            # still computed from `adapter_applies()` rather than from `reinforce.status()`
+            # for the reason this comment already gave.
+            #
+            # Why: `apps/studio/plugins/reinforce/` is a Studio plugin in the code and always
+            # has been -- `/api/train/*` is served by
+            # `apps.studio.plugins.reinforce.routes`. A top-level rack row presented it as an
+            # independent runtime peer of Studio, which is a claim the implementation does
+            # not make anywhere. `docs/specs/symoneural-live-stack.md` §4 called this fold
+            # "target architecture; may stay separately addressable during transition"; the
+            # transition is over and the separate address survives it, because
+            # `/reinforce.html` still answers and the child still carries the id `train`.
             # ONE miner on the rack, two kinds of mining hardware under it.
             #
             # These were two rows until 2026-08-17: "SyMoNeuRaL Miner", OFFLINE on the ASIC
@@ -2222,13 +2250,21 @@ def build_status() -> Status:
             # rename dressed as an architecture. The fold is a rack decision, not a code
             # one, and `/gateway.html` still answers and still owns the surface.
             #
-            # The rack is therefore THIRTEEN units, in the order they are built below:
-            # chat, image, remix, ravencalc, train, miner, streamer, coder, project,
-            # sigils, studio, exp, live. Eleven before `studio` and `exp` landed alongside their
-            # pages -- and this comment said TWELVE for the change that added both, because a
-            # number kept only in prose drifts. `apps/test_status_rack.py` now counts the
-            # `Unit(...)` calls in this function with an AST walk, so the next mistake is a
-            # test failure and not a sentence.
+            # The rack is therefore TWELVE units, in the order they are built below:
+            # chat, image, remix, ravencalc, miner, streamer, coder, project, sigils,
+            # studio, live, dispatchos. Eleven before `studio` and `exp` landed alongside
+            # their pages -- and this comment said TWELVE for the change that added both,
+            # because a number kept only in prose drifts. `apps/test_status_rack.py` now
+            # counts the `Unit(...)` calls in this function with an AST walk, so the next
+            # mistake is a test failure and not a sentence.
+            #
+            # It drifted again anyway, in the other direction, and the AST walk is what
+            # caught it: `dispatchos` was added as a row and this comment, `ROSTER.md`,
+            # `EXPECTED` and the roster reconciliation were all left saying thirteen. Six
+            # tests were red on that count before 2026-08-29. The number here is now the
+            # post-fold one -- fourteen rows minus `train` and `exp`, which became children
+            # of `studio` above, plus `dispatchos`, which was always being built and was
+            # only ever missing from the places that describe the rack.
             #
             # `tests/frontend.mjs` does NOT guard the count, deliberately: it asserts the
             # invariant that no two tiles claim the same page and the same bus (see the comment
@@ -2248,13 +2284,39 @@ def build_status() -> Status:
             # the host, so it is off by default -- and never `busy`: it orchestrates work
             # that other rows already report. A second row lighting up for somebody else's
             # job would be a decorative indicator, which this rack does not have.
-            Unit(**studio.status()),
-            # The plugin runtime. `queued` until the first request to /api/exp mounts the
-            # default preset, `ready` after -- and never a state that describes what it is
-            # *about* to mount, which would be reporting intent as a reading. There is no
-            # `degraded` in Unit.state, so a failed plugin is counted at the front of `detail`
-            # rather than dropped.
-            Unit(**exp.status()),
+            #
+            # THE STUDIO FAMILY: one row, two children, three surfaces.
+            #
+            # `sub` carries Reinforce and Exp. They are children in the code and were peers
+            # only on the rack: `/api/train/*` is `apps.studio.plugins.reinforce.routes` and
+            # `/api/exp/*` is `apps.studio.plugins.exp.routes`, both mounted from inside the
+            # Studio package. A flat rack presented two Studio plugins as independent
+            # runtimes, which is the "do not invent a runtime merely because an application
+            # has a separate page" failure with the invention already shipped.
+            #
+            # THE IDS DO NOT CHANGE, and that is load-bearing rather than tidy. `train` is
+            # read by `site/reinforce.html`, by the governor's holder name, and by
+            # `apps/controlboard`'s exclusion list; `exp` is read by `/exp.html`. Both pages
+            # search `sub` as well as `units`, exactly as `/gateway.html` does since its own
+            # fold, so a folded child still finds its reading and never renders
+            # "not present". `apps/test_status_rack.py::FOLDED` asserts both halves of that
+            # for all four folds now: not a row, and not deleted either.
+            #
+            # `bus` per child, not inherited: Reinforce takes the card under the governor and
+            # is `gpu`; Exp mounts plugin manifests and is `cpu`. Averaging them onto the
+            # parent would be the same overstatement the miner row's ASIC half rejects.
+            Unit(**{**studio.status(), "sub": [
+                SubUnit(id="train", label="Reinforce · adapter training",
+                        state=train_state, bus="gpu", detail=train_detail),
+                # `queued` until the first request to /api/exp mounts the default preset,
+                # `ready` after -- and never a state that describes what it is *about* to
+                # mount, which would be reporting intent as a reading. There is no
+                # `degraded` in SubUnit.state, so a failed plugin is counted at the front of
+                # `detail` rather than dropped.
+                SubUnit(id="exp", label="Exp · experience plugins",
+                        state=exp_row["state"], bus=exp_row["bus"],
+                        detail=exp_row["detail"]),
+            ]}),
             # SyMoNeuRaL Live. `busy` while a playlist is growing on disk and never from an
             # obs-websocket frame -- `apps/live/routes.py::status()` has the argument, and it
             # is the same one `studio` above makes for refusing to go `busy`. `bus="net"`
