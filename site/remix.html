@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-family="workbench">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Remix — playlists that are ordered sets</title>
 <meta name="description" content="Prompt to sequenced tracklist, generated locally.">
-<link rel="stylesheet" href="/symoneural.css?v=ca0106af36">
+<link rel="stylesheet" href="/symoneural.css?v=77a47035a3">
 <link rel="stylesheet" href="/rack-detail.css?v=c2349ecce9">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -34,6 +34,8 @@
     </nav>
   </div>
 </header>
+
+<main>
 
 <div class="apphead">
   <div class="wrap">
@@ -87,7 +89,7 @@
           <p class="gpu-why">While a prompt runs, <b>Remix</b> holds the card and every other GPU surface waits. If <i>holding</i> names something else, you are queued behind it &mdash; that is the honest reason a request is slow.</p>
         </div>
         
-        <h3>Parameters</h3>
+        <h2>Parameters</h2>
         <div class="ctl">
           <label for="count">Tracks <b id="countv">12</b></label>
           <input type="range" id="count" min="5" max="20" step="1" value="12">
@@ -106,6 +108,8 @@
     </div>
   </div>
 </section>
+
+</main>
 
 <footer>
   <div class="wrap foot">
@@ -129,7 +133,12 @@
   <summary>System information &mdash; one card, one surface at a time</summary>
   <div class="wrap">
     <div class="callout" style="margin-top:34px">
-      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <!-- h2, not h3. `appify` relocates this block out of the page body and into a
+           top-level <details class="appinfo"> below the footer, where it is a section
+           of the page in its own right and has no h2 parent to sit under. As an h3 it
+           was the entire outline defect on /project.html, whose only other visible
+           heading is the page h1. -->
+      <h2>This is a 16 GB consumer card, and it is a test bench</h2>
       <p>
         Chat and image never run at the same time here. A lock hands the GPU to exactly one
         surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
@@ -149,9 +158,9 @@
 
 
 <script src="/app.js?v=632745179b"></script>
-<script src="/console.js?v=9824a6d1bb" defer></script>
+<script src="/console.js?v=91351f0d91" defer></script>
 <script src="/ui.js?v=c334a9f106" defer></script>
-<script src="/shell.js?v=746beb8b0d" defer></script>
+<script src="/shell.js?v=bdc75b3527" defer></script>
 <script>
 const form = $('#form'), out = $('#out'), send = $('#send'), head = $('#mhead');
 $('#count').addEventListener('input', e => $('#countv').textContent = e.target.value);

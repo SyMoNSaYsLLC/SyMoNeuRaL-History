@@ -714,6 +714,11 @@ def main() -> int:
     # shaped this way -- a placeholder added to SHELL would have broken the assert two lines
     # above on a correct page, which is exactly what `@@PAGECSS@@` did here once already.
     html_out = build_pages.appify(html_out)
+    # The <main> landmark and the static data-family, from the one authored map in
+    # tools/page_families.py. Opted into the same way `appify` is, for the reason its
+    # comment gives: a shared shell cannot grow a new placeholder without breaking
+    # every consumer that substitutes its own field dict.
+    html_out = build_pages.landmark(html_out, "project.html")
     assert "text-overflow" not in html_out, "an ellipsis rule reached the page"
     (SITE / "project.html").write_text(html_out)
     print("  project.html")

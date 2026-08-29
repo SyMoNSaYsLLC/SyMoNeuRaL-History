@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import sys
 
 # The generators live in tools/, so the repo root is one level up. This exact
 # calculation has been wrong twice in this repo's history -- once when demo/ was
@@ -20,6 +21,11 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 SITE = ROOT / "site"
+
+# The authored page-family map. Imported rather than restated: see tools/page_families.py for
+# why the families live in one file instead of in every generator, the markup and the tests.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import page_families  # noqa: E402
 
 NAV = """    <nav>
       <a class="navlink" href="/livestack">Live stack</a>
@@ -74,7 +80,12 @@ SHELL = """<!doctype html>
 @@BODY@@
 
     <div class="callout" style="margin-top:34px">
-      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <!-- h2, not h3. `appify` relocates this block out of the page body and into a
+           top-level <details class="appinfo"> below the footer, where it is a section
+           of the page in its own right and has no h2 parent to sit under. As an h3 it
+           was the entire outline defect on /project.html, whose only other visible
+           heading is the page h1. -->
+      <h2>This is a 16 GB consumer card, and it is a test bench</h2>
       <p>
         Chat and image never run at the same time here. A lock hands the GPU to exactly one
         surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
@@ -176,6 +187,108 @@ def appify(html: str) -> str:
              '  <div class="wrap">\n    ' + body + '\n  </div>\n</details>\n')
     assert "</footer>" in html, "the footer moved; the system-information panel has no anchor"
     return html.replace("</footer>", "</footer>\n\n" + panel, 1)
+
+
+_HEADING = re.compile(r"<(h[1-6])(\b[^>]*)>(.*?)</\1>", re.S | re.I)
+
+
+def _outline(html: str, filename: str) -> str:
+    """Renumber content headings so the document outline has no level jump.
+
+    Measured across the 23 shell pages: ten started their content at `h3` directly under the
+    page `h1`, so the outline read 1 -> 3 with nothing at level 2. The headings themselves are
+    correct and correctly placed; only their LEVEL is wrong, which is why this renumbers rather
+    than adds, removes or hides anything. No heading text is touched, none is invented, and
+    none is deleted -- the brief rules all three out and they would each be a way of making the
+    check pass without making the page better.
+
+    Two passes, because the ten pages fail for two different reasons.
+
+    **Pass A -- depth.** A page whose shallowest content heading is `h3` has simply been
+    written one level too deep; every heading shifts up by the same amount, so relative
+    nesting is preserved exactly. `studio` goes 3,3,4,4,...,3 -> 2,2,3,3,...,2 and keeps its
+    shape.
+
+    **Pass B -- order.** A page can have genuine `h2` sections AND panel labels marked `h3`
+    that appear before the first of them, which is `sigils`: `Field colour` and `Parameters`
+    are workbench controls at the top level of the page, sitting above four real `h2`
+    sections. Pass A cannot see this because the shallowest level is already 2. So any
+    heading deeper than `h2` that appears before the first `h2` is promoted to `h2` -- it has
+    no parent to be nested under, which is the definition of the defect.
+
+    `h1` is never touched: `landmark` and the generators guarantee exactly one, and it is the
+    page title.
+    """
+    heads = list(_HEADING.finditer(html))
+    content = [m for m in heads if m.group(1).lower() != "h1"]
+    if not content:
+        return html
+
+    levels = {int(m.group(1)[1]) for m in content}
+    shift = max(0, min(levels) - 2)
+
+    seen_h2 = False
+    out, last = [], 0
+    for m in content:
+        lvl = int(m.group(1)[1]) - shift          # pass A
+        if lvl > 2 and not seen_h2:               # pass B
+            lvl = 2
+        if lvl == 2:
+            seen_h2 = True
+        lvl = max(2, min(6, lvl))
+        tag = f"h{lvl}"
+        out.append(html[last:m.start()])
+        out.append(f"<{tag}{m.group(2)}>{m.group(3)}</{tag}>")
+        last = m.end()
+    out.append(html[last:])
+    return "".join(out)
+
+
+def landmark(html: str, filename: str) -> str:
+    """Give a rendered page its `<main>` landmark and its static `data-family`.
+
+    A SECOND POST-PROCESS BESIDE `appify()`, and for exactly the reason `appify()`'s own
+    comment gives at length: build_exp, build_project, build_reinforce, build_sigils and
+    build_studio import `SHELL` and substitute their own field dicts, which know nothing of a
+    new `@@...@@`, and their `assert "@@" not in html_out` guards go red on correct pages. A
+    placeholder in a shared shell is a contract with every consumer; a function they call is a
+    contract with whoever calls it. So those five opt in by calling this, exactly as they opt
+    in to `appify()`.
+
+    ## `<main>`
+
+    Measured across all 23 shell pages: **zero** carried a `<main>` element. The shared shell
+    supplies no landmark, so every page needed one, not the single page an earlier count
+    reported. `site/training.html` already had one and is the precedent for the shape.
+
+    The wrapper opens after `</header>` and closes before `<footer>`, which is the same
+    boundary on every page this shell produces. Verified safe before writing: `site/*.css`
+    contains no `body > ...` child selector, no `header + ...` or `... + footer` sibling rule,
+    and no JavaScript walks `document.body.children`. The `section + section` rules at
+    symoneural.css:913 and :919 operate BETWEEN sections, and sections stay siblings of one
+    another inside the wrapper, so those keep matching.
+
+    ## `data-family`
+
+    Emitted into `<html>` so the width a workspace gets does not wait for JavaScript. Before
+    this, 14 pages rendered 224px narrower with scripting off -- 1120px instead of 1344px at
+    a 1440px viewport. The value comes from `page_families.FAMILIES`; a page with no family
+    keeps the prose width and gets no attribute at all.
+    """
+    fam = page_families.attribute(filename)
+    if fam:
+        assert '<html lang="en">' in html, (
+            f"{filename}: the opening <html> tag moved; data-family has nowhere to go")
+        html = html.replace('<html lang="en">', f'<html lang="en"{fam}>', 1)
+
+    assert "</header>" in html and "<footer>" in html, (
+        f"{filename}: the header/footer boundary moved; <main> has nothing to wrap")
+    assert "<main" not in html, f"{filename}: already has a <main>; refusing to add a second"
+    html = html.replace("</header>", "</header>\n\n<main>", 1)
+    html = html.replace("<footer>", "</main>\n\n<footer>", 1)
+    # The third semantic repair, done here so the five generators that already opt into this
+    # function get it without a further call site. See `_outline` for what it renumbers.
+    return _outline(html, filename)
 
 
 # ---------------------------------------------------------------- the GPU panel
@@ -298,6 +411,10 @@ def page(name: str, gpu: bool | None = None, surface: str = "", why: str = "",
             shared, f'{shared}\n<link rel="stylesheet" href="/{stem}.css">', 1)
     if app:
         html = appify(html)
+    # Unconditional, unlike `appify`: a landmark and a family are not application furniture.
+    # `landmark` decides from `page_families` whether this page gets a `data-family` at all,
+    # so a prose page passes through with only the <main> wrapper added.
+    html = landmark(html, name)
     (SITE / name).write_text(html)
     print(f"  {name}")
 
@@ -736,7 +853,7 @@ CALC_BODY = """    <style>
       padding:12px 16px; border-top:1px solid var(--line); background:var(--panel2);
     }
     .rc-calc .rc-lab{
-      font:650 10.5px/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+      font:650 var(--t7)/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
       text-transform:uppercase; color:var(--faint); margin-right:4px;
     }
     .rc-calc .rc-op{
@@ -757,7 +874,7 @@ CALC_BODY = """    <style>
     .rc-calc .rc-group{margin-top:11px}
     .rc-calc .rc-group:first-child{margin-top:0}
     .rc-calc .rc-glab{
-      margin:0 0 6px; font:650 10.5px/1.5 ui-sans-serif,system-ui,sans-serif;
+      margin:0 0 6px; font:650 var(--t7)/1.5 ui-sans-serif,system-ui,sans-serif;
       letter-spacing:.13em; text-transform:uppercase; color:var(--faint);
     }
     /* minmax(0,1fr), never a fixed width: a fixed key width is how a six-column pad runs
@@ -2000,7 +2117,7 @@ STREAMER_BODY = """    <style>
     #tnbody .tn-cat:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
     #tnbody .tn-cat i{
       font-style:normal; color:var(--faint);
-      font:10.5px/1 ui-monospace,Menlo,Consolas,monospace;
+      font:var(--t7)/1 ui-monospace,Menlo,Consolas,monospace;
     }
     #tnbody .tn-cat.on i{color:var(--accent)}
     /* The sentence under the chips carries the honesty: what the current category is
@@ -2078,7 +2195,7 @@ STREAMER_BODY = """    <style>
     #tnbody .tn-gname{overflow-wrap:anywhere}
     #tnbody .tn-gcnt{
       margin-left:auto; padding-left:9px; flex:0 0 auto; color:var(--faint);
-      font:10.5px/1.6 ui-monospace,Menlo,Consolas,monospace;
+      font:var(--t7)/1.6 ui-monospace,Menlo,Consolas,monospace;
     }
     #tnbody .tn-gempty{
       margin:8px 3px 2px; color:var(--faint);
@@ -2201,14 +2318,14 @@ STREAMER_BODY = """    <style>
       border-bottom:1px solid var(--line);
     }
     #tnbody .tn-gcorner{
-      flex:0 0 186px; padding:7px 10px; color:var(--faint); font:650 10.4px/1.3 inherit;
+      flex:0 0 186px; padding:7px 10px; color:var(--faint); font:650 var(--t7)/1.3 inherit;
       letter-spacing:.11em; text-transform:uppercase; border-right:1px solid var(--line);
       position:sticky; left:0; background:var(--panel2); z-index:4;
     }
     #tnbody .tn-gticks{position:relative; flex:1 1 auto; min-width:520px; height:30px}
     #tnbody .tn-gtick{
       position:absolute; top:0; bottom:0; padding-left:6px; color:var(--faint);
-      font:600 10.6px/30px inherit; border-left:1px solid var(--line); white-space:nowrap;
+      font:600 var(--t7)/30px inherit; border-left:1px solid var(--line); white-space:nowrap;
     }
     #tnbody .tn-grow{display:flex; border-bottom:1px solid var(--line-soft,rgba(255,255,255,.06))}
     #tnbody .tn-grow:last-child{border-bottom:0}
@@ -2219,7 +2336,7 @@ STREAMER_BODY = """    <style>
       font:600 11.9px/1.35 inherit; overflow-wrap:break-word;
     }
     #tnbody .tn-gchan:hover{background:var(--panel2)}
-    #tnbody .tn-gchan em{font-style:normal; color:var(--faint); font-size:10.6px; font-weight:500}
+    #tnbody .tn-gchan em{font-style:normal; color:var(--faint); font-size:var(--t7); font-weight:500}
     #tnbody .tn-gstrip{position:relative; flex:1 1 auto; min-width:520px; min-height:46px}
     #tnbody .tn-gprog{
       position:absolute; top:4px; bottom:4px; overflow:hidden; cursor:pointer;
@@ -2231,7 +2348,7 @@ STREAMER_BODY = """    <style>
       border-color:rgba(46,224,138,.55); background:rgba(46,224,138,.12); color:var(--fg);
     }
     #tnbody .tn-gprog u{
-      display:block; text-decoration:none; color:var(--faint); font-size:10.4px; font-weight:500;
+      display:block; text-decoration:none; color:var(--faint); font-size:var(--t7); font-weight:500;
     }
     #tnbody .tn-gnone{
       position:absolute; inset:4px 6px; display:flex; align-items:center;
@@ -2259,7 +2376,7 @@ STREAMER_BODY = """    <style>
       padding:8px 10px;
     }
     #tnbody .tn-scell b{
-      display:block; color:var(--faint); font:650 10.2px/1.3 inherit;
+      display:block; color:var(--faint); font:650 var(--t7)/1.3 inherit;
       letter-spacing:.11em; text-transform:uppercase;
     }
     #tnbody .tn-scell span{
@@ -4599,7 +4716,7 @@ a.wb{text-decoration:none; display:inline-block}
 #wgticks{position:relative; height:28px; min-width:560px; margin-left:170px}
 .wgtick{
   position:absolute; top:0; bottom:0; padding-left:6px; border-left:1px solid rgba(126,146,133,.28);
-  font:600 10.6px/28px inherit; color:#8fa295; white-space:nowrap;
+  font:600 var(--t7)/28px inherit; color:#8fa295; white-space:nowrap;
 }
 .wgrow{display:flex; border-bottom:1px solid rgba(126,146,133,.14)}
 .wgrow:last-child{border-bottom:0}
@@ -4610,7 +4727,7 @@ a.wb{text-decoration:none; display:inline-block}
 }
 .wgchan:hover{color:#5ee9a4}
 .wgchan.wcur{color:#5ee9a4}
-.wgchan em{font-style:normal; font-size:10.4px; font-weight:500; color:#8fa295}
+.wgchan em{font-style:normal; font-size:var(--t7); font-weight:500; color:#8fa295}
 .wgstrip{position:relative; flex:1 1 auto; min-width:560px; min-height:46px}
 .wgprog{
   position:absolute; top:4px; bottom:4px; overflow:hidden; padding:5px 8px; cursor:pointer;
@@ -4619,7 +4736,7 @@ a.wb{text-decoration:none; display:inline-block}
 }
 .wgprog:hover{border-color:rgba(46,224,138,.55); color:#fff}
 .wgprog.wgon{border-color:rgba(46,224,138,.6); background:rgba(24,48,35,.92); color:#eaffef}
-.wgprog u{display:block; text-decoration:none; font:500 10.4px/1.3 inherit; color:#8fa295}
+.wgprog u{display:block; text-decoration:none; font:500 var(--t7)/1.3 inherit; color:#8fa295}
 .wgnone{
   position:absolute; inset:4px 6px; display:flex; align-items:center;
   font:500 11.1px/1.4 inherit; color:#8fa295;
@@ -4632,7 +4749,7 @@ a.wb{text-decoration:none; display:inline-block}
   border:1px solid rgba(126,146,133,.24); border-radius:9px; padding:8px 10px;
   background:rgba(14,18,16,.85);
 }
-.wscell b{display:block; font:600 10.6px/1.3 inherit; letter-spacing:.06em;
+.wscell b{display:block; font:600 var(--t7)/1.3 inherit; letter-spacing:.06em;
           text-transform:uppercase; color:#8fa295}
 .wscell span{display:block; margin-top:3px; font:600 14px/1.3 inherit; color:#e9efe9}
 .wsrow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px}

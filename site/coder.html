@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-family="workspace">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Coder — the workspace, read off the box that serves it</title>
 <meta name="description" content="The local workspace agent's browser surface. It reads the tree, the files and the audit journal off this machine over a loopback-only mount, and shows which gate refused when one does.">
-<link rel="stylesheet" href="/symoneural.css?v=ca0106af36">
+<link rel="stylesheet" href="/symoneural.css?v=77a47035a3">
 <link rel="stylesheet" href="/coder.css?v=030f885313">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -33,6 +33,7 @@
   </div>
 </header>
 
+<main>
 
 <!-- The instrument leads the page and the pitch follows it, which is #91 applied and #99's
      lesson taken from the other side.
@@ -108,7 +109,7 @@
             <p id="cd-refuse-fix" hidden></p>
           </div>
 
-          <h3 style="margin:26px 0 4px;font-size:var(--t3)">Workspace</h3>
+          <h2 style="margin:26px 0 4px;font-size:var(--t3)">Workspace</h2>
           <p class="cd-crumb">
             <button class="cd-btn" id="cd-up" type="button" disabled>Up</button>
             <button class="cd-btn" id="cd-reload" type="button">Reload</button>
@@ -119,7 +120,7 @@
           <p class="cd-trunc" id="cd-trunc" hidden></p>
 
           <div class="cd-file" id="cd-file" hidden>
-            <h3 style="margin:26px 0 4px;font-size:var(--t3)">File</h3>
+            <h2 style="margin:26px 0 4px;font-size:var(--t3)">File</h2>
             <p class="cd-meta" id="cd-filemeta"></p>
             <pre id="cd-filetext"></pre>
             <p class="cd-meta" id="cd-histsay" style="margin-top:10px"></p>
@@ -170,13 +171,15 @@
   </div>
 </section>
 
-<div class="hero" style="padding:56px 0 26px">
+<div class="apphead apphead-after">
   <div class="wrap">
     <p class="eyebrow">Developer surface</p>
-    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">The workspace, read off the box that serves it.</h1>
-    <p class="lede" style="font-size:16.5px">This is the same machine the rest of the site is measured on, reading its own working tree. Nothing here is a mock-up of a filesystem: the entries, the byte counts, the refusals and the journal are what this box answers when it is asked, and when a gate is closed the page says which one rather than showing you an empty tree.</p>
+    <h1>The workspace, read off the box that serves it.</h1>
+    <p class="lede">This is the same machine the rest of the site is measured on, reading its own working tree. Nothing here is a mock-up of a filesystem: the entries, the byte counts, the refusals and the journal are what this box answers when it is asked, and when a gate is closed the page says which one rather than showing you an empty tree.</p>
   </div>
 </div>
+
+</main>
 
 <footer>
   <div class="wrap foot">
@@ -197,7 +200,7 @@
 </footer>
 
 <script src="/ui.js?v=c334a9f106" defer></script>
-<script src="/shell.js?v=746beb8b0d" defer></script>
+<script src="/shell.js?v=bdc75b3527" defer></script>
 <script src="/coder.js?v=89060bfad6" defer></script>
 </body>
 </html>

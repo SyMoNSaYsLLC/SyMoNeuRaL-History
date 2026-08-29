@@ -49,11 +49,44 @@
            '<i class="led ' + (u.bus !== 'gpu' ? 'blue' : '') + '"></i></span>';
   }
 
+  // The child components a row owns, rendered UNDER it rather than beside it.
+  //
+  // This is the display half of the folds. `miner` has carried three children since the
+  // gateway fold and `studio` has carried Reinforce and Exp since 2026-08-29, and until now
+  // the rack rendered only the parent -- so a reader of the front page could see twelve rows
+  // and had no way to learn that five more surfaces exist under three of them. The previous
+  // shape was worse than that: `train` and `exp` were TOP-LEVEL rows, which did not merely
+  // omit the relationship, it asserted the opposite one. They looked like peers of Studio.
+  //
+  // Rendered as `<span>` inside the parent `<a>`, not as their own links. A child is part of
+  // the surface you are already clicking through to -- `/miner.html` gives each of its three
+  // its own card, `/studio` its two -- and a nested `<a>` inside an `<a>` is invalid markup
+  // that browsers recover from by closing the outer one early, which would silently break
+  // the parent row's own click target.
+  //
+  // Every value here is a READING from /api/status. No child is drawn with a state this file
+  // invents, and a row with no `sub` gets no strip at all rather than an empty one.
+  function subs(u) {
+    if (!u.sub || !u.sub.length) return '';
+    return '<span class="usubs">' + u.sub.map(function (s) {
+      return '<span class="usub" data-state="' + s.state + '">' +
+        '<i class="led' + (s.state === 'offline' ? '' : ' on') + '"></i>' +
+        '<b>' + s.label + '</b>' +
+        '<em>' + busLabel(s.bus) + '</em>' +
+        '<u>' + (WORDS[s.state] || s.state) + '</u>' +
+      '</span>';
+    }).join('') + '</span>';
+  }
+
   function renderRack() {
     var host = el('units');
     if (!host || !state) return;
     host.innerHTML = state.units.map(function (u) {
-      return '<a class="unit" data-state="' + u.state + '" href="' + u.href + '">' +
+      var kids = subs(u);
+      // `has-subs` is on the row, not on the strip, so the CSS can give a parent the extra
+      // height its children need without every childless row paying for it.
+      return '<a class="unit' + (kids ? ' has-subs' : '') + '" data-state="' + u.state +
+          '" href="' + u.href + '">' +
         leds(u) +
         '<span class="pwr">' + POWER + '</span>' +
         '<span class="uname"><b>' + u.label + '</b><span>' + u.spec +
@@ -61,7 +94,9 @@
         '<span class="ubus">' + busLabel(u.bus) + '</span>' +
         '<span class="ustate"><span class="txt">' + (WORDS[u.state] || u.state) + '</span>' +
           '<span class="slot">' + u.slot + '</span></span>' +
-        '<span class="scan"><i></i></span></a>';
+        '<span class="scan"><i></i></span>' +
+        kids +
+        '</a>';
     }).join('');
   }
 

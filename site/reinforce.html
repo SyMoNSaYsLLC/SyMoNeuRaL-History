@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-family="workspace">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Reinforce — fine-tune the model that answers here</title>
 <meta name="description" content="A training bay on one RTX 5070 Ti: four predetermined tuning methods, each costed before it runs. Every figure says whether it was measured here or is arithmetic.">
-<link rel="stylesheet" href="/symoneural.css?v=ca0106af36">
+<link rel="stylesheet" href="/symoneural.css?v=77a47035a3">
 <link rel="stylesheet" href="/rack-detail.css?v=c2349ecce9">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -34,6 +34,8 @@
     </nav>
   </div>
 </header>
+
+<main>
 
 <div class="apphead">
   <div class="wrap">
@@ -68,7 +70,7 @@
        Wide tables scroll inside their own container (.rf-scroll) so the page body
        never scrolls horizontally at 390px. */
 
-    #reinforce .rf-grid { display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+    #reinforce .rf-grid { display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr)); }
     #reinforce .rf-card { border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:16px 18px; background:rgba(255,255,255,.02); }
     #reinforce .rf-card h3 { margin:0 0 6px; font-size:16px; letter-spacing:.01em; }
     #reinforce .rf-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -81,7 +83,7 @@
 
     /* The three labels. They are the product, not decoration -- every figure on
        this panel carries one, and the legend below the table says what each means. */
-    #reinforce .rf-lab { display:inline-block; font-size:10.5px; letter-spacing:.07em; text-transform:uppercase;
+    #reinforce .rf-lab { display:inline-block; font-size:var(--t7); letter-spacing:.07em; text-transform:uppercase;
                          padding:1px 6px; border-radius:999px; border:1px solid currentColor; margin-left:6px;
                          white-space:nowrap; }
     #reinforce .rf-lab-measured  { color:#7fd7a4; }
@@ -131,7 +133,7 @@
        field for the same reason: a control that let a body pair `preset="voice"` with
        `method="reinforcement"` would produce a configuration whose dataset schema and
        hyperparameters contradict each other. Reading, not choosing. */
-    #reinforce .rf-obj { display:inline-block; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+    #reinforce .rf-obj { display:inline-block; font-size:var(--t7); letter-spacing:.06em; text-transform:uppercase;
                          padding:1px 6px; border-radius:4px; border:1px solid currentColor; white-space:nowrap; }
     #reinforce .rf-obj-sft          { color:#8fb6e8; }
     #reinforce .rf-obj-preference   { color:#c3a6e0; }
@@ -472,6 +474,8 @@
   </div>
 </section>
 
+</main>
+
 <footer>
   <div class="wrap foot">
     <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
@@ -494,7 +498,12 @@
   <summary>System information &mdash; one card, one surface at a time</summary>
   <div class="wrap">
     <div class="callout" style="margin-top:34px">
-      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <!-- h2, not h3. `appify` relocates this block out of the page body and into a
+           top-level <details class="appinfo"> below the footer, where it is a section
+           of the page in its own right and has no h2 parent to sit under. As an h3 it
+           was the entire outline defect on /project.html, whose only other visible
+           heading is the page h1. -->
+      <h2>This is a 16 GB consumer card, and it is a test bench</h2>
       <p>
         Chat and image never run at the same time here. A lock hands the GPU to exactly one
         surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
@@ -514,9 +523,9 @@
 
 
 <script src="/app.js?v=632745179b"></script>
-<script src="/console.js?v=9824a6d1bb" defer></script>
+<script src="/console.js?v=91351f0d91" defer></script>
 <script src="/ui.js?v=c334a9f106" defer></script>
-<script src="/shell.js?v=746beb8b0d" defer></script>
+<script src="/shell.js?v=bdc75b3527" defer></script>
 <script src="/reinforce.js?v=c66ab14def" defer></script>
 </body>
 </html>

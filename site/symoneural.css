@@ -314,7 +314,11 @@
     color:var(--accent); font-weight:600; display:flex; align-items:center; gap:10px;
   }
   .shead img{width:22px; height:22px}
-  section h2{margin:0; font-size:clamp(var(--t3),2.9vw,var(--t2)); letter-spacing:-.016em; font-weight:660}
+  /* `section h1` shares this rule because on a standalone section page the section's
+     own title IS the page title -- tools/build_split.py promotes the `h2` to `h1` so
+     the page has a primary heading. The promotion is semantic; nothing about it should
+     be visible, which is what listing both selectors here guarantees. */
+  section h2, section h1{margin:0; font-size:clamp(var(--t3),2.9vw,var(--t2)); letter-spacing:-.016em; font-weight:660}
   .sub{margin:14px 0 0; color:var(--dim); max-width:72ch}
 
   /* ---------- grids & cards ---------- */
@@ -2228,7 +2232,21 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
   html.ns .console .mod > .sub,html.ns .console .mod > .plain{display:none}
   html.ns #console.cn-open .console .mod > .sub,
   html.ns #console.cn-open .console .mod > .plain{display:block}
-  html.ns .cn-fold{margin-left:auto}
+  /* `display` HAS to be restated here, and its absence was a real defect for ten days.
+     `.cn-fold{display:none}` at the top of this file hides the button unconditionally --
+     the same base treatment `.rk-tools` gets on the line above it -- and the rack undoes
+     that inside this gate (`html.ns #rack > .wrap > .rk-tools{display:block; ...}`). The
+     control board never did. So from 1301px up, the two rules directly above hid all 38
+     module explanations behind `#console.cn-open`, and the only control that can set
+     `cn-open` was itself invisible. Measured on the served page: 0 of 38 explanations
+     visible at 1366x768, 1440x900 and 1440x1000, with no way to reveal one.
+
+     That this line already carried `margin-left:auto` is what says it was meant to be
+     seen -- you do not align a box you are hiding -- and the button's own markup comment
+     says it is "hidden below the gate", i.e. shown inside it. Landed in 5a95585b
+     (2026-08-17), the commit called "the control board folds too", which shipped the fold
+     with its own handle hidden. */
+  html.ns .cn-fold{display:inline-block; margin-left:auto}
 
   /* The receipts: eight cards, and the minimum is set so all eight reach ONE row on a wide
      screen. At minmax(228px,...) a 1855px window fitted seven, putting one card on a
@@ -2318,6 +2336,14 @@ a.ns-tab{text-decoration:none; display:inline-block; line-height:1}
      179px spare. The provenance tag (measured / vendor / projected) never folded and
      still does not -- that labelling is the argument, not decoration. */
   html.ns .console .mod > .sub,html.ns .console .mod > .plain{display:block}
+  /* ...and the handle goes with them. Now that the button is visible inside the gate at
+     all, it has to stop being visible HERE, because this block unfolds the explanations
+     permanently and at equal specificity to the `cn-open` rule that gates them. Left in,
+     it would be a control that toggles a class and changes nothing on screen, which is
+     worse than no control: the reader presses it, watches nothing happen, and stops
+     trusting the surface. Hidden because there is nothing left to fold, not because it
+     does not fit. */
+  html.ns .cn-fold{display:none}
 
   /* --- Receipts is deliberately NOT touched here -------------------------------
      It has the most dead space (516.1px) and the obvious fix does not work. Widening
@@ -3435,12 +3461,37 @@ html.ns.sn-on #hero:not([hidden]){padding-top:8px; padding-bottom:8px}
   .apphead .lede{margin:var(--s2) 0 0; max-width:var(--read); font-size:var(--t4) !important}
   .apphead::before{content:none}          /* the hero's radial glow is landing-page furniture */
 
+  /* Coder and Live deliberately put the instrument first. Their explanatory copy follows the
+     workspace so the tree and the video remain inside the initial viewport; it still uses the
+     same application-head typography and spacing instead of falling back to the marketing
+     hero. The border moves to the top because this instance closes the workspace rather than
+     opening it. */
+  .apphead-after{border-top:1px solid var(--line); border-bottom:0; background:var(--e0)}
+
   /* Application pages use the viewport. `100dvh` rather than `100vh` so a mobile browser's
      collapsing toolbar does not leave the workspace short, and `min-height` rather than
      `height` so a page that genuinely needs more still grows. */
   .apphead ~ section{min-height:auto}
   html.js body:has(> .apphead){min-height:100dvh; display:flex; flex-direction:column}
   body:has(> .apphead) > section{flex:1 1 auto}
+  /* THE SAME TWO RULES, ONE LEVEL DEEPER, because 6.2 gave every shell page a `<main>`
+     landmark and `.apphead` is now `body > main > .apphead` rather than `body > .apphead`.
+     Both forms are kept: the wrapper is emitted by generators, and a page that has not been
+     regenerated yet still matches the pair above.
+
+     This was caught by measurement, not by reading. The `<main>` wrapper was checked against
+     `body > ...` selectors before it was written and none was found -- because the pattern
+     searched for was `body >` and this selector spells it `body:has(> .apphead)`, with the
+     child combinator INSIDE `:has()`. The rendered result was `display:block`,
+     `min-height:0px` and `flex:0 1 auto` on chat, image and studio: the full-viewport
+     application layout silently gone. A grep that does not know the shape it is looking for
+     is not a safety check.
+
+     `main` becomes the growing flex child so `body` keeps owning the 100dvh column and the
+     footer still sits below it. */
+  html.js body:has(> main > .apphead){min-height:100dvh; display:flex; flex-direction:column}
+  body:has(> main > .apphead) > main{display:flex; flex-direction:column; flex:1 1 auto}
+  body:has(> main > .apphead) > main > section{flex:1 1 auto}
 
   /* The relocated system-information panel: closed by default, below the footer, one click
      from every workspace. `<details>` and not a modal, because it is reference text somebody
@@ -3465,3 +3516,434 @@ html.ns.sn-on #hero:not([hidden]){padding-top:8px; padding-bottom:8px}
     .apphead h1{font-size:var(--t3) !important}
     .appinfo > summary{padding:var(--s3) var(--s4)}
   }
+
+/* ==================================================================================
+   HANDSHAKE 6.0 — SHARED FRONTEND RECONCILIATION
+   ==================================================================================
+   Four repairs, all made in the SHARED shell rather than on a page, because the defects
+   reported were shared defects: they showed on RavenCalc and on Live Stack and on Overview
+   because those pages all render the same header, the same type ladder and the same rack.
+   Fixing one page would have left the other twenty-two.
+
+   Everything here is additive and sits at the end of the file on purpose. The rules above
+   are heavily commented arithmetic against measured viewports, and rewriting one of them in
+   place is how a measurement stops matching its note. Where a rule below overrides an
+   earlier one it says which and why.
+
+   MEASURED BEFORE AND AFTER, at 320/375/390/430/768/1024/1280/1440/1920 on all 23 shell
+   pages, by the probe in the evidence root. "Improved" is not a judgement here.
+   ---------------------------------------------------------------------------------- */
+
+/* ---- 1. the desktop type floor --------------------------------------------------
+   The ladder is `clamp(14.5px, calc(14.5px + (100vw - 1360px) * k), max)`. Below 1360px
+   every step sits on its floor, so a 1280px desktop got body text at 14.5px and navigation
+   at 12.5px -- the same sizes a 320px phone gets. That is the "too small at normal desktop
+   viewing distance" defect, and it is not a taste call: measured across 23 pages the median
+   body size was 14.5px at 1024 and at 1280, and only began to move at 1440.
+
+   The fix raises the FLOOR from 1024px up rather than changing the slope, so the existing
+   clamp arithmetic above -- and every note attached to it -- stays true at the widths it was
+   measured at. Above 1360px the original ramp takes over again untouched, because
+   `clamp()` picks the larger floor only while the middle term is below it.
+
+   Deliberately NOT applied under 1024px. Phone and tablet type was measured as adequate and
+   raising it there costs vertical space on the viewports that have least of it. */
+@media (min-width:1024px){
+  :root{
+    --t4: clamp(16.5px, calc(14.5px + (100vw - 1360px) * 0.00604), 21.75px);
+    --t5: clamp(14.5px, calc(12.5px + (100vw - 1360px) * 0.00521), 18.75px);
+    --t6: clamp(12.75px, calc(11.5px + (100vw - 1360px) * 0.00479), 17.25px);
+    --t7: clamp(11.75px, calc(10.5px + (100vw - 1360px) * 0.00438), 15.75px);
+  }
+  /* The header is the one place the larger step must NOT simply inflate: `header .bar` is a
+     fixed 66px and the note on it records that every section page fits one screen with
+     single-digit pixels of headroom. Navigation gets the readable size; the bar keeps its
+     height by taking it out of the gap, which is chrome. */
+  nav a{font-size:var(--t5)}
+  header nav{gap:20px}
+}
+
+/* ---- 2. the Live Stack rack, on its own page ------------------------------------
+   `html.ns` means one-screen density and is set on the four generated section pages so they
+   read like the panels they came from. Some rules under it are density; the rack's row
+   compression is not -- it is arithmetic against the 587px TAB PANEL on the front page,
+   squeezing a row to a 17px glyph in 2px of padding so twelve fit inside it.
+
+   A standalone `/livestack` has no panel and no tab switcher. The same rule there produced
+   33px rows at 1440x900 and 37px at 1920x1080 -- measured, on 23 pages, before this block --
+   which is the reported "rack rows too compressed to read" and "one-line slivers" defect.
+
+   So the compression is released HERE and only here, keyed on the `data-section` attribute
+   `tools/build_split.py` now writes. The front page's budget is untouched: `html.ns` on
+   index.html is set from JavaScript and carries no `data-section`, so none of this matches
+   there. That separation is the whole reason the attribute exists rather than a second class.
+
+   Nothing below hides a row, a word or a reading. It gives rows their height back. */
+html.ns[data-section="livestack"] #rack .unit{padding:12px 16px}
+html.ns[data-section="livestack"] #rack .pwr{width:24px; height:24px}
+html.ns[data-section="livestack"] #rack #units{gap:8px}
+html.ns[data-section="livestack"] #rack .rack{padding:14px 0}
+html.ns[data-section="livestack"] #rack .rackrow{gap:26px}
+html.ns[data-section="livestack"] #rack #rack-note{
+  line-height:1.6; margin-top:14px; font-size:var(--t5);
+}
+html.ns[data-section="livestack"] #rack .wrap > .shead{margin-bottom:10px}
+html.ns[data-section="livestack"] #rack .chassis{gap:20px; padding-top:10px; padding-bottom:8px}
+/* The unit's own name and its reading, at a size meant to be read rather than glanced at.
+   The second line is the spec and the live detail; at var(--t7) inside a 33px row it was
+   the least legible text on the page and it is the only place the row says what it is
+   actually doing right now. */
+html.ns[data-section="livestack"] #rack .uname b{font-size:var(--t4)}
+html.ns[data-section="livestack"] #rack .uname > span{font-size:var(--t6); line-height:1.5}
+html.ns[data-section="livestack"] #rack .ustate .txt{font-size:var(--t6)}
+
+/* ---- 3. runtime -> application -> child, made visible ---------------------------
+   The nested strip `site/console.js` renders under a row that owns children. Before this the
+   rack was flat, and flat was not merely less informative: `train` and `exp` were TOP-LEVEL
+   rows, so the display asserted that two Studio plugins were independent runtimes standing
+   beside their own parent. The fold removed that claim; this shows the true one.
+
+   Rendered as `<span>`s inside the parent `<a>` (a nested `<a>` would close the outer one
+   early and break the row's click target), so every rule here is layout on inline elements
+   that have been given `display`. The state words are readings from /api/status; no child is
+   ever drawn with a state this stylesheet or that script invents. */
+.usubs{
+  grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px 8px;
+  margin:10px 0 0; padding:10px 0 0 6px;
+  border-top:1px solid rgba(242,246,243,.07);
+}
+.usub{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:5px 11px 5px 9px; border:1px solid #2a332e; border-radius:999px;
+  background:rgba(242,246,243,.028);
+}
+.usub i.led{width:7px; height:7px; flex:0 0 auto}
+.usub b{font-weight:600; font-size:var(--t6); color:var(--fg); letter-spacing:-.002em}
+.usub em{
+  font-style:normal; font-size:var(--t7); letter-spacing:.09em; text-transform:uppercase;
+  color:var(--faint);
+}
+.usub u{
+  text-decoration:none; font-size:var(--t7); letter-spacing:.07em; text-transform:uppercase;
+  color:var(--dim);
+}
+.usub[data-state="busy"] u{color:var(--amber)}
+.usub[data-state="ready"] u{color:var(--accent)}
+.usub[data-state="offline"]{opacity:.62}
+/* The parent row's own grid is `auto auto 1fr auto auto` with `align-items:center`. A child
+   strip spanning every column needs the row to stop centring, or the strip is vertically
+   centred against the tallest cell and the first line of the row drifts. */
+.unit.has-subs{align-items:start}
+.unit.has-subs .leds,
+.unit.has-subs .pwr,
+.unit.has-subs .ubus,
+.unit.has-subs .ustate{margin-top:2px}
+/* On a phone the row is a three-column grid (see the max-width:620px block above), so the
+   strip spans that instead and the pills stack rather than scrolling sideways. */
+@media (max-width:620px){
+  .usubs{padding-left:0}
+  .usub{padding:5px 9px}
+  .usub em{display:none}          /* the bus is repeated on the parent row at this width */
+}
+
+/* ---- 4. the safe area at the bottom of the document -----------------------------
+   `env(safe-area-inset-bottom)` was already used by the navigation drawer, so the viewport
+   meta and the inset were both available -- but nothing applied it to the DOCUMENT. On a
+   phone with a collapsing browser toolbar the last control on a page sits under the chrome,
+   which is the reported "application controls reach the browser chrome" defect.
+
+   Applied to `body` rather than to each page's own last element: there are 23 pages and
+   nine generators, and a rule per page is how one gets missed. `max()` rather than a bare
+   `env()` so a device with no inset still gets deliberate bottom spacing instead of zero. */
+body{padding-bottom:max(28px, env(safe-area-inset-bottom))}
+/* A fixed composer or control bar has to clear it too, and it cannot inherit the padding
+   because it is out of flow. These are the site's two out-of-flow control surfaces. */
+.composer, .fixedbar{padding-bottom:max(12px, env(safe-area-inset-bottom))}
+
+/* ---- 1b. the ownership note, moved to where there is actually width for it -------
+   `.llc` -- "a SymonSays LLC company", 157px -- was hidden below 901px, and the note on
+   that rule says it is "now hidden until there is width for it". That was true of the
+   OLD type ladder. With navigation at a readable 14.5px instead of 12.5px the header at
+   1024px measures logo 121 + llc 157 + nav 714 = 992 against a 960px bar, and the page
+   scrolled to 1080px on fourteen application pages. Measured, not estimated.
+
+   The threshold moves rather than the type reverting, and rather than the drawer being
+   pushed up to swallow a 1024px desktop. Without `.llc` the same header is 121 + 714 =
+   835 in 960 and clears outright; the ownership note is the only piece that does not fit,
+   which is exactly the thing the original rule chose to drop first and for the same
+   reason. It returns at 1081px, where it fits with room to spare.
+
+   Overrides `@media (min-width:901px){ .llc{display:inline} }` above by source order at
+   equal specificity, which is why this block sits at the end of the file and says so. */
+@media (max-width:1080px){ .llc{display:none} }
+
+/* ---- 2b. the console/rack type damping, released on the standalone section pages ----
+   `html.ns #console, html.ns #rack` redefines the whole type ladder one step tighter at
+   `min-width:1360px and max-height:999px`. That is the same arithmetic as the rack row
+   compression released in block 2 above and it is correct where it was written for: the
+   FRONT PAGE, where the console and the rack share one screen with a tab strip and three
+   other sections behind it.
+
+   On a standalone `/livestack` or `/controlboard` there is no tab strip and no other
+   section, and the damping only shrinks text -- measured at 10.64px for `.conhead` and
+   `.gprov` at 1440x900, which is below the 11px readability floor `tests/architecture.mjs`
+   asserts and squarely the reported "status information is dense without a usable
+   hierarchy" defect.
+
+   Released by RESTATING the ladder at a specificity that beats `html.ns #console` rather
+   than by weakening that rule: it is still exactly right on index.html, which carries
+   `html.ns` from JavaScript and no `data-section`, so nothing below matches there. Same
+   separation, same reason, as block 2. */
+html.ns[data-section] #console,
+html.ns[data-section] #rack{
+  --t4: clamp(16.5px, calc(14.5px + (100vw - 1360px) * 0.00604), 21.75px);
+  --t5: clamp(14.5px, calc(12.5px + (100vw - 1360px) * 0.00521), 18.75px);
+  --t6: clamp(12.75px, calc(11.5px + (100vw - 1360px) * 0.00479), 17.25px);
+  --t7: clamp(11.75px, calc(10.5px + (100vw - 1360px) * 0.00438), 15.75px);
+}
+
+/* ==================================================================================
+   HANDSHAKE 6.1 — PAGE-FAMILY COMPOSITION
+   ==================================================================================
+   6.0 repaired the shared shell: the type ladder, the drawer, the rack, the safe area.
+   Every page then had readable text inside a 1,120px column in the middle of the screen.
+   This block is about the column, the space around it, and what the page does with both.
+
+   Additive and at the end of the file, for the reason block 6.0 gives: the rules above are
+   commented arithmetic against measured viewports, and rewriting one in place is how a
+   measurement stops matching its note. Where a rule below overrides an earlier one it says
+   which and why.
+
+   MEASURED BEFORE AND AFTER at 390/1440/1920 on all 23 pages by the probe in the evidence
+   root, and asserted afterwards by tests/architecture.mjs.
+   ---------------------------------------------------------------------------------- */
+
+/* ---- 1. width, chosen by what the page is FOR ------------------------------------
+   `--max` is 1120px everywhere. Measured at 1440: content 1120px = 77.8% of the viewport,
+   and 58% at 1920. For a page of prose that is correct and deliberate -- a 1,700px line is
+   worse to read, not better. For an application workspace it is the reported defect: the
+   application shrunk into a miniature panel surrounded by empty canvas.
+
+   So width follows the page's task. `site/shell.js` sets `data-family` from one table; the
+   four generated section pages are read from the `data-section` attribute build_split.py
+   already writes, so there is no second list to drift.
+
+   `min(..., calc(100vw - 96px))` and not a bare pixel value: the second term is what keeps a
+   wide layout off the edge of the screen, and it is the same shape the streamer page's own
+   `--max` override above already uses -- this generalises that rule rather than inventing a
+   second one beside it.
+
+   PROSE IS NOT LISTED and that is the point. index, credits, build, account and the docs
+   pages keep 1120px. A family table whose default is "wider" would have widened them by
+   omission, which is how a readability rule gets lost. */
+/* GATED AT 1024px, and this is a bug fix rather than a tidy-up. Unscoped, the second term
+   `calc(100vw - 96px)` evaluates to 224px on a 320px phone -- so `--max` became NARROWER
+   than the default 1120px, `.wrap` shrank to 224px, and the fixed-width panels inside it
+   overflowed to 333px on /miner.html, /gateway.html and /studio.html. Measured, on the
+   first run of tests/architecture.mjs after this block was written.
+   `calc(100vw - Npx)` is a guard against a wide layout touching the screen edge; it is
+   meaningless below the width it guards, and applying it there inverted its own purpose. */
+@media (min-width:1024px){
+  html[data-family="workbench"],
+  html[data-family="workspace"]{ --max: min(1680px, calc(100vw - 96px)); }
+  html[data-family="dashboard"]{ --max: min(1760px, calc(100vw - 96px)); }
+}
+
+/* ---- 2. the first useful viewport ------------------------------------------------
+   Measured at 1440x900, the page header before any workspace: miner 375px (42% of the
+   viewport), credits 339, gateway 320, exp 298, sigils 276, studio 273, project 273, coder
+   272, reinforce 247, live 246. On an application page that is the identity and the strap
+   line eating half the screen before the thing the page is for appears.
+
+   Reduced, NOT removed, and only on the families whose page has a workspace to get to. The
+   eyebrow, the title and the strap line all stay and none is truncated -- what changes is
+   the padding around them, which is chrome. A prose page keeps its full hero: there the
+   headline IS the first useful thing.
+
+   `.apphead` is the application page header; `.hero` is the marketing one. Both are damped
+   here because six application pages use `.hero` and four use `.apphead`, and a rule that
+   only knew one of them would fix six pages and leave four. */
+@media (min-width:1024px){
+  html[data-family="workbench"] .apphead,
+  html[data-family="workspace"] .apphead{ padding-top:22px; padding-bottom:18px }
+  html[data-family="workbench"] .hero,
+  html[data-family="workspace"] .hero,
+  html[data-family="dashboard"] .hero{ padding:26px 0 22px }
+  /* The strap line keeps every word and stops being a paragraph. `max-width` in `ch` so it
+     tracks the type ladder rather than fighting it. */
+  html[data-family="workbench"] .apphead .lede,
+  html[data-family="workspace"] .apphead .lede,
+  html[data-family="workbench"] .hero .lede,
+  html[data-family="workspace"] .hero .lede{ margin-top:10px; max-width:92ch }
+  /* The decorative radial behind a hero is sized for an 80px-tall one. Left at full size it
+     bleeds past a 26px one and lights the top of the workspace. */
+  html[data-family="workbench"] .hero::before,
+  html[data-family="workspace"] .hero::before,
+  html[data-family="dashboard"] .hero::before{ height:320px }
+}
+
+/* ---- 3. the compact status rail, and a defect 6.0 introduced ---------------------
+   `.units.gpu-stack` is the dense sidebar readout that miner, image, sigils, streamer and
+   gateway embed beside their real work. 6.0 added nested child components to the rack -- and
+   they were designed for the full-width Live Stack, where there is room for a label, a bus
+   and a state on one pill.
+
+   In a 174px rail there is not. Measured on /image.html at 1440: the three miner child pills
+   are 197px, 194px and 186px wide inside a 177px container -- 42 to 53px of overflow each,
+   silently cut by the page around them. That is a defect this stylesheet shipped, and it is
+   the reason the rail is a distinct case rather than an afterthought.
+
+   Fixed by giving the rail its own child layout: one child per row, full width, wrapping.
+   NOTHING IS HIDDEN. The label, the bus and the state word all stay -- the state especially,
+   because the LED beside it carries the same fact in colour and this site does not
+   communicate state by colour alone. A rail is narrower than a rack; it is not less honest. */
+.units.gpu-stack .usubs{
+  flex-direction:column; align-items:stretch; gap:5px;
+  margin-top:8px; padding:8px 0 0 0;
+}
+.units.gpu-stack .usub{
+  width:100%; min-width:0; box-sizing:border-box;
+  flex-wrap:wrap; row-gap:2px; padding:5px 8px;
+}
+.units.gpu-stack .usub b{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere }
+.units.gpu-stack .usub em{ flex:0 0 auto }
+.units.gpu-stack .usub u{ flex:0 0 auto; margin-left:auto }
+/* The unit's own name was wrapping to two lines in a 74px box at the 6.0 type size. The rail
+   is a readout, so the name gets the room and the second line is fine -- what it must not do
+   is wrap mid-word, which is what `overflow-wrap:anywhere` on a 74px box was producing. */
+.units.gpu-stack .uname b{ overflow-wrap:normal; word-break:normal; hyphens:none }
+
+/* ---- 4. the workbench grid ------------------------------------------------------
+   Image, Remix and Sigils are the same shape of application: an input, its settings, an
+   output canvas, and a status readout. Measured at 1440, all three laid the canvas out as a
+   short box above the prompt -- Remix's `#out` was 700x48 -- inside a 1120px column.
+
+   One primitive, opted into per page, because the three differ in what they put in each
+   region and flattening them into one template is exactly what the brief rules out. The grid
+   only says where the regions go; each page keeps its own contents.
+
+   The canvas may legitimately be EMPTY before any work is done. What it may not be is
+   unexplained: it keeps a minimum height so it reads as a place where output will appear,
+   and its own controls sit with it rather than floating in the page. */
+@media (min-width:1024px){
+  html[data-family="workbench"] .pgwrap{
+    grid-template-columns:minmax(0,1fr) minmax(300px,368px);
+    gap:24px; align-items:start;
+  }
+  /* The output surface is the point of the page, so it gets the height. `min-height` in
+     `svh` rather than `vh`: on a phone browser with a collapsing toolbar `vh` is the taller
+     of the two states, so a panel sized in `vh` is cut by the chrome at the moment the page
+     loads -- which is the safe-area defect 6.0 fixed at the document level, arriving one
+     container down. Not applied below 1024px, where the column is the whole width. */
+  html[data-family="workbench"] #out,
+  html[data-family="workbench"] .out,
+  html[data-family="workbench"] #imgout{ min-height:min(46svh, 420px) }
+}
+
+/* ---- 5. the conversational workspace --------------------------------------------
+   Chat and Coder are a persistent surface you work INSIDE, and their composer is the primary
+   control. Measured at 1440 the chat workspace was a 1,120px column with a 230px rail whose
+   empty half ran the height of the page, and a composer sitting at the bottom of a canvas
+   with no visible boundary -- the reported "wastes most of the viewport while placing its
+   actual composer at the bottom edge".
+
+   The rail keeps its width and stops owning a column of empty space; the transcript gets the
+   room. The composer is given the workspace's own bottom edge rather than the document's, so
+   it reads as belonging to the surface above it. Existing IDs, names and handlers are
+   untouched -- this is layout only, and `#log`, `#thread` and the composer keep every
+   attribute the page's own script binds to. */
+@media (min-width:1024px){
+  html[data-family="workspace"] .pgwrap{ gap:22px }
+  html[data-family="workspace"] .composer{
+    position:sticky; bottom:0; z-index:4;
+    background:linear-gradient(180deg, transparent, var(--bg) 22%);
+    padding-bottom:max(14px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ---- 6. grouped readings, not scattered cards -----------------------------------
+   Overview and the Control Board present many readings at once. At 1120px they were a
+   three-column brochure grid with large gutters; at the dashboard width they have room to be
+   grouped by what the reading is ABOUT rather than by how many fit on a row.
+
+   `auto-fit` with a floor rather than a fixed column count, so the same rule composes at
+   1280, 1440 and 1920 instead of needing a breakpoint each. `minmax(min(...),1fr)` and never
+   a bare pixel floor -- a hard floor is what put a 300px card outside a 320px viewport on
+   /reinforce.html, measured, and fixed in 6.0. */
+@media (min-width:1024px){
+  html[data-family="dashboard"] .cards,
+  html[data-family="dashboard"] .grid.g3,
+  html[data-family="dashboard"] .grid.g4{
+    grid-template-columns:repeat(auto-fit, minmax(min(330px,100%), 1fr));
+  }
+  /* Evidence cards carry a kind, a claim, a summary and a way in. Given width they should
+     stay readable rather than growing a 120-character line, so the card's own prose keeps a
+     bounded measure while the GRID uses the space. Width for the layout, not for the line. */
+  html[data-family="dashboard"] .card p{ max-width:60ch }
+}
+
+/* ---- 7. the platform documentation index ----------------------------------------
+   The block `site/documentation.html` gained in 6.1. `dx-` prefixed, for the reason this
+   file has now recorded three times: `.bar` collapsed the site header to 7px everywhere,
+   `.live` restyled the control-board legend from a nav badge, and `#console .sub` outranked
+   `.mod .sub`. An unprefixed `.app` or `.kid` here would be the fourth. */
+.dx{padding:26px 0 6px; border-bottom:1px solid var(--sfline); margin-bottom:24px}
+/* `var(--t3)`, not a hand-rolled clamp. `apps/test_site_css.py` requires every font-size
+   on this site to come from the scale, and it caught this one -- the only raw pixel size
+   introduced by 6.1. The ladder already spans 20px to 30px at this step, which is what
+   the clamp was reaching for, so the token is not a compromise: it is the same size,
+   sourced from the one place that owns it. */
+.dx h2{margin:8px 0 0; font-size:var(--t3); letter-spacing:-.015em; font-weight:660}
+.dx .sub{margin:12px 0 0; max-width:88ch}
+.dx .sub a{color:var(--accent)}
+.dx-grid{
+  display:grid; gap:14px; margin-top:22px;
+  grid-template-columns:repeat(auto-fit, minmax(min(272px,100%), 1fr));
+}
+.dx-rt{
+  background:var(--sf3); border:1px solid var(--sfline); border-radius:var(--r-panel);
+  padding:16px 18px; display:flex; flex-direction:column;
+}
+.dx-rt h3{
+  margin:0; font:600 var(--t6)/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  letter-spacing:.05em; color:var(--accent);
+}
+.dx-rt > p{margin:5px 0 12px; color:var(--faint); font-size:var(--t6); line-height:1.5}
+/* 44px minimum on every link in here: this is a list of destinations and a phone has to be
+   able to hit them. The same `--ctl-touch` the drawer and the rack rows use. */
+.dx-app{
+  display:flex; align-items:center; min-height:var(--ctl-touch);
+  color:var(--fg); text-decoration:none; font-size:var(--t5); font-weight:620;
+  letter-spacing:-.003em; border-top:1px solid var(--sfline); padding:4px 0;
+}
+.dx-rt > .dx-app:first-of-type{border-top:0}
+.dx-app:hover{color:var(--accent)}
+.dx-kids{
+  display:flex; flex-wrap:wrap; gap:7px; margin:8px 0 2px 12px;
+  padding-left:11px; border-left:1px solid var(--sfline);
+}
+.dx-kid{
+  display:inline-flex; align-items:center; min-height:34px; padding:4px 11px;
+  border:1px solid var(--sfline); border-radius:var(--r-pill);
+  color:var(--dim); text-decoration:none; font-size:var(--t6);
+}
+.dx-kid:hover{color:var(--accent); border-color:var(--accent)}
+
+/* ---- 8. the identity block on a workspace-first page ----------------------------------
+   `coder.html` and `live.html` deliberately put the workspace ABOVE the page identity: the
+   tool is what you came for, and the description of it belongs underneath. That ordering is a
+   TESTED CONTRACT -- `apps/test_application_shell.py::
+   test_coder_and_live_keep_the_instrument_before_explanatory_copy` asserts `id="cd-head"` and
+   `id="lv-player"` appear before `class="apphead` in the SOURCE.
+
+   6.2 briefly moved the identity block to the top of `<main>` so the page `h1` would lead the
+   document outline, and put it back visually with `order`. That broke the contract above, and
+   the contract wins: the design decision is deliberate, it is tested, and an accessibility
+   improvement is not a licence to quietly reverse somebody else's reasoned choice. The
+   attempt is recorded rather than erased so the next person does not repeat it.
+
+   What DID survive from that attempt is the part that costs nothing: the workspace panel
+   labels moved from `h3` to `h2`, so the headings that precede the `h1` are at least one
+   level below it rather than three. The remaining ordering issue -- an `h2` before the `h1` --
+   is recorded as unresolved and is the one place where the outline and a tested layout
+   contract genuinely disagree. */

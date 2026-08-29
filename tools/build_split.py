@@ -45,6 +45,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 SITE = ROOT / "site"
 
+# The authored page-family map -- see tools/page_families.py for why it is not restated here.
+import sys as _sys
+_sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import page_families  # noqa: E402
+
 # slug -> (output file, section id kept, nav label, <title>)
 PAGES = [
     ("overview",     "overview.html",     "hero",    "Overview",      "SyMoNeuRaL — local AI infrastructure"),
@@ -102,13 +107,54 @@ def main() -> int:
         # the one-screen layout without JavaScript: on a page holding a single section
         # nothing can be hidden, so the class is safe in the markup. On index.html it is
         # added from JS precisely because there it DOES hide things.
-        html = html.replace('<html lang="en">', '<html lang="en" class="ns">', 1)
+        #
+        # `data-section` rides along because `ns` alone cannot answer the question the
+        # stylesheet actually needs to ask. `ns` means "one-screen density"; it was set here
+        # so a standalone section page reads like its panel did. But some rules under it are
+        # not density -- they are arithmetic against the 587px TAB PANEL on the front page,
+        # and the rack's row compression is the clearest case: it squeezes a unit row to a
+        # 17px glyph in 2px of padding to fit twelve of them inside that panel. A standalone
+        # page has no panel and no tab chrome, so the same rule there buys nothing and costs
+        # readability -- measured at 33px per row at 1440x900, which is the "compressed into
+        # unreadable one-line slivers" defect reported against /livestack.
+        #
+        # This file's own docstring already made the argument and the markup had not caught
+        # up: *"Separate pages have no gate to fall off."* The attribute is what lets the
+        # stylesheet act on that, per page, without weakening the front page's budget.
+        # `data-family` is emitted STATICALLY here, not left to site/shell.js. Measured in
+        # 6.1: with scripting off these pages fell back to the 1120px prose width. The value
+        # comes from the one authored map in tools/page_families.py rather than being typed
+        # here, so the generator and the tests cannot disagree about it.
+        html = html.replace(
+            '<html lang="en">',
+            f'<html lang="en" class="ns" data-section="{slug}"'
+            f'{page_families.attribute(fname)}>', 1)
         html = re.sub(r"<title>.*?</title>", f"<title>{title}</title>", html, count=1, flags=re.S)
 
         if keep != "hero":
             html = MASTHEAD.sub("", html)
         for sid in SECTIONS - {keep}:
             html = drop_section(html, sid)
+
+        # THE PAGE'S PRIMARY HEADING. Measured across all 23 shell pages: livestack,
+        # controlboard and receipts carried NO `h1` at all, because the only `h1` on
+        # index.html lives in the hero and these three pages drop the hero. A page whose
+        # outline starts at `h2` has no primary heading, which is what the accessibility
+        # pass reported.
+        #
+        # The kept section's own `h2` is promoted rather than a new heading being invented:
+        # when a page holds exactly one section, that section's title IS the page title, and
+        # adding a second heading above it would be the duplicate-heading fix this is
+        # supposed to avoid. `overview` keeps the hero and already has its `h1`, so it is
+        # untouched -- promoting there would give it two.
+        #
+        # Visual styling is preserved by `section h1` being given the same rule as
+        # `section h2` in symoneural.css, not by a class added here.
+        if keep != "hero":
+            promoted, n = re.subn(r"<h2>(.*?)</h2>", r"<h1>\1</h1>", html, count=1, flags=re.S)
+            assert n == 1, (
+                f"{fname}: expected exactly one h2 to promote to the page heading, found {n}")
+            html = promoted
 
         html = TABS.sub(nav(slug) + "\n\n", html)
         html = TABS_JS.sub("", html)          # buttons became links; the panel switcher goes

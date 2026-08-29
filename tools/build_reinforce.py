@@ -177,7 +177,40 @@ def main() -> int:
     # CALL rather than a new `@@...@@` in the shared SHELL, which is the whole reason it is
     # shaped this way -- a placeholder added to SHELL would have broken the assert two lines
     # above on a correct page, which is exactly what `@@PAGECSS@@` did here once already.
+    # ---- fixes whose SOURCE lives outside the frontend allowlist -------------------
+    # `backend/apps/studio/plugins/reinforce/page.html` is this page's authored fragment, and
+    # it is under `backend/`, which Handshake 6.2 does not permit writing. Two corrections
+    # made in 6.1 were applied to the GENERATED `site/reinforce.html` and were therefore
+    # reverted the moment this generator next ran -- which is exactly what happened on
+    # 2026-08-29. A fix applied to generated output is not a fix; it is a countdown.
+    #
+    # They are applied HERE instead, on the rendered fragment, which is the authorized
+    # surface and the one that survives regeneration. Both are asserted rather than
+    # best-effort, so a change to the fragment upstream fails loudly here instead of
+    # silently dropping the correction again.
+    _grid_old = "grid-template-columns:repeat(auto-fit,minmax(300px,1fr));"
+    _grid_new = "grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));"
+    if _grid_old in html_out:
+        # `minmax(300px,...)` makes 300px a HARD floor, so at a 320px viewport -- where the
+        # content column is 256px -- the card lays out at 300px and its right edge lands at
+        # 328px, outside the viewport. Measured; it was the only horizontal overflow left on
+        # the site. `min()` keeps the intent wherever there is room and lets the track
+        # collapse where there is not.
+        html_out = html_out.replace(_grid_old, _grid_new)
+    assert _grid_new in html_out, (
+        "the rf-grid track definition moved in page.html; the 320px overflow fix was lost")
+
+    _n = html_out.count("font-size:10.5px")
+    html_out = html_out.replace("font-size:10.5px", "font-size:var(--t7)")
+    assert "font-size:10.5px" not in html_out
+    assert _n, "page.html no longer carries the 10.5px micro-labels this expected to fix"
+
     html_out = build_pages.appify(html_out)
+    # The <main> landmark and the static data-family, from the one authored map in
+    # tools/page_families.py. Opted into the same way `appify` is, for the reason its
+    # comment gives: a shared shell cannot grow a new placeholder without breaking
+    # every consumer that substitutes its own field dict.
+    html_out = build_pages.landmark(html_out, "reinforce.html")
     # Not a tidiness check. Every ellipsis rule on this site has been removed because two of
     # them were caught truncating real data -- `built on Qwen2.5-7B-Instruct`, which is an
     # Apache-2.0 licence condition, and a control-board reading mid-number. This page carries

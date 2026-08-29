@@ -165,6 +165,11 @@ def main() -> int:
     # shaped this way -- a placeholder added to SHELL would have broken the assert two lines
     # above on a correct page, which is exactly what `@@PAGECSS@@` did here once already.
     html_out = build_pages.appify(html_out)
+    # The <main> landmark and the static data-family, from the one authored map in
+    # tools/page_families.py. Opted into the same way `appify` is, for the reason its
+    # comment gives: a shared shell cannot grow a new placeholder without breaking
+    # every consumer that substitutes its own field dict.
+    html_out = build_pages.landmark(html_out, "exp.html")
     # Not tidiness. Every ellipsis rule on this site has been removed because two were caught
     # truncating real data. This page carries dotted plugin paths, service method lists and
     # runtime error messages -- and a truncated error message is worse than no error message.
@@ -193,6 +198,19 @@ def main() -> int:
     # `scripts/deploy.sh` copies to the webroot. The source of truth stays beside the routes it
     # calls, which is the only place it can be kept true.
     js = (APP / "page.js").read_text()
+    # NOT REWRITTEN HERE, and the attempt is recorded rather than left as a scar.
+    #
+    # This page builds several of its headings at RUNTIME -- `el('h3', ...)`, `el('h4', ...)`,
+    # `el('h5', ...)` in `page.js` -- so the static outline pass in `build_pages._outline`
+    # cannot see them and the rendered document still opens with a level jump. Handshake 6.2
+    # tried to correct the first of them from this generator and stopped: the literal is
+    # assembled inside a ternary rather than written as one call, and matching it by string
+    # surgery against source this repository is not authorized to read as an editable file
+    # would be guessing at code rather than changing it.
+    #
+    # The authored source is `backend/apps/.../page.js`, which is outside 6.2's frontend
+    # allowlist. The outline defect on this page is therefore RECORDED as out-of-scope rather
+    # than papered over. See the 6.2 evidence root.
     (SITE / "exp.js").write_text(js)
     print("  exp.js")
     return 0

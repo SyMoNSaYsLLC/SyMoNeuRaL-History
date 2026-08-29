@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-family="workspace">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL RavenCalc — exact mathematics</title>
 <meta name="description" content="Exact symbolic computation that checks its own work.">
-<link rel="stylesheet" href="/symoneural.css?v=ca0106af36">
+<link rel="stylesheet" href="/symoneural.css?v=77a47035a3">
 <link rel="stylesheet" href="/rack-detail.css?v=c2349ecce9">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -35,6 +35,8 @@
   </div>
 </header>
 
+<main>
+
 <div class="apphead">
   <div class="wrap">
     <p class="eyebrow"><img src="/calc-64.png?v=c0834bc551" alt="" width="20" height="20"
@@ -53,7 +55,7 @@
       padding:12px 16px; border-top:1px solid var(--line); background:var(--panel2);
     }
     .rc-calc .rc-lab{
-      font:650 10.5px/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
+      font:650 var(--t7)/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.13em;
       text-transform:uppercase; color:var(--faint); margin-right:4px;
     }
     .rc-calc .rc-op{
@@ -74,7 +76,7 @@
     .rc-calc .rc-group{margin-top:11px}
     .rc-calc .rc-group:first-child{margin-top:0}
     .rc-calc .rc-glab{
-      margin:0 0 6px; font:650 10.5px/1.5 ui-sans-serif,system-ui,sans-serif;
+      margin:0 0 6px; font:650 var(--t7)/1.5 ui-sans-serif,system-ui,sans-serif;
       letter-spacing:.13em; text-transform:uppercase; color:var(--faint);
     }
     /* minmax(0,1fr), never a fixed width: a fixed key width is how a six-column pad runs
@@ -227,7 +229,7 @@
           <p class="gpu-why"><b>RavenCalc does not use the GPU.</b> This is the card the rest of the stack shares, shown here so you can see what it is doing; nothing on this page waits for it.</p>
         </div>
         
-        <h3>Applied to</h3>
+        <h2>Applied to</h2>
         <div class="ctl">
           <label for="var">Variable</label>
           <input type="text" id="var" value="x" maxlength="16">
@@ -253,6 +255,8 @@
   </div>
 </section>
 
+</main>
+
 <footer>
   <div class="wrap foot">
     <a class="logo" href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
@@ -275,7 +279,12 @@
   <summary>System information &mdash; one card, one surface at a time</summary>
   <div class="wrap">
     <div class="callout" style="margin-top:34px">
-      <h3>This is a 16 GB consumer card, and it is a test bench</h3>
+      <!-- h2, not h3. `appify` relocates this block out of the page body and into a
+           top-level <details class="appinfo"> below the footer, where it is a section
+           of the page in its own right and has no h2 parent to sit under. As an h3 it
+           was the entire outline defect on /project.html, whose only other visible
+           heading is the page h1. -->
+      <h2>This is a 16 GB consumer card, and it is a test bench</h2>
       <p>
         Chat and image never run at the same time here. A lock hands the GPU to exactly one
         surface and the other waits, because both weight sets do not fit in 15.92&nbsp;GiB at
@@ -295,9 +304,9 @@
 
 
 <script src="/app.js?v=632745179b"></script>
-<script src="/console.js?v=9824a6d1bb" defer></script>
+<script src="/console.js?v=91351f0d91" defer></script>
 <script src="/ui.js?v=c334a9f106" defer></script>
-<script src="/shell.js?v=746beb8b0d" defer></script>
+<script src="/shell.js?v=bdc75b3527" defer></script>
 <script>
 (function () {
   'use strict';

@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-family="workspace">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SyMoNeuRaL Live — the stream, while it runs and after it ends</title>
 <meta name="description" content="The OBS stream from this box, served as HLS straight off the machine that encodes it. Live while it runs; the same files are the recording afterwards.">
-<link rel="stylesheet" href="/symoneural.css?v=ca0106af36">
+<link rel="stylesheet" href="/symoneural.css?v=77a47035a3">
 <link rel="stylesheet" href="/live.css?v=69901400fd">
 <link rel="icon" href="/favicon-32.png?v=fc9400dc9f" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16.png?v=cd5b7e7360" sizes="16x16" type="image/png">
@@ -33,6 +33,7 @@
   </div>
 </header>
 
+<main>
 
 <section style="border-top:0;padding-top:22px">
   <div class="wrap">
@@ -82,7 +83,7 @@
             <div class="lv-cell"><b>OBS bridge</b><span id="lv-r-bridge" class="lv-none">&mdash;</span></div>
           </div>
 
-          <h3 style="margin:26px 0 4px;font-size:var(--t3)">Recordings</h3>
+          <h2 style="margin:26px 0 4px;font-size:var(--t3)">Recordings</h2>
           <p style="margin:0 0 10px;font-size:var(--t5);color:var(--dim)" id="lv-vodsay">Looking&hellip;</p>
           <ul class="lv-vods" id="lv-vods"></ul>
 
@@ -133,13 +134,16 @@
      done here is hiding the lede behind a <details>: it carries the honesty claim (no
      media server, no re-encode, the file the encoder is still writing) and that argument
      is the point of the surface, not decoration around it. -->
-<div class="hero" style="padding:56px 0 26px">
+
+<div class="apphead apphead-after">
   <div class="wrap">
     <p class="eyebrow">Live surface</p>
-    <h1 style="font-size:clamp(28px,3.6vw,40px);max-width:24ch">The stream, off the box that makes it.</h1>
-    <p class="lede" style="font-size:16.5px">OBS encodes on the RTX 5070 Ti described on the home page and writes HLS straight to this machine&rsquo;s disk. There is no media server in between and no re-encode: what you are watching is the file the encoder is still writing. When the stream ends, that same file is the recording.</p>
+    <h1>The stream, off the box that makes it.</h1>
+    <p class="lede">OBS encodes on the RTX 5070 Ti described on the home page and writes HLS straight to this machine&rsquo;s disk. There is no media server in between and no re-encode: what you are watching is the file the encoder is still writing. When the stream ends, that same file is the recording.</p>
   </div>
 </div>
+
+</main>
 
 <footer>
   <div class="wrap foot">
@@ -159,9 +163,9 @@
   </div>
 </footer>
 
-<script src="/console.js?v=9824a6d1bb" defer></script>
+<script src="/console.js?v=91351f0d91" defer></script>
 <script src="/ui.js?v=c334a9f106" defer></script>
-<script src="/shell.js?v=746beb8b0d" defer></script>
+<script src="/shell.js?v=bdc75b3527" defer></script>
 <script src="/hls.js?v=f12ee0acc4"></script>
 <script src="/live.js?v=45cc18ab26" defer></script>
 </body>

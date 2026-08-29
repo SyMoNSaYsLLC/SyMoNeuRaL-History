@@ -135,4 +135,104 @@
   var onChange = function (e) { if (!e.matches) close(false); };
   if (mq.addEventListener) mq.addEventListener('change', onChange);
   else if (mq.addListener) mq.addListener(onChange);        // Safari < 14
+
+  /* ---- the scoped documentation link ------------------------------------------------
+   *
+   * Every application now has one canonical docs URL at `/docs/<id>`, listing only the
+   * routes that application owns. A page that does not link it has one in name only, so the
+   * link is built HERE for the same reason the drawer toggle is: the header lives in 24
+   * files owned by nine generators plus five hand-written pages, and a link added per page
+   * is a link some page does not get. One file, no markup to keep in sync, nothing to drift.
+   *
+   * The mapping is from PAGE PATH to application id and is deliberately explicit rather than
+   * derived from the filename. Three of them do not follow the pattern -- `/livestack/coder`
+   * and `/livestack/live` have no `.html` at all, `/reinforce.html` documents the id `train`,
+   * and `/streamer-watch.html` is a viewer for the streamer application rather than an
+   * application of its own -- and a filename rule would get all three wrong quietly.
+   *
+   * THE HYPHENATED SPELLINGS ARE DELIBERATELY ABSENT. `/live-stack/coder`,
+   * `/live-stack/live` and `/live-stack/image` all still answer and none of them redirects,
+   * so a visitor who typed one gets the page -- they simply do not get this link. That is
+   * the standing rule rather than an oversight: Garrett, on the two spellings, *"we need to
+   * get rid of live-stack i believe its only livestack"*, and
+   * `apps/test_deploy_routes.py::test_nothing_published_carries_the_hyphenated_spelling`
+   * greps every published file for it. This table is published, so a key here is a
+   * published occurrence even though nothing renders it as an href -- which is exactly what
+   * that test caught, and it was right to.
+   *
+   * A page not in this table gets NO link, which is the correct outcome rather than a
+   * fallback: `/credits.html`, `/build.html` and `/documentation.html` are site pages, not
+   * applications, and pointing them at a scoped API reference would be inventing an
+   * ownership claim to fill a gap. `/docs` is in the footer of every page already.
+   */
+  var DOCS = {
+    '/chat.html': 'chat',
+    '/image.html': 'image',
+    '/livestack/image': 'image',
+    '/remix.html': 'remix',
+    '/ravencalc.html': 'ravencalc',
+    '/sigils.html': 'sigils',
+    '/project.html': 'project',
+    '/miner.html': 'miner',
+    '/gateway.html': 'gateway',
+    '/streamer.html': 'streamer',
+    '/studio.html': 'studio',
+    '/studio': 'studio',
+    '/reinforce.html': 'train',
+    '/exp.html': 'exp',
+    '/exp': 'exp',
+    '/live.html': 'live',
+    '/livestack/live': 'live',
+    '/coder.html': 'coder',
+    '/livestack/coder': 'coder',
+    '/account.html': 'accounts',
+    '/controlboard.html': 'controlboard',
+    '/controlboard': 'controlboard'
+  };
+
+  /* ---- the page family: VALIDATE, do not decide ---------------------------------------
+   *
+   * Handshake 6.1 set `data-family` from a table in this file. Handshake 6.2 moved the
+   * authority into static markup -- `tools/page_families.py` is the one authored source, the
+   * generators emit the attribute, and the hand-authored pages carry it -- because a family
+   * set from JavaScript is a family the page does not have until JavaScript runs. Measured
+   * before that move: 14 pages rendered 224px narrower with scripting off, 1120px instead of
+   * 1344px at a 1440px viewport. Measured after: 0.
+   *
+   * So this no longer carries a map, and deliberately so. Restating the pairs here would put
+   * one fact in four places -- the authored source, the generated markup, this file and the
+   * tests -- which is the failure `backend/apps/ROSTER.md` exists to prevent.
+   *
+   * What is left is a check. If a page that has a workspace arrives with no family, the
+   * layout silently falls back to the 1120px prose width, which looks like a design choice
+   * rather than a missing attribute. Saying so in the console is the difference between a
+   * bug someone can find and one they cannot. It NEVER writes the attribute: a fallback that
+   * quietly supplies the right answer would hide exactly the omission it is watching for,
+   * and `tests/architecture.mjs` asserts the static value on every page anyway.
+   */
+  var family = root.getAttribute('data-family');
+  if (!family && (document.querySelector('.apphead') || document.getElementById('units'))) {
+    // `.apphead` is the application page header and `#units` is the rack or its compact
+    // rail; either means this page has a workspace and should have been classified.
+    if (window.console && console.warn) {
+      console.warn('[symoneural] this page has a workspace and no data-family: it will use '
+                 + 'the 1120px prose width. Classify it in tools/page_families.py.');
+    }
+  }
+
+  var appId = DOCS[location.pathname];
+  if (!appId) return;
+  // Guard against a page that already carries one -- a generator may grow its own later,
+  // and two "Docs" links in one header is worse than none.
+  if (nav.querySelector('a[data-appdocs]')) return;
+
+  var docs = document.createElement('a');
+  docs.href = '/docs/' + appId;
+  docs.setAttribute('data-appdocs', appId);
+  docs.textContent = 'Docs';
+  // Before the call to action, so the order is destinations then action -- the same reason
+  // the toggle is inserted before the nav rather than after it. `.cta` is the last child of
+  // every one of these headers; if it is ever not, appending is still correct.
+  var cta = nav.querySelector('a.cta');
+  if (cta) nav.insertBefore(docs, cta); else nav.appendChild(docs);
 })();
