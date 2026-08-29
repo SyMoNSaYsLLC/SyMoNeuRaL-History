@@ -168,6 +168,12 @@ from apps import controlboard as rackpower  # noqa: E402  -- the per-unit power 
 # because it is the only one that rewrites another surface's rack reading, and reading the
 # import list top to bottom should end at the thing that has the last word.
 
+from apps import appdocs  # noqa: E402  -- the per-application documentation registry and
+# renderer. Deliberately after every surface import above and deliberately importing none of
+# them: it holds no reference to a router, only to path PREFIXES, and reads the real route
+# table out of `app.routes` at request time. That is what keeps it from becoming a second
+# copy of the route list -- the failure `apps/route_matrix.py` was written about.
+
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 # The two GPU engines, and they are ours. They pointed into `references/` until 2026-08-20,
 # which broke two standing rules at once -- nothing under `references/` is imported, built or
@@ -1663,6 +1669,30 @@ DOCS_HEADER = """
 # extra steps, and every such rule was deliberately deleted from the site's CSS after
 # `built on Qwen2.5-7B-Instruct` -- an Apache-2.0 condition -- was cut to `...7B-Ins...`.
 API_REFERENCE_STYLE = """
+/* The scoped-application index at the top of this page. `ar-` prefixed like everything
+   else here, for the reason the block comment above gives at length. */
+.ar-index{margin:0 0 34px;padding:0 0 30px;border-bottom:1px solid var(--sfline)}
+.ar-index h2{margin:0 0 10px;font-size:clamp(20px,2.4vw,27px);letter-spacing:-.015em;
+  font-weight:665}
+.ar-runtimes{display:grid;gap:14px;margin-top:20px;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.ar-rt{background:var(--sf3);border:1px solid var(--sfline);border-radius:var(--r-panel);
+  padding:16px 18px}
+.ar-rt h3{margin:0;font:600 var(--t6)/1.4 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  letter-spacing:.05em;color:var(--accent)}
+.ar-rt>p{margin:5px 0 12px;color:var(--faint);font-size:var(--t6);line-height:1.5}
+.ar-apps{display:flex;flex-direction:column;gap:9px}
+.ar-applink{display:block;text-decoration:none;color:var(--fg);font-size:var(--t5);
+  min-height:32px;display:flex;align-items:center}
+.ar-applink:hover b{color:var(--accent)}
+.ar-applink b{font-weight:620;letter-spacing:-.003em}
+.ar-appkids{display:flex;flex-wrap:wrap;gap:7px;margin:5px 0 3px 13px;
+  padding-left:11px;border-left:1px solid var(--sfline)}
+.ar-appkid{display:inline-flex;align-items:center;min-height:30px;padding:3px 10px;
+  border:1px solid var(--sfline);border-radius:var(--r-pill);text-decoration:none;
+  color:var(--dim);font-size:var(--t6)}
+.ar-appkid:hover{color:var(--accent);border-color:var(--accent)}
+
 <style>
 .ar-wrap{max-width:1080px;margin:0 auto;padding:0 22px 80px}
 .ar-note{color:var(--dim);margin:18px 0 26px;max-width:78ch;line-height:1.55}
@@ -1903,6 +1933,69 @@ API_REFERENCE_SCRIPT = """
 """
 
 
+def _application_docs_index() -> str:
+    """The index of scoped application documentation, grouped by functional runtime.
+
+    This sits at the TOP of `/docs` rather than at the bottom, and grouped by runtime rather
+    than listed flat, because the two questions a visitor arrives with are "which application
+    am I looking for" and "what actually runs it" -- and a flat alphabetical list of
+    twenty-two slugs answers neither. The grouping is read from the registry, so a new
+    application appears here the moment it is given an owner and never has to be added twice.
+
+    Global versus scoped is stated rather than implied: this page is the platform-wide
+    reference and every link below narrows it to one application's own routes.
+    """
+    by_runtime: dict[str, list] = {}
+    for a in appdocs.APPLICATIONS:
+        by_runtime.setdefault(a.runtime, []).append(a)
+
+    blocks = []
+    for runtime in appdocs.RUNTIMES:
+        apps_here = [a for a in by_runtime.get(runtime, []) if a.parent is None]
+        children = {a.parent: [] for a in by_runtime.get(runtime, []) if a.parent}
+        for a in by_runtime.get(runtime, []):
+            if a.parent:
+                children.setdefault(a.parent, []).append(a)
+        if not apps_here and not children:
+            continue
+        rows = []
+        for a in apps_here:
+            kids = children.get(a.id, [])
+            kid_links = "".join(
+                f'<a class="ar-appkid" href="/docs/{k.id}">{appdocs.e(k.label)}</a>'
+                for k in kids)
+            rows.append(
+                f'<div class="ar-app"><a class="ar-applink" href="/docs/{a.id}">'
+                f'<b>{appdocs.e(a.label)}</b></a>'
+                + (f'<div class="ar-appkids">{kid_links}</div>' if kid_links else "")
+                + "</div>")
+        # A child whose parent runs on a DIFFERENT runtime still needs a home here, or it
+        # would be silently absent from the index while having a perfectly good page.
+        for parent_id, kids in children.items():
+            if any(a.id == parent_id for a in apps_here):
+                continue
+            for k in kids:
+                rows.append(f'<div class="ar-app"><a class="ar-applink" href="/docs/{k.id}">'
+                            f'<b>{appdocs.e(k.label)}</b></a></div>')
+        blocks.append(
+            f'<div class="ar-rt"><h3>{appdocs.e(runtime)}</h3>'
+            f'<p>{appdocs.e(appdocs.RUNTIMES[runtime])}</p>'
+            f'<div class="ar-apps">{"".join(rows)}</div></div>')
+
+    return (
+        '<div class="ar-index">'
+        '<h2>Documentation by application</h2>'
+        '<p class="ar-note">This page is the <strong>platform-wide</strong> reference: every '
+        'route this service mounts, from the schema it generates. Each link below is a '
+        '<strong>scoped</strong> page carrying only that application&rsquo;s own routes, its '
+        'runtime owner, its authentication boundary and its operational limits. Applications '
+        'are grouped by the runtime that executes their work; indented entries are child '
+        'surfaces of the application above them, not runtimes of their own.</p>'
+        f'<div class="ar-runtimes">{"".join(blocks)}</div>'
+        '</div>'
+    )
+
+
 @app.get("/docs", include_in_schema=False)
 async def api_reference() -> HTMLResponse:
     """The API reference. Ours, rendered from `/openapi.json`.
@@ -1957,6 +2050,7 @@ async def api_reference() -> HTMLResponse:
         '<meta name="theme-color" content="#0e100f">'
         f"{API_REFERENCE_STYLE}</head><body>{header}"
         '<div class="ar-wrap">'
+        f"{_application_docs_index()}"
         '<p class="ar-note">Every operation below is read from the schema this service '
         "generates at the moment you loaded the page. Nothing here is written by hand, so "
         "it cannot describe a route that no longer exists or omit one that was just added. "
@@ -3232,6 +3326,73 @@ async def studio_models() -> dict:
                            "request; re-run tools/build_registry.py after changing what is on "
                            "disk"),
     }
+
+
+# ---- per-application documentation ---------------------------------------------------
+#
+# `/docs` is the platform-wide reference and stays exactly what it was. `/docs/<id>` is one
+# scoped page per application, listing ONLY the routes that application owns.
+#
+# WHY THIS SHAPE AND NOT `<application-page>/docs`. The obvious address for chat's docs is
+# `/chat.html/docs`, and it cannot work: `site/` is mounted at `/` with `html=True`, so that
+# path asks the file server for a directory inside a file. It would 404 in production while
+# looking plausible in a link. `/docs*` on the other hand is ALREADY delegated to this
+# service by `ops/Caddyfile` -- one `handle /docs*` block, prefix form -- and `scripts/
+# deploy.sh`'s reference check already treats `docs/*` as a route rather than a file. So the
+# clean canonical shape costs no Caddy change, no deploy change and no new delegation, and
+# the handshake's "do not rely on an invalid file-server path trick" is satisfied by not
+# needing a trick at all.
+#
+# Declared BEFORE the StaticFiles mount below, for the same reason every route here is: that
+# mount matches everything at "/", so a route added after it is unreachable.
+
+
+@app.get("/docs/{app_id}", include_in_schema=False)
+async def application_docs(app_id: str) -> HTMLResponse:
+    """One application's scoped reference, rendered from the live router.
+
+    Nothing about the operation list is written down: `appdocs.routes_for` walks
+    `app.routes` and keeps the ones whose path this application owns. Ownership is a
+    partition over path prefixes, so two pages cannot show the same route and no page can
+    show another application's -- that is a property of the data structure rather than
+    something a reviewer has to check every time a router is added.
+    """
+    app_def = appdocs.BY_ID.get(app_id)
+    if app_def is None:
+        # Name the index rather than 404ing blankly. A visitor who guessed a slug is one
+        # click from the right one, and the list is short.
+        raise HTTPException(status_code=404,
+                            detail=f"no application {app_id!r}; see /docs for the "
+                                   "platform reference and the application index")
+    kids = tuple(a for a in appdocs.APPLICATIONS if a.parent == app_id)
+    return HTMLResponse(appdocs.render(
+        app_def, appdocs.routes_for(app_id, app.routes), children=kids))
+
+
+@app.get("/demo/dispatchos/docs", include_in_schema=False)
+async def dispatchos_docs() -> HTMLResponse:
+    """DispatchOS documentation for the CUSTOMER surface, at the customer's own address.
+
+    Two things make this its own route rather than a link to `/docs/dispatchos`.
+
+    **The audience.** This page renders with `audience="customer"`, which drops every
+    operator-only path -- quote, advance, message, rules and drivers. A customer account is
+    refused all five, and listing them here would present actions Donnie will be told `403`
+    for as things he is supposed to do. The operator's full view is still at
+    `/docs/dispatchos`; nothing is hidden from the person entitled to it.
+
+    **The address.** `ops/Caddyfile` puts `/demo/dispatchos` and `/demo/dispatchos/*` behind
+    the door, so this page is reachable exactly where the application is and by exactly the
+    same people. A customer handed one URL does not have to learn a second one, and the docs
+    for a surface behind a door do not sit outside it.
+
+    Declared above the StaticFiles mount, for the same reason every route here is.
+    """
+    app_def = appdocs.BY_ID["dispatchos"]
+    return HTMLResponse(appdocs.render(
+        app_def,
+        appdocs.visible_routes("dispatchos", app.routes, audience="customer"),
+        audience="customer", docs_root="/docs"))
 
 
 # ---- clean URLs for the four front-page sections ---------------------------
