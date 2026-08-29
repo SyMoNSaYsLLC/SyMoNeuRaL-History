@@ -93,7 +93,9 @@
       "requires_authentication": false,
       "immutable": "one asset per tag; a corrected artifact gets a NEW tag naming its new hash and never replaces an existing one",
       "verified_by_independent_download": "2026-08-29"
-    }
+    },
+    "extract_into": "engines/symoneural-llm/build",
+    "restore_note": "`restore` below is the LOCAL convenience form and assumes archives/ is already populated. A rebuilt machine has no archives/ -- it fetches the bundle to wherever it likes -- so tooling must use `extract_into` with the path it actually downloaded to. Found by reconstructing from a fresh clone: the recorded command worked only on a machine that already had the artifact, which is the one machine that does not need it."
   },
   "source_reproducible": false,
   "source_reproducible_note": "Handshake 4.2: STOP -- NOT REPRODUCIBLE. No commit identity, no build record, no preserved configuration.",

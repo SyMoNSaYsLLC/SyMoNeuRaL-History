@@ -93,6 +93,7 @@ cust = m.get("custody") or {}
 put("ART_BUNDLE", root / cust["bundle"] if cust.get("bundle") else "")
 put("ART_BUNDLE_SHA", cust.get("bundle_sha256", ""))
 put("ART_RESTORE", cust.get("restore", ""))
+put("ART_EXTRACT_INTO", cust.get("extract_into", ""))
 
 # Distribution is TRANSPORT. `ART_BUNDLE_SHA` above stays the acceptance criterion, and
 # `artifact_fetch` checks the downloaded bytes against it rather than against anything the
@@ -113,7 +114,7 @@ PY
 _ART_FIELDS="ART_MANIFEST ART_REL ART_ABS ART_IS_DIR ART_SHA ART_SIZE ART_UNIT ART_ROLE
              ART_REPRODUCIBLE ART_SERVER_REL ART_SERVER_ABS ART_SERVER_SHA ART_CLI_REL
              ART_CLI_ABS ART_CLI_SHA ART_BUNDLE ART_BUNDLE_SHA ART_RESTORE
-             ART_DIST_PROVIDER ART_DIST_URL ART_DIST_TAG ART_DIST_ASSET"
+             ART_DIST_PROVIDER ART_DIST_URL ART_DIST_TAG ART_DIST_ASSET ART_EXTRACT_INTO"
 
 # artifact_load <manifest.json> -- set ART_* in the CALLER's shell. Returns non-zero and
 # leaves every field UNSET if the manifest cannot be read.
@@ -247,4 +248,27 @@ artifact_fetch() {
         return 1
     fi
     echo "  verified against the manifest: $got"
+}
+
+# artifact_restore <bundle-file> -- extract a fetched bundle into the tree the manifest names.
+#
+# This exists because `custody.restore` could not be used by the machine it was written for.
+# It reads `tar -C engines/... -xzf archives/<bundle>`, and a rebuilt host has no `archives/`:
+# it fetches to wherever it fetched to. So the recorded command only worked where the artifact
+# was already present -- the one case needing no restore at all. Caught by reconstructing from
+# a fresh clone, which is the only test that could have caught it; every earlier check ran on
+# a machine that happened to have the file.
+#
+# The destination comes from `custody.extract_into` and the source is the caller's, so the two
+# are independent, which is what makes this usable from a download directory.
+artifact_restore() {
+    local bundle="${1:?usage: artifact_restore <bundle-file>}" dest
+    [ -n "${ART_MANIFEST:-}" ] || { echo "artifact_restore: nothing loaded"; return 1; }
+    [ -f "$bundle" ] || { echo "artifact_restore: no such bundle: $bundle"; return 1; }
+    [ -n "${ART_EXTRACT_INTO:-}" ] || {
+        echo "artifact_restore: $ART_MANIFEST records no custody.extract_into"; return 2; }
+    dest="$ART_ROOT/$ART_EXTRACT_INTO"
+    mkdir -p "$dest" || return 1
+    tar -C "$dest" -xzf "$bundle" || { echo "artifact_restore: extraction failed"; return 1; }
+    echo "  restored into $ART_EXTRACT_INTO"
 }
