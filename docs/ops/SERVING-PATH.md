@@ -291,3 +291,158 @@ measurement and has not been re-dated.
 pre/post-model comparison** proving that running the model did not alter the published site.
 It is not a pre-reboot versus post-reboot comparison, because no earlier baseline existed to
 compare against.
+
+## SECOND REBOOT OBSERVATION — 2026-08-29 10:30:32 (#108 remains open)
+
+A second, independent host reboot happened and the canonical runtime came back without help.
+This section records what that boot established and, as deliberately as the section above it,
+**does not carry `#108`'s closing-check phrase** — see *Why the check is still not flipped*
+at the end.
+
+**Boot identity.** Boot id `8482ab4b-5b32-40c6-8d8c-46c7e958f7d9`, booted
+`2026-08-29 10:30:32 EDT`. All four units activated at boot with `NRestarts=0` and
+`Result=success`: `symoneural-api` (pid 1852), `symoneural-gateway` (1877) and
+`symoneural-web` (1804) at 10:30:44, `symoneural-deploy` at 10:30:41. **No service was
+started, stopped, restarted or reloaded by the evidence capture**, and none was restarted to
+produce this record.
+
+**Preserved evidence.** `/home/google/symoneural-108-postboot-20260829T152526Z`, mode `0700`,
+17 files, hashed in its own `evidence-sha256.tsv` and provenance-stamped to the boot id above.
+Every claim below is read out of that capture; nothing here is asserted beyond it.
+
+### What this boot established
+
+**The runtime boundary survived with zero live `/yocto` dependency.** Measured per process
+across cwd, exe, cmdline, environ, maps and open file descriptors — eighteen measurements over
+the three service processes — **0 references**. `ops/verify-runtime.sh` exits **0 —
+`RUNTIME BOUNDARY CLEAN`**. Current-boot journals across the four units hold **198 lines and
+not one mentions `/yocto`**. No mount over the canonical tree.
+
+A naive `*/yocto*` symlink glob reports six hits under the canonical tree and **none of them is
+a `/yocto` reference**: they are the npm packages `yocto-queue` and `yoctocolors` under
+`references/`, a tree this project already forbids importing, building or linking.
+`verify-runtime.sh` anchors on `/yocto*` and excludes `references/`, which is why it passes.
+Written down so the next reader does not re-raise it as a finding.
+
+**The boot deploy published from the canonical tree, not `/yocto`.** Comparing the HTML, CSS
+and JS set three ways — `site/`, `/yocto/Symoneural/site/`, and the webroot — twelve files are
+identical in both trees and carry no information either way, two have no `/yocto` counterpart,
+and **twenty-nine disagree. In all twenty-nine the webroot matches the canonical copy and none
+matches `/yocto`.** The disagreement set is the decisive one and it is unanimous.
+
+**Health.** Local `:8800/api/status` 200 and gateway `:8000/healthz` 200. Public `/api/status`,
+`/overview`, `/livestack` and `/docs` 200, `/` 302, and both `/demo/dispatchos` and
+`/share-dispatchos.html` **401 unauthenticated** — edge auth intact, no credential sent and the
+door not authenticated through. `symoneural-web` (pid 1804) owns `:80` and `:443`; the vendor
+`caddy` unit is `disabled` and `inactive`.
+
+### Which acceptance criterion this closes, and which it does not
+
+**CLOSED by this boot: the post-boot runtime verification.** *"Whether the enabled units, and
+only the enabled units, bring the canonical runtime back with no `/yocto` anywhere."* Two
+independent reboots have now shown it, and this one is measured against a live boot id that can
+be tied to the evidence root while it lasts.
+
+**STILL OPEN: the engine identity.** `#108` also asks this repository to *prove SyMon AI answers
+from the model*, and the engine that would answer is still not the engine this document, the
+installer and the verifier all name:
+
+    documented / installed / verified
+      engines/symoneural-llm/build/bin/symoneural-llm
+      sha256 0c4f804a5b18f754376acef6d73595eb191dafd6855cd81831844c941e3fe4c1
+
+    what the live configuration selects
+      engines/symoneural-llm/staged-20260826-153043/bin/symoneural-llm
+      sha256 619b918f3f0ac3629c1270320460893627fb8c78d0d4cb22f08e827380d0f35a
+
+The 2026-08-28 section above recorded that disagreement as a qualification. It is no longer only
+a qualification: it is now **traced to its cause**. `/etc/symoneural/api.env` lines 14 and 15
+(mode `600`, owner `root`, mtime `2026-08-26 15:52:08`) set `SYMONEURAL_LLM_ENGINE` and
+`SYMONEURAL_DIFFUSE_ENGINE` to the staged builds, and the unit reads that file through
+`EnvironmentFile=`. `backend/api.py::_engine_path()` prefers the environment variable whenever
+it names a real file, and both staged binaries are present. So this is a standing configuration
+fact, not a transient state.
+
+**THAT OVERRIDE HAS NOT BEEN CHANGED.** `/etc/symoneural/api.env` is untouched by this record and
+by the capture that produced it. Altering it is a live configuration mutation and was explicitly
+withheld from this authorization: it needs its own pre-change baseline, intended value, rollback
+condition and verification criteria. Documenting a defect is not licence to repair it.
+
+**Also not established this boot: the model actually answering.** The engine starts on demand,
+was not resident, and no inference job was submitted — that is a write-side action and the
+capture was evidence-only. The `93.4 tok/s` generation recorded in the 2026-08-28 section stands
+as its own dated measurement and **has not been re-dated to this boot**.
+
+### Why the check is still not flipped
+
+`#108`'s last unmet check is a grep of this file for a specific closing phrase. That phrase is
+**deliberately absent here, exactly as it is absent from the 2026-08-28 section**, and for a
+sharper reason now that the cause is known.
+
+`tools/archive_tasks.py` moves any task at 100% into `review/CLOSED-TASKS.md` as finished. Typing
+the phrase would take `#108` to 15/15 and archive it **as done** while the engine it is supposed
+to prove is still not the engine that would answer. That is precisely the failure
+`.claude/CLAUDE.md` warns about — *"a check that can pass without the work being finished is
+worse than no check, since it will archive the task"* — and precisely how `#94` and `#74` were
+lost.
+
+So the post-boot half is recorded here and the task stays at **14/15**. The phrase belongs in this
+file on the day the engine question is settled: either the override is authorized and changed so
+the documented engine serves, or the staged engine is promoted to be the documented one and the
+installer, the verifier and the manifests are updated to name it. Until one of those happens,
+`#108` is not done and this file does not say it is.
+
+## POST-REBOOT EVIDENCE — #108 closed 2026-08-29
+
+The two conditions `#108` was left open for are both now met, and this section is the record
+that earns its closing check. It is written only after the proof existed, not to produce it.
+
+### 1. The reboot, and the runtime coming back on its own
+
+Boot id `8482ab4b-5b32-40c6-8d8c-46c7e958f7d9`, booted `2026-08-29 10:30:32 EDT`, independent
+of any agent action. All four units activated at boot with `NRestarts=0` and `Result=success`.
+
+    /yocto references across 3 live services x 6 process fields ... 0 of 18
+    ops/verify-runtime.sh ....................................... exit 0, RUNTIME BOUNDARY CLEAN
+    current-boot journals, 4 units .............................. 198 lines, 0 mention /yocto
+    mounts over the canonical tree .............................. 0
+    webroot provenance, disagreement set ........................ 29 files: 29 canonical, 0 /yocto
+
+Evidence: `/home/google/symoneural-108-postboot-20260829T152526Z`.
+
+### 2. The documented engine now serves, and it was proved by execution
+
+The engine that answers is no longer the one this document had to disclaim. The 2026-08-26
+promotion was completed on 2026-08-29: the promoted server and its ten shared libraries were
+installed at the canonical `build/bin`, and the `SYMONEURAL_LLM_ENGINE` override was removed
+from `/etc/symoneural/api.env`, which is now byte-identical to the pre-cutover file preserved
+in the August 26 rollback snapshot.
+
+One controlled `POST /api/chat` then proved it, through the normal serving path:
+
+    HTTP 200, streamed          tokens 6, tok_per_s 38.0
+    model                       symon-1.0-7b-q4_k_m, adapter true
+    engine child pid            43122, ppid 19338 (symoneural-api)
+    /proc/43122/exe             engines/symoneural-llm/build/bin/symoneural-llm
+    sha256 via /proc/<pid>/exe  619b918f3f0ac3629c1270320460893627fb8c78d0d4cb22f08e827380d0f35a
+    GPU                         237 -> 8575 MiB, compute 0 -> 8330 MiB, nvidia-smi names pid 43122
+
+**The hash was read through `/proc/<pid>/exe`** — the executable actually mapped by the running
+process — not from a file at a path. `pgrep`, pathname expectation, `verify-runtime.sh` and
+environment configuration were all excluded as identity evidence. Evidence:
+`/home/google/symoneural-108-phase2-serving-proof-20260829T165111Z`.
+
+### The one thing this does NOT claim
+
+`symoneural-llm-cli` was **retained at its 2026-08-20 build** (`4216a62b…`) beside the promoted
+2026-08-26 server (`619b918f…`). A matching CLI could not be produced on this host: no commit
+identity, no build record, no preserved configuration, a missing source input, and a standing
+`STOP — NOT REPRODUCIBLE` verdict for this engine. The two are **not** a reproducible same-build
+pair and no manifest says they are.
+
+What was established about the retained CLI, by execution against the promoted library set:
+`ldd` missing objects 0, `LD_BIND_NOW=1 --version` exit 0, all nine first-party libraries
+resolved from the canonical path, 134 launcher/contract tests passing. What was not: any
+behaviour reachable only through model execution. This is a **bounded accepted skew**, recorded
+in `/home/google/symoneural-108-phase1a-abi-20260829T164106Z/verify/SKEW-RECORD.md`, and it is
+the one piece of unfinished business this task leaves behind.
