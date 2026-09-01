@@ -1,0 +1,16 @@
+{
+  "component": "symoneural-web",
+  "product": "SyMoNeuRaL",
+  "version": "0.1.0",
+  "git_commit": "b4b9c528e724d454f98a929ac6e2f85cb26c8e34",
+  "git_dirty": true,
+  "build_id": "456eca14b85f7b0a",
+  "sha256": "b0d3234f9543bce2f83f01e1e010031b4b3928e859bd616d2ce7ae7d15d6eb06",
+  "size_bytes": 76206670,
+  "license_id": "LicenseRef-SyMoNeuRaL-Proprietary",
+  "license_sha256": "ba36ea1115f39cf439f9a34e5ebb107fd3169eca9eb132fe328d1c0d6a85dde7",
+  "third_party_modules": 547,
+  "go_version": "go1.25.1",
+  "trimpath": true,
+  "upstream_engine": "github.com/caddyserver/caddy/v2 (Apache-2.0)"
+}

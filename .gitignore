@@ -119,7 +119,7 @@ backend/apps/licensing/contract-signing.key
 # Rust build output for symon-gateway. Hundreds of megabytes of compiled dependencies, and
 # `cargo build` reproduces all of it from Cargo.toml + Cargo.lock. Cargo.lock IS tracked --
 # it is a binary that gets deployed, so the exact dependency versions matter.
-symon-gateway/target/
+backend/apps/gateway/target/
 
 # The compiled Go validator. Built by `make build-wasm`; see ops/middleware/limiter.go.
 ops/middleware/*.wasm
@@ -234,3 +234,10 @@ incoming/*/*
 # document that is wrong the moment it is right. The durable record of a stage is the git
 # tag; the tarball and its manifest are local artefacts of a moment.
 archives/
+
+# ---- symoneural-web build output ----
+# The BINARY is not committed; `ops/build-symoneural-web.sh`, main.go, go.mod and go.sum are,
+# and those four reproduce it byte-for-byte (proved: two clean builds with -trimpath produced
+# an identical digest). A targeted ignore rather than ignoring the whole component, so the
+# generated SBOM and build manifest beside it stay reviewable in a diff.
+web/symoneural-web/build/symoneural-web
