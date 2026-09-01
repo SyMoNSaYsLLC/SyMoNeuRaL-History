@@ -61,8 +61,21 @@ for (const [w,h] of [[1440,900],[390,844]]) {
     if (turns>=2 && t.length>20) break; }
   const logText=await p.$eval('#log',e=>e.textContent.trim());
   ok(`streamed a real answer ${tag}`, turns>=2 && logText.length>20, `${turns} nodes, ${logText.length} chars`);
-  ok(`status line reports something ${tag}`, (await p.$eval('#stat',e=>e.textContent.trim())).length>0,
-     (await p.$eval('#stat',e=>e.textContent.trim())).slice(0,60));
+  // The tokens-per-second line is the whole claim of this surface -- "measured, not claimed"
+  // -- so it is asserted as a MEASUREMENT, not as non-empty text.
+  //
+  // This check used to read `textContent.length > 0` and it was too weak to be worth having.
+  // On 2026-08-27 it passed at both viewports on the string `thinking…`, which is the LOADING
+  // state: the run went green while the generation was still in flight, and a page that never
+  // finished would have gone green the same way. CLAUDE.md: "a check that can pass without the
+  // work being finished is worse than no check."
+  let stat = '';
+  for (let i = 0; i < 45; i++) {
+    stat = (await p.$eval('#stat', e => e.textContent.trim()));
+    if (/tok\/s/.test(stat)) break;
+    await p.waitForTimeout(1000);
+  }
+  ok(`status line reports a measured rate ${tag}`, /tok\/s/.test(stat), stat.slice(0,70) || '(empty)');
   // history + new chat
   const hist=await p.$$eval('#cu-hist > *',e=>e.length);
   ok(`conversation entered history ${tag}`, hist>=1, `${hist} entries`);

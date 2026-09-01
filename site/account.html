@@ -136,10 +136,10 @@
         <input id="ac-email" type="email" autocomplete="username" spellcheck="false" required>
         <label for="ac-pw">Password</label>
         <input id="ac-pw" type="password" autocomplete="current-password" required>
-        <p class="ac-hint" id="ac-pwhint" hidden>At least 12 characters. Length is worth
-          more than punctuation, and the password is hashed with scrypt at 64&nbsp;MiB
-          before it is stored &mdash; <b>123&nbsp;ms measured on this machine</b>, which
-          is the cost an attacker pays per guess.</p>
+        <p class="ac-hint" id="ac-pwhint" hidden>At least 15 characters. Length is worth
+          more than punctuation, and the password is hashed with scrypt at 128&nbsp;MiB
+          before it is stored. There is no automatic reset email on this box; if you lose
+          it, contact symonsayadmin@symoneural.com.</p>
         <div class="ac-row">
           <button class="ac-go" id="ac-submit" type="submit">Sign in</button>
           <button class="ac-alt" id="ac-toggle" type="button">Create an account</button>

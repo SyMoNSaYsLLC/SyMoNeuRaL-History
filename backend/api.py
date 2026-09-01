@@ -186,8 +186,45 @@ GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 # an engine is on disk. `readelf -d` on either binary shows a RUNPATH inside `engines/`, and
 # each reports the *SyMoNeuRaL* commit it was built from -- the fork excludes `.git/`, so
 # CMake walks up and reads this repo's HEAD. That is kept deliberately.
-LLM_ENGINE = ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
-DIFFUSE_ENGINE = ROOT / "engines" / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse"
+#: Both engine paths accept an environment override, added 2026-08-26 for the runtime cutover.
+#:
+#: The default is the historical `build/bin` location, so an unset variable changes nothing --
+#: that is deliberate: a cutover mechanism whose OFF state differs from today's behaviour is
+#: a second thing to debug when the cutover goes wrong.
+#:
+#: The override exists because a rebuilt engine is a whole RUNTIME DIRECTORY, not one file.
+#: `readelf -d` shows RUNPATH `$ORIGIN` on the staged set, so the executable resolves its
+#: eight SyMoNeuRaL shared objects from whatever directory it is launched out of. Copying
+#: only the executable over the old one would leave it loading the OLD libraries beside it
+#: and reporting a new hash while running old code -- which would pass a checksum test and
+#: fail as a runtime.
+#:
+#: Rollback is therefore `unset SYMONEURAL_LLM_ENGINE` (or remove the line from
+#: /etc/symoneural/api.env) and restart; the previous engine directory is untouched.
+def _engine_path(env_var: str, default: pathlib.Path) -> pathlib.Path:
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
+        return default
+    p = pathlib.Path(raw)
+    # A non-existent override is a misconfiguration that must be loud at import, not a
+    # surface that silently reports `offline` for a reason nobody can find.
+    if not p.is_file():
+        # `logging.getLogger(...)` inline rather than the module-level `log`: this function is
+        # CALLED at import time, ~130 lines before `log` is assigned, so referencing it here
+        # would raise NameError and take the whole API down -- and only on the misconfigured
+        # path, which is the one nobody exercises before shipping.
+        logging.getLogger("symoneural.api").error(
+            "%s points at %s which is not a file; falling back to %s", env_var, p, default)
+        return default
+    return p
+
+
+LLM_ENGINE = _engine_path(
+    "SYMONEURAL_LLM_ENGINE",
+    ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
+DIFFUSE_ENGINE = _engine_path(
+    "SYMONEURAL_DIFFUSE_ENGINE",
+    ROOT / "engines" / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse")
 MODELS = HERE / "models"  # weights are a backend concern; backend/models/
 SITE = ROOT / "site"          # the website: static files Caddy serves and deploy.sh publishes
 # Renders are API output, not site content. They used to be written into site/, which meant
@@ -2749,7 +2786,26 @@ async def chat(body: ChatRequest, request: Request,
             # still does its job (it stops a system turn being smuggled in mid-transcript
             # where it would be invisible), but overriding is now an explicit parameter
             # rather than something to work around.
-            system = SYSTEM_PROMPT if body.system is None else body.system
+            # `or not body.system.strip()` added 2026-08-26, and the empty case is the whole
+            # point. `if body.system is None` alone treated "" as a deliberate override, so a
+            # caller sending `{"system": ""}` got a model with NO identity at all -- measured,
+            # it answered "I'm a 13.5B expert, fine-tuned for quality", inventing both the
+            # size and the provenance.
+            #
+            # The failure underneath is upstream and is worth naming rather than hiding: this
+            # GGUF's `tokenizer.chat_template` carries a Qwen fallback --
+            #     {%- if messages[0]['role'] == 'system' %}{{ messages[0]['content'] }}
+            #     {%- else %}{{ 'You are Qwen, created by Alibaba Cloud...' }}{%- endif %}
+            # -- so an ABSENT system message makes the model introduce itself as Qwen. That
+            # is truthful upstream provenance for the weights and it stays in the file; what
+            # must never happen is the PRODUCT presenting it to a user as its own identity.
+            #
+            # Enforcing here rather than editing the GGUF is deliberate and is the narrowest
+            # correct layer: it leaves upstream metadata untouched and honest, and it fixes
+            # every caller of this route at once. A blank string is now treated as "no
+            # override supplied" rather than as "erase the identity".
+            system = SYSTEM_PROMPT if (body.system is None or not body.system.strip()) \
+                else body.system
             try:
                 exact = await asyncio.wait_for(thinking, timeout=5)
             except (asyncio.TimeoutError, asyncio.CancelledError):
