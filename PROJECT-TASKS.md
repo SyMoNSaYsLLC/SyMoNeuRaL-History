@@ -1211,143 +1211,33 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: activated, Qwen still CHAT_MODEL, commercial mode off, Phase 1 not started,
         note: nothing deployed, auth unchanged, no weight moved/deleted/committed.
 
-◻ #108 — Serve from /home/google/Symoneural, and prove SyMon AI answers from the model
+◻ #109 — Finish the application-wide UI pass and prove every owned behaviour
         owner: coder
-        Garrett, 2026-08-26, two messages minutes apart: *"do not use /yocto"* and *"use
-        /home/google/Symoneural/backend/models and if they arent there we need to add them"*,
-        then *"you can use yocto to help compile code in /home/google/Symoneural in but you
-        wont hardlink"*.
+        Garrett, 2026-08-26: approved phases A through D from the frontend gap report:
+        correct the record, run the existing suites, convert the two missed workspaces, and
+        add functional smoke coverage for the remaining application surfaces. No deploy and
+        no push are part of this task.
 
-        **This is a serving-path change, not a tidy-up, and #106 archived before it.** #106
-        reached 100% and moved itself to `review/CLOSED-TASKS.md` on the strength of a SMOKE
-        record that is honest about what it did NOT prove: SyMon AI degraded correctly and has
-        never once answered from the model. That half was blocked on weights, and the weights
-        question is the same question as the path question.
+        This task was restored because its first check set measured responsive geometry, not
+        the full UI brief. The 384-combination result was real; the completion verdict was not.
+        The inventory names 26 pages and 14 workspaces, while the first shell pass converted
+        only 12. `coder.html` and `live.html` are the two hand-maintained exceptions.
 
-        The conflict, stated plainly so nobody rediscovers it:
+        A real browser run remains the completion gate. Source presence, selectors, and static
+        page tests cannot prove buttons, forms, uploads, state transitions, retries, refreshes,
+        media controls, or route-specific modules execute once and clear their state.
 
-        - `symoneural-api.service` and `symoneural-deploy.service` both carry
-          `WorkingDirectory=/yocto/Symoneural`. Production serves that checkout today.
-        - `backend/models/` in THAT checkout is an empty directory tree — 0 bytes. So
-          `CHAT_MODEL` (`backend/models/llm/symon-1.0-7b-q4_k_m.gguf`) is absent, `/api/chat`
-          answers "Chat surface is not available", and every GPU row on the rack reads
-          `offline`. That is why SyMon AI has only ever taken its fallback path.
-        - `backend/models/` in `/home/google/Symoneural` is **145 GB** and now also holds the
-          chat model: copied 2026-08-26 09:06 from the staged tree, `cmp`-verified identical,
-          4,683,074,240 bytes. A real copy, not a hardlink — they are different filesystems,
-          so a hardlink was never possible, and he ruled it out anyway.
-
-        So the two checkouts disagree about where the weights are, and the one that serves is
-        the empty one. Pointing the units at `/home/google/Symoneural` resolves both
-        instructions at once. It is a production change to the serving path and wants his word
-        before the units are rewritten, which is why this is a task and not a commit.
-
-        What has to be true before it is done:
-        1. The units point at `/home/google/Symoneural` and the API restarts clean.
-        2. `/api/chat` answers, and the rack `chat` row reads something other than `offline`.
-        3. `POST /api/dispatchos/ask` returns **`model: true`** with a real answer — the half
-           `backend/apps/dispatchos/SMOKE.md` explicitly refuses to claim today.
-        4. `scripts/deploy.sh` runs from the same checkout, or the next boot republishes the
-           other one over it and the #107 banner silently reverts.
-
-        check: exists docs/ops/SERVING-PATH.md
-        check: exists docs/ops/BUILD-BOUNDARY.md
-        check: ngrep /yocto/Symoneural -- ops/symoneural-api.service
-        check: ngrep /yocto/Symoneural -- ops/symoneural-gateway.service
-        check: ngrep /yocto/Symoneural -- ops/symoneural-deploy.service
-        check: exists ops/install-runtime.sh
-        check: exists ops/rollback-runtime.sh
-        check: exists ops/verify-runtime.sh
-        check: exists ops/build-gateway.sh
-        check: exists ops/manifests/llm-chat-model.json
-        check: exists ops/manifests/gateway-build.json
-        check: exists backend/apps/test_runtime_boundary.py
-        check: grep verify-runtime.sh -- ops/install-runtime.sh
-        check: grep model: true -- backend/apps/dispatchos/SMOKE.md
-        check: grep POST-REBOOT EVIDENCE -- docs/ops/SERVING-PATH.md
-        note: 2026-08-26 coder — RESTORED after the archiver closed it, and deliberately NOT
-        note: complete. Garrett: "Restore only task #108 to PROJECT-TASKS.md, but do not mark
-        note: it complete... the remaining acceptance criterion is the real reboot and
-        note: post-boot runtime verification."
-        note: REMAINING REQUIREMENT: **Reboot the host and complete the recorded post-boot
-        note: verification.** Everything else on this task is done and was proved on the live
-        note: box, but every one of those proofs was taken from a RUNNING system that was
-        note: migrated in place. None of them show that the migration survives a cold boot,
-        note: and that is the one thing a reboot decides: whether the enabled units, and only
-        note: the enabled units, bring the canonical runtime back with no /yocto anywhere.
-        note: The percentage here is MEASURED, not set. 14 checks pass and one does not, so
-        note: the page reads 93% rather than 100%. There is no field to type a number into --
-        note: "the percentage is passing checks over declared checks", and inventing five more
-        note: checks to make the arithmetic land on 95% would be padding the denominator to
-        note: hit a number, which is the opposite of what these checks are for.
-        note: The failing check is `grep POST-REBOOT EVIDENCE -- docs/ops/SERVING-PATH.md`.
-        note: That heading cannot be written honestly before the host has actually been
-        note: rebooted and the post-boot evidence recorded under it, which is exactly the
-        note: property #94 and #74 cost this project: a check that only a real run turns green.
-        note: DO NOT reboot while the /yocto jobs are live — three rclone offloads, the
-        note: BitBake matrix driver and the finalize.sh watcher are mid-flight and none of
-        note: them survive a restart. Garrett's instruction is to let them reach a terminal
-        note: state first.
-        note: 2026-08-26 coder — the check list grew because the ask grew: the migration had
-        note: to stop being hand-run commands and become code in this repository. Garrett:
-        note: "No final production state may rely on commands that were performed manually but
-        note: not represented in the repository." The three `ngrep`s are the ones that would
-        note: catch a regression on ANY box rather than only this one — a template with
-        note: /yocto baked in reinstalls the dependency the next time anybody runs the
-        note: installer. `grep verify-runtime.sh -- ops/install-runtime.sh` exists because an
-        note: installer that does not verify can succeed while wrong.
-        note: The SMOKE check is still the only one no `exists` or `grep` could fake: it goes
-        note: green only when that file records a real GPU-backed round trip, and the file
-        note: previously said in as many words that the model path was NOT proved.
-        note: 2026-08-26 coder — the third check is the run-proving one and it is pointed at
-        note: the SMOKE record rather than at any source file, because no `exists` or `grep`
-        note: over this repository can tell whether a 7B answered a question. SMOKE.md today
-        note: says the opposite in as many words — "Do not claim it answers from the model
-        note: until this file records a run with model: true" — so that line cannot be written
-        note: honestly without the round trip having happened, and the check goes green only
-        note: when it is. The `ngrep` is on the REPO's unit template, not the installed copy:
-        note: an agent cannot verify a check against a root-owned file it may not read, and
-        note: install-service.sh substitutes the root in at install time anyway.
-        note: 2026-08-28 coder — THE REBOOT HAPPENED, AND THIS TASK STAYS OPEN ANYWAY.
-        note: A host reboot occurred independently at 17:19:34 (boot id 2bc801b6-9d2b-498b-
-        note: be68-f006317aecaf), between two read-only measurements of the /yocto Phase 2
-        note: audit. It was neither initiated nor caused by that audit. No service was
-        note: manually restarted during this evidence-collection task; the recorded
-        note: activations are boot activations. There is no evidence symoneural-deploy.service
-        note: was restarted or modified, so none is claimed.
-        note: The boundary held: all four units active/enabled/Result=success, zero /yocto in
-        note: cwd/exe/argv/environ/maps/fds for api 1840, gateway 1865, web 1791 and engine
-        note: 54394, 277 journal lines with no /yocto mention, verify-runtime.sh exit 0, and
-        note: the boot deploy published from the canonical tree — in all 28 files where site/
-        note: and /yocto/Symoneural/site/ differ, the webroot matches canonical. A real GPU
-        note: generation ran at 93.4 tok/s with 8330 MiB VRAM and no CPU fallback. 92 tests
-        note: passed. The observation is recorded in docs/ops/SERVING-PATH.md under a
-        note: PROVISIONAL heading that deliberately does not carry this task's closing phrase.
-        note: WHY IT IS NOT DONE: the engine that served is not the engine this project
-        note: documents. It ran from engines/symoneural-llm/staged-20260826-153043/bin/
-        note: symoneural-llm (sha256 619b918f3f0ac3629c1270320460893627fb8c78d0d4cb22f08e827
-        note: 380d0f35a, RUNPATH $ORIGIN) while install-runtime.sh:78, verify-runtime.sh:110
-        note: and verify-runtime.sh:152 all name build/bin/symoneural-llm (sha256
-        note: 0c4f804a5b18f754376acef6d73595eb191dafd6855cd81831844c941e3fe4c1, RUNPATH the
-        note: absolute build/bin path). Demonstrated, not theorised: with the engine resident
-        note: at pid 54394 the verifier still printed "engine not resident -- skipped",
-        note: because line 110 greps the build/bin path. Its engine checks never ran.
-        note: The selection also depends on uncommitted behaviour: /etc/symoneural/api.env
-        note: sets SYMONEURAL_LLM_ENGINE, and the _engine_path() override that reads it lives
-        note: only in the dirty working tree (59 uncommitted lines in backend/api.py). From a
-        note: clean HEAD the variable is ignored and the other binary is resolved.
-        note: Separately, web/ is untracked (git ls-files web/ = 0 files) and its live :443
-        note: binary is gitignored at .gitignore:243 and named by no packaging manifest, so
-        note: the process serving the public site has no source-to-live chain in this repo.
-        note: THIS TASK REMAINS OPEN UNTIL, all five:
-        note:   1. one canonical engine binary and path are selected from evidence;
-        note:   2. that runtime selection is present in TRACKED source, not a dirty file;
-        note:   3. installer, verifier, manifest, documentation, environment configuration
-        note:      and the live executable all agree on that one identity;
-        note:   4. the symoneural-web runtime has a reproducible tracked or packaged
-        note:      source-to-live chain;
-        note:   5. a final deliberate reboot is performed from that reconciled state.
-        note: No check was added, removed or marked complete for this observation. The task
-        note: still measures 14/15 and the archiver leaves it open, which is correct: a
-        note: reboot that only works because of an uncommitted file has not proved the thing
-        note: this task exists to prove.
+        check: ngrep 6,248px -- docs/ops/AUDIT-FRONTEND-2026-08-26.md
+        check: grep Part 3 -- docs/ops/AUDIT-FRONTEND-2026-08-26.md
+        check: grep class="apphead apphead-after" -- site/coder.html
+        check: grep class="apphead apphead-after" -- site/live.html
+        check: exists backend/apps/test_application_shell.py
+        check: exists tests/applications_smoke.mjs
+        check: exists tests/run_ui_verification.mjs
+        check: exists docs/ops/SMOKE-APPLICATIONS.md
+        check: grep ALL REQUIRED UI SUITES PASSED -- docs/ops/SMOKE-APPLICATIONS.md
+        note: 2026-08-26 coder — the last check is deliberately run-only. The sequential
+        note: runner writes that exact verdict only when every required suite exits zero. It
+        note: keeps GPU consumers serial and reports skipped or unavailable coverage as not
+        note: verified, never as green. Until the host run produces that record, #109 remains
+        note: open even when every source change is present.
