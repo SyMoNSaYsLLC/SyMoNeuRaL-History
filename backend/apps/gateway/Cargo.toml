@@ -3,7 +3,17 @@ name = "symoneural-gateway"
 version = "0.1.0"
 edition = "2021"
 description = "Front-door HTTP gateway for symoneural.com: proxies to the FastAPI control plane, validates payloads in WASM."
-license = "Apache-2.0"
+
+# LicenseRef-SyMoNeuRaL-Proprietary. Copyright (c) 2026 SymonSays LLC. All rights reserved.
+# SyMoNeuRaL is a subdivision of SymonSays LLC. Full text: <repo>/LICENSE
+#
+# This said `Apache-2.0` until 2026-08-26 and that was simply wrong: this crate is
+# SyMoNeuRaL-authored first-party source, not upstream code, so it was publishing an open
+# licence for work that is proprietary. The crates it DEPENDS on keep their own licences --
+# axum, tokio, tower and the rest are unaffected by this line, which describes this package
+# only. `license-file` rather than `license` because LicenseRef-* is not an SPDX expression
+# Cargo will accept.
+license-file = "../../../LICENSE"
 
 # The binary is `symoneural-gateway`.
 #

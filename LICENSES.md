@@ -1,5 +1,35 @@
 # Third-party licences — SyMoNeuRaL
 
+> ## The first-party licence lives elsewhere, and the split is the point
+>
+> **`/LICENSE` is the authoritative SyMoNeuRaL first-party licence** — *SyMoNeuRaL Proprietary
+> License*, © 2026 **SymonSays LLC**, SHA-256
+> `ba36ea1115f39cf439f9a34e5ebb107fd3169eca9eb132fe328d1c0d6a85dde7`, machine-readable
+> identifier **`LicenseRef-SyMoNeuRaL-Proprietary`**. That file carries the controlling terms
+> and nothing else; the identifier belongs in manifests and metadata rather than in the
+> licence body.
+>
+> **This file is the other half and is not superseded by it.** `/LICENSE` governs
+> SyMoNeuRaL-authored material. Everything inventoried below keeps its own licence, copyright
+> notice, attribution and source obligations, and the SyMoNeuRaL licence is never applied to
+> it as a replacement.
+>
+> **A `symoneural-*` name is a runtime or build identity, not a claim of authorship.** Three
+> directories under `engines/` carry `symoneural-*` names and contain upstream source:
+>
+> | directory | actual upstream | licence | SyMoNeuRaL-authored files |
+> |---|---|---|---|
+> | `engines/symoneural-llm` | llama.cpp / ggml — `project("llama.cpp" C CXX)` | MIT | 2 of 1,249 |
+> | `engines/symoneural-diffuse` | stable-diffusion.cpp — © 2023 leejet | MIT | 3 of 1,293 |
+> | `engines/symoneural-ui` | ComfyUI 0.33.0 | GPL-3.0 | 0 of 47,592 |
+>
+> In each case the `symoneural-*` name is produced by a first-party
+> `cmake/symoneural-names.cmake` output-renaming shim, and the SyMoneuRaL licence attaches to
+> **that shim and the surrounding integration only** — never to the upstream sources beside
+> it. The directories are deliberately **not** renamed: naming and copyright ownership are
+> separate questions, and renaming a tree to satisfy a licensing assumption would destroy the
+> provenance this table exists to record.
+
 Every entry below was verified against what is actually installed and served on this machine,
 not copied from an upstream README. Where a claim could not be verified it says so.
 
@@ -24,6 +54,15 @@ dependencies. You are not redistributing them by running them, so §5 is informa
 **Nothing in this stack is copyleft.** No GPL, no AGPL, no MPL in anything shipped. Your own
 code, your adapter and your training corpus can be proprietary and closed. See §6.
 
+> **Read that sentence precisely: it is about what is SHIPPED, not about what is on the build
+> host.** Corrected 2026-08-26 — a **GPL-3.0 ComfyUI tree is present on this machine** at
+> `engines/symoneural-ui` (8.2 GB, untracked). It is not built, not incorporated, not
+> packaged, not deployed and not distributed, each measured rather than assumed; the per-axis
+> table and the open licensing question are in the **ComfyUI** entry below. The distinction
+> matters because the previous version of that entry claimed the tree was *absent from disk*,
+> which was false, and a reader who stopped at this line would have carried that error
+> forward.
+
 ---
 
 ## 1. Shipped to every visitor today
@@ -45,8 +84,44 @@ indistinguishable from one that was stripped while the work was still shipping, 
 second is a licence violation. So the retirement is stated, with its date, and the next
 person auditing this file can tell which of the two happened without reading `git log`.
 
-### ComfyUI — GPL-3.0 — **RETIRED, no longer distributed**
-ComfyUI was evaluated but is absent from disk, gitignored, excluded from the build, and never deployed. The GPL-3.0 source offer attaches on distribution; because we do not distribute it, no copyleft obligations apply. It is recorded here to confirm the GPL boundary was considered rather than missed.
+### ComfyUI — GPL-3.0 — **present on the build host; not built, not incorporated, not packaged, not deployed**
+
+**Corrected 2026-08-26.** The previous wording said ComfyUI *"is absent from disk"*. That was
+measured and is **false**: the tree is on this machine at `engines/symoneural-ui` — **8.2 GB,
+47,592 files**, `pyproject name = "ComfyUI" version = 0.33.0`, `LICENSE` SHA-256
+`3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986` (GNU GPL-3.0). Only the
+"gitignored" clause of the old sentence was accurate. The correction is recorded rather than
+deleted, because a licence note that quietly changes its story is the thing this file's own
+§"retirement" paragraph two entries up warns about.
+
+Status is now recorded per axis, as observed, with anything unproven marked `UNRESOLVED`
+rather than assumed:
+
+| axis | status | evidence |
+|---|---|---|
+| present on build host | **YES** | `engines/symoneural-ui`, 8.2 GB, 47,592 files |
+| tracked | **UNTRACKED** | `.gitignore:193` `/engines/`; 0 tracked files |
+| built | **NOT BUILT** | no CMake/Cargo/build script compiles it |
+| incorporated | **NOT INCORPORATED** | **zero** `import comfy` in first-party source; `backend/apps/studio/comfy.py` speaks HTTP to `127.0.0.1:8188` — a separate process |
+| packaged | **NOT PACKAGED** | `deploy.sh` `PUBLISH` admits only html/css/js/image/font/txt/xml; webroot holds 0 comfy files; `archive-guard.sh` prunes `engines` |
+| deployed | **NOT DEPLOYED** | 0 systemd units reference it; no process; no `:8188` listener |
+| distributed | **NOT DISTRIBUTED** (observed) | repository has 0 git remotes |
+| SyMoNeuRaL modifications | **NONE** | 0 files under the tree mention `symoneural` |
+
+**Release-gate classification: `UNRESOLVED`.** Every observed axis above is negative, but no
+release or packaging pipeline for this component has been defined or tested, so the
+forward-looking distribution path is not established. `UNRESOLVED` does not authorise a
+release and does not assert a violation.
+
+**Analysis — requires licensing review, and is NOT an observed fact.** The technical
+relationship is separate-process IPC over loopback HTTP with zero imports and zero linking.
+Whether that is mere aggregation or a combined work under GPL-3.0 is a licensing question.
+It is recorded here as open. No SyMoNeuRaL licence header is attached to any file under
+`engines/symoneural-ui`.
+
+**This entry qualifies the blanket sentence in §"The rule that decides everything here"**
+("Nothing in this stack is copyleft. No GPL"). That sentence is true of everything
+*distributed*; it is not true of everything *present on this machine*.
 
 ### hls.js — Apache-2.0
 `site/hls.js` (384 KB, the **light** build) and `site/hls-LICENSE.txt`, served on `/tuner.html`.
