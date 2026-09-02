@@ -2522,6 +2522,203 @@ elevation, and it was **not removed** in this task. It has **no bearing** on D-1
 must not be reused as a custody mountpoint — custody media get their own explicitly chosen mount
 path outside repository, export and customer-staging roots.
 
+### 22.3e Credential custody — **DECIDED 2026-09-02**
+
+**`D-11 CREDENTIAL CUSTODY DECIDED — OFFLINE PHYSICAL RECOVERY RECORDS`**
+
+Policy recording only. **No credential generated. Nothing installed, formatted, mounted or
+created.** Applies to **LUKS media credentials only** — see §22.3e.9 on OpenPGP passphrases.
+
+#### The mechanism
+
+**OFFLINE PHYSICAL RECOVERY RECORDS.** Each LUKS credential is recorded on a **separate offline
+physical recovery record** under operator custody.
+
+| Medium | Credential | Recovery record |
+|---|---|---|
+| **Medium A** `D11-PRIMARY-A` | credential A | **record A — stored separately from Medium A** |
+| **Medium B** `D11-PRIMARY-B` | credential B | **record B — stored separately from Medium B** |
+| **Medium C** `D11-REVOCATION-C` | credential C | **record C — stored separately from Medium C** |
+
+**No credential may be reused across media** (already ruled in §22.3d: A ≠ B ≠ C, mutually
+independent).
+
+#### Electronic credential stores are NOT controlling custody
+
+**None of the following may be the controlling D-11 credential store:** repository · host
+filesystem · home directory · customer archive · application configuration · service
+configuration · cloud storage · email · chat or handoff documents · browser storage · shell
+history · environment variables · plaintext notes · **password-manager account** · network
+share.
+
+| Question | Answer |
+|---|---|
+| Electronic credential store controlling? | **NO** |
+| Password manager controlling? | **NO** |
+
+A password manager may be evaluated **later** as an *optional convenience* mechanism. It is
+**not** the authority and **not** a sole recovery path. **The controlling recovery mechanism
+remains offline physical custody.**
+
+#### Physical-separation invariant
+
+> **A credential record must not share the same immediate physical custody location as the
+> medium it unlocks.**
+
+Separation is **NOT** established by any of these, and the record explicitly says so:
+
+- record and medium in **different folders**;
+- record and medium in **different envelopes inside the same unlocked container**;
+- record stored **digitally on another partition**.
+
+**The purpose:** theft or loss of any single custody item must not hand over **both** the
+encrypted medium **and** the credential that unlocks it. Two items in one drawer are one custody
+location, whatever the packaging.
+
+#### Recovery-record form — minimum acceptable
+
+- **opaque / sealed** physical record;
+- **human-readable** credential (it must be transcribable by hand under stress, with no tooling);
+- identified by **ROLE ONLY** — `D11-PRIMARY-A`, `D11-PRIMARY-B`, `D11-REVOCATION-C`;
+- **no private-key material**; no public release data required;
+- **tamper-evident** handling where practical.
+
+**Deliberately NOT on the record:** system details, repository paths, hostnames, usernames,
+infrastructure information, UUIDs, or unlock commands. **The record exists to recover one LUKS
+credential, not to document the system.** A record that also describes the system turns a single
+theft into reconnaissance.
+
+#### Credential-generation requirements (characterized; nothing generated)
+
+Each future LUKS credential must be **unique · randomly generated · not human-derived**, and
+must **not** be: based on company names · based on user passwords · reused · derived from
+signing-key passphrases · derived from runtime/session/entitlement secrets · derived from
+another media credential.
+
+**Entropy/length target: ≥ 128 bits of entropy**, rendered in a transcription-safe encoding.
+Concretely: a random string over an unambiguous alphabet, grouped for hand-copying, with
+**≥ 128 bits** total — for example base32-style groups where each character carries 5 bits, so
+26+ characters clears the target. **No example value is recorded here**, and none may be placed
+in documentation.
+
+Rationale for 128 bits: the credential protects data at rest against an offline attacker who may
+possess the medium indefinitely, so it must resist offline brute force on its own merits rather
+than relying on rate limiting. LUKS applies a key-derivation function on top, which raises cost
+further but is **not** a substitute for input entropy.
+
+**Generation source: already available — no new dependency.** `/dev/urandom`, the `getrandom(2)`
+syscall, and `openssl rand` are all present on this host. Credentials must come from a CSPRNG,
+never from a human-chosen phrase or a name-based scheme.
+
+#### No circular dependency — verified against the chosen mechanism
+
+Recovery must **never** require possession of the encrypted medium in order to obtain that
+medium's credential. **Explicitly rejected:**
+
+- credential stored **inside the LUKS container it unlocks**;
+- credential stored **only on the associated physical device**;
+- credential **derivation** requiring material held inside the same encrypted volume.
+
+**Verification:** the chosen mechanism places each credential on a physical record held
+**separately** from its medium, so recovery requires only that record — never the medium itself.
+**No circular dependency exists.** This is why "store the passphrase on the drive" is called out
+by name: it reads as convenient and is equivalent to no encryption.
+
+#### Failure-domain analysis
+
+| Loss event | Consequence |
+|---|---|
+| **Medium A only** | Authority **intact** — Medium B is a complete independent copy. Re-provision a replacement A from B |
+| **Record A only** | Medium A becomes **permanently unopenable**, but the authority is **intact** via B. Re-provision A with a fresh credential and a fresh record |
+| **Medium A + record A** | Copy A is **lost entirely**. Authority **intact** via B. **This is the scenario the two-copy topology exists for** |
+| **Medium B only** | Authority intact via A. Mirror of the A cases |
+| **Record B only** | Medium B unopenable; authority intact via A |
+| **Medium B + record B** | Copy B lost entirely; authority intact via A |
+| **Medium C only** | Revocation **certificate copy** lost; the *ability to revoke* is not lost if the primary authority remains recoverable, because a replacement revocation certificate can be produced from the primary |
+| **Record C only** | Medium C unopenable. Same position as losing Medium C: replace from the primary while it remains recoverable |
+| **Medium C + record C** | **That revocation-certificate copy is destroyed.** Recoverable **only** while the primary authority itself is still recoverable. **If the primary is already lost, the ability to revoke is gone** |
+
+**A and B provide authority redundancy.** Loss of one primary copy, or of its credential, does
+**not** destroy the release authority while the other complete copy remains recoverable.
+
+**Medium C is different, and its custody must reflect that.** Losing both Medium C and credential
+C destroys that revocation copy, and the compound scenario *(primary lost **and** C lost)* is the
+one with no recovery path. **Record C therefore receives correspondingly strong physical
+custody** — the strongest of the three.
+
+**No additional secret copies were invented** to eliminate every conceivable physical-loss
+scenario. Each extra copy is another secret-bearing object and another place to be stolen from;
+the topology accepts residual loss risk rather than expanding exposure surface.
+
+#### Copy count per credential record
+
+**ONE controlling physical recovery record per credential, initially.** A and B already provide
+redundancy for the primary authority, so duplicating every media credential would increase the
+number of secret-bearing objects — and therefore the exposure surface — without adding authority
+redundancy.
+
+**Presented as a separate option rather than silently multiplying secret copies:**
+
+> **Option C-2 — a second recovery record for credential C only.** Rationale: C is the single
+> failure domain whose compound loss has no recovery path once the primary is also gone, so it is
+> the one credential where a second record buys something the topology does not already provide.
+> Cost: one additional secret-bearing object, which must be held in a **third** distinct physical
+> location (a duplicate in the same location adds exposure and no resilience).
+> **Not adopted; returned for owner ruling if desired.**
+
+#### Relationship to OpenPGP passphrases — kept separate
+
+Two distinct secret classes will exist:
+
+| Class | Scope |
+|---|---|
+| **LUKS media credentials** | decided here — three independent credentials, offline physical records |
+| **OpenPGP secret-key passphrase(s)** | **NOT decided here** |
+
+They must **not** be identical, **not** be derived from one another, and **not** be recorded as
+one combined secret. A single combined secret would collapse the media-encryption and
+key-protection layers into one failure domain, which is precisely what §22.3d's layering rejects.
+
+**OpenPGP passphrase custody remains part of the future key-ceremony/custody procedure and is
+deliberately NOT decided in this section.**
+
+#### Operational use — manual unlock is the controlling model
+
+```
+1. authorized custody operation begins
+2. retrieve the required physical medium
+3. retrieve its SEPARATELY held credential record
+4. unlock LUKS INTERACTIVELY
+5. perform the authorized custody operation
+6. unmount and close the LUKS mapping
+7. return medium and credential record to SEPARATE custody
+```
+
+| Question | Answer |
+|---|---|
+| Manual unlock required? | **YES** |
+| Automatic/unattended unlock permitted? | **NO** |
+| Host keyfile permitted? | **NO** |
+
+**No script may embed or automatically retrieve the credential.** No unattended unlocking is
+configured. No keyfile is created on the host — a host keyfile would place the credential on the
+same machine whose services the custody architecture exists to exclude.
+
+#### No secret in shell history — requirement for later provisioning
+
+Future provisioning and use **must not** place a LUKS credential in: **command-line arguments ·
+shell history · process listings · environment variables · logs · repository files.**
+
+| Question | Answer |
+|---|---|
+| Command-line credential exposure permitted? | **NO** |
+| Shell-history credential exposure permitted? | **NO** |
+
+**Use `cryptsetup`'s interactive secret-input path.** A credential passed as an argument is
+visible in `/proc` process listings to any local user for the lifetime of the process and is
+persisted by the shell's history — two exposures that no file permission repairs afterwards.
+**This is a requirement on the later provisioning implementation, not an action taken now.**
+
 ### 22.4 Ordered prerequisites before key generation
 
 1. **P1** — exporter signing-material exclusions (P1-a patterns, P1-b content sniff, P1-c
