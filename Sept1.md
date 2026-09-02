@@ -40,8 +40,8 @@ The single most important finding: **most of this already exists in some form.**
 - **CURRENT** — 18 backend app packages, 21 mounted API namespaces, 26 site pages, 12 rack surfaces reporting live state.
 - **CURRENT** — Model management has real authority already: `tools/modelops_inventory.py` (scan-based, cross-checks three sources) and `scripts/modelops/symoneural-modelops-stage.sh` (21,688 B; 8 modes; `--activate-candidate` guarded by six refusals; `--rollback`).
 - **CURRENT** — Studio is ~2,704 lines across six modules with ComfyUI graph integration, custom nodes, MCP server, 11 API routes, and the only `gate.py` in the codebase.
-- **EXISTING-INCOMPLETE** — Accounts has 8 endpoints (signup/login/logout/me/sessions/password/signout-everywhere/status) but **no customer→application entitlement**. DispatchOS runs a *parallel* login.
-- **REQUIRED** — `tools/export_snapshot.sh` **does not exist** (filesystem-verified). It is the only sanctioned export path per `docs/ops/EXPORTS.md` rule 4. This blocks the customer download feature outright.
+- **RESOLVED 2026-09-02 (was EXISTING-INCOMPLETE)** — Accounts has 8 endpoints (signup/login/logout/me/sessions/password/signout-everywhere/status). It had **no customer→application entitlement**; A-3 (`ef1a4af4`) added the correspondence + grant bridge, and 1 grant is provisioned and runtime-verified on both sides (200 entitled / 403 unentitled). DispatchOS still runs its **own** login — that is now the *intended* end state under **D-3(b)**, not an incompleteness.
+- **DELIVERED 2026-09-02 (was REQUIRED)** — `tools/export_snapshot.sh` did not exist; A-2 (`728df639`) delivered it — 192 lines, fail-closed, 17 protected patterns, stage-2 refusal proven by sabotage. It is the only sanctioned export path per `docs/ops/EXPORTS.md` rule 4. The tool no longer blocks the feature; **external export/distribution remains NOT authorized** (D-11 OPEN).
 - **CURRENT** — **Zero learned model payloads on this box** (measured §4.1.1). 11 `PROVENANCE.json` entries are declared-but-absent historical metadata. "No model installed" is the real, valid baseline — and per Q1 it is the correct condition for validating `control/models/`.
 - **CURRENT** — Multi-architecture delivery is **further along than the repo alone suggests**: `/yocto/artifacts` holds **76,208 packages** across arm/arm64/x86/x86-64 in both DEB and IPK, plus 13 SDK installers (§13.2). Two gaps on the primary arch (`x86-64/ipk` absent; `x86-64/deb` feed index missing) and **every artifact is unsigned**.
 
@@ -234,17 +234,17 @@ Never invent provenance. Never infer absence of licence solely from absence in `
 | `backend/apps/accounts/` | 8 endpoints; scrypt N=131072 (128 MiB), legacy-hash upgrade path | **CURRENT** |
 | `backend/apps/gateway/entitlement.py` | **Ed25519 licence entitlements** — payer settled a licence for a workspace, expiring. TRON/chain settlement | **CURRENT** |
 | `backend/apps/licensing/` | Contract signing, issuance | **CURRENT** |
-| `backend/apps/dispatchos/` login | **Separate** `/api/dispatchos/{login,logout,me}` | **EXISTING-INCOMPLETE** |
+| `backend/apps/dispatchos/` login | **Separate** `/api/dispatchos/{login,logout,me}` | **CURRENT — intended under D-3(b)** (was EXISTING-INCOMPLETE; separation is the settled design, bridged by entitlement only) |
 | `tools/dispatchos_accounts.py` | DispatchOS-specific account tooling | **CURRENT** |
 
-> **Critical finding.** `gateway/entitlement.py` is *licence* entitlement (chain settlement), **not** customer→application access control. `accounts/routes.py` contains **zero** entitlement/application-mapping references. DispatchOS runs its **own parallel login**. There is therefore **no shared customer→application entitlement layer today** — this is the central gap in §9, not a detail.
+> **Critical finding — since ADDRESSED, retained because the distinction still holds.** `gateway/entitlement.py` is *licence* entitlement (chain settlement), **not** customer→application access control; that remains true. What has changed: as of A-3 (`ef1a4af4`) there **is** a shared customer→application entitlement layer — `apps/accounts` holds the correspondence and grant, and `apps/dispatchos/authz.py` is the consuming seam. DispatchOS still runs its own login by design (**D-3(b)**). The original wording — *"no shared customer→application entitlement layer today"* — was accurate when written and is now false.
 
 ### 4.5 Export / delivery
 
 | Authority | State |
 |---|---|
 | `docs/ops/EXPORTS.md` | **CURRENT** — policy, 4 rules |
-| `tools/export_snapshot.sh` | **DOES NOT EXIST** — specified only (verified by `ls`) |
+| `tools/export_snapshot.sh` | **CURRENT** — delivered by A-2, `728df639` (was: does not exist). Fail-closed; 17 protected patterns; stage-2 refusal verified. Running it for external release is **not** authorized |
 
 ---
 
@@ -519,11 +519,11 @@ Graph/node workflow · model selection · runtime selection · model inspection 
 
 **CURRENT** — `backend/apps/gateway/entitlement.py`: Ed25519 **licence** entitlements, minted operator-side, expiring, re-verified on use. Concerns *payer settled a licence for a workspace*.
 
-**EXISTING-INCOMPLETE** — DispatchOS has its **own** `/api/dispatchos/{login,logout,me}` plus `tools/dispatchos_accounts.py`.
+**CURRENT — intended under D-3(b)** (was EXISTING-INCOMPLETE) — DispatchOS has its **own** `/api/dispatchos/{login,logout,me}` plus `tools/dispatchos_accounts.py`. D-3 is settled as **(b) keep application authentication separate, bridge identity correspondence + entitlement only**, so this separation is the design, not a defect. Measured: all 7 application auth components own; **0** shared session/login imports.
 
 ### 9.2 The gap
 
-> **There is no customer→application entitlement layer.** `accounts/routes.py` has zero application-mapping references. `gateway/entitlement.py` answers "is this licence paid for," not "may this customer open DispatchOS." DispatchOS authenticates independently of `accounts`.
+> **CLOSED 2026-09-02 by A-3 (`ef1a4af4`).** As written, this said: *there is no customer→application entitlement layer* — `accounts/routes.py` had zero application-mapping references, and `gateway/entitlement.py` answers "is this licence paid for," not "may this customer open DispatchOS." That gap is now closed: `apps/accounts` carries the correspondence and grant, `apps/dispatchos/authz.py` consumes it, and the check **fails closed** — an entitlement check that could not run has not passed. DispatchOS still authenticates independently of `accounts`, which is **D-3(b)** by decision. The licence-vs-access distinction below remains valid and unchanged.
 
 Required flow vs. reality:
 
@@ -1044,26 +1044,50 @@ be conflated:
 | **D-12** mechanical ownership guard | **unimplemented**, explicitly outside A-4 |
 | Shared web / gateway / inference / credits implementation | **separately gated** where applicable |
 
-A-4 completion means the customer application slot is fully defined and its required
-capabilities are wired and verified. It says nothing about whether an artifact may leave this
-box — that remains gated on D-11 and remains unauthorized.
+A-4 completion means exactly one thing: **every indicator is at or above the state §10 requires of it.** It does not mean all 19 are wired, and it does not mean all 19 are runtime-verified — **6 of 19 are** (§11.2). Four indicators are satisfied at `DEFINED` because `Defined` is what §10 asks for; two are `AUTHORIZED (A-4 only)` under a scope limit. It says nothing about whether an artifact may leave this box — that remains gated on D-11 and remains unauthorized.
 
-#### 11.2 Reference-slot summary
+#### 11.2 Reference-slot summary — regenerated 2026-09-02
 
-| Bucket | Indicators |
-|---|---|
-| **VERIFIED** (1) | `API_SLOT` |
-| **WIRED** (3) | `APPLICATION_SLUG`, `CUSTOMER_ROUTE`, `LIVE_STACK_ENTRY` |
-| **PRESENT** (3) | `APPLICATION_IDENTITY`, `BACKEND_SLOT`, `WORKFLOW_SLOT` |
-| **DEFINED only** (4) | `CUSTOMER_IDENTITY`, `CONFIG_SLOT`, `ASSET_SLOT`, `PROTECTED_EXCLUSIONS` |
-| **EXISTING-INCOMPLETE** (3) | `FRONTEND_SLOT`, `AUTH_SLOT`, `SHARED_SERVICE_MAP` |
-| **MISSING** (5) | `ENTITLEMENT_SLOT`, `EXPORT_SCOPE`, `RELEASE_IDENTITY`, `CUSTODY_RECORD`, `TEST_PATH` |
+> **This table was previously a pre-A-series snapshot and was stale.** It listed
+> `SHARED_SERVICE_MAP`, `AUTH_SLOT` and `FRONTEND_SLOT` as `EXISTING-INCOMPLETE` and five
+> indicators as `MISSING`, all of which have since been resolved. The buckets below are
+> **regenerated mechanically from the 19 rows of the §11 indicator table above**, not restated
+> from an earlier pass. The indicator table is the authority; §11.7 carries the completion
+> determination.
 
-**1 of 19 indicators is runtime-verified.** The reference slot is a working *application* with an incomplete *customer slot*.
+| Bucket | Count | Indicators |
+|---|---|---|
+| **VERIFIED** | 5 | `CUSTOMER_IDENTITY`, `FRONTEND_SLOT`, `API_SLOT`, `AUTH_SLOT`, `ENTITLEMENT_SLOT` |
+| **POPULATED, VERIFIED** | 1 | `EXPORT_SCOPE` |
+| **WIRED** | 3 | `APPLICATION_SLUG`, `CUSTOMER_ROUTE`, `LIVE_STACK_ENTRY` |
+| **PRESENT** | 3 | `APPLICATION_IDENTITY`, `BACKEND_SLOT`, `WORKFLOW_SLOT` |
+| **PRESENT — PASSING** | 1 | `TEST_PATH` |
+| **DEFINED — satisfied** | 4 | `CONFIG_SLOT`, `ASSET_SLOT`, `SHARED_SERVICE_MAP`, `PROTECTED_EXCLUSIONS` |
+| **AUTHORIZED (A-4 only)** | 2 | `RELEASE_IDENTITY`, `CUSTODY_RECORD` |
+| **EXISTING-INCOMPLETE** | **0** | — |
+| **MISSING** | **0** | — |
 
-**Naming compliance:** DispatchOS stays an application identity. **`symoneural-dispatchos` must not be created.** Its store is `run/dispatchos.db`; the surface is gated by `SYMONEURAL_DISPATCHOS_ENABLED` and currently reports HTTP 401 (mounted, token-gated) — i.e. wired and asking for auth.
+**Total 19.** **6 of 19 indicators are runtime-verified** (the 5 `VERIFIED` plus `EXPORT_SCOPE`,
+whose stage-1/stage-2 exporter behaviour was observed this pass). The reference slot is a
+working application with a **complete** customer slot as §10 defines completeness — see §11.7
+for what that does and does not authorize.
 
-**Biggest risks in the reference slot:** zero tests, no entitlement, no export scope, parallel auth.
+**`DEFINED — satisfied` is not a shortfall.** For `CONFIG_SLOT`, `ASSET_SLOT`,
+`SHARED_SERVICE_MAP` and `PROTECTED_EXCLUSIONS`, §10 requires `Defined`. Each is a boundary or
+a map — a definition, not an on-disk artifact — so no stronger state is evidence-supported, and
+reaching for one would be a claim the evidence does not carry.
+
+**`AUTHORIZED (A-4 only)` is a scope limit, not a completion.** `RELEASE_IDENTITY` and
+`CUSTODY_RECORD` satisfy A-4 under D-11 = (d), which is explicitly *for A-4 only*. Identity is
+asserted, not signed. **D-11 remains OPEN and external release remains NOT authorized.**
+
+**Naming compliance:** DispatchOS stays an application identity. **`symoneural-dispatchos` must not be created.** Its store is `run/dispatchos.db`; the surface is gated by `SYMONEURAL_DISPATCHOS_ENABLED` and currently reports HTTP 401 when unauthenticated (mounted, token-gated) — i.e. wired and asking for auth.
+
+**Remaining risks in the reference slot** (superseding the earlier "zero tests, no entitlement,
+no export scope, parallel auth" — all four were resolved this pass): custody is unsigned;
+`LIVE_STACK_ENTRY` is not entitlement-aware, so the catalogue advertises the surface to
+unentitled viewers; `WORKFLOW_SLOT` is `PRESENT` on route coverage but no workflow was
+individually exercised end-to-end.
 
 ---
 
@@ -1071,7 +1095,9 @@ box — that remains gated on D-11 and remains unauthorized.
 
 ### 12.1 Hard state
 
-**`tools/export_snapshot.sh` DOES NOT EXIST.** Verified: `ls` → *No such file or directory*. `docs/ops/EXPORTS.md` rule 4 names it as the only sanctioned path. **It is the blocking prerequisite for this entire feature.**
+> **SUPERSEDED 2026-09-02.** The statement below was true when this section was written and is now false. `tools/export_snapshot.sh` **EXISTS** — delivered by A-2, commit `728df639`, 192 lines, fail-closed, stage-2 enforcement proven by sabotage. The blocking prerequisite named here is **resolved**. Retained for the audit trail; do not read it as current state.
+
+~~**`tools/export_snapshot.sh` DOES NOT EXIST.** Verified: `ls` → *No such file or directory*.~~ `docs/ops/EXPORTS.md` rule 4 names it as the only sanctioned path, and it is now that path. **Export/distribution of any archive remains NOT authorized** — the tool existing is not permission to run it for release.
 
 ### 12.2 Policy (unchanged, authoritative)
 
@@ -1293,7 +1319,7 @@ Everything below "package generated" is unproven for **every** architecture. Ima
 **`INTAKE.md` has NOT been modified.** These are proposals for you to accept.
 
 ---
-**A-1 — Create `control/models/` operator surface**
+**A-1 — Create `control/models/` operator surface** — **DELIVERED `a5fb0fbb`**
 *Reason:* No single place to inspect/manage models; authorities are scattered and undocumented for operators.
 *Existing:* `modelops_inventory.py`, `modelops-stage.sh` (8 modes), `fetch-*.sh`, `gpu-governor.sh`, `training/`.
 *Missing:* Operator-facing launchers + README.
@@ -1312,8 +1338,8 @@ check: exists control/models/SMOKE-models.md
 *Rollback:* **committed** → `git revert` the phase commit(s) (§20). **Uncommitted failed attempt** → remove the exact files created by this assignment, enumerated in its commit plan. Do **not** use broad recursive deletion as the canonical rollback.
 
 ---
-**A-2 — Write `tools/export_snapshot.sh` (fail-closed)**
-*Reason:* Only sanctioned export path per `EXPORTS.md` rule 4; does not exist; blocks all customer delivery.
+**A-2 — Write `tools/export_snapshot.sh` (fail-closed)** — **DELIVERED `728df639`**
+*Reason (as raised):* Only sanctioned export path per `EXPORTS.md` rule 4; does not exist; blocks all customer delivery.
 *Existing:* `docs/ops/EXPORTS.md` policy; spec in `docs/specs/scope-of-work-2026-08-22.md`.
 *Missing:* the script.
 *Affected:* `tools/export_snapshot.sh`, a new test.
@@ -1332,7 +1358,7 @@ check: grep tmp -- backend/apps/test_export_snapshot.py
 *Rollback:* `git revert` the phase commit (§20).
 
 ---
-**A-3 — Customer→application entitlement (shared)**
+**A-3 — Customer→application entitlement (shared)** — **DELIVERED `ef1a4af4`**
 *Reason:* No entitlement layer; Live Stack shows everything to everyone; blocks customer delivery.
 *Existing:* `accounts/` (8 endpoints); `gateway/entitlement.py` (licence-scoped, different concern); the customer application already imports password primitives from `apps.accounts` — the seam D-3(b) extends (§9.4.6).
 *Missing:* identity→application mapping; entitlement-aware Live Stack; **the dependency seam itself** — no route in the customer router uses `Depends()` today (§9.4.5).
@@ -1379,10 +1405,10 @@ check: maxcount 0 "Depends(require" -- backend/apps/dispatchos/routes.py   # pre
 Neither is a classification gap. Both must be settled before the entitlement lookup can be written, because the lookup's signature depends on them.
 
 ---
-**A-4 — Complete the Donnie/DispatchOS reference slot**
-*Reason:* Reference customer slot has 0 tests, no entitlement, no export scope, parallel auth.
+**A-4 — Complete the Donnie/DispatchOS reference slot** — **COMPLETE (§11.7), 19 of 19 indicators at or above §10 requirement**
+*Reason (as raised):* Reference customer slot has 0 tests, no entitlement, no export scope, parallel auth.
 *Existing:* backend, 13 API routes, `/demo/dispatchos`, workflows, `run/dispatchos.db`.
-*Missing:* `TEST_PATH`, `ENTITLEMENT_SLOT`, `EXPORT_SCOPE`, `RELEASE_IDENTITY`, `CUSTODY_RECORD`.
+*Missing (as raised):* `TEST_PATH`, `ENTITLEMENT_SLOT`, `EXPORT_SCOPE`, `RELEASE_IDENTITY`, `CUSTODY_RECORD`. **All five now satisfied** — see the §11 indicator table; `RELEASE_IDENTITY` and `CUSTODY_RECORD` are satisfied *for A-4 only* under D-11 = (d), which does **not** authorize external release.
 *Dependencies:* **A-2**, **A-3**, **D-3**, **D-4**.
 *Risk:* **Medium**.
 *Excludes:* Do **not** create `symoneural-dispatchos`.
