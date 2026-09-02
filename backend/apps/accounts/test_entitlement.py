@@ -9,7 +9,6 @@ Every test uses a temporary database. Nothing here enables the subsystem.
 """
 from __future__ import annotations
 
-import importlib
 import os
 import pathlib
 import tempfile
@@ -30,8 +29,14 @@ class EntitlementStoreTests(unittest.TestCase):
         self._env = dict(os.environ)
         os.environ["SYMONEURAL_ACCOUNTS_DB"] = str(self.tmp / "accounts.db")
         os.environ["SYMONEURAL_SESSION_SECRET"] = SECRET
+        # Deliberately NOT importlib.reload(accounts). `apps/dispatchos/store.py` binds
+        # WeakPassword, hash_password and validate_password from this module at import time;
+        # reloading replaces those class objects, so a later suite's assertRaises stops
+        # recognising the WeakPassword that store raises. That leak made two tests in
+        # test_dispatchos_security.py fail whenever this file ran first -- passing alone and
+        # failing in a set, which is the worst shape for a test defect. The reload is also
+        # unnecessary: db_path() reads the environment on every connection.
         from apps import accounts
-        importlib.reload(accounts)
         self.acc = accounts
         self.acc.init_db()
         self.account = self.acc.create_account("person@example.com",

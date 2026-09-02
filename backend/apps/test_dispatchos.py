@@ -26,9 +26,20 @@ from fastapi import FastAPI                                    # noqa: E402
 from fastapi.testclient import TestClient                      # noqa: E402
 
 from apps import dispatchos                                    # noqa: E402
+from apps import accounts as shared_accounts                   # noqa: E402
 from apps.dispatchos import ai, quotes, store                  # noqa: E402
 
 PW = "a-long-enough-password"
+
+#: Test-only session secret. Never a production secret, never written to configuration.
+#: The shared accounts store refuses to operate without one, and these suites now need it
+#: because A-3 routes their entitlement lookup through that store. Supplying it in-process
+#: does NOT enable the surface on the box -- enablement additionally needs its own flag,
+#: which nothing here sets.
+SHARED_SECRET = "test-secret-not-the-production-one-0123456789abcdef"
+
+#: The application slug the entitlement seam looks up.
+APP_SLUG = "dispatchos"
 
 
 class Base(unittest.TestCase):
@@ -39,6 +50,7 @@ class Base(unittest.TestCase):
         store.init_db()
         store.seed_demo_users({"garrett": PW, "ben": PW,
                                "garrett-rider": PW, "ben-rider": PW})
+        self._provision_entitlement()
         app = FastAPI()
         app.include_router(dispatchos.router, prefix="/api/dispatchos")
         app.include_router(dispatchos.ui_router)
@@ -46,10 +58,47 @@ class Base(unittest.TestCase):
         self.c = TestClient(app)
         ai.set_ask_model(None)
 
+    def _provision_entitlement(self) -> None:
+        """Give every seeded user a shared identity and an active grant.
+
+        A-3 put four routes behind ENTITLEMENT_REQUIRED, so a caller with a valid session
+        but no entitlement now gets 403. These suites predate entitlement and provisioned
+        none, which is why seventeen of them failed: the 403 was correct and the fixture was
+        stale.
+
+        The entitlement is REAL, not mocked. Nothing here weakens, bypasses or removes the
+        class -- the seam runs end to end against a throwaway shared store, so the tests
+        still exercise the authorization path they always did plus the new one. Proving the
+        deny side is `test_route_authorization.py`'s job (T3, T15, T18), and that suite is
+        deliberately left alone.
+
+        Everything is temporary and process-local: a temp database and a test secret, both
+        removed in tearDown. No customer is provisioned and the surface stays off.
+        """
+        os.environ["SYMONEURAL_ACCOUNTS_DB"] = str(
+            pathlib.Path(self._tmp.name) / "shared-accounts.db")
+        os.environ["SYMONEURAL_SESSION_SECRET"] = SHARED_SECRET
+        # Deliberately NOT importlib.reload(shared_accounts). `store` binds WeakPassword,
+        # hash_password and validate_password from that module at import time, so reloading
+        # it replaces the class objects and leaves store raising a WeakPassword that a later
+        # suite's `assertRaises` no longer recognises. That is a real leak: it made two tests
+        # in a different file fail only when this file ran first. The reload is also
+        # unnecessary -- the store resolves its database path per connection from the
+        # environment, so setting the variable above is enough.
+        shared_accounts.init_db()
+
+        for username in ("garrett", "ben", "garrett-rider", "ben-rider"):
+            account = shared_accounts.create_account(f"{username}@fixture.invalid", PW)
+            store.link_shared_account(username, account["id"])
+            shared_accounts.grant_entitlement(account["id"], APP_SLUG,
+                                              granted_by="test-fixture")
+
     def tearDown(self):
         ai.set_ask_model(None)
         self._tmp.cleanup()
         os.environ.pop("SYMONEURAL_DISPATCHOS_ENABLED", None)
+        os.environ.pop("SYMONEURAL_ACCOUNTS_DB", None)
+        os.environ.pop("SYMONEURAL_SESSION_SECRET", None)
 
     def login(self, who, pw=PW):
         c = TestClient(self.app)
