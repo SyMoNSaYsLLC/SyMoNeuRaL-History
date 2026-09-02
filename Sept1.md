@@ -849,7 +849,7 @@ The populated reference implementation.
 | `ASSET_SLOT` | Boundary recorded in §11.5 — the customer-asset class is measurably **empty** | **DEFINED — satisfied** | **D-A4-ASSET = Option A, authorized 2026-09-02.** §10 requires `Defined`; the boundary is documented from measurement. An empty class is a legitimate slot value, not an incomplete one. No stronger state applies — there is no artifact to be `PRESENT` |
 | `SHARED_SERVICE_MAP` | see per-service table below | **EXISTING-INCOMPLETE** | Architecturally required ≠ runtime wired |
 | `EXPORT_SCOPE` | `backend/apps/dispatchos/EXPORT-SCOPE.manifest` — 7 entries: the page module + 6 application-specific source modules | **POPULATED, VERIFIED** | **Option B authorized 2026-09-02.** Boundary reviewed per-module: all 7 are category 1 (application-specific). `apps/accounts` is category 2 (shared platform, multiple consumers) and is **excluded** — returned for separate authorization. Tests, runtime state, operator tooling, infrastructure config and prior internal archives all excluded. Verified through the A-2 exporter: stage 1 selected 7, stage 2 passed, **no archive written**. **Export/distribution NOT authorized** |
-| `PROTECTED_EXCLUSIONS` | per §10.5 | **DEFINED** | Policy written; unenforced (no exporter) |
+| `PROTECTED_EXCLUSIONS` | Application-specific statement recorded in §11.6 | **DEFINED — satisfied** | **Authorized 2026-09-02.** Twelve classes recorded, each with evidence; global stage-2 protections remain the mechanical authority (17 patterns, verified enforcing). Existing 7-entry manifest **complies** — 0 violations across 15 checks. `DEFINED` is the satisfied state: §10 requires `Defined`, and the statement is a definition, not an on-disk artifact |
 | `RELEASE_IDENTITY` | A-2 export manifest: source commit + per-file SHA-256 | **AUTHORIZED (A-4 only)** | **D-11 = (d) for A-4 only, authorized 2026-09-02.** Identity is asserted, not signed |
 | `CUSTODY_RECORD` | **UNSIGNED — external release NOT authorized** | **AUTHORIZED (A-4 only)** | D-11 remains **OPEN**. No key generation, key storage, signing infrastructure, artifact signing, or external distribution is authorized. **A-4 completion must never be represented as external-release readiness** |
 | `TEST_PATH` | `backend/apps/dispatchos/test_route_authorization.py` (in-package, 22 tests) + `backend/apps/test_dispatchos.py`, `test_dispatchos_security.py`, `frontend/tests/dispatchos-slice.test.mjs` | **PRESENT — PASSING** | **A-3 `ef1a4af4`** added the in-package suite; the other three predate it. Regression repaired 2026-09-02: **159 passed / 0 failed** across the full set, matching the pre-A-3 baseline. Fixture provisions a real entitlement; the class was not weakened, bypassed or mocked, and the deny side (T3/T15/T18/T21) still passes. See §11.3 |
@@ -909,6 +909,46 @@ Authorized 2026-09-02 (D-A4-ASSET = Option A). Recorded from measurement.
 **Explicitly NOT a customer asset: the static preview page in the site tree.** D-4 measured that the live route renders from the page module and that this file is unreferenced by the backend — it serves nothing. Exporting it would deliver a **stale duplicate that can silently diverge** from the page the customer actually sees, which is worse than exporting nothing.
 
 **Deliberately not built.** No asset directory was created, the static preview page was not added to the export, and no asset was moved, copied, classified or duplicated. **The export manifest is unchanged, because neither decision requires a manifest change.**
+
+#### 11.6 `PROTECTED_EXCLUSIONS` — what must never enter this application's customer export
+
+Authorized 2026-09-02. Recorded from evidence, not inference.
+
+**Two enforcement tiers, and the difference matters.** Classes 1–9 are refused *mechanically* by
+exporter stage 2 whatever a manifest says. Classes 10–12 are **not** global protected classes:
+tested this pass, a manifest naming them **passes stage 2 unflagged**, so they rest on manifest
+discipline and review. That is the same gap D-12 tracks, restated here per class so the
+distinction is not lost.
+
+| # | Class | This application's artifacts | Enforcement |
+|---|---|---|---|
+| 1 | **Secrets and credentials** | Any credential file; the application stores password hashes, never plaintext | **stage 2** — 4 patterns |
+| 2 | **`.env` / operator configuration** | The operator-owned environment file supplying the surface flag and database path | **stage 2** — 2 patterns |
+| 3 | **Private keys and signing material** | None exist for this application; D-11 is open and no signing authority exists | **stage 2** — 2 patterns |
+| 4 | **API keys and tokens** | Session tokens are hashed in the runtime store; api-key files are global-protected | **stage 2** |
+| 5 | **Runtime databases and runtime state** | The application database and its WAL/SHM companions — **and the customer's rate rules live inside it** (§11.4) | **stage 2** — verified refusing |
+| 6 | **Restricted ledgers / custody records** | Mode-restricted ledgers; no custody record exists for this application (unsigned per D-11) | **stage 2** |
+| 7 | **Internal review / audit material** | Internal review directory; the in-package smoke record is internal verification evidence | **stage 2** for the directory; the smoke record by manifest discipline |
+| 8 | **Repository history / development metadata** | Repository history; build caches | **stage 2** |
+| 9 | **Model payloads and adapter weights** | Adapter weights and model payloads; this application loads none, but the assistant layer can reach shared inference | **stage 2** |
+| 10 | **Internal infrastructure configuration** | Reverse-proxy configuration. **Evidence:** the prior internal archive carried 5 such paths | **manifest discipline** |
+| 11 | **Shared platform assets / configuration** | The shared brand directory (135 files), shared site CSS/JS, and the shared accounts module — category 2, ruled not exportable | **manifest discipline** |
+| 12 | **Application-specific protected classes** | **(a)** the four prior export archives — their own manifests read `customer_deliverable=no` / `internal_archive_only=yes` and they carry infrastructure configuration; **(b)** the operator provisioning CLI — it is the **sole entitlement writer**, so shipping it hands over the grant mechanism; **(c)** the static preview page — unreferenced by the backend, would ship a stale duplicate (§11.5); **(d)** test suites — excluded by the Option C refusal | **manifest discipline** |
+
+**Authority and scope of this statement**
+
+- The **existing exporter stage-2 protections remain the mechanical enforcement authority.** 17 patterns, verified enforcing this pass.
+- **This task created no new exporter rules.** Exporter code and policy classes are unchanged.
+- The statement **documents** the boundary for this application; it does **not** replace or narrow global enforcement. Where the two overlap, global enforcement wins and is not weakened.
+- Classes 10–12 have **no mechanical guard**. Whether one should exist is D-12, which remains open and unimplemented.
+
+**Manifest compliance — verified, 0 violations**
+
+The authorized 7-entry manifest was checked against every class above: **0 occurrences** of runtime
+state, `.env`, credentials, keys, tokens, review material, repository history, infrastructure
+configuration, prior archives, operator tooling, static site tree, shared brand assets, training
+material, tests or smoke records. **No currently authorized export entry conflicts with any
+exclusion.** No manifest change was required and none was made.
 
 #### 11.1 `SHARED_SERVICE_MAP` — four-level detail
 
