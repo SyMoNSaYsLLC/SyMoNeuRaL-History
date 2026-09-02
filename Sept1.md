@@ -845,8 +845,8 @@ The populated reference implementation.
 | `AUTH_SLOT` | **Own** `/api/dispatchos/{login,logout,me}` + `tools/dispatchos_accounts.py` | **EXISTING-INCOMPLETE** | Parallel to `/api/accounts`, not consuming it. Architecture requires accounts/auth as a *shared consumed service* → **D-3** |
 | `ENTITLEMENT_SLOT` | Seam: `backend/apps/dispatchos/authz.py` (`ENTITLEMENT_REQUIRED`, `_entitlement_or_403`) → `apps/accounts` (`is_entitled`) ← `store.shared_account_id` | **WIRED — no record provisioned** | **A-3 `ef1a4af4`.** 4 routes carry the class; 5 entitlement functions in the shared store; 3 identity-link functions in the app store. **Measured: 5 app users, 0 linked; live app DB not yet migrated; no accounts DB exists.** Mechanism is wired; no entitlement is granted. Provisioning is separately authorized and gated on the runtime prerequisite |
 | `WORKFLOW_SLOT` | booking · quotes · reminders · driver assignments · review requests · intake | **PRESENT** | 15 method+path pairs cover these; not individually verified |
-| `CONFIG_SLOT` | Customer configuration boundary | **DEFINED** | No explicit boundary artifact identified |
-| `ASSET_SLOT` | Customer branding/content | **DEFINED** | No explicit boundary artifact identified |
+| `CONFIG_SLOT` | Boundary recorded in §11.4 — customer config is the operator rate-rules key in the application settings table | **DEFINED — satisfied** | **D-A4-CONFIG = Option A, authorized 2026-09-02.** §10 requires `Defined` for this indicator, and the boundary is now documented from measurement, so `DEFINED` is the satisfied state. No stronger state is evidence-supported: the boundary is a definition, not an on-disk artifact, so `PRESENT` would be a claim the evidence does not carry |
+| `ASSET_SLOT` | Boundary recorded in §11.5 — the customer-asset class is measurably **empty** | **DEFINED — satisfied** | **D-A4-ASSET = Option A, authorized 2026-09-02.** §10 requires `Defined`; the boundary is documented from measurement. An empty class is a legitimate slot value, not an incomplete one. No stronger state applies — there is no artifact to be `PRESENT` |
 | `SHARED_SERVICE_MAP` | see per-service table below | **EXISTING-INCOMPLETE** | Architecturally required ≠ runtime wired |
 | `EXPORT_SCOPE` | `backend/apps/dispatchos/EXPORT-SCOPE.manifest` — 7 entries: the page module + 6 application-specific source modules | **POPULATED, VERIFIED** | **Option B authorized 2026-09-02.** Boundary reviewed per-module: all 7 are category 1 (application-specific). `apps/accounts` is category 2 (shared platform, multiple consumers) and is **excluded** — returned for separate authorization. Tests, runtime state, operator tooling, infrastructure config and prior internal archives all excluded. Verified through the A-2 exporter: stage 1 selected 7, stage 2 passed, **no archive written**. **Export/distribution NOT authorized** |
 | `PROTECTED_EXCLUSIONS` | per §10.5 | **DEFINED** | Policy written; unenforced (no exporter) |
@@ -875,6 +875,40 @@ The populated reference implementation.
 The entitlement is real, not mocked. `ENTITLEMENT_REQUIRED` still guards 4 routes, the lookup is unchanged, no production file was touched, and the deny-side tests still pass.
 
 **A second defect surfaced during the repair, and it was mine.** Both the new fixture and A-3's own `test_entitlement.py` called `importlib.reload` on the shared accounts module. That module is where `store.py` binds `WeakPassword`, `hash_password` and `validate_password` **at import time**, so reloading replaced those class objects and left `store` raising a `WeakPassword` a later suite's `assertRaises` no longer recognised. Two tests in a third file failed *only when one of these ran first* — passing in isolation, failing in a set, which is the worst shape a test defect can take. Both reloads are removed; the reload was never necessary because the database path is read per connection. Order-independence verified in both directions.
+
+#### 11.4 `CONFIG_SLOT` — the configuration boundary
+
+Authorized 2026-09-02 (D-A4-CONFIG = Option A). Recorded from measurement, not inference.
+
+| Category | Content | Export position |
+|---|---|---|
+| **Customer-specific configuration** | The operator's rate rules — **one key** in the application settings table, customer-authored at runtime through an operator-only route | **Not exportable.** It resides in the runtime database, which exporter stage 2 refuses as runtime state |
+| **Application defaults** | **None.** No default rule set ships; an unconfigured application renders blank by design rather than a confident zero | Nothing to export |
+| **Shared / platform configuration** | The shared subsystem's enable flag and session secret | Platform-owned; never customer content |
+| **Runtime / operator configuration** | Surface enable flag and database path, from the operator-owned environment file | Operator-owned; never customer content |
+| **Protected internal configuration** | Secrets, `.env` files, credentials, private keys, signing material, api keys, runtime state, mode-restricted ledgers, internal review material, repository history, internal infrastructure configuration | **Never exportable** — enforced mechanically by stage 2, independent of any manifest |
+
+**Resulting export position: no configuration of any category enters the customer export.** The manifest contains zero configuration files, and that is correct.
+
+**Deliberately not built.** No customer-configuration export mechanism exists, rate rules are not extracted from the runtime database, and **no exception was added to the runtime-state refusal**. Whether customer configuration may ever leave the runtime database is a *separate* safety decision and is not answered here — carving a hole in a refusal for convenience is the failure shape this project keeps guarding against.
+
+#### 11.5 `ASSET_SLOT` — the asset boundary
+
+Authorized 2026-09-02 (D-A4-ASSET = Option A). Recorded from measurement.
+
+| Category | Content | Export position |
+|---|---|---|
+| **Customer-owned / customer-specific assets** | **None exist.** Measured: no asset directory, no upload path, no binary storage | Class is **empty**, not unknown |
+| **Application-default assets** | **None.** The page is self-contained — one inline style block, one inline script block, **zero** external references | Presentation is source and travels as source |
+| **Shared platform assets** | The shared brand directory and shared site CSS/JS | Platform-owned, single authority, never per-customer, never exported |
+| **Protected internal assets** | Adapter weights, signing material, secret material, model payloads | **Never exportable** — enforced by stage 2 |
+| **Generated / transient assets** | **None** for this application. No output directory, no generated media | — |
+
+**Resulting export position: no asset of any category enters the customer export.** The manifest contains source only, and that is correct.
+
+**Explicitly NOT a customer asset: the static preview page in the site tree.** D-4 measured that the live route renders from the page module and that this file is unreferenced by the backend — it serves nothing. Exporting it would deliver a **stale duplicate that can silently diverge** from the page the customer actually sees, which is worse than exporting nothing.
+
+**Deliberately not built.** No asset directory was created, the static preview page was not added to the export, and no asset was moved, copied, classified or duplicated. **The export manifest is unchanged, because neither decision requires a manifest change.**
 
 #### 11.1 `SHARED_SERVICE_MAP` — four-level detail
 
