@@ -148,6 +148,11 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
 ◻ #77 — The task surface: a prompt becomes an assignment becomes a task, automatically
         owner: coder
+        note: 2026-09-02 codex — R-182 establishes the alternating coder rotation and R-183
+        note: adds the control-board launcher. Each run links request/task IDs, the incoming
+        note: plan, measured response, and next-coder plan through HANDOVER. See the Coder
+        note: rotation contract in .claude/CLAUDE.md. Capture-hook implementation is not claimed
+        note: by this documentation update; the existing real-run acceptance remains open.
         Folds #57 #58 #59 #64 #72. Read those blocks in
         `review/CONSOLIDATED-TASKS-2026-08-20.md` before working any part.
 
@@ -500,6 +505,10 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
 ◻ #90 — CLI, Code and Cowork measured against the client he actually uses
         owner: coder
+        note: 2026-09-02 codex — R-182 adds Symon Coder admission to the three-coder rotation:
+        note: use the actual local Symon model to read a plan, perform a bounded workspace
+        note: change with authorized tools, verify, save/resume, and write a usable next plan.
+        note: The launcher must not enable Symon execution on a READY badge alone.
         R-164, extending R-151. "symoneural cli, symoneural code and symoneural cowork must mirror
         look feel and capabilities of claude."
 
@@ -1213,6 +1222,49 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
 ◻ #109 — Finish the application-wide UI pass and prove every owned behaviour
         owner: coder
+        note: 2026-09-02 codex — Completed Claude's R-186 minimum restoration: 7B/draft
+        note: hashes and bytes verified, 14 weight tests passed, real GPU Chat and Remix
+        note: outputs; serving PIDs unchanged. No training or launcher implementation claimed.
+        note: Response: review/RESPONSE-2026-09-02-codex-R186-weights.md.
+        note: Provider proof: review/RESPONSE-2026-09-02-codex-provider-readiness.md.
+        note: Next executor Claude: review/NEXT-CLAUDE-2026-09-02-R184-connected-session.md.
+        note: R-185 approval is version-bound; edits invalidate assent. User selection still
+        note: requires unanimous trainer approval before training delivery. Keep this task open.
+        R-183 — Extend the existing control board with the coder launcher and batch queue.
+        Single: Symon, Claude, Codex. Dual: Symon+Claude, Codex+Symon, Codex+Claude.
+        Tri-coder: Symon+Claude+Codex, admitted after local Symon Coder qualifies.
+        Spec: docs/specs/coder-rotation-launcher-spec.md. Includes live adapter readiness,
+        ordered rotation, persistent batch/handoff artifacts, pause/resume/cancel/retry,
+        owner-authorized execution, workspace/GPU coordination, and real browser proof.
+        Dependencies: #77 capture/handoff, #90 Symon qualification, #104 runtime integration.
+        R-184 — Multi-coder response mode: ONE prompt to every selected coder, each answer
+        rendered separately and attributed. Never merge/rank/hide a response. On disagreement
+        the launcher does not choose: surface every option to the user, offer debate, record
+        the decision. Distinct from the R-182 sequential rotation; both modes must exist.
+        R-185 — Training mode: operator picks subject, trainers (providers) and receiver.
+        Trainers produce independent output then must reach 100% agreement on ONE prompt
+        before anything is sent to the receiver. Not a majority, not a similarity score, and
+        the orchestrator must never synthesise a compromise prompt. No agreement = nothing
+        sent. A receiver may not be its own trainer. Agreement is not proof of training.
+        Both specified in docs/specs/coder-rotation-launcher-spec.md (Session modes).
+        note: 2026-09-02 claude — recorded R-184/R-185 from Garrett and extended the launcher
+        note: spec with both session modes plus their acceptance evidence. Specification only:
+        note: no launcher code, adapter, training run or coder process was implemented or
+        note: started. The existing SMOKE gate still governs completion.
+        R-186 — Restore the absent Symon model weights (Codex HF connector). MEASURED: the
+        rebrand and backend wiring ALREADY EXIST — fetch-models.sh:49-58,64-66 maps upstream to
+        symon-* house names and api.py:236,315,325-330 already reads them. Do not duplicate a
+        renamer or re-point the backend. MEASURED: no usable weights exist anywhere on this box
+        (whole-box find over /, /home, /yocto for *.gguf/*.safetensors >200M returned 0; the
+        only .gguf present are llama.cpp vocab test fixtures 5-15MB). A fetch is required; the
+        "use existing models on disk" option was checked and does not apply. Minimum batch is
+        the 7B + 0.5B draft (~5GB) which unblocks chat and remix. Attribution is not optional
+        (NAMES.md:15-17). Restoring base weights is NOT the training milestone.
+        Plan: review/NEXT-CODEX-2026-09-02-R186-model-restore.md
+        check: exists docs/ops/SMOKE-CODER-LAUNCHER.md
+        note: 2026-09-02 codex — The launcher is specified, not implemented. Write its SMOKE
+        note: only after actual integrated runs; mocks and missing providers cannot establish
+        note: a full pass. Preserve all prior #109 requirements and the existing smoke gate.
         Garrett, 2026-08-26: approved phases A through D from the frontend gap report:
         correct the record, run the existing suites, convert the two missed workspaces, and
         add functional smoke coverage for the remaining application surfaces. No deploy and

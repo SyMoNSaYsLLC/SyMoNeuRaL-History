@@ -1,5 +1,95 @@
 # HANDOVER — symoneural.com
 
+## Current handoff — 2026-09-02, Codex R-186 completion
+
+**Next executor: Claude.** Read `review/NEXT-CLAUDE-2026-09-02-R184-connected-session.md`.
+This current handoff supersedes the earlier next-executor pointers preserved below.
+
+Your two-model restoration plan is complete: pinned 7B + draft installed at the existing
+Symon paths with verified SHA-256/byte sizes; 14 weight tests passed. Chat generated on the
+GPU (100.6 tok/s for the short recorded sample), Remix returned three tracks, and public
+/livestack returned 200. API/Gateway/Web PIDs and boot ID are unchanged; no service restart.
+No additional models, LoRA, or training were run. Image/Sigils and Studio rendering remain
+open, as do the wider repair/account/Miner requirements.
+
+Responses:
+- `review/RESPONSE-2026-09-02-codex-R186-weights.md`
+- `review/RESPONSE-2026-09-02-codex-provider-readiness.md`
+
+Claude and Codex both produced real captured responses in one overlapping pair. Symon now
+answers through the existing Chat endpoint; its Studio CLI still requires the appropriate
+operator authentication. No multi-coder UI, debate, approval routing, or tool-execution
+qualification is claimed. Build the bounded connected response session in the next plan.
+
+Keep the Gate 1.1 historical FAIL: startup was measured, independent Internet exposure was
+not proven. Same-host HTTPS success does not close that missing proof. Preserve all earlier
+reports and the pre-existing docs/ops/EXPORTS.md change.
+
+## 2026-09-02 — Coder rotation, launcher requirement, and next handoff
+
+**R-186 added 2026-09-02 (Claude) — model weights, and two premises already satisfied.**
+Garrett asked to use Codex's Hugging Face connector to bring in the preferred model, *"rebrand
+to symon and wire it into the backend"*, adding that existing on-disk models could be used if
+they were the best option. **Both premises were measured:**
+
+- **The rebrand and wiring already exist and are committed.** `scripts/fetch-models.sh:49-58,
+  64-66,124-127` maps every upstream artefact to its `symon-*` house name; `backend/api.py:236,
+  315,325-330` already reads exactly those names; `NAMES.md`/`PROVENANCE.json` carry the
+  attribution. **Nothing needs rebranding or rewiring** — only the weight bytes are missing.
+- **There are no usable models on disk.** Whole-box search of `/`, `/home` and `/yocto` for
+  `*.gguf`/`*.safetensors` over 200 MB returned **0 files**; the only `.gguf` present are
+  llama.cpp vocab test fixtures (5–15 MB). So a fetch is required.
+
+Next executor **Codex**, plan `review/NEXT-CODEX-2026-09-02-R186-model-restore.md`: fetch the
+7B + 0.5B draft (~5 GB) first to unblock Chat and Remix, verify with `test_weight_names.py`
+and a real `POST /api/chat` generation, then report before committing to the remaining ~35 GB.
+Restoring base weights is explicitly **not** the training milestone.
+
+**R-184 and R-185 added 2026-09-02 (Claude).** Two further owner requirements are recorded in
+GARRETT-REQUESTS.md and specified in `docs/specs/coder-rotation-launcher-spec.md` under
+*Session modes*, carried under #109:
+
+- **R-184 — multi-coder response.** ONE prompt fans out to every selected coder; each answer
+  renders separately and attributed (symon / codex / claude). No merging, ranking or hiding.
+  On disagreement the launcher must not pick a winner — it surfaces every option to the user
+  and offers a debate round. This is a **parallel answer** mode and does not replace the
+  R-182 sequential rotation; both must exist.
+- **R-185 — training mode.** Operator selects subject, trainers and receiver (e.g. train
+  Symon on OpenEmbedded with Codex + Claude as trainers). Trainers produce independent
+  output, then must reach **100% agreement** on one prompt before anything reaches the
+  receiver. Not a majority, not a similarity threshold; the orchestrator must never
+  synthesise a compromise and call it consensus. No agreement means nothing is sent.
+
+**Specification only.** No launcher code, provider adapter, training run, model change or
+coder process was implemented or started for either requirement. Agreement on a training
+prompt is explicitly not evidence that training happened — the existing model/LoRA evidence
+requirements still govern that milestone.
+
+
+R-182 establishes Codex → Claude → Codex. Each recipient reviews the previous evidence,
+executes a bounded batch, saves its response, and writes the next coder's executable plan.
+After SyMoNeuRaL Coder passes the admission exercise, the cycle becomes
+Codex → Claude → SyMoNeuRaL Coder → Codex. See .claude/CLAUDE.md, Coder rotation.
+
+**Next executor: Claude.** Initial plan:
+`/home/google/symoneural-application-repair-handoff-20260902/CLAUDE-CODER-REPAIR-PROMPT.md`.
+It now distinguishes the first execution batch from the overall repair/training objective
+and requires Claude to return a measured response plus a next-plan addressed to Codex.
+
+R-183 specifies a control-board launcher: Symon, Claude, Codex individually; Symon+Claude,
+Codex+Symon, Codex+Claude; and all three for batch processing. Product/execution contract:
+`docs/specs/coder-rotation-launcher-spec.md`. The requirement is carried under #109 with
+capture/handoff #77, local-coder qualification #90, and runtime integration #104.
+
+The launcher is **specified, not implemented** by this documentation change. Automatic
+prompt capture is also not claimed: .claude/hooks/capture-prompt.sh was absent and
+.claude/settings.json had no hooks at inspection. The existing #77 work remains open.
+
+The continuing objective includes actual Symon training/LoRA evaluation and working
+channels, not only the production transport chain. Historical gate reports and failures
+remain preserved. No application repair, training, coder process launch, or reboot was
+performed by this documentation update. Preserve the pre-existing docs/ops/EXPORTS.md diff.
+
 **Last updated 2026-08-22. Written for a fresh agent with zero prior context.**
 
 > ## 2026-08-26 — THE RUNTIME MOVED. Read this before you touch a service.

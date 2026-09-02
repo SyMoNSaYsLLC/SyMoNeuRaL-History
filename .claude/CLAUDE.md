@@ -3,6 +3,67 @@
 Repo for symoneural.com: the public site, the live API behind it, the CUDA engine, and
 the engineering manual the site's numbers come from.
 
+## Coder rotation — owner instruction, 2026-09-02 (R-182 / R-183)
+
+The current order is **Codex → Claude → Codex**, repeating. Codex writes the initial
+execution plan. Each receiving coder reviews the prior evidence, executes a bounded task
+batch, verifies the results, and writes the next execution plan for the next coder.
+Complete useful work within the agreed batch; do not hand off routine unfinished fixes.
+
+Once **SyMoNeuRaL Coder** proves this complete cycle using the local Symon model, expand
+to **Codex → Claude → SyMoNeuRaL Coder → Codex**. Its admission requires a real bounded
+workspace task: read the plan and files, use the model and authorized tools, apply a change,
+run meaningful verification, save the response, resume the session, and produce a usable
+next-coder plan. A terminal page or READY badge is insufficient.
+
+The continuing objective is a trained, evaluated Symon model and working integration across
+Chat/cowork, Coder, Image, Remix, Studio, LoRA/training, Sigils, Miner, and the remaining
+requested channels. Identify training data/configuration, model/adapter artifacts and
+held-out evaluation evidence before claiming the training milestone. Restoring base weights
+alone does not complete it. Each channel uses the appropriate runtime: diffusion, language
+inference, training, mining, and CPU orchestration remain distinct workloads governed by
+the existing resource controls.
+
+Use the existing **request → intake → numbered task → execution response → next task**
+records. PROJECT-TASKS.md is the sole work list; .claude/HANDOVER.md records the next
+executor and handoff links. Keep owner: coder and name the particular executor in task
+notes and the handoff. The later owner rule still applies: unblocked authorized work
+promotes without an additional Ready click.
+
+Every execution batch saves two linked Markdown artifacts in the appropriate review/ops
+evidence location: its measured response and the next coder's plan. Use unique dated names;
+preserve earlier versions. The response records request/task IDs, incoming plan, baseline
+and result revision/artifact identity, actual changes, tests and real application evidence,
+remaining defects, and deployment/rollback. The next plan names its recipient, source
+response, task IDs, objective, scope, prerequisites, files/services, acceptance checks,
+constraints, rollback, and completion evidence. It must stand alone without chat history.
+
+The receiving coder checks the handoff against current source/runtime state before
+executing. Generated plans and old reports cannot override newer owner instructions.
+Preserve failed evidence, user data, private training assets, and credentials. Record
+genuine blockers and continue unaffected work.
+
+R-183 adds a control-board launcher with all single-coder selections, all three pairs,
+and the three-coder batch selection. Its specification is
+docs/specs/coder-rotation-launcher-spec.md and implementation is carried under #109,
+with #77/#90/#104 dependencies. Until that launcher is implemented and explicitly started
+for an authorized batch, handoffs are file-based; this standing rule alone neither dispatches
+another agent nor creates a scheduler. No additional reboot is authorized by this workflow.
+
+## Shared coder sessions and cooperation — R-184/R-185/R-187
+
+The control board has separate Rotation, Multi-response, and Training modes. One prompt
+in Multi-response produces separately attributed answers from all selected coders. The user
+chooses among conflicting proposals and may request a bounded discussion. Training delivery
+requires every selected trainer's explicit approval of the identical final prompt; changes
+invalidate approval. Never mistake consensus or an in-context lesson for trained weights.
+Follow docs/specs/coder-rotation-launcher-spec.md and its real acceptance requirements.
+
+Claude, Codex, and Symon are collaborators. Preserve each other's changes and evidence,
+re-read shared files before editing, identify the active executor and scope, and explain
+disagreements with measurements and concrete options. Do not duplicate a completed task,
+overwrite a colleague's work, or dispatch the next coder without the authorized handoff.
+
 ## START HERE — you have just been opened in this repo and Garrett said "hi"
 
 Do not ask him what to work on. He has already answered, standing, 2026-08-20: *"i want to
