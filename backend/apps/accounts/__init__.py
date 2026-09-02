@@ -323,6 +323,20 @@ CREATE TABLE IF NOT EXISTS attempts (
     locked_until REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (scope, key)
 );
+CREATE TABLE IF NOT EXISTS entitlements (
+    account_id       TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    application_slug TEXT NOT NULL,
+    granted_at       REAL NOT NULL,
+    granted_by       TEXT NOT NULL,          -- operator identity, for audit
+    revoked_at       REAL,                   -- NULL means active
+    -- granted_at is IN the key on purpose. grant -> revoke -> re-grant is a real sequence,
+    -- and a two-column key would force the re-grant to overwrite the revoked row, which is
+    -- exactly the audit trail we are required to keep. "Active" is therefore the latest row
+    -- for the pair with revoked_at IS NULL, never "the row".
+    PRIMARY KEY (account_id, application_slug, granted_at)
+);
+CREATE INDEX IF NOT EXISTS entitlements_lookup
+    ON entitlements(account_id, application_slug, granted_at DESC);
 """
 
 
@@ -951,3 +965,128 @@ def __getattr__(name):
 
 if __name__ == "__main__":
     print(json.dumps(selftest(), indent=2))
+
+
+# ------------------------------------------------------------------ entitlements
+#
+# Customer account -> application. Separate from `apps/gateway/entitlement.py`, which is a
+# signed statement that a *licence was settled on chain* and keys on workspace/payer -- it
+# carries no customer identity and cannot answer "may this customer open this application".
+#
+# Two rules this section exists to enforce:
+#
+#   NO ROW MEANS NOT ENTITLED. There is no default-allow branch anywhere below.
+#   REVOCATION IS A WRITE, NOT A DELETE. The historical grant stays readable forever.
+
+ENTITLEMENT_SLUG_MAX = 64
+
+
+class MalformedEntitlement(ValueError):
+    """A stored row could not be trusted. Raised so a caller refuses rather than guesses.
+
+    A malformed row is not an absent row: absent means "not entitled", malformed means "this
+    database is telling us something we cannot read". Both deny, but only one is a bug worth
+    an operator seeing, so they are distinguishable at the call site.
+    """
+
+
+def _valid_slug(slug: str) -> bool:
+    return bool(slug) and len(slug) <= ENTITLEMENT_SLUG_MAX and all(
+        ch.isalnum() or ch in "-_" for ch in slug)
+
+
+def is_entitled(account_id: str, application_slug: str, *, now: float | None = None) -> bool:
+    """True only when an active grant exists. Every other outcome is False.
+
+    Deliberately boolean and deliberately total: no exception escapes for an absent account,
+    an absent row or a revoked row, because each of those is a legitimate "not entitled" and
+    a caller that has to distinguish them would grow a branch that can be got wrong. The one
+    thing that does raise is a row we cannot parse -- see MalformedEntitlement.
+    """
+    if not account_id or not _valid_slug(application_slug):
+        return False
+    with _conn() as c:
+        row = c.execute(
+            "SELECT granted_at, revoked_at FROM entitlements "
+            "WHERE account_id=? AND application_slug=? "
+            "ORDER BY granted_at DESC LIMIT 1",
+            (account_id, application_slug)).fetchone()
+    if row is None:
+        return False
+    try:
+        granted_at = float(row["granted_at"])
+    except (TypeError, ValueError) as exc:
+        raise MalformedEntitlement(
+            f"unparseable granted_at for {account_id}/{application_slug}") from exc
+    if granted_at <= 0:
+        raise MalformedEntitlement(
+            f"non-positive granted_at for {account_id}/{application_slug}")
+    return row["revoked_at"] is None
+
+
+def grant_entitlement(account_id: str, application_slug: str, *, granted_by: str,
+                      now: float | None = None) -> dict:
+    """Record an active grant. Refuses on an unknown account or an existing active grant."""
+    if not _valid_slug(application_slug):
+        raise ValueError(f"invalid application slug: {application_slug!r}")
+    if not granted_by:
+        raise ValueError("granted_by is required -- a grant with no author is not auditable")
+    ts = time.time() if now is None else now
+    with _conn() as c:
+        if c.execute("SELECT 1 FROM accounts WHERE id=?", (account_id,)).fetchone() is None:
+            raise ValueError(f"no such account: {account_id}")
+        if is_entitled(account_id, application_slug):
+            raise ValueError(f"{account_id} already has an active grant for {application_slug}")
+        c.execute("INSERT INTO entitlements"
+                  "(account_id,application_slug,granted_at,granted_by,revoked_at) "
+                  "VALUES(?,?,?,?,NULL)",
+                  (account_id, application_slug, ts, granted_by))
+    return {"account_id": account_id, "application_slug": application_slug,
+            "granted_at": ts, "granted_by": granted_by, "revoked_at": None}
+
+
+def revoke_entitlement(account_id: str, application_slug: str,
+                       *, now: float | None = None) -> dict:
+    """Stamp revoked_at on the active grant. The row is never deleted."""
+    ts = time.time() if now is None else now
+    with _conn() as c:
+        row = c.execute(
+            "SELECT granted_at FROM entitlements "
+            "WHERE account_id=? AND application_slug=? AND revoked_at IS NULL "
+            "ORDER BY granted_at DESC LIMIT 1",
+            (account_id, application_slug)).fetchone()
+        if row is None:
+            raise ValueError(f"no active grant for {account_id}/{application_slug}")
+        c.execute("UPDATE entitlements SET revoked_at=? "
+                  "WHERE account_id=? AND application_slug=? AND granted_at=?",
+                  (ts, account_id, application_slug, row["granted_at"]))
+    return {"account_id": account_id, "application_slug": application_slug,
+            "granted_at": row["granted_at"], "revoked_at": ts}
+
+
+def list_entitlements(account_id: str | None = None) -> list[dict]:
+    """Every grant including revoked ones, newest first. The audit read."""
+    q = ("SELECT account_id,application_slug,granted_at,granted_by,revoked_at "
+         "FROM entitlements")
+    args: tuple = ()
+    if account_id:
+        q += " WHERE account_id=?"
+        args = (account_id,)
+    q += " ORDER BY granted_at DESC"
+    with _conn() as c:
+        return [dict(r) for r in c.execute(q, args).fetchall()]
+
+
+def entitled_slugs(account_id: str) -> list[str]:
+    """Applications this account may currently open. Used by the Live Stack generator."""
+    if not account_id:
+        return []
+    out = []
+    for slug in {r["application_slug"] for r in list_entitlements(account_id)}:
+        try:
+            if is_entitled(account_id, slug):
+                out.append(slug)
+        except MalformedEntitlement:
+            # A malformed row denies that one application and does not poison the rest.
+            continue
+    return sorted(out)

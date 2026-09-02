@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
-from . import ai, page, quotes, store
+from . import ai, authz, page, quotes, store
 
 log = logging.getLogger("symoneural.dispatchos")
 
@@ -155,7 +155,7 @@ def _owned_or_403(user: dict, bid: int) -> dict:
 
 # ------------------------------------------------------------------ session
 
-@router.get("/status", summary="Whether DispatchOS is switched on here")
+@router.get("/status", summary="Whether DispatchOS is switched on here", dependencies=[Depends(authz.require(authz.PUBLIC_BOOTSTRAP))])
 async def status_route() -> dict:
     on = store.enabled()
     return {
@@ -166,7 +166,7 @@ async def status_route() -> dict:
     }
 
 
-@router.post("/login", summary="Sign in to DispatchOS")
+@router.post("/login", summary="Sign in to DispatchOS", dependencies=[Depends(authz.require(authz.SHARED_AUTH))])
 async def login(body: LoginBody, request: Request, response: Response) -> dict:
     _require_enabled()
     try:
@@ -183,7 +183,7 @@ async def login(body: LoginBody, request: Request, response: Response) -> dict:
     return {"user": user}
 
 
-@router.post("/logout", status_code=204, summary="Sign out")
+@router.post("/logout", status_code=204, summary="Sign out", dependencies=[Depends(authz.require(authz.SHARED_AUTH))])
 async def logout(request: Request, response: Response) -> Response:
     store.logout(request.cookies.get(COOKIE, ""))
     response = Response(status_code=204)
@@ -191,14 +191,14 @@ async def logout(request: Request, response: Response) -> Response:
     return response
 
 
-@router.get("/me", summary="The signed-in user")
+@router.get("/me", summary="The signed-in user", dependencies=[Depends(authz.require(authz.AUTHENTICATED_APPLICATION))])
 async def me(request: Request) -> dict:
     return {"user": _signed_in(request)}
 
 
 # ------------------------------------------------------------------ the board
 
-@router.get("/board", summary="Bookings visible to the signed-in user")
+@router.get("/board", summary="Bookings visible to the signed-in user", dependencies=[Depends(authz.require(authz.ENTITLEMENT_REQUIRED))])
 async def board(request: Request) -> dict:
     user = _signed_in(request)
     bookings = _visible(user)
@@ -211,7 +211,7 @@ async def board(request: Request) -> dict:
     }
 
 
-@router.post("/bookings", status_code=201, summary="Request a trip")
+@router.post("/bookings", status_code=201, summary="Request a trip", dependencies=[Depends(authz.require(authz.ENTITLEMENT_REQUIRED))])
 async def create_booking(body: BookingBody, request: Request) -> dict:
     user = _signed_in(request)
     try:
@@ -229,7 +229,7 @@ async def create_booking(body: BookingBody, request: Request) -> dict:
     return {"booking": b}
 
 
-@router.get("/bookings/{bid}", summary="One booking, with its record trail")
+@router.get("/bookings/{bid}", summary="One booking, with its record trail", dependencies=[Depends(authz.require(authz.ENTITLEMENT_REQUIRED))])
 async def one_booking(bid: int, request: Request) -> dict:
     user = _signed_in(request)
     try:
@@ -238,7 +238,7 @@ async def one_booking(bid: int, request: Request) -> dict:
         raise HTTPException(404, str(exc)) from None
 
 
-@router.post("/bookings/{bid}/quote", summary="Quote a trip against the operator's rules")
+@router.post("/bookings/{bid}/quote", summary="Quote a trip against the operator's rules", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def quote_booking(bid: int, body: QuoteBody, request: Request) -> dict:
     user = _operator(request)
     try:
@@ -253,7 +253,7 @@ async def quote_booking(bid: int, body: QuoteBody, request: Request) -> dict:
         raise HTTPException(400, f"rate rules are invalid: {exc}") from None
 
 
-@router.post("/bookings/{bid}/advance", summary="Move a booking one step")
+@router.post("/bookings/{bid}/advance", summary="Move a booking one step", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def advance_booking(bid: int, body: AdvanceBody, request: Request) -> dict:
     user = _operator(request)
     try:
@@ -265,7 +265,7 @@ async def advance_booking(bid: int, body: AdvanceBody, request: Request) -> dict
 
 
 @router.post("/bookings/{bid}/message", status_code=201,
-             summary="Compose a reminder or review request (never sent)")
+             summary="Compose a reminder or review request (never sent)", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def message(bid: int, body: MessageBody, request: Request) -> dict:
     user = _operator(request)
     b = store.get_booking(bid)
@@ -295,14 +295,14 @@ def _message_text(kind: str, b: dict) -> str:
 
 # ------------------------------------------------------------------ operator configuration
 
-@router.get("/rules", summary="The operator's rate rules")
+@router.get("/rules", summary="The operator's rate rules", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def get_rules(request: Request) -> dict:
     _operator(request)
     r = store.get_setting("rules")
     return {"rules": r, "configured": quotes.configured(r)}
 
 
-@router.put("/rules", summary="Set the operator's rate rules")
+@router.put("/rules", summary="Set the operator's rate rules", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def put_rules(body: RulesBody, request: Request) -> dict:
     _operator(request)
     try:
@@ -313,13 +313,13 @@ async def put_rules(body: RulesBody, request: Request) -> dict:
     return {"rules": clean, "configured": quotes.configured(clean)}
 
 
-@router.get("/drivers", summary="Drivers")
+@router.get("/drivers", summary="Drivers", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def get_drivers(request: Request) -> dict:
     _operator(request)
     return {"drivers": store.list_drivers()}
 
 
-@router.post("/drivers", status_code=201, summary="Add a driver")
+@router.post("/drivers", status_code=201, summary="Add a driver", dependencies=[Depends(authz.require(authz.OPERATOR_ONLY))])
 async def post_driver(body: DriverBody, request: Request) -> dict:
     _operator(request)
     try:
@@ -330,7 +330,7 @@ async def post_driver(body: DriverBody, request: Request) -> dict:
 
 # ------------------------------------------------------------------ SyMon AI
 
-@router.post("/ask", summary="Ask SyMon AI about the board")
+@router.post("/ask", summary="Ask SyMon AI about the board", dependencies=[Depends(authz.require(authz.ENTITLEMENT_REQUIRED))])
 async def ask(body: AskBody, request: Request) -> dict:
     user = _signed_in(request)
     bookings = _visible(user)

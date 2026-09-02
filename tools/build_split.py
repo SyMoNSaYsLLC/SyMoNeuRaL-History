@@ -50,6 +50,36 @@ import sys as _sys
 _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import page_families  # noqa: E402
 
+# ------------------------------------------------------------------ entitlement filtering
+#
+# The Live Stack catalogue must not offer a customer application the viewer is not entitled
+# to open. The page is GENERATED, so the filter belongs here and never in site/livestack.html
+# -- a hand edit there is overwritten by the next run of this script.
+#
+# The generated page is static, so this cannot be a build-time decision: entitlement is
+# per-viewer and is only known at request time. What the generator emits is therefore the
+# HOOK -- a data attribute naming the application slug and a marker class -- and the page's
+# own script hides an un-entitled card once it has asked the API who the viewer is. Baking a
+# customer's entitlement into a static file would publish one customer's access to every
+# other visitor, which is the opposite of what this is for.
+#
+# Fail closed: a card carrying ENTITLEMENT_ATTR starts hidden and is revealed only on a
+# positive answer. A failed or absent entitlement check leaves it hidden.
+ENTITLEMENT_ATTR = "data-entitlement-slug"
+ENTITLEMENT_CLASS = "needs-entitlement"
+
+#: Customer applications in the catalogue that require an entitlement to open.
+#: A slug listed here is filtered; anything not listed is a shared surface and is unaffected.
+ENTITLED_APPLICATIONS = ("dispatchos",)
+
+
+def entitlement_markup(slug: str) -> str:
+    """The attributes a catalogue card carries when it needs an entitlement."""
+    if slug not in ENTITLED_APPLICATIONS:
+        return ""
+    return f' {ENTITLEMENT_ATTR}="{slug}" class="{ENTITLEMENT_CLASS}" hidden'
+
+
 # slug -> (output file, section id kept, nav label, <title>)
 PAGES = [
     ("overview",     "overview.html",     "hero",    "Overview",      "SyMoNeuRaL — local AI infrastructure"),

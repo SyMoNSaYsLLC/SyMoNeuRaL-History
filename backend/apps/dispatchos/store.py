@@ -80,7 +80,13 @@ CREATE TABLE IF NOT EXISTS users (
     role       TEXT NOT NULL,
     pw_hash    TEXT NOT NULL,          -- scrypt$params$salt$dk, from apps.accounts
     label      TEXT NOT NULL DEFAULT '',
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    -- Explicit, nullable reference to a shared-accounts identity. NULL means this user has
+    -- no shared identity and is therefore NOT entitled -- the fail-closed default falls out
+    -- of the nullability rather than needing a branch. Never inferred from username: a
+    -- case-insensitive handle is not a normalised address, and a silent collision between
+    -- the two would be an authorization bypass.
+    shared_account_id TEXT
 );
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,       -- sha256 of the cookie value; the value is not stored
@@ -201,9 +207,31 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def _migrate_shared_account_id(c: sqlite3.Connection) -> bool:
+    """Add users.shared_account_id when an existing database predates it.
+
+    `CREATE TABLE IF NOT EXISTS` does not add a column to a table that already exists, so a
+    database created before this column would silently keep the old shape and every
+    entitlement lookup would fail on a missing column rather than on a missing grant.
+
+    There is no ALTER TABLE anywhere else in this repo's stores, so this establishes the
+    pattern: probe the live columns, add only when absent, never backfill. Repeatable by
+    construction -- the second run finds the column and does nothing. Returns True when it
+    added the column, so a caller (and a test) can tell a migration from a no-op.
+    """
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+    if not cols:
+        return False                    # table not created yet; the schema will include it
+    if "shared_account_id" in cols:
+        return False                    # already present -- no change, no data touched
+    c.execute("ALTER TABLE users ADD COLUMN shared_account_id TEXT")
+    return True
+
+
 def init_db() -> None:
     with _conn() as c:
         c.executescript(_SCHEMA)
+        _migrate_shared_account_id(c)
     try:
         os.chmod(db_path(), 0o600)
     except OSError:
@@ -572,3 +600,48 @@ def seed_demo_users(passwords: dict[str, str]) -> list[dict]:
             continue
         made.append(create_user(name, pw, role, label))
     return made
+
+
+# ------------------------------------------------------------------ identity correspondence
+#
+# One explicit nullable reference, set at provisioning. NULL means no shared identity, which
+# means not entitled. Nothing here matches on username or email: D-A3-2 forbids inference,
+# and the two key spaces are genuinely different (case-insensitive handle vs normalised
+# address), so a "helpful" match would be a silent authorization bypass.
+
+
+def shared_account_id(user_id: int) -> str | None:
+    """The linked shared-accounts id, or None when this user has no shared identity."""
+    with _conn() as c:
+        row = c.execute("SELECT shared_account_id FROM users WHERE id=?",
+                        (user_id,)).fetchone()
+    if row is None:
+        return None
+    value = row["shared_account_id"]
+    return value or None            # '' is stored by nobody, but it is not an identity
+
+
+def link_shared_account(username: str, account_id: str, *, force: bool = False) -> dict:
+    """Point a local user at a shared-accounts identity. Operator action only."""
+    if not account_id:
+        raise DispatchError("account id is required")
+    with _conn() as c:
+        row = c.execute("SELECT id, shared_account_id FROM users WHERE username=?",
+                        (username,)).fetchone()
+        if row is None:
+            raise DispatchError(f"no such user: {username}")
+        if row["shared_account_id"] and not force:
+            raise DispatchError(
+                f"{username} is already linked; pass force to repoint it")
+        c.execute("UPDATE users SET shared_account_id=? WHERE id=?", (account_id, row["id"]))
+    return {"username": username, "shared_account_id": account_id}
+
+
+def unlink_shared_account(username: str) -> dict:
+    """Clear the reference. Fails closed by construction: the user loses entitlement."""
+    with _conn() as c:
+        row = c.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+        if row is None:
+            raise DispatchError(f"no such user: {username}")
+        c.execute("UPDATE users SET shared_account_id=NULL WHERE id=?", (row["id"],))
+    return {"username": username, "shared_account_id": None}

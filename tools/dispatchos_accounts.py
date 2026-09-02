@@ -103,6 +103,24 @@ def main() -> int:
                     help="roll one account's password")
     ap.add_argument("--list", action="store_true", help="usernames and roles, no secrets")
     ap.add_argument("--show-path", action="store_true", help="where the handover file is")
+    # --- identity correspondence and entitlement (D-A3-1 / D-A3-2) --------------------
+    # This CLI is the ONLY authorized writer. There is deliberately no HTTP route that can
+    # grant, revoke or link: a self-service grant path is not entitlement, and adding a
+    # privileged admin API was explicitly excluded from the decision.
+    ap.add_argument("--link-identity", nargs=2, metavar=("USERNAME", "ACCOUNT_ID"),
+                    help="point a local user at a shared-accounts identity")
+    ap.add_argument("--unlink-identity", metavar="USERNAME",
+                    help="clear the reference; the user loses entitlement")
+    ap.add_argument("--force", action="store_true",
+                    help="with --link-identity, repoint an already-linked user")
+    ap.add_argument("--grant", nargs=2, metavar=("ACCOUNT_ID", "APP_SLUG"),
+                    help="record an active entitlement grant")
+    ap.add_argument("--revoke", nargs=2, metavar=("ACCOUNT_ID", "APP_SLUG"),
+                    help="stamp revoked_at on the active grant; never deletes it")
+    ap.add_argument("--list-entitlements", nargs="?", const="", metavar="ACCOUNT_ID",
+                    help="grants including revoked ones, with timestamps")
+    ap.add_argument("--granted-by", default="operator-cli",
+                    help="audit author recorded on a grant")
     args = ap.parse_args()
 
     if args.show_path:
@@ -118,6 +136,66 @@ def main() -> int:
     if args.list:
         for u in store.list_users():
             print(f"{u['username']:<20}{u['role']}")
+        return 0
+
+    # --- identity correspondence ------------------------------------------------------
+    if args.link_identity:
+        username, account_id = args.link_identity
+        try:
+            out = store.link_shared_account(username, account_id, force=args.force)
+        except store.DispatchError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"linked {out['username']} -> {out['shared_account_id']}")
+        return 0
+
+    if args.unlink_identity:
+        try:
+            store.unlink_shared_account(args.unlink_identity)
+        except store.DispatchError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"unlinked {args.unlink_identity} (no shared identity -> not entitled)")
+        return 0
+
+    # --- entitlement --------------------------------------------------------------------
+    # Imported here, not at module scope: the shared store is a different subsystem and the
+    # identity subcommands above must keep working when it is absent or switched off.
+    if args.grant or args.revoke or args.list_entitlements is not None:
+        try:
+            from apps import accounts as shared
+        except Exception as exc:
+            print(f"error: shared accounts unavailable: {exc}", file=sys.stderr)
+            return 1
+
+        if args.grant:
+            account_id, slug = args.grant
+            try:
+                out = shared.grant_entitlement(account_id, slug, granted_by=args.granted_by)
+            except (ValueError, Exception) as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+            print(f"granted {out['account_id']} -> {out['application_slug']}")
+            return 0
+
+        if args.revoke:
+            account_id, slug = args.revoke
+            try:
+                shared.revoke_entitlement(account_id, slug)
+            except (ValueError, Exception) as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+            print(f"revoked {account_id} -> {slug} (historical grant retained)")
+            return 0
+
+        rows = shared.list_entitlements(args.list_entitlements or None)
+        if not rows:
+            print("no entitlement records")
+            return 0
+        for r in rows:
+            state = "revoked" if r["revoked_at"] else "active"
+            print(f"{r['account_id']:<28}{r['application_slug']:<18}{state:<9}"
+                  f"granted_by={r['granted_by']}")
         return 0
 
     if args.reset:
