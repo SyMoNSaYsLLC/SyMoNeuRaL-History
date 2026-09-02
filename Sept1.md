@@ -2240,6 +2240,128 @@ application/runtime services   -> CANNOT read signing-subkey bytes (different UI
                                  no ACL, no shared group, no agent socket access)
 ```
 
+### 22.3c Offline custody media — **TOPOLOGY DECIDED 2026-09-02; PROVISIONING BLOCKED**
+
+**`D-11 OFFLINE CUSTODY MEDIA DECIDED — PROVISIONING BLOCKED ON PHYSICAL MEDIA`**
+
+Resolves **Blocker 2's architecture**. The topology below is the controlling ruling. It could
+**not** be provisioned: **no suitable removable media is physically present.** Per the
+authorization, the topology was **not weakened** and host storage was **not** substituted.
+Nothing was formatted, partitioned, mounted, or erased.
+
+#### Measured removable-storage state (read-only)
+
+| Device | Class | RM | Size | FS | UUID | Label | Mounted | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| `sda` | **USB `Multiple Card Reader`** | **1** | **0B** | none | none | none | no | **EMPTY SLOT — not media** |
+| `nvme0n1` (+8 parts) | internal NVMe | 0 | 1.8T | vfat/ext4/ntfs | various | ESP, yocto, symon, WINRETOOLS, Image, DELLSUPPORT | yes | **internal disk — not custody media** |
+| `loop0-3` | squashfs snap mounts | 0 | 20K–105M | squashfs | — | — | yes | **loop devices — not custody media** |
+
+Confirmed independently of `lsblk`: `/sys/block/sda/size` = **0** (no media), `removable` = 1,
+model **`Multiple Card Reader`**, **0** partitions in `/proc/partitions`.
+
+**Stale mount directory, classified and deliberately untouched:**
+`/media/google/A533-850E` — **root-owned `drwxr-xr-x`, NOT a mountpoint, no mount entry**,
+contains an `EFI` directory, and its UUID **matches no currently attached device**. It is
+residue of a detached FAT32/EFI volume, not attached media. Under the safety gate this is
+ambiguous, not-positively-identifiable media: **no destructive action taken, reported for owner
+review.** `/media/root` is empty.
+
+`/etc/fstab` contains **no** removable custody entry (only `/`, `/boot/efi`, `/home`, `/yocto`).
+
+**Suitable custody media available: 0.**
+
+#### The controlling topology ruling
+
+| Role | Contents | Requirement |
+|---|---|---|
+| **Medium A** | primary offline authority + required recovery material | independent physical medium |
+| **Medium B** | independent backup of primary authority + recovery material | independent physical medium |
+| **Medium C** | revocation-certificate custody | separate from the routine signing-subkey custody **and** separately protected from the ordinary A/B access path |
+
+**Minimum controlling requirement: 2 independent removable copies of primary/recovery material,
+plus the revocation certificate held separately.** Preferred: the **three-medium** topology
+above.
+
+**Two-medium fallback, characterized but NOT adopted** — returned for owner ruling before any
+ceremony, per the authorization's instruction not to silently collapse revocation separation:
+the revocation certificate may share a physical medium with **one** primary backup **only** if
+protected by a meaningfully separate access mechanism (for example a separately-encrypted
+container with a distinct credential, not merely a different directory) and the separation is
+explicitly documented. **A different folder on the same medium does not satisfy separation.**
+
+**Explicitly rejected as substitutes for offline removable custody:** cloud backup, network
+storage, repository backup, home-directory backup, service-host backup. None was used or
+configured.
+
+#### Physical separation requirement
+
+- Copy A and Copy B **must not remain routinely attached** to the release host.
+- After the ceremony they **must be stored separately**.
+- The **offline primary must not remain on the routine signing host**.
+- **Revocation custody must not reside in the routine signing-subkey GnuPG home.**
+- **One physical device is one failure domain.** Two partitions on a single device do **not**
+  constitute physical separation, and this record does not claim otherwise.
+
+**Can physical separation be established with media presently available? NO — zero media
+present.**
+
+#### Filesystem / format decision
+
+**Deferred to provisioning; nothing was formatted.** When media is supplied the smallest
+appropriate arrangement is a **single partition, single filesystem**, mountable on the ceremony
+host without network services, mounted only on demand, and **never located beneath repository,
+export, or customer-staging roots**. No partition complexity beyond one volume per role. An
+existing blank suitable filesystem should be **retained rather than needlessly reformatted**.
+
+**Second, independent blocker discovered:** this host has **no filesystem-creation tooling** —
+`mkfs.vfat`, `mkfs.exfat` and `mkfs.ext4` are **all ABSENT**. Formatting media would require
+installing packages, which is a new dependency outside this authorization. So even once media
+arrives, either the media must be supplied with a usable blank filesystem already present, or
+package installation must be separately authorized.
+
+#### Encryption-at-rest ruling — **UNRESOLVED, returned for owner decision**
+
+The two protections are distinct and neither replaces the other:
+
+- **OpenPGP secret-key passphrase** — protects the key material itself, travels with the key.
+- **Whole-media / filesystem encryption** — protects everything on the medium, including
+  recovery material and the revocation certificate, against simple physical loss.
+
+**Mechanism available on this host: NONE.** Measured: `cryptsetup` **ABSENT**, `veracrypt`
+**ABSENT**, `gocryptfs` **ABSENT**, `fscrypt` **ABSENT**, and no `dm-crypt` module loaded. So
+media encryption **cannot** be adopted without introducing a new dependency.
+
+Adopting it would also create a **new recovery-secret problem D-11 has not defined**: a media
+passphrase that, if lost, destroys the offline backup, and which cannot be stored in the
+repository, in documentation, or in any handoff. **No credential was improvised.** The decision
+is therefore returned:
+
+- **Option E-1** — no media encryption; rely on the OpenPGP passphrase plus physical control.
+  Works with zero new dependencies. Weaker against physical loss of a medium.
+- **Option E-2** — LUKS media encryption. Requires authorizing `cryptsetup` installation **and**
+  an owner ruling on where the media passphrase itself is held. Strongest against loss.
+
+#### Mounting discipline (future ceremony behaviour)
+
+- Media mounted **only** for authorized custody operations.
+- **No automatic mounting configured** — and none was configured in this task.
+- Not exposed to application services.
+- **Never** beneath repository, export, or customer-staging roots.
+- **Unmounted** after each custody operation.
+
+#### What must be supplied to clear this blocker
+
+1. **Three removable media** (preferred), or two plus an owner ruling on the two-medium
+   fallback. The host has a **card-reader slot** (`Multiple Card Reader`) and USB transport, so
+   SD cards or USB devices both fit the reader class.
+2. Each either **pre-formatted with a usable blank filesystem**, or authorization to install
+   filesystem tooling.
+3. An **encryption-at-rest ruling** (E-1 or E-2), and if E-2, a decision on media-passphrase
+   custody.
+4. An owner disposition for the **stale `/media/google/A533-850E` directory**, which was left
+   untouched.
+
 ### 22.4 Ordered prerequisites before key generation
 
 1. **P1** — exporter signing-material exclusions (P1-a patterns, P1-b content sniff, P1-c
