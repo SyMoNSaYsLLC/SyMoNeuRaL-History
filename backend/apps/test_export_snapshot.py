@@ -47,6 +47,18 @@ class _ExporterFixture(unittest.TestCase):
     makes a regression report say 29 when it means 22.
     """
 
+    # Committed with explicit identity and gpgsign off, so the fixture neither reads nor
+    # depends on the operator's global git config -- and cannot be broken by it.
+    GIT_ID = ("-c", "user.email=fixture@invalid", "-c", "user.name=P2 Fixture",
+              "-c", "commit.gpgsign=false")
+
+    def _git(self, *args: str, check: bool = True):
+        r = subprocess.run(["git", *self.GIT_ID, "-C", str(self.root), *args],
+                           capture_output=True, text=True)
+        if check:
+            self.assertEqual(r.returncode, 0, f"fixture git {args} failed: {r.stderr}")
+        return r
+
     def setUp(self):
         self.assertTrue(EXPORTER.is_file(), f"exporter missing at {EXPORTER}")
         self.assertTrue(os.access(EXPORTER, os.X_OK), "exporter is not executable")
@@ -58,6 +70,17 @@ class _ExporterFixture(unittest.TestCase):
         # Harmless, present, and deliberately NOT named in any manifest.
         (self.root / "unlisted").mkdir()
         (self.root / "unlisted" / "notes.txt").write_text(f"{SENTINEL} unclassified\n")
+
+        # P2 made the fixture a real repository. The exporter now refuses when release
+        # identity cannot resolve, so a plain mktemp directory -- which is what this fixture
+        # used to be -- is no longer a valid export root. It is also the only way to test
+        # drift at all: drift is defined against HEAD, so there must be a HEAD.
+        #
+        # `git init` inside mktemp, never inside this repository, so git cannot discover the
+        # parent and compare fixture files against SyMoNeuRaL's own HEAD.
+        self._git("init", "-q", ".")
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "fixture baseline")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -350,6 +373,11 @@ class P1SigningMaterialExclusionTests(_ExporterFixture):
         """
         keyring = self.root / "deliverable" / "symoneural-archive-keyring.asc"
         keyring.write_text(PUBLIC_PGP)
+        # Must be COMMITTED, not merely present: since P2, an untracked candidate is refused
+        # as "not present in HEAD". Committing it keeps this a test of P1-c (is public
+        # material exportable?) rather than an accidental test of P2-b.
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "public keyring fixture")
         out = self.tmp / "export.zip"
         r = self._run(self._manifest("deliverable"), out)
         self.assertEqual(r.returncode, 0,
@@ -379,6 +407,305 @@ class P1SigningMaterialExclusionTests(_ExporterFixture):
         out2 = self.tmp / "must-not-exist.zip"
         self._refused(self._run(self._manifest("deliverable", "unlisted"), out2), out2,
                       expect_in_stderr="(content)")
+
+
+
+# ==========================================================================================
+# P2 (D-11) -- non-forgeable release identity.
+#
+# The archive states a `source-sha`. P2 is what makes that statement mean something.
+#
+# P2-a  it must RESOLVE. The old code was `git rev-parse HEAD || echo UNKNOWN`, which wrote
+#       the literal UNKNOWN and continued. Signing that yields a valid signature over an
+#       unidentifiable release -- worse than no signature, because it looks authoritative.
+#
+# P2-b  the bytes must CORRESPOND to it. The exporter copies from the working tree but
+#       labels with HEAD, so a modified candidate ships content the stated commit never
+#       contained. A recipient cannot detect it: the checksums match the manifest, and the
+#       manifest names a real commit.
+#
+# P2-c  the label must be BOUND to the release authority, via a signed tag. Verified by a
+#       separate tool so the exporter stays runnable with no key.
+#
+# NO KEY MATERIAL. P2-c injects a stub verifier through SYM_TAG_VERIFY_CMD. No key is
+# generated, no tag is signed, and `git verify-tag` is never expected to succeed here.
+# ==========================================================================================
+
+VERIFIER = ROOT / "tools" / "verify_release_identity.sh"
+
+
+class P2ReleaseIdentityTests(_ExporterFixture):
+    """P2-a unresolved identity, P2-b candidate/HEAD correspondence, P2-c signed-tag binding."""
+
+    def _refused_p2(self, r, out: pathlib.Path, *, expect: str):
+        self.assertNotEqual(r.returncode, 0, f"exporter did NOT refuse: {r.stdout}")
+        self.assertFalse(out.exists(), "an archive was emitted despite refusal")
+        self.assertIn(expect, r.stderr, f"refusal must be diagnosable; stderr: {r.stderr}")
+
+    # -- P2-a ---------------------------------------------------------------------------
+    def test_p2a_head_resolution_succeeds_in_a_real_repo(self):
+        """The positive control: identity resolves, and the archive states that real SHA."""
+        out = self.tmp / "export.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        head = self._git("rev-parse", "HEAD").stdout.strip()
+        self.assertRegex(head, r"^[0-9a-f]{40}$")
+        manifest_text = zipfile.ZipFile(out).read("EXPORT-MANIFEST").decode()
+        self.assertIn(f"source-sha: {head}", manifest_text,
+                      "archive must state the resolved HEAD, not a placeholder")
+
+    def test_p2a_non_repository_root_is_refused(self):
+        """A root that is not a repository has no release identity at all."""
+        bare = self.tmp / "not-a-repo"
+        (bare / "deliverable").mkdir(parents=True)
+        (bare / "deliverable" / "app.txt").write_text(f"{SENTINEL}\n")
+        manifest = self._manifest("deliverable")
+        out = self.tmp / "must-not-exist.zip"
+        r = subprocess.run(["bash", str(EXPORTER), "--manifest", str(manifest),
+                            "--root", str(bare), "--out", str(out)],
+                           capture_output=True, text=True)
+        self._refused_p2(r, out, expect="release identity unresolved")
+
+    def test_p2a_repository_with_no_commits_is_refused(self):
+        """`git init` with no commit: a repository, but HEAD resolves to nothing."""
+        fresh = self.tmp / "no-commits"
+        (fresh / "deliverable").mkdir(parents=True)
+        (fresh / "deliverable" / "app.txt").write_text(f"{SENTINEL}\n")
+        subprocess.run(["git", "init", "-q", str(fresh)], check=True,
+                       capture_output=True, text=True)
+        out = self.tmp / "must-not-exist.zip"
+        r = subprocess.run(["bash", str(EXPORTER), "--manifest", str(self._manifest("deliverable")),
+                            "--root", str(fresh), "--out", str(out)],
+                           capture_output=True, text=True)
+        self._refused_p2(r, out, expect="release identity unresolved")
+
+    def test_p2a_unknown_is_never_an_accepted_source_sha(self):
+        """UNKNOWN must not survive anywhere as a value -- only in explanatory comments.
+
+        The old fallback made UNKNOWN a legal source-sha. This asserts the exporter can no
+        longer emit it: the string appears in no `printf`, no assignment, and no default.
+        """
+        text = EXPORTER.read_text()
+        code_lines = [ln for ln in text.splitlines()
+                      if "UNKNOWN" in ln and not ln.lstrip().startswith("#")]
+        self.assertEqual(code_lines, [],
+                         f"UNKNOWN reachable as a value in exporter code: {code_lines}")
+
+    def test_p2a_unresolved_identity_creates_no_archive(self):
+        bare = self.tmp / "bare2"
+        (bare / "deliverable").mkdir(parents=True)
+        (bare / "deliverable" / "app.txt").write_text(f"{SENTINEL}\n")
+        out = self.tmp / "must-not-exist.zip"
+        subprocess.run(["bash", str(EXPORTER), "--manifest", str(self._manifest("deliverable")),
+                        "--root", str(bare), "--out", str(out)],
+                       capture_output=True, text=True)
+        self.assertFalse(out.exists(), "archive produced despite unresolved identity")
+
+    def test_p2a_subdirectory_root_is_refused(self):
+        """`HEAD:<path>` resolves against the repo root, so a subdirectory root would
+        silently compare the WRONG paths. Refused rather than compared incorrectly."""
+        out = self.tmp / "must-not-exist.zip"
+        manifest = self._manifest("app.txt")
+        r = subprocess.run(["bash", str(EXPORTER), "--manifest", str(manifest),
+                            "--root", str(self.root / "deliverable"), "--out", str(out)],
+                           capture_output=True, text=True)
+        self._refused_p2(r, out, expect="repository top level")
+
+    # -- P2-b ---------------------------------------------------------------------------
+    def test_p2b_clean_candidate_exports(self):
+        """Positive control: committed, unmodified candidates export."""
+        out = self.tmp / "export.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("deliverable/app.txt", zipfile.ZipFile(out).namelist())
+
+    def test_p2b_modified_candidate_refused_then_restored_succeeds(self):
+        """The required sabotage cycle: clean -> modify -> refuse -> restore -> succeed."""
+        target = self.root / "deliverable" / "app.txt"
+        original = target.read_text()
+
+        out0 = self.tmp / "before.zip"
+        self.assertEqual(self._run(self._manifest("deliverable"), out0).returncode, 0)
+
+        target.write_text(f"{SENTINEL} DRIFTED\n")
+        out1 = self.tmp / "must-not-exist.zip"
+        r = self._run(self._manifest("deliverable"), out1)
+        self._refused_p2(r, out1, expect="deliverable/app.txt")
+        self.assertIn("DRIFT", r.stderr, "refusal must name the drift class")
+        self.assertNotIn(SENTINEL, r.stderr, "refusal must not print file contents")
+
+        # Restore EXACTLY. Success afterwards proves the refusal was caused by the drift.
+        target.write_text(original)
+        out2 = self.tmp / "after.zip"
+        r2 = self._run(self._manifest("deliverable"), out2)
+        self.assertEqual(r2.returncode, 0, f"restored tree still refused: {r2.stderr}")
+        self.assertTrue(out2.is_file())
+
+    def test_p2b_untracked_candidate_is_refused(self):
+        """The hole `diff-index` alone leaves.
+
+        An untracked path does not appear in `diff-index` output, so it reads as CLEAN. But
+        stage 1 expands a manifested directory into its files, so an uncommitted file inside
+        a named directory becomes a candidate and would ship under a source-sha that never
+        contained it. Verified against a throwaway repo before implementing: diff-index
+        returns empty for an untracked file.
+        """
+        (self.root / "deliverable" / "brand-new.txt").write_text(f"{SENTINEL} uncommitted\n")
+        out = self.tmp / "must-not-exist.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self._refused_p2(r, out, expect="not present in HEAD")
+        self.assertIn("brand-new.txt", r.stderr)
+
+    def test_p2b_deleted_candidate_is_refused(self):
+        """A manifest naming a file deleted from the tree must not silently ship less.
+
+        The manifest names the FILE, not its parent directory. Naming the directory would
+        be caught earlier and for a different reason: stage 1 expands the directory, the
+        deleted file simply is not among the results, and the remaining files export
+        cleanly -- so the deletion never becomes a candidate at all. Naming the path
+        directly is what puts the deletion in front of the identity check, and stage 1's
+        existence check refuses first, which is the correct fail-closed order.
+        """
+        (self.root / "deliverable" / "readme.md").unlink()
+        out = self.tmp / "must-not-exist.zip"
+        r = self._run(self._manifest("deliverable/readme.md"), out)
+        self.assertNotEqual(r.returncode, 0, "a deleted manifested path was not refused")
+        self.assertFalse(out.exists())
+        self.assertIn("readme.md", r.stderr)
+
+    def test_p2b_mode_only_drift_is_refused(self):
+        """Content identical, mode changed 100644 -> 100755. Byte comparison would MISS this;
+        git object identity does not."""
+        target = self.root / "deliverable" / "app.txt"
+        before = target.read_bytes()
+        target.chmod(0o755)
+        self.assertEqual(target.read_bytes(), before, "precondition: content unchanged")
+        out = self.tmp / "must-not-exist.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self._refused_p2(r, out, expect="deliverable/app.txt")
+
+    def test_p2b_symlink_type_drift_is_refused(self):
+        """Regular file replaced by a symlink.
+
+        `git hash-object` FOLLOWS the link and hashes the target, while git stores the link
+        target string -- which is why the implementation uses diff-index instead. Verified
+        empirically before choosing the primitive.
+        """
+        target = self.root / "deliverable" / "app.txt"
+        target.unlink()
+        target.symlink_to("readme.md")   # inside the fixture, so the link resolves
+        self.assertTrue(target.is_symlink(), "precondition: candidate is now a symlink")
+        out = self.tmp / "must-not-exist.zip"
+        r = self._run(self._manifest("deliverable/app.txt"), out)
+        self._refused_p2(r, out, expect="deliverable/app.txt")
+        self.assertIn("DRIFT", r.stderr, "type drift must be reported as drift")
+
+    def test_p2b_unrelated_dirty_unmanifested_file_does_not_refuse(self):
+        """P2-b is NOT a clean-working-tree requirement.
+
+        This is the distinction that matters operationally: the real repository intentionally
+        carries an unrelated modified file, and the customer manifest does not name it. Only
+        EXPORTED candidates must correspond to the stated source-sha; an unmanifested dirty
+        file has no bearing on whether the export is honestly labelled.
+        """
+        stray = self.root / "unlisted" / "notes.txt"
+        stray.write_text(f"{SENTINEL} dirty and unmanifested\n")
+        self.assertNotEqual(self._git("status", "--short").stdout.strip(), "",
+                            "precondition: the tree really is dirty")
+        out = self.tmp / "export.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self.assertEqual(r.returncode, 0,
+                         f"unmanifested dirty file wrongly blocked the export: {r.stderr}")
+        self.assertNotIn("unlisted/notes.txt", zipfile.ZipFile(out).namelist())
+
+    def test_p2b_refusal_precedes_staging(self):
+        """Drift refusal happens before any bytes are copied, so no partial archive exists."""
+        (self.root / "deliverable" / "app.txt").write_text("drifted\n")
+        out = self.tmp / "partial.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(out.exists())
+        self.assertFalse(any(self.tmp.glob("*.zip*")), "stray archive artefact left behind")
+
+    def test_p2b_checks_run_under_dry_run(self):
+        """--dry-run must exercise P2, or the real-manifest regression proves nothing."""
+        (self.root / "deliverable" / "app.txt").write_text("drifted\n")
+        r = self._run(self._manifest("deliverable"), None, "--dry-run")
+        self.assertNotEqual(r.returncode, 0, "dry run skipped the P2 identity checks")
+        self.assertIn("DRIFT", r.stderr)
+
+    # -- P2-c: signed release-tag binding ----------------------------------------------
+    # No key exists, so the verifier is injected. `true` stands for "signature verified
+    # against the authorized release key"; `false` stands for "it did not".
+    def _verify(self, tag: str, source_sha: str, *, verifier: str):
+        env = dict(os.environ, SYM_TAG_VERIFY_CMD=verifier)
+        return subprocess.run(["bash", str(VERIFIER), "--tag", tag,
+                               "--source-sha", source_sha, "--root", str(self.root)],
+                              capture_output=True, text=True, env=env)
+
+    def test_p2c_verified_tag_matching_source_sha_succeeds(self):
+        """Both mandatory conditions hold: signature verifies AND tag commit == source-sha."""
+        self._git("tag", "rel-ok")
+        head = self._git("rev-parse", "HEAD").stdout.strip()
+        r = self._verify("rel-ok", head, verifier="true")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("RELEASE IDENTITY VERIFIED", r.stdout)
+
+    def test_p2c_invalid_tag_signature_refuses(self):
+        """Condition 1 fails: the tag is not from the release authority."""
+        self._git("tag", "rel-badsig")
+        head = self._git("rev-parse", "HEAD").stdout.strip()
+        r = self._verify("rel-badsig", head, verifier="false")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("did not verify", r.stderr)
+        self.assertNotIn("RELEASE IDENTITY VERIFIED", r.stdout)
+
+    def test_p2c_tag_source_sha_mismatch_refuses(self):
+        """Condition 2 fails: an AUTHENTIC signature over a DIFFERENT commit.
+
+        This is a real attack shape -- reuse a genuinely signed tag to bless an archive built
+        from another commit -- so the verifier never lets "the tag verified" imply "the tag
+        points at this release". The verifier here returns success, and it still refuses.
+        """
+        self._git("tag", "rel-elsewhere")
+        (self.root / "deliverable" / "app.txt").write_text(f"{SENTINEL} second commit\n")
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "second")
+        new_head = self._git("rev-parse", "HEAD").stdout.strip()
+        r = self._verify("rel-elsewhere", new_head, verifier="true")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("!=", r.stderr)
+        self.assertNotIn("RELEASE IDENTITY VERIFIED", r.stdout)
+
+    def test_p2c_unresolved_source_sha_is_not_releasable(self):
+        """An archive predating P2 could state UNKNOWN. It is not releasable."""
+        self._git("tag", "rel-unknown")
+        r = self._verify("rel-unknown", "UNKNOWN", verifier="true")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("unresolved", r.stderr)
+
+    def test_p2c_both_conditions_are_checked_independently(self):
+        """Neither condition alone is sufficient -- proven by failing each in isolation."""
+        self._git("tag", "rel-indep")
+        head = self._git("rev-parse", "HEAD").stdout.strip()
+        # signature fails, SHA matches
+        self.assertNotEqual(self._verify("rel-indep", head, verifier="false").returncode, 0)
+        # signature passes, SHA does not match
+        other = "0" * 40
+        self.assertNotEqual(self._verify("rel-indep", other, verifier="true").returncode, 0)
+        # both hold
+        self.assertEqual(self._verify("rel-indep", head, verifier="true").returncode, 0)
+
+    def test_p2c_exporter_runs_without_any_signing_key(self):
+        """P2 must not make exporter refusal depend on signing infrastructure.
+
+        Zero keys exist on this box. The exporter must still construct, refuse, and export.
+        If a missing key ever started disabling protections, the dependency would be inverted.
+        """
+        out = self.tmp / "export.zip"
+        r = self._run(self._manifest("deliverable"), out)
+        self.assertEqual(r.returncode, 0, f"exporter needs a key it should not: {r.stderr}")
+        self.assertTrue(out.is_file())
 
 
 if __name__ == "__main__":

@@ -1917,7 +1917,79 @@ is currently path-regex-only, so a content sniff is a new kind of check, not ano
 vendor `.asc` files under `references/` are unreachable unless someone manifests them. P1 is
 about the *future* key, not existing files. **No exporter change was made in this task.**
 
-#### P2 — Non-forgeable release identity
+#### P2 — Non-forgeable release identity — **COMPLETE 2026-09-02**
+
+**Status: `P2 COMPLETE — NON-FORGEABLE RELEASE IDENTITY`.** Implemented as exporter **stage 3**
+(P2-a, P2-b) plus a separate verifier `tools/verify_release_identity.sh` (P2-c). Tests: **43**
+total — 7 A-2 + 15 P1 + **21 P2**, all passing.
+
+**Proven by sabotage, three prongs, each measured:**
+1. *Unresolved identity reached the old acceptance path.* Pre-P2 exporter against a non-git
+   root: **exit 0, archive written, `source-sha: UNKNOWN`.** Post-P2: refused, no archive.
+2. *Drift evaded release identity.* Pre-P2 with a forged working-tree candidate: archive
+   written **claiming a real commit while containing bytes that commit never held** — a
+   forgery invisible to a recipient, since the checksums match the manifest and the manifest
+   names a real commit. Post-P2: `DRIFT [differs from HEAD]`, refused.
+3. *Tag/source identity was not bound.* No verification path existed. Post-P2 refuses an
+   **authentic signature over the wrong commit** and a bad signature over the right commit.
+
+**Candidate-vs-HEAD authority: git object identity, via `git diff-index HEAD -- <path>`.**
+Not mtime, not size, not timestamps. Verified against a throwaway repository before choosing
+the primitive: `diff-index` reports content drift, **mode-only** drift (`100644`↔`100755`),
+deletion, and **type** drift (regular↔symlink, mode `120000`).
+
+`git hash-object` was **rejected**: without `--path` it does not apply clean filters (this tree
+has `.gitattributes` under `backend/vendor/`), and on a symlink it **follows the link** and
+hashes the target while git stores the link target string.
+
+**The hole `diff-index` alone leaves, and how it is closed:** an **untracked** path does not
+appear in its output at all, so it reads as clean. Stage 1 expands a manifested directory into
+its files, so an uncommitted file inside a named directory becomes a candidate and would ship
+under a `source-sha` that never contained it. Each candidate is therefore **also** probed with
+`git cat-file -e "HEAD:$path"`, with all three exit branches handled — absent and error both
+refuse.
+
+**Invariant proved, stated no more strongly:** *candidate content, file mode and object type
+match HEAD as git records them.* This is **not** a claim of post-filter byte-identity on disk.
+Without `git update-index --refresh`, a stat-only change can be reported as modified; that
+direction is conservative (refuses a possibly-identical file) and is accepted rather than
+worked around.
+
+**Not a clean-working-tree requirement.** Only manifested candidates are checked. The
+repository intentionally carries an unrelated modified file that the customer manifest does not
+name; verified that the real 7-entry manifest passes with the tree dirty.
+
+**Root must be the repository top level.** `HEAD:<path>` and `diff-index` resolve against the
+repo root, not `--root`, so a subdirectory root would silently compare the wrong paths. Checked
+and refused rather than compared incorrectly.
+
+**P2-c lives outside the exporter, deliberately.** The exporter must stay runnable with **no
+signing key** — its allow-list, protected-class, P1 and P2 refusals are controls that must work
+on a box with zero keys. Folding tag verification in would invert the dependency, so that a
+missing key began *disabling* protections. Matches §22.4 item 6. The verifier takes an
+injectable `SYM_TAG_VERIFY_CMD` (default `git verify-tag`), so the future key ceremony supplies
+the real authority **without redesigning P2**.
+
+**Both P2-c conditions are mandatory and checked independently:** the tag signature must verify
+against the authorized release key, **and** the tag's commit must equal the archive's
+`source-sha`. "The tag verified" is never allowed to imply "the tag points at this release" —
+reusing a genuinely signed tag to bless an archive built elsewhere is a real attack shape.
+
+**Git signing policy:** `tag.gpgsign` is recorded as the **required future setting** and was
+**not** applied — setting it with zero keys would make every future tag creation fail.
+**`commit.gpgsign` is NOT a D-11 requirement**, and existing unsigned commits are **not**
+characterized as defective.
+
+**Real-manifest regression:** 7 candidates, stage 1/2/2b/3 all pass, release identity resolves
+to a real commit, **no archive written**.
+
+**No key generated. No fingerprint. No tag signed. Nothing published. External release NOT
+authorized.**
+
+---
+
+##### P2 as originally characterized
+
 
 **Two fail-closed cases, not one.**
 
