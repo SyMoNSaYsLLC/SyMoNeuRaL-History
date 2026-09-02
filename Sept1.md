@@ -2128,6 +2128,118 @@ public key from project-controlled HTTPS publication   (P3-1, site/release-key.t
 is confirmed **viable, not present** — it does not exist, and creating it is not authorized
 by this confirmation.
 
+### 22.3b Custody principal — **DECIDED 2026-09-02 (owner ruling)**
+
+**`D-11 CUSTODY PRINCIPAL DECIDED — DEDICATED NON-LOGIN RELEASE-CUSTODY UID`**
+
+Architecture only. **No account created, no custody directory created, no key material, no
+sudo/PAM/group/service change.** This resolves **Blocker 1** of the failed ceremony gate;
+**Blocker 2 (offline media topology) remains separately open** and is deliberately not decided
+here.
+
+#### Why the previous ceremony gate failed
+
+Measured: the API service runs `User=google`/`Group=google` with `ProtectHome=no`,
+`InaccessiblePaths=` empty and `PrivateUsers=no`; the operator is `uid=1000(google)`. The
+service therefore runs as **the same UID** that would own signing custody, and Unix DAC cannot
+separate a process from files owned by its own UID.
+
+#### The controlling ruling
+
+| | |
+|---|---|
+| **Custody principal** | **DEDICATED NON-LOGIN RELEASE-CUSTODY UID** |
+| **Service-readability** | **literal byte non-readability required** |
+| **Operator access** | **explicit identity/elevation transition required per operation** |
+| **Passphrase** | **defense in depth only** — same-UID byte readability is insufficient |
+
+**The custody principal must be distinct from** the operator UID, the API/service UID, the
+web-service UID, gateway/runtime identities, build-service identities, and
+customer/application identities. Its sole purpose is to own protected D-11 release-signing
+custody. It is **not** a general application account and **not** a login identity for ordinary
+interactive work.
+
+**Recorded explicitly, per the owner ruling:**
+**passphrase-protected but same-UID-readable DOES NOT satisfy D-11 custody separation.** A
+passphrase makes material *cryptographically unusable*; the requirement is that application and
+runtime service processes be *unable to read the bytes at all*. The passphrase remains
+defense-in-depth and does not replace filesystem principal separation.
+
+#### Synthetic DAC separation proof (no secret material; final custody dir NOT created)
+
+| Case | Posture | uid-1000 read | Verdict |
+|---|---|---|---|
+| A | dir owned by **uid 1000**, mode `700` — *today's posture* | **YES** | fails — the API runs as uid 1000 |
+| B | dir owned by a **different uid**, mode `700` | **DENIED** | **satisfies the invariant** |
+| C | dir owned by a different uid, mode `755` | **YES** | counter-example: ownership alone is insufficient |
+
+Case C is why the mode is part of the ruling and not an implementation detail: a
+differently-owned directory that is world-readable provides no separation at all.
+
+#### Minimum safe principal characteristics
+
+| Property | Ruling | Rationale |
+|---|---|---|
+| Account class | **system account, UID < 1000** | `UID_MIN=1000` on this box, so a system UID is outside the regular-user range and conventionally non-interactive. 43 such accounts already exist |
+| Login shell | **`/usr/sbin/nologin`** | matches existing convention (`www-data`, `caddy`). No interactive login |
+| Password state | **locked, no password login** | it is never authenticated *to*; it is only transitioned *into* |
+| Custody root | **outside `/home/google`** and outside the repository | the operator home is what `ProtectHome=no` exposes to the service |
+| Primary group | **its own dedicated group** | no shared group surface |
+| Supplementary groups | **none** | no membership in application/service groups |
+| Service memberships | **none — no service process may run under this UID** | it owns custody; it does not run software |
+| Interactive login | **no** | |
+| sudo capability | **none granted to it** | the transition flows *operator → custody*, never outward |
+| Ownership model | custody dirs and all private material owned by **custody principal only** | |
+| Directory mode | **`0700`** (private key files `0600`) | Case C above |
+| umask | **must be set explicitly at creation; do NOT inherit** | operator umask measured `0002` (group-writable) — inheriting it would create group-writable custody |
+| GnuPG home mode | **`0700`, owned by the custody principal** | must be a **fresh** home, **not** the default `~/.gnupg`, which is currently mode **755** and not custody-grade |
+
+**No extra privilege is granted.** No naming decision is recorded as final — the account name is
+an implementation detail for the account-creation authorization, not part of this ruling.
+
+#### Operator access model
+
+| Option | Assessment |
+|---|---|
+| **`sudo -u <custody-principal> …`** | **RECOMMENDED.** Smallest viable mechanism; explicit, per-operation, auditable in the sudo log, and requires no permission broadening. The operator is already in group `27(sudo)`, so no policy expansion is needed to make this work |
+| `su`-style transition | Equivalent effect, worse ergonomics and weaker logging |
+| Dedicated wrapper | Reasonable later convenience over `sudo -u`; adds a component to review, so not the minimum |
+| **Group-readable custody** | **REJECTED** — adding the operator to a custody group makes private material readable by uid 1000, and the API runs as uid 1000. It reintroduces exactly the co-tenancy this ruling exists to remove |
+
+**Why ordinary same-UID access is rejected:** any arrangement that makes the material directly
+readable by the operator's UID also makes it readable by the API, because they are the same UID.
+Convenience for the operator is indistinguishable, at the DAC layer, from exposure to the
+service. The architecture therefore favours an **explicit elevation per custody operation** over
+broadening key-file permissions.
+
+#### Privilege bridges — identified, NOT repaired under this authorization
+
+| Bridge | Finding | Consequence |
+|---|---|---|
+| **Operator `sudo`** | operator is in group `27(sudo)` | **By design** — this *is* the §4 transition. It means custody separation protects against **services**, not against the operator. Stated so the guarantee is not overclaimed |
+| **`gpg-agent` socket** | a `gpg-agent` is **already running as uid 1000**, sockets at `/run/user/1000/gnupg/` mode `srw-------` owned by `google` | **REAL BRIDGE.** If custody ever used the operator's agent, a same-UID service process could reach the socket and **request signing operations without reading key bytes** — defeating the invariant by a different route than file reads. The custody principal must run its **own** agent under its own runtime dir; the operator's agent must never hold the release subkey |
+| **ACLs** | `getfacl` present; `/home` is ext4 `rw,noatime` with **no `noacl`**, so ACLs are honoured | An ACL could silently re-grant uid 1000 access to a correctly-owned `0700` directory. Custody must be verified **ACL-free**, not merely mode-checked |
+| **umask** | operator umask `0002` | Group-writable by default; custody mode must be explicit at creation |
+| **Service delegation** | API unit has `SupplementaryGroups=` empty, `ReadWritePaths=` empty | No delegation bridge from the unit itself |
+| **setuid helpers** | 15 setuid binaries in `/usr/bin` | Not a custody-specific bridge; noted for completeness, not audited system-wide |
+| **Home sharing** | `ProtectHome=no` on the API unit | Reinforces that custody must live **outside** `/home/google` |
+
+#### GnuPG operational boundary (future state, nothing created)
+
+```
+offline PRIMARY secret        -> removable/offline custody, NOT resident in routine
+                                 signing custody  (Blocker 2, still open)
+release SIGNING-SUBKEY secret -> owned by the DEDICATED CUSTODY PRINCIPAL, mode 0700/0600,
+                                 in a custody-owned GnuPG home outside the repo and outside
+                                 the operator home
+custody principal's gpg-agent -> its OWN agent and runtime dir; never the operator's
+                                 uid-1000 agent
+operator                      -> may invoke an explicitly authorized signing operation via
+                                 `sudo -u <custody-principal>`, per operation
+application/runtime services   -> CANNOT read signing-subkey bytes (different UID, mode 0700,
+                                 no ACL, no shared group, no agent socket access)
+```
+
 ### 22.4 Ordered prerequisites before key generation
 
 1. **P1** — exporter signing-material exclusions (P1-a patterns, P1-b content sniff, P1-c
