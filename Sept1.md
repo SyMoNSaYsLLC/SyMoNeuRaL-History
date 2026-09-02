@@ -1950,21 +1950,57 @@ imply something about 504 existing unsigned commits. Recommendation: `tag.gpgsig
 tags; **do not** set `commit.gpgsign` as a D-11 requirement. **No git signing configuration was
 changed; no tag was created or signed.**
 
-#### P3 — Trusted public-key distribution
+#### P3 — Trusted public-key distribution — **CHANNEL CONFIRMED 2026-09-02**
+
+**Status: `P3 CHANNEL CONFIRMED — P3-1 + P3-4`.** Re-measured against the tree at HEAD
+`bb9230f4`, not carried over from the earlier recommendation. **`CHANNEL CONFIRMED` is not
+`KEY PUBLISHED`, `KEY GENERATED`, `KEY CEREMONY PERFORMED`, or `RELEASE AUTHORIZED`** — those
+are four separate states and all four remain **unreached**. Measured at confirmation: public
+signing key **0**, private signing key **0**, fingerprint **0**, key published **0**, signed
+tags **0**, signed artifacts **0**, external release **NO**.
 
 **Constraint measured, not assumed: there is no git remote.** So GitHub/remote-based
 distribution does not exist as an option. The authoritative channel the project **does** control
 is the published site: `scripts/deploy.sh` publishes `site/` to `/var/www/symoneural`, served at
 `https://symoneural.com/`.
 
-**Two hard mechanics of that channel, measured:**
-1. `PUBLISH='.*\.\(html\|css\|jpeg\|jpg\|js\|png\|svg\|ico\|webp\|woff2\|txt\|xml\)'`
-   — **`asc` is NOT in the allow-list.** A `release-key.asc` in `site/` is **silently skipped**
-   (reported as "skipped: not a web asset"). **`txt` IS allowed.**
-2. Publication is **`-maxdepth 1`** — so **`.well-known/` cannot work**; subdirectories are never
-   published.
-3. The orphan check is **source-presence-based, not link-based** (`deploy.sh:103`), so a
-   published file that no page links is **kept, not pruned**. No linking page is required.
+**Re-measured mechanics, with file:line evidence (2026-09-02, HEAD `bb9230f4`):**
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Which script publishes `site/`? | **`scripts/deploy.sh`** — sole authority | `deploy.sh:39` `SRC="$ROOT/site"` |
+| Destination class | **local filesystem web root**, `install`ed `www-data:www-data` mode `644` | `deploy.sh:40` `DST=/var/www/symoneural`; `deploy.sh:76` |
+| Is `txt` permitted? | **YES** | `deploy.sh:61` allow-list includes `txt`; tested by matching `site/release-key.txt` against the live regex |
+| Is `asc` permitted? | **NO** | same line — `asc` absent. A `.asc` in `site/` is reported `skipped: not a web asset` (`deploy.sh:62,65-67`) |
+| Depth-limited? | **YES, `-maxdepth 1`** | `deploy.sh:75` — the only install action |
+| Would nested `.well-known/` publish? | **NO** | no recursive copy exists anywhere in `deploy.sh`; exactly one install action, and it flattens into `$DST/` |
+| Unlinked top-level `.txt` retained? | **YES** | `deploy.sh:104` retention test is `[ -f "$SRC/$f" ]` **and** extension match — **zero** link references in the orphan block |
+| Does publication require a source-page link? | **NO** | the reference check (`deploy.sh:135,244`) iterates `src=`/`href=` **found in HTML** and asserts each resolves on disk. It never asserts that a published file is referenced, so an unreferenced key file is never examined and cannot fail a deploy |
+
+**Second publication trigger — new finding, and an operational precondition.**
+`scripts/build-deb.sh` postinst republishes the web root on `apt upgrade`, but it implements no
+publication logic of its own: it **delegates to `deploy.sh --prune`** (`build-deb.sh:181` +
+postinst). So one allow-list governs both paths. The consequence is load-bearing: because
+line 104's retention test keys on presence in the **source** tree, a key file hand-placed
+directly into the web root and **not** present in `site/` is an orphan and is **deleted by the
+next `apt upgrade`**. A file tracked at `site/release-key.txt` survives both triggers.
+**Therefore: the key must live in `site/` and must never be hand-placed in the web root.**
+
+**P1/P3 collision check (P1 landed after this section was first written).** Tested against the
+live committed patterns: `site/release-key.txt` matches **none** of the 22 P1-a path patterns,
+and `-----BEGIN PGP PUBLIC KEY BLOCK-----` matches **none** of the 3 P1-b content patterns. P1
+and P3 do not collide — the public key remains exportable and publishable.
+
+| Option | Works unchanged? | Needs impl? | External trust service? | Distributes key? | Authenticates fingerprint? | Role |
+|---|---|---|---|---|---|---|
+| **P3-1** `site/release-key.txt` | **YES** | no | **no** | **yes** | **no** | **PRIMARY key channel** |
+| **P3-2** add `asc` to `PUBLISH` | no | **yes** — `deploy.sh` change | no | yes | no | deferred cleanup, own authorization |
+| **P3-3** public keyserver | no | yes | **YES** | yes | no | **rejected as primary** |
+| **P3-4** out-of-band fingerprint | **YES** (business process) | no | no | no (fingerprint only) | **YES** | **PRIMARY fingerprint channel** |
+
+**Neither path is sufficient alone.** P3-1 distributes a key but authenticates nothing; P3-4
+authenticates the fingerprint but distributes no key. **Possession of a public key downloaded
+from the project site is NOT authentication by itself.**
 
 | Option | Mechanism | Tradeoffs |
 |---|---|---|
@@ -1988,7 +2024,37 @@ certification chaining to a primary fingerprint the customer already holds out-o
 second fingerprint path is therefore load-bearing, not belt-and-braces. Adding `asc` to
 `PUBLISH` (P3-2) is a reasonable later cleanup and is **its own authorization**.
 
-**Nothing was published.**
+**The guarantee, stated no more strongly than the evidence supports.** Compromise of the web
+host permits **replacement of the downloadable public-key file**. It does **not**, absent
+compromise of the **offline primary**, permit creation of a new subkey certification that chains
+to the primary fingerprint a recipient already holds independently.
+
+That protection is **conditional on the recipient actually performing the fingerprint check.** A
+recipient who downloads the key and skips the comparison is defeated by web-host compromise
+alone, because nothing else in the chain would object. **The fingerprint comparison is therefore
+MANDATORY in the recipient verification procedure, not advisory** — it is the step that makes
+the two-channel model load-bearing rather than decorative.
+
+**Confirmed trust chain:**
+
+```
+offline certify-only PRIMARY            (C-2 custody, never on the serving host)
+        | certifies
+        v
+release-signing SUBKEY
+        | signs
+        v
+release artifacts / signed release record
+        | verified using
+        v
+public key from project-controlled HTTPS publication   (P3-1, site/release-key.txt)
+        +
+40-hex PRIMARY fingerprint obtained independently      (P3-4, MANDATORY comparison)
+```
+
+**Nothing was published. No key, fingerprint, or file was created.** `site/release-key.txt`
+is confirmed **viable, not present** — it does not exist, and creating it is not authorized
+by this confirmation.
 
 ### 22.4 Ordered prerequisites before key generation
 
