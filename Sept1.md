@@ -41,7 +41,7 @@ The single most important finding: **most of this already exists in some form.**
 - **CURRENT** — Model management has real authority already: `tools/modelops_inventory.py` (scan-based, cross-checks three sources) and `scripts/modelops/symoneural-modelops-stage.sh` (21,688 B; 8 modes; `--activate-candidate` guarded by six refusals; `--rollback`).
 - **CURRENT** — Studio is ~2,704 lines across six modules with ComfyUI graph integration, custom nodes, MCP server, 11 API routes, and the only `gate.py` in the codebase.
 - **RESOLVED 2026-09-02 (was EXISTING-INCOMPLETE)** — Accounts has 8 endpoints (signup/login/logout/me/sessions/password/signout-everywhere/status). It had **no customer→application entitlement**; A-3 (`ef1a4af4`) added the correspondence + grant bridge, and 1 grant is provisioned and runtime-verified on both sides (200 entitled / 403 unentitled). DispatchOS still runs its **own** login — that is now the *intended* end state under **D-3(b)**, not an incompleteness.
-- **DELIVERED 2026-09-02 (was REQUIRED)** — `tools/export_snapshot.sh` did not exist; A-2 (`728df639`) delivered it — 192 lines, fail-closed, 17 protected patterns, stage-2 refusal proven by sabotage. It is the only sanctioned export path per `docs/ops/EXPORTS.md` rule 4. The tool no longer blocks the feature; **external export/distribution remains NOT authorized** (D-11 OPEN).
+- **DELIVERED 2026-09-02 (was REQUIRED)** — `tools/export_snapshot.sh` did not exist; A-2 (`728df639`) delivered it — 192 lines, fail-closed, 17 protected patterns, stage-2 refusal proven by sabotage. It is the only sanctioned export path per `docs/ops/EXPORTS.md` rule 4. The tool no longer blocks the feature; **external export/distribution remains NOT authorized** (D-11 **DECIDED** 2026-09-02 — architecture ruled; no key exists, no artifact signed, external release still not authorized).
 - **CURRENT** — **Zero learned model payloads on this box** (measured §4.1.1). 11 `PROVENANCE.json` entries are declared-but-absent historical metadata. "No model installed" is the real, valid baseline — and per Q1 it is the correct condition for validating `control/models/`.
 - **CURRENT** — Multi-architecture delivery is **further along than the repo alone suggests**: `/yocto/artifacts` holds **76,208 packages** across arm/arm64/x86/x86-64 in both DEB and IPK, plus 13 SDK installers (§13.2). Two gaps on the primary arch (`x86-64/ipk` absent; `x86-64/deb` feed index missing) and **every artifact is unsigned**.
 
@@ -851,7 +851,7 @@ The populated reference implementation.
 | `EXPORT_SCOPE` | `backend/apps/dispatchos/EXPORT-SCOPE.manifest` — 7 entries: the page module + 6 application-specific source modules | **POPULATED, VERIFIED** | **Option B authorized 2026-09-02.** Boundary reviewed per-module: all 7 are category 1 (application-specific). `apps/accounts` is category 2 (shared platform, multiple consumers) and is **excluded** — returned for separate authorization. Tests, runtime state, operator tooling, infrastructure config and prior internal archives all excluded. Verified through the A-2 exporter: stage 1 selected 7, stage 2 passed, **no archive written**. **Export/distribution NOT authorized** |
 | `PROTECTED_EXCLUSIONS` | Application-specific statement recorded in §11.6 | **DEFINED — satisfied** | **Authorized 2026-09-02.** Twelve classes recorded, each with evidence; global stage-2 protections remain the mechanical authority (17 patterns, verified enforcing). Existing 7-entry manifest **complies** — 0 violations across 15 checks. `DEFINED` is the satisfied state: §10 requires `Defined`, and the statement is a definition, not an on-disk artifact |
 | `RELEASE_IDENTITY` | A-2 export manifest: source commit + per-file SHA-256 | **AUTHORIZED (A-4 only)** | **D-11 = (d) for A-4 only, authorized 2026-09-02.** Identity is asserted, not signed |
-| `CUSTODY_RECORD` | **UNSIGNED — external release NOT authorized** | **AUTHORIZED (A-4 only)** | D-11 remains **OPEN**. No key generation, key storage, signing infrastructure, artifact signing, or external distribution is authorized. **A-4 completion must never be represented as external-release readiness** |
+| `CUSTODY_RECORD` | **UNSIGNED — external release NOT authorized** | **AUTHORIZED (A-4 only)** | D-11 is **DECIDED** as of 2026-09-02 (owner ruling, §22) — but the ruling is *architecture only*: **no signing key exists, no artifact is signed**, and no key generation, key storage, signing infrastructure, artifact signing, or external distribution is authorized. **A-4 completion must never be represented as external-release readiness** |
 | `TEST_PATH` | `backend/apps/dispatchos/test_route_authorization.py` (in-package, 22 tests) + `backend/apps/test_dispatchos.py`, `test_dispatchos_security.py`, `frontend/tests/dispatchos-slice.test.mjs` | **PRESENT — PASSING** | **A-3 `ef1a4af4`** added the in-package suite; the other three predate it. Regression repaired 2026-09-02: **159 passed / 0 failed** across the full set, matching the pre-A-3 baseline. Fixture provisions a real entitlement; the class was not weakened, bypassed or mocked, and the deny side (T3/T15/T18/T21) still passes. See §11.3 |
 | `LIVE_STACK_ENTRY` | linked from `index.html`, `livestack.html` | **WIRED** | Catalogue entry present; not entitlement-aware |
 
@@ -924,7 +924,7 @@ distinction is not lost.
 |---|---|---|---|
 | 1 | **Secrets and credentials** | Any credential file; the application stores password hashes, never plaintext | **stage 2** — 4 patterns |
 | 2 | **`.env` / operator configuration** | The operator-owned environment file supplying the surface flag and database path | **stage 2** — 2 patterns |
-| 3 | **Private keys and signing material** | None exist for this application; D-11 is open and no signing authority exists | **stage 2** — 2 patterns |
+| 3 | **Private keys and signing material** | None exist for this application. D-11 is now **DECIDED** (OpenPGP, org authority — §22) but **no key has been generated**, so no signing material exists yet. **P1 (§22.1) must extend these patterns before any key is created** — measured: `.asc`/`.gpg`/`.kbx`/`.gnupg/`/extensionless private keys currently pass stage 2 | **stage 2** — 2 patterns |
 | 4 | **API keys and tokens** | Session tokens are hashed in the runtime store; api-key files are global-protected | **stage 2** |
 | 5 | **Runtime databases and runtime state** | The application database and its WAL/SHM companions — **and the customer's rate rules live inside it** (§11.4) | **stage 2** — verified refusing |
 | 6 | **Restricted ledgers / custody records** | Mode-restricted ledgers; no custody record exists for this application (unsigned per D-11) | **stage 2** |
@@ -992,7 +992,7 @@ preserved in the platform record; they are simply not this application's depende
 | Credits / metering | yes — 3 tables defined in the metering module | **no** — measured **0** references | outside this map |
 | Release / custody | yes — export manifest + the A-2 exporter | **no** — measured **0** references; it governs *delivery*, not application runtime | outside this map |
 
-**Release/custody, additionally:** **D-11 remains OPEN**, and release/custody remains
+**Release/custody, additionally:** **D-11 is DECIDED** (architecture, 2026-09-02, §22) while **no key exists and nothing is signed**; release/custody remains
 unavailable for external release. **That runtime/release condition does not make it an
 application dependency** — the two questions are independent.
 
@@ -1039,7 +1039,7 @@ be conflated:
 
 | | Status |
 |---|---|
-| **D-11** signing authority and key custody | **OPEN** |
+| **D-11** signing authority and key custody | **DECIDED 2026-09-02** — architecture only (§22). No key exists; no artifact signed; **external release still NOT authorized** |
 | **External release** | **NOT authorized** — custody is unsigned |
 | **D-12** mechanical ownership guard | **unimplemented**, explicitly outside A-4 |
 | Shared web / gateway / inference / credits implementation | **separately gated** where applicable |
@@ -1079,7 +1079,7 @@ reaching for one would be a claim the evidence does not carry.
 
 **`AUTHORIZED (A-4 only)` is a scope limit, not a completion.** `RELEASE_IDENTITY` and
 `CUSTODY_RECORD` satisfy A-4 under D-11 = (d), which is explicitly *for A-4 only*. Identity is
-asserted, not signed. **D-11 remains OPEN and external release remains NOT authorized.**
+asserted, not signed. **D-11 is now DECIDED as architecture (§22), and external release remains NOT authorized** — the ruling settles *how* to sign, not *whether* to ship. No key exists and no artifact is signed.
 
 **Naming compliance:** DispatchOS stays an application identity. **`symoneural-dispatchos` must not be created.** Its store is `run/dispatchos.db`; the surface is gated by `SYMONEURAL_DISPATCHOS_ENABLED` and currently reports HTTP 401 when unauthenticated (mounted, token-gated) — i.e. wired and asking for auth.
 
@@ -1614,13 +1614,13 @@ Phase 0  intake gate (Garrett ticks)          ── blocks everything
 *Decision:* Garrett. *Blocks:* x86-64 delivery completeness. *Safe default:* (b) with documentation.
 
 ---
-**D-11 — Signing authority and key custody**
-*Evidence:* 76,208 packages under `/yocto/artifacts`, **zero** signed (no `.gpg`/`.sig`/`InRelease`). `scripts/build-apt-repo.sh` references `gpg --sign`/`InRelease` but was not applied to the Yocto tree. No signing authority, key custody, or verification authority identified.
-*Current:* No shipped artifact is signed.
-*Options:* (a) establish a signing authority + key custody, sign at release; (b) sign only externally distributed artifacts; (c) defer.
-*Tradeoff:* Unsigned packages cannot be integrity-verified by a recipient. (c) is untenable before external distribution.
-*Recommendation:* **(b)** as the minimum bar, moving to (a).
-*Decision:* Garrett — key custody is operator-only. *Blocks:* any external distribution. *Safe default:* no external distribution until signed.
+**D-11 — Signing authority and key custody** — **DECIDED 2026-09-02 by owner ruling. See §22 for the controlling architecture.**
+*Evidence:* 76,208 packages under `/yocto/artifacts`, **zero** signed. Re-measured 2026-09-02 without a depth cap: **48** feed index files + **9** `Release` files across 6 arch/format cells, **0** signatures. `scripts/build-apt-repo.sh --sign` already implements clearsign → `InRelease` + public keyring export and refuses rather than silently going unsigned; never applied to the Yocto tree. Host: GnuPG **2.4.7**, `sq`, `ssh-keygen -Y`, `apt-ftparchive`, OpenSSL 3.5.7 all present; minisign/signify/cosign/age/dpkg-sig/reprepro **absent**. **0** secret keys, **0** public keys, **0** signed commits, 6 tags **0** signed, no `user.signingkey`. **No git remote.**
+*Options (as raised):* (a) full signing authority, sign everything at release; (b) sign only externally distributed artifacts; (c) defer.
+*Tradeoff:* Unsigned artifacts cannot be integrity-verified by a recipient — worse, an unsigned `EXPORT-MANIFEST` is asserted by the same unsigned tool that built the archive, so substituting both is undetectable. (c) untenable before external distribution.
+*Recommendation:* **(b)**, architected so (a) is later configuration rather than a re-keying event.
+*Decision:* **RULED — (b).** Owner ruling recorded 2026-09-02; controlling architecture in **§22**. *Blocks:* any external distribution **still**, because the ruling is architecture only. *Superseded:* the former `Safe default: no external distribution until signed` is now the standing rule, not a fallback.
+*Architecture only:* **no key generated, no signing infrastructure created, no tag or artifact signed, no custody record created, external release NOT authorized.**
 
 ---
 **D-12 — Should manifest ownership boundaries receive mechanical enforcement?**
@@ -1811,6 +1811,229 @@ No assignment defines its own rollback mechanism; every `*Rollback:*` line above
 ### For the build phase (future)
 
 Each assignment is done when: its `check:` lines pass; its end-to-end runtime test passes on a real run; its smoke record is committed; the API is still `active (running)` / HTTP 200; no protected content moved; and no second source of truth was created.
+
+---
+
+## 22. D-11 — Controlling Signing Architecture (owner ruling, 2026-09-02)
+
+**Status: DECIDED — architecture only.** This section is the controlling record. It replaces the
+former open state in §18. It authorizes **no implementation**: **no signing key exists, no
+signing infrastructure exists, no tag or artifact is signed, no custody record exists, and
+external release is NOT authorized.**
+
+### 22.1 The ruling
+
+| Dimension | Ruling |
+|---|---|
+| **Scope** | **D-11(b)** — sign externally distributed artifacts. Package/feed signing becomes **mandatory when those feeds are externally distributed** |
+| **Authority** | **A-4** — one **organization-level SymonSays LLC release authority**, operator-held custody. Not a personal operator key: recipients trust the organization, so the authority survives personnel change |
+| **Hierarchy** | **H-2** — **offline certify-only OpenPGP primary** + **long-lived release-signing subkey** |
+| **Custody** | **C-2** — primary **offline/removable**; signing subkey may be **host-held only** in an operator-owned protected location, **never service-readable, never inside the repository** |
+| **Mechanism** | **OpenPGP / GnuPG** — present (2.4.7), no new dependency, and the only present mechanism covering both archive and DEB/IPK feeds |
+| **Identifier of record** | **Full 40-hex primary/subkey fingerprints** as applicable. Short/long key IDs are collidable and must never appear alone in policy or verification instructions |
+| **Rotation** | Rotate **signing subkeys under the existing primary**, so recipient trust is not re-established on rotation |
+| **Revocation** | Revocation certificate generated **during the future key ceremony** and **held separately** from the key |
+| **Expiry** | **Finite signing-subkey expiry** |
+| **Runtime-secret separation** | **Absolute.** Shared-account session secrets and entitlement keys must **never** be reused as, or derived into, release-signing material |
+| **Archive signing** | **Detached OpenPGP signature over the final customer archive** |
+| **Release identity** | Archive `source-sha` **must correspond to a signed release tag** |
+| **Custody / provenance** | A **signed release record** binding signer + fingerprint, UTC time, source SHA, archive SHA-256, licence/provenance, and export scope |
+| **Feeds** | **Clearsigned `InRelease`** when DEB/IPK feeds are externally distributed |
+
+**Why the runtime-secret separation is absolute.** Different purpose (session authentication and
+licence entitlement vs artifact provenance), different lifetime (rotatable at will vs long-lived
+recipient trust), different blast radius. Session secrets live in the runtime environment on the
+serving host — exactly where signing material must never be. `gateway/entitlement.py` already
+implements the correct *posture* (operator mints offline, server verifies with the public key
+only, asserted by `test_settlement.py`); **reuse the posture, never the key.** The entitlement
+authority and the release authority are distinct authorities.
+
+### 22.2 Preserved state at the time of this ruling
+
+| | |
+|---|---|
+| **A-4** | **COMPLETE, 19 of 19** — unchanged by this ruling |
+| **External release** | **NOT authorized** |
+| **D-12** | **separate and unimplemented** |
+| **Signing key** | **none exists** |
+| **Signed artifact** | **none exists** |
+
+A ruling on *how* to sign is not permission to sign, and not permission to ship.
+
+### 22.3 Pre-key prerequisites — characterized, NOT implemented
+
+Ordered. **P1 must land before any key is generated.**
+
+#### P1 — Exporter signing-material exclusions
+
+**Measured gap.** Hypothetical signing paths matched against the **live 17 patterns** parsed from
+`tools/export_snapshot.sh`:
+
+```
+BLOCKED  ops/keys/release.pem  ops/keys/release.key  ops/keys/backup.p12   by \.(pem|key|p12|pfx)$
+BLOCKED  ops/keys/id_ed25519                                              by (^|/)id_(rsa|ed25519|ecdsa)$
+BLOCKED  secrets/release.asc                                              by (^|/)secrets?/
+BLOCKED  run/release.asc                                                  by (^|/)run/
+BLOCKED  .gnupg/private-keys-v1.d/1234.key                                by \.(pem|key|p12|pfx)$
+
+PASSES   ops/keys/release.asc              <-- NOT COVERED
+PASSES   .gnupg/pubring.kbx                <-- NOT COVERED
+PASSES   ops/release.gpg                   <-- NOT COVERED
+PASSES   ops/release.minisig               <-- NOT COVERED
+PASSES   ops/signing/release_ed25519       <-- NOT COVERED
+PASSES   ops/signing/release_ed25519.pub   <-- NOT COVERED
+```
+
+**The crux: `.asc` and `.gpg` cannot be discriminated by name.** `gpg --export-secret-keys
+--armor` emits `.asc` (must never leave); `build-apt-repo.sh:105` does `gpg --armor --export >
+symoneural-archive-keyring.asc` (must be **publishable**, and P3 publishes exactly that). A
+blanket `\.asc$` rule would refuse the public keyring and fail the requirement not to block
+legitimate verification material. So P1 splits in three:
+
+**P1-a — unambiguously private by path/name** (pure pattern additions, same architecture as today):
+
+| Rule | Refuses | Sabotage / regression test |
+|---|---|---|
+| `\.kbx$` | GPG keybox | Manifest a `pubring.kbx`; assert non-zero exit, **no archive written** |
+| `(^|/)private-keys-v1\.d/` | GPG private key store | Manifest a file under it; assert refusal names the class |
+| `(^|/)\.gnupg/` | whole GPG home | Manifest any path under `.gnupg/`; assert refusal |
+| `\.minisig$` | minisign signature/key | Manifest one; assert refusal |
+| `(^|/)ops/(keys|signing)/` | the custody directories by location | Manifest a file in each; assert refusal for both |
+
+**P1-b — ambiguous by name, resolved by CONTENT.** This is an **architectural addition**: stage 2
+is currently path-regex-only, so a content sniff is a new kind of check, not another pattern.
+
+| Rule | Refuses | Test |
+|---|---|---|
+| Content sniff for `-----BEGIN .*PRIVATE KEY BLOCK-----`, `-----BEGIN OPENSSH PRIVATE KEY-----`, `-----BEGIN .*PRIVATE KEY-----` on every candidate | armored private keys **whatever they are named** — including `ops/keys/release.asc`, `release.gpg`, and the **extensionless** `ops/signing/release_ed25519` that no name pattern can reach | Three tests, one per header form, each at a *different* filename (`.asc`, `.gpg`, extensionless) to prove detection is name-independent. Plus a **binary/large-file** case to prove the sniff cannot be tricked by a leading NUL or a huge file |
+
+**P1-c — explicit carve-out, and the test that protects it:**
+
+| Requirement | Test |
+|---|---|
+| The **public** keyring `.asc` (e.g. `symoneural-archive-keyring.asc`) and a published public key **must remain exportable** | Manifest the public keyring; assert **exit 0** and that it **is** present in the archive. This test is what keeps P1 from over-blocking, and it must fail loudly if someone later adds a blanket `\.asc$` |
+
+**Blast radius note:** stage 2 only ever sees manifested candidates, so the four third-party
+vendor `.asc` files under `references/` are unreachable unless someone manifests them. P1 is
+about the *future* key, not existing files. **No exporter change was made in this task.**
+
+#### P2 — Non-forgeable release identity
+
+**Two fail-closed cases, not one.**
+
+*Case 1 — `source-sha: UNKNOWN`.* Exporter: `SOURCE_SHA="$(... git rev-parse HEAD 2>/dev/null ||
+echo UNKNOWN)"`. On failure it writes the literal `UNKNOWN` and continues. Required behavior:
+**refuse** — non-zero, no archive — with a message naming that release identity is
+unresolvable. Rationale: a signature over `UNKNOWN` is a *valid signature on an unidentifiable
+release*, which is worse than no signature because it looks authoritative.
+
+*Case 2 — working-tree drift, and this one is live today.* The exporter copies from the **working
+tree** (`cp -p "$ROOT/$path"`) but labels the archive with `git rev-parse HEAD`. A
+modified-uncommitted manifested file therefore ships content that **does not correspond to the
+stated `source-sha`**. This session has carried ` M docs/ops/EXPORTS.md` throughout; the current
+7-entry manifest happens not to overlap it — **luck, not a guarantee**. Required behavior:
+**refuse if any candidate path differs from HEAD.** Signing a confidently-mislabeled archive is
+the worse failure mode.
+
+| Requirement | Test |
+|---|---|
+| Refuse on `git rev-parse` failure | Run with `--root` at a non-git directory; assert non-zero, **no archive**, and that `UNKNOWN` appears nowhere in output as an accepted value |
+| Refuse on working-tree drift | Modify a manifested file, run; assert refusal naming the drifted path. Then `git stash`/restore and assert exit 0 — proving it is drift-sensitive, not permanently broken |
+| Signed release tag required | Verification step asserts `source-sha` equals the commit of a tag that verifies against the release authority |
+| Cross-check | Recipient/operator: `git verify-tag <tag>` → tag commit == manifest `source-sha`. Both must hold; either failing fails the release |
+
+**Is commit signing necessary? NO — signed release tags are sufficient for D-11(b).** A signed
+tag signs the commit SHA, which is a Merkle root over the entire tree, so signing the tag
+transitively commits to exact tree content. Per-commit signing is a **development-process
+attribution control**, not a release-identity control, and adopting it would retroactively
+imply something about 504 existing unsigned commits. Recommendation: `tag.gpgsign` for release
+tags; **do not** set `commit.gpgsign` as a D-11 requirement. **No git signing configuration was
+changed; no tag was created or signed.**
+
+#### P3 — Trusted public-key distribution
+
+**Constraint measured, not assumed: there is no git remote.** So GitHub/remote-based
+distribution does not exist as an option. The authoritative channel the project **does** control
+is the published site: `scripts/deploy.sh` publishes `site/` to `/var/www/symoneural`, served at
+`https://symoneural.com/`.
+
+**Two hard mechanics of that channel, measured:**
+1. `PUBLISH='.*\.\(html\|css\|jpeg\|jpg\|js\|png\|svg\|ico\|webp\|woff2\|txt\|xml\)'`
+   — **`asc` is NOT in the allow-list.** A `release-key.asc` in `site/` is **silently skipped**
+   (reported as "skipped: not a web asset"). **`txt` IS allowed.**
+2. Publication is **`-maxdepth 1`** — so **`.well-known/` cannot work**; subdirectories are never
+   published.
+3. The orphan check is **source-presence-based, not link-based** (`deploy.sh:103`), so a
+   published file that no page links is **kept, not pruned**. No linking page is required.
+
+| Option | Mechanism | Tradeoffs |
+|---|---|---|
+| **P3-1** | **`site/release-key.txt`** — armored public key with a `.txt` extension | **Works today with zero deploy change.** HTTPS-authenticated, project-controlled, no remote needed. Extension is cosmetically wrong for OpenPGP tooling but the armored content is what matters |
+| **P3-2** | Add `asc` to `PUBLISH`, publish `release-key.asc` | Correct extension and correct content-type expectations. Requires a **deploy.sh change = its own authorization**, and widens the publish allow-list |
+| **P3-3** | Public keyserver | Standard OpenPGP discovery, but hands an external service a role in the trust path and cannot be retracted. Rejected as *primary* |
+| **P3-4** | Out-of-band only — fingerprint in contract/onboarding material, key delivered with the archive | Strongest binding to a real business relationship, no public infrastructure. Does not scale and gives no public verification path |
+
+**Recommendation: P3-1 as the key channel + P3-4 as the fingerprint channel.**
+
+Publish the armored **public** key at `site/release-key.txt` (no deploy change required), and
+restate the **40-hex primary fingerprint through a second, independent path** — contract or
+onboarding material delivered with the archive. Rotation/revocation publish the same way: new
+subkey certification and any revocation certificate replace the published file, with the
+**primary fingerprint unchanged**, which is precisely why H-2 was chosen.
+
+**On the apparent circularity:** hosting the public key on the same box that may hold the signing
+subkey looks self-certifying, and **C-2's offline primary is what makes it survivable.** A host
+compromise lets an attacker replace the published file; it does **not** let them produce a subkey
+certification chaining to a primary fingerprint the customer already holds out-of-band. The
+second fingerprint path is therefore load-bearing, not belt-and-braces. Adding `asc` to
+`PUBLISH` (P3-2) is a reasonable later cleanup and is **its own authorization**.
+
+**Nothing was published.**
+
+### 22.4 Ordered prerequisites before key generation
+
+1. **P1** — exporter signing-material exclusions (P1-a patterns, P1-b content sniff, P1-c
+   public-material carve-out) **with tests**. **Must precede key generation**: until it lands, a
+   private key at `ops/keys/release.asc` is exportable.
+2. **P3 channel decision confirmed** and the `site/release-key.txt` path accepted — verification
+   is impossible without a trusted out-of-band fingerprint path.
+3. **P2** — exporter refuses `UNKNOWN` **and** refuses working-tree drift; signed-release-tag
+   requirement adopted (`tag.gpgsign`, no `commit.gpgsign`).
+4. **Key ceremony** — separately authorized: primary offline, signing subkey, revocation
+   certificate, 40-hex fingerprint recorded, expiry set, custody media provisioned. Report only
+   *that* it succeeded plus fingerprint, location class, ownership and mode — **never** key
+   material.
+5. **Custody documentation** — permitted/forbidden locations, backup/recovery, rotation and
+   revocation procedure, who may sign.
+6. **Signing step** — a separate signer invoked *after* the exporter, never inside it. The
+   exporter must remain runnable with no key present, and its refusal paths must not depend on
+   signing. Fail-closed: no signature, no release.
+7. **Custody-record schema** (§22.1) — does not exist.
+8. **Recipient verification procedure** — exact commands, expected output, failure meaning, plus
+   the independent `EXPORTS.md` acceptance grep.
+9. **`EXPORTS.md` policy rule** for signing (note its pre-existing unstaged modification must be
+   resolved on its own authorization first).
+10. **Feeds, only on moving to (a)** — `apt-ftparchive` re-index of the 6 cells, clearsigned
+    `InRelease` per cell, keyring published.
+
+### 22.5 What remains before external release can EVER be authorized
+
+D-11 being decided does **not** authorize external release. Still required, each separately:
+
+1. **Explicit external-release authorization** — the ruling settles *how* to sign, not *whether*
+   to ship.
+2. **Implementation authorization** for each of P1/P2/P3 and items 4–10 above; none is authorized.
+3. **Key ceremony authorization.**
+4. **Per-archive production authorization**, naming recipient and scope manifest.
+5. **Export-scope re-confirmation** — the 7-entry manifest was authorized for A-4; whether that
+   exact scope is what a customer receives is a fresh decision.
+6. **Licence/provenance terms** for the custody record — a legal/business input.
+7. **Recipient verification path in place** — otherwise the signature is decorative.
+8. **D-12 remains separate hardening, NOT required before release.** It guards against a *future
+   contributor* manifesting shared-platform source; today the manifest is 7 reviewed entries. It
+   should be revisited before *routine* customer exports.
+
+**A-4 is unaffected and remains COMPLETE, 19 of 19.**
 
 ---
 
