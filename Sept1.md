@@ -2362,6 +2362,166 @@ is therefore returned:
 4. An owner disposition for the **stale `/media/google/A533-850E` directory**, which was left
    untouched.
 
+### 22.3d Offline custody — remaining owner decisions **COMPLETE 2026-09-02**
+
+**`D-11 OFFLINE CUSTODY DECISIONS COMPLETE — THREE-MEDIA TOPOLOGY + LUKS AT REST`**
+
+Decision recording and prerequisite characterization only. **Nothing installed, formatted,
+partitioned, mounted or created. No credential generated.** Media provisioning remains blocked
+on physical media.
+
+#### Controlling topology — THREE physically independent removable media
+
+| Role | Contents |
+|---|---|
+| **Medium A** | primary offline authority + required recovery material |
+| **Medium B** | independent backup of primary authority + required recovery material |
+| **Medium C** | revocation-certificate custody |
+
+**All three must be physically independent devices.** Recorded explicitly:
+
+- **different partitions on one device DO NOT count**
+- **different directories on one device DO NOT count**
+- **cloud / network / repository / home-directory / service-host storage DO NOT count**
+
+**The two-medium fallback is REJECTED for the controlling configuration.** It remains in §22.3c
+only as the record of an option considered and declined.
+
+#### E-2 adopted — LUKS-encrypted removable custody
+
+```
+PHYSICAL CONTROL           (media stored separately, not routinely attached)
+        +
+LUKS MEDIA ENCRYPTION      (protects the whole medium, including recovery material
+                            and the revocation certificate, against physical loss)
+        +
+OPENPGP SECRET-KEY PASSPHRASE  (protects the key material itself, travels with the key)
+```
+
+Recorded explicitly, because conflating these is the failure mode:
+**LUKS does not replace OpenPGP key protection.** A decrypted medium exposes an unprotected key.
+**OpenPGP key protection does not replace media encryption.** The passphrase protects the key
+blob but not the recovery material or revocation certificate beside it, and it does nothing
+about a lost medium.
+
+#### Media-encryption credential boundaries (characterized, NOT implemented)
+
+Media-encryption credentials **must not**:
+- be stored in the repository;
+- appear in handoff documents;
+- be stored in plaintext on the corresponding encrypted medium *(a credential on the medium it
+  unlocks is not a credential)*;
+- be stored in application/service configuration;
+- be derived from runtime, session, entitlement, or signing secrets.
+
+**Credential relationship ruling:**
+
+| Medium | Credential | Reasoning |
+|---|---|---|
+| **A** | **independent** | A and B exist to survive the loss or compromise of the other. A shared credential makes them **one failure domain for confidentiality** — compromise of one credential exposes both copies, which defeats the purpose of holding two |
+| **B** | **independent of A** | as above |
+| **C** | **independent of both A and B** | revocation custody must remain reachable **precisely when** the primary custody path is compromised or unavailable. Sharing a credential with A or B would recreate the correlation §22.1 separates |
+
+**Three independent credentials.** The tradeoff is stated plainly rather than hidden: independent
+credentials **minimize correlated compromise** but **increase the number of credentials whose
+loss is unrecoverable**. That is accepted here because the topology already provides redundancy
+against *loss* (A and B are independent copies of the same authority), so the residual risk of
+independent credentials is losing *one* copy's credential, not losing the authority. A shared
+credential would trade an unrecoverable-loss risk the topology already covers for a
+correlated-compromise risk it does not.
+
+**Remaining owner decision — credential-custody MECHANISM. `STILL REQUIRED: YES.`**
+Where the three credentials themselves are held is **not** decided by adopting E-2, and it is
+not a technical default to be improvised. The boundaries above say where they may **not** live;
+they do not say where they **must**. Candidate mechanisms (offline written record in physical
+custody, a separate password manager under operator control, split/escrow) each carry a
+different recovery and single-point-of-failure profile, and the choice determines whether losing
+one item destroys an offline copy. **No credential was generated, and none may be until this is
+ruled.** This is the precise stopping point identified per instruction.
+
+#### `cryptsetup` prerequisite
+
+Confirmed absent on this host: `cryptsetup`, `cryptsetup-reencrypt`, `integritysetup`,
+`veritysetup` — **all ABSENT**.
+
+| Item | Finding |
+|---|---|
+| **Required package** | **`cryptsetup-bin`** — command-line tools only. Candidate `2:2.7.5-2` |
+| **Expected executable** | `/usr/sbin/cryptsetup` |
+| **Why not the `cryptsetup` package** | That package is *"disk encryption support — **startup scripts**"*. It pulls `dmsetup` + `debconf` and **suggests** `cryptsetup-initramfs`. For **removable data custody** none of that is needed, and it puts packaging into the boot path for no benefit. `cryptsetup-bin` depends only on `libblkid1`, `libc6`, `libcryptsetup12`, `libpopt0`, `libuuid1` |
+| **Service impact** | **NONE** — `cryptsetup-bin` installs no unit, no daemon, no startup script |
+| **Reboot required** | **NO** |
+| **initramfs impact** | **NONE for this use case.** `cryptsetup-initramfs` is a *suggestion*, not a dependency, and is only relevant to unlocking a **boot/root** device. Removable data media are unlocked interactively after boot |
+| **Kernel support** | **already present** — `dm-crypt.ko.xz` ships with the running kernel, `dm_mod` is loaded, `/dev/mapper` exists. No kernel change needed |
+
+**Scope guard:** this is **removable custody media only**. **No system-disk encryption** is
+proposed, decided, or implied.
+
+#### Filesystem inside each LUKS container
+
+**Recommendation: `ext4`, one filesystem per physical medium, no additional partitioning.**
+
+Rationale: Linux-host native, fully offline with no network dependency, preserves ordinary Unix
+ownership and modes — which matters because custody files must carry `0600`/`0700` semantics that
+`vfat`/`exfat` **cannot represent**. `ext4` is already in `/proc/filesystems` with three volumes
+mounted.
+
+**Required tooling: NONE — already installed.**
+
+> **Correction to §22.3c.** That section recorded `mkfs.ext4`/`mkfs.vfat`/`mkfs.exfat` as
+> **ABSENT** and concluded filesystem tooling would need installing. **That was wrong.** All three
+> exist at `/usr/sbin/` (`e2fsprogs 1.47.2-3+b12`, `dosfstools 4.2-1.2`, `exfatprogs
+> 1.2.9-1+deb13u1` are **installed**); the operator shell's `PATH` simply omits `/usr/sbin`, so
+> `command -v` reported absence. A tool-visibility artifact was read as system absence — the same
+> error class as the earlier depth-capped `/yocto` scan. **The only package still needed is
+> `cryptsetup-bin`.**
+
+#### Future media role labels and identity of record
+
+Role labels (uppercase, hyphenated, ≤16 chars — within `ext4` label limits and safe if a medium
+is ever inspected on another system):
+
+```
+D11-PRIMARY-A      Medium A
+D11-PRIMARY-B      Medium B
+D11-REVOCATION-C   Medium C
+```
+
+**Identity of record, to be captured at provisioning** (not now — no media exists):
+
+| Field | Note |
+|---|---|
+| physical role | A / B / C |
+| **LUKS UUID** | the container's own UUID |
+| **filesystem UUID** | the UUID *inside* the container |
+| volume label | as above |
+| capacity / device class | e.g. USB mass storage, SD card |
+| provisioning UTC timestamp | |
+
+**`/dev/sdX` is NOT identity** and must never be recorded as such — it is assignment-order
+dependent and changes between attachments.
+
+#### Stale `/media/…/A533-850E` disposition
+
+Narrow read-only provenance check, seven questions, all answered:
+
+| Check | Result |
+|---|---|
+| mountpoint? | **NO** |
+| any current block device owns UUID `A533-850E`? | **NO** — 0 matches |
+| `/etc/fstab` reference? | **NO** — 0 |
+| repository script reference (path or UUID)? | **NO** — 0 |
+| systemd mount unit reference? | **NO** — 0 units, 0 `.mount` files |
+| shell/profile reference? | **NO** — 0 |
+| contents beyond stale detached-volume residue? | **NO** — exactly 3 entries: the directory, `EFI/`, `EFI/BOOT/`. Nothing else |
+
+**Disposition: `STALE DIRECTORY — SAFE TO REMOVE UNDER SEPARATE AUTHORIZATION`.**
+
+Classic residue of a detached UEFI-bootable USB volume. It is **root-owned**, so removal needs
+elevation, and it was **not removed** in this task. It has **no bearing** on D-11 custody and
+must not be reused as a custody mountpoint — custody media get their own explicitly chosen mount
+path outside repository, export and customer-staging roots.
+
 ### 22.4 Ordered prerequisites before key generation
 
 1. **P1** — exporter signing-material exclusions (P1-a patterns, P1-b content sniff, P1-c
