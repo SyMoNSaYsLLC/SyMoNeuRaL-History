@@ -72,6 +72,14 @@ PROTECTED_PATTERNS=(
   '\.(pem|key|p12|pfx)$'               # private keys / signing material
   '(^|/)secrets?/'                     # secret material
   'providerapikeys'                    # api keys
+  # P1-a (D-11): signing material that is unambiguously private by path or name.
+  # Added BEFORE any signing key exists, because a key created first would be exportable
+  # in the window before this landed. Measured 2026-09-02: every path below PASSED stage 2.
+  '\.kbx$'                             # GPG keybox (keyring database)
+  '(^|/)private-keys-v1\.d/'            # GPG private key store
+  '(^|/)\.gnupg/'                       # GPG home -- whole directory
+  '\.minisig$'                          # minisign signature/key material
+  '(^|/)ops/(keys|signing)/'            # release custody directories, by LOCATION
 )
 PROTECTED_LABELS=(
   "protected training corpus" "corpus build script" "adapter weights"
@@ -79,6 +87,42 @@ PROTECTED_LABELS=(
   "repository history" "environment secrets" "environment secrets"
   "credential file" "credential file" "credential file"
   "private key" "key/signing material" "secret material" "api keys"
+  # P1-a labels -- INDEX-PARALLEL with PROTECTED_PATTERNS above. Stage 2 indexes this array
+  # directly under `set -u`, so a missing label throws "unbound variable" at the exact moment
+  # the script must work: while refusing. Counts are asserted equal at startup below.
+  "GPG keybox" "GPG private key store" "GPG home directory"
+  "minisign material" "release custody directory"
+)
+
+# The two arrays are consumed by index. A mismatch is a latent crash in the refusal path,
+# so it is checked here rather than discovered during a refusal.
+if [ "${#PROTECTED_PATTERNS[@]}" -ne "${#PROTECTED_LABELS[@]}" ]; then
+  printf '%s: internal error: %d patterns vs %d labels\n' \
+    "$PROG" "${#PROTECTED_PATTERNS[@]}" "${#PROTECTED_LABELS[@]}" >&2
+  exit 1
+fi
+
+# --- P1-b (D-11): private-key material detected by CONTENT, not by name -----------------
+# This is an addition in KIND, not another pattern: everything above matches a path, and
+# these match bytes. It exists because `.asc` and `.gpg` cannot be classified by extension.
+# `gpg --export-secret-keys --armor` writes `.asc`, and `scripts/build-apt-repo.sh` writes a
+# PUBLISHABLE keyring to `.asc` as well. A blanket '\.asc$' rule would refuse the public key
+# a recipient needs in order to verify anything -- so the discriminator has to be content.
+#
+# It is also the only rule that reaches an EXTENSIONLESS private key, which no name pattern
+# can match without also refusing arbitrary files.
+#
+# Public key armor is `BEGIN PGP PUBLIC KEY BLOCK`, which none of these match. That is what
+# keeps the P1-c carve-out working without a special case.
+PRIVATE_CONTENT_PATTERNS=(
+  '^-----BEGIN [A-Z0-9 ]*PRIVATE KEY BLOCK-----'   # OpenPGP armored private key
+  '^-----BEGIN OPENSSH PRIVATE KEY-----'           # OpenSSH private key
+  '^-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----'         # PEM/PKCS private key, any algorithm
+)
+PRIVATE_CONTENT_LABELS=(
+  "armored private key (content)"
+  "OpenSSH private key (content)"
+  "private key (content)"
 )
 
 MANIFEST="" OUT="" ROOT="" DRY=0
@@ -148,12 +192,48 @@ for path in "${CANDIDATES[@]}"; do
   done
 done
 
+# --- stage 2b: P1-b content inspection over the SAME constructed set --------------------
+# Only $CANDIDATES is read. This is deliberately not a repository scanner: a file that no
+# manifest names is never opened, because a tool that walks the whole tree looking for
+# secrets is a different tool with a different risk profile.
+#
+# grep has THREE outcomes and all three are handled. 0 = matched, 1 = clean miss,
+# >=2 = ERROR (unreadable, I/O failure). The naive `if grep -q ...; then refuse; fi` treats
+# an error as a miss and silently exports an uninspectable file. An inspection that could
+# not run has NOT passed.
+#
+# LC_ALL=C with -a so the match is byte-oriented and a binary file is still searched: a
+# leading NUL must not turn a private key into "binary, skipped". There is deliberately NO
+# byte cap -- capping the read is itself the bypass (append padding, hide the header past
+# the cap). grep short-circuits on first match, so an uncapped scan costs nothing in the
+# common case. `grep` on this host is ugrep 7.8.4, not GNU grep; the exit codes and -a
+# behaviour above were verified against it directly rather than assumed.
+for path in "${CANDIDATES[@]}"; do
+  for i in "${!PRIVATE_CONTENT_PATTERNS[@]}"; do
+    set +e
+    LC_ALL=C grep -qaE "${PRIVATE_CONTENT_PATTERNS[$i]}" "$ROOT/$path" 2>/dev/null
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
+      # Name the class and the path. NEVER the matched bytes.
+      printf '%s: PROTECTED [%s] %s\n' "$PROG" "${PRIVATE_CONTENT_LABELS[$i]}" "$path" >&2
+      violations=$((violations + 1))
+      break
+    elif [ "$rc" -ge 2 ]; then
+      printf '%s: PROTECTED [uninspectable candidate] %s\n' "$PROG" "$path" >&2
+      violations=$((violations + 1))
+      break
+    fi
+  done
+done
+
 if [ "$violations" -gt 0 ]; then
   refuse "$violations protected path(s) in the candidate set; no archive written"
 fi
 
 info "stage 1: ${#CANDIDATES[@]} file(s) selected by manifest"
 info "stage 2: 0 protected paths -- passed"
+info "stage 2b: ${#CANDIDATES[@]} candidate(s) content-inspected -- no private key material"
 
 if [ "$DRY" -eq 1 ]; then
   printf '%s\n' "${CANDIDATES[@]}"
