@@ -807,6 +807,16 @@ No bypass exists **today**; the change is to derive the sandbox argv from a prof
 can be introduced by editing a flag list. `/decide` records a decision and must be bound to a session
 so the choice is attributable — currently it is anonymous.
 
+> **Observed changing during this audit, 2026-09-03.** `coders/routes.py` gained a second gate while
+> this document was being written: `_require_enabled`, applied as a router-level dependency so a route
+> added later inherits it, checked **per request** rather than at mount time, answering `404` when the
+> switch is off. That is a strict improvement and it does not change the classification above — it
+> narrows the surface further. Two points it settles for this plan: per-request evaluation of a switch
+> is the right pattern and §10's routes should follow it rather than reading the environment at import;
+> and router-level dependencies are the correct place to put a gate that must not depend on the next
+> author remembering. The mutation owner should re-read this file before executing §8, since it moved
+> under the audit.
+
 #### Coder (singular)
 
 | Route | Classification |
