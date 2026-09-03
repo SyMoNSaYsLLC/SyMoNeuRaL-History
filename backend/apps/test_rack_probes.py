@@ -57,8 +57,26 @@ def api_probe_paths() -> dict:
     api.py's import graph, and the count guards below make silent extraction rot loud.
     """
     paths = {}
+    # TWO spellings of the same thing, and the second one is why this pattern is not a single
+    # anchored line any more:
+    #
+    #   CHAT_ADAPTER  = ROOT / "training" / ...                    -- the original shape
+    #   LLM_ENGINE    = _engine_path("SYMONEURAL_LLM_ENGINE",
+    #                                ROOT / "engines" / ...)       -- env override, ROOT default
+    #
+    # The engines grew an environment override and moved onto a continuation line. `^NAME = ROOT`
+    # then matched neither, so this extractor silently found ONE of the three binaries and the
+    # count guard below went red saying so -- which is exactly what that guard is for, and it is
+    # kept rather than relaxed.
+    #
+    # The ROOT default is the right thing to resolve even though `_engine_path` may return an
+    # override instead: the override is read from the environment at import, cannot be known from
+    # source, and `_engine_path` already refuses a non-existent one loudly and falls back to this
+    # default. So the default is the path the rack reads unless someone has deliberately pointed
+    # it elsewhere, and it is the only one a source-only extractor can honestly assert about.
     for m in re.finditer(
-            r'^(LLM_ENGINE|DIFFUSE_ENGINE|CHAT_ADAPTER) = ROOT((?: / "[^"]+")+)',
+            r'^(LLM_ENGINE|DIFFUSE_ENGINE|CHAT_ADAPTER) = (?:_engine_path\(\s*"[^"]+",\s*)?'
+            r'ROOT((?:\s*/\s*"[^"]+")+)',
             API_SOURCE, re.M):
         paths[m.group(1)] = ROOT.joinpath(*re.findall(r'"([^"]+)"', m.group(2)))
     for m in re.finditer(r'MODELS((?: / "[^"]+")+)', API_SOURCE):

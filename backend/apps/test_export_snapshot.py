@@ -427,7 +427,7 @@ class P1SigningMaterialExclusionTests(_ExporterFixture):
 # P2-c  the label must be BOUND to the release authority, via a signed tag. Verified by a
 #       separate tool so the exporter stays runnable with no key.
 #
-# NO KEY MATERIAL. P2-c injects a stub verifier through SYM_TAG_VERIFY_CMD. No key is
+# NO KEY MATERIAL. P2-c injects a stub verifier through SYMONEURAL_TAG_VERIFY_CMD. No key is
 # generated, no tag is signed, and `git verify-tag` is never expected to succeed here.
 # ==========================================================================================
 
@@ -638,7 +638,10 @@ class P2ReleaseIdentityTests(_ExporterFixture):
     # No key exists, so the verifier is injected. `true` stands for "signature verified
     # against the authorized release key"; `false` stands for "it did not".
     def _verify(self, tag: str, source_sha: str, *, verifier: str):
-        env = dict(os.environ, SYM_TAG_VERIFY_CMD=verifier)
+        # Canonical spelling. `tools/verify_release_identity.sh` still honours the legacy
+        # SYM_ name, but a test that injects through the legacy branch would go green while
+        # the canonical one was broken.
+        env = dict(os.environ, SYMONEURAL_TAG_VERIFY_CMD=verifier)
         return subprocess.run(["bash", str(VERIFIER), "--tag", tag,
                                "--source-sha", source_sha, "--root", str(self.root)],
                               capture_output=True, text=True, env=env)

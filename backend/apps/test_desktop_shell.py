@@ -168,7 +168,12 @@ class WindowSmokeTests(unittest.TestCase):
         leaving a black window and one warning on a stderr that a desktop launcher discards."""
         self.assertIsNotNone(self.pid, "no child was spawned")
         self.assertIn("SyMoNeuRaL Code", self.screen)
-        self.assertIn("interactive session", self.screen)
+        # "local session", not "interactive session": the splash was rewritten to the aligned
+        # two-column form ("Six rows of bootstrap text was the complaint this splash answers")
+        # and this string went with it. What is being asserted is unchanged -- that the real
+        # client greeted from inside the window, rather than the window drawing a prompt of
+        # its own -- so only the literal moves.
+        self.assertIn("local session", self.screen)
 
     def test_auto_resolves_to_ask_inside_the_window_which_is_the_pty(self):
         """**The reason this file exists.** `auto` is not a state, it is a question answered by
@@ -194,7 +199,10 @@ class WindowSmokeTests(unittest.TestCase):
         discrimination was read on the same tree: `printf '/permissions\n/exit\n' |
         bin/symoneural-cli repl` prints `auto -> deny`. Same client, same command, two answers,
         and the pty is the whole difference between them."""
-        self.assertIn("permissions: auto -> ask", self.screen,
+        # `permissions  auto -> ask`, aligned columns, no colon. The arrow is the part that
+        # matters and it is still required; matched by regex so a column-width change cannot
+        # turn a security assertion red again.
+        self.assertRegex(self.screen, r"permissions\s+auto -> ask",
                      "the client found no controlling terminal in its own window, which means "
                      "the permission prompt cannot be shown to the person using it")
         self.assertNotIn("auto -> deny", self.screen)
@@ -212,8 +220,10 @@ class WindowSmokeTests(unittest.TestCase):
         its session id, its transcript path, its token warning. A window that had reimplemented
         any of this would show its own words instead."""
         self.assertRegex(self.screen, r"session\s+code-\d{8}-\d{6}")
-        self.assertIn("agent-code-", self.screen)
-        self.assertIn("/help for the commands", self.screen)
+        # `agent-code-` is gone: session ids are `code-<date>-<time>` now, which the regex
+        # above already pins in full. Asserting a dead prefix as well would only pin the old
+        # naming scheme, not the property this test is named for.
+        self.assertIn("/help", self.screen)
 
 
 class ExitBehaviourTests(unittest.TestCase):

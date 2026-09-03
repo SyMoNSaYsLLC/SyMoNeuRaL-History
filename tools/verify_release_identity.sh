@@ -31,7 +31,7 @@
 # authentic signature over the wrong release. Either one fails the release.
 #
 # NO KEY EXISTS YET. That is why the verifier is injected rather than hardcoded:
-# SYM_TAG_VERIFY_CMD receives the tag name and must exit 0 only if the signature verifies
+# SYMONEURAL_TAG_VERIFY_CMD receives the tag name and must exit 0 only if the signature verifies
 # against the authorized release key. It defaults to `git verify-tag`, which is what the
 # future key ceremony will supply an actual key for. Nothing here needs redesigning when
 # that key arrives -- only the default becomes usable.
@@ -89,7 +89,13 @@ git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 \
   || fail "$ROOT is not a git repository; cannot resolve the release tag"
 
 # --- CONDITION 1: the tag signature must verify against the authorized release key -------
-VERIFY_CMD="${SYM_TAG_VERIFY_CMD:-git -C $ROOT verify-tag}"
+# Canonical spelling first, legacy second, default last -- the same order every other reader
+# on this tree uses (backend/apps/symoneuralenv.py owns the rename). The legacy name is still
+# honoured rather than dropped: an operator's existing key-ceremony wrapper must not start
+# silently falling back to plain `git verify-tag`, which would turn an unverifiable release
+# into a passing one. That is the one failure mode this whole script exists to prevent, so
+# the compatibility branch stays until the rename is finished everywhere.
+VERIFY_CMD="${SYMONEURAL_TAG_VERIFY_CMD:-${SYM_TAG_VERIFY_CMD:-git -C $ROOT verify-tag}}"
 set +e
 # shellcheck disable=SC2086
 $VERIFY_CMD "$TAG" >/dev/null 2>&1

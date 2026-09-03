@@ -1564,8 +1564,22 @@ def cmd_repl(args) -> int:
     # The transcript FILENAME is deliberately not on the splash any more -- it is a debug
     # detail, it is derivable from the session id, and `/session` prints it in full. Six rows
     # of bootstrap text was the complaint this splash answers.
+    # THE MODE IN FORCE, not the mode that was asked for. This passed `args.permissions or
+    # "auto"` -- the raw request -- while the loop below sends `resolved_permissions(args)` with
+    # every turn. `resolved_permissions`' own docstring names the resulting bug exactly: "a
+    # status line reading `auto` while the loop is denying is a lie shaped like a setting."
+    #
+    # Both resolutions are worth showing rather than hiding, because both surprise people:
+    # `auto` is a question answered by whether there is a terminal (`ask` in a window, `deny`
+    # down a pipe), and `--dangerously-allow-all` silently outranks whatever `--permissions`
+    # said. So the arrow form is used whenever the answer differs from the request, and the
+    # plain form when nothing was resolved -- an operator who typed `--permissions deny` should
+    # not have to read `deny -> deny`.
+    _asked = args.permissions or "auto"
+    _in_force = resolved_permissions(args)
+    _permissions_row = _in_force if _in_force == _asked else f"{_asked} -> {_in_force}"
     for row in splash_lines(args.url, session, str(Path.cwd()),
-                            args.permissions or "auto",
+                            _permissions_row,
                             len(transcript_read(transcript_path(session)))):
         print(row)
 
