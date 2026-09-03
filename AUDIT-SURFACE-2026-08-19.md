@@ -1,5 +1,12 @@
 # AUDIT-SURFACE — 2026-08-19
 
+> **Dated audit evidence — reconciled 2026-09-03.** Counts, verdicts, current-state labels and
+> proposed actions below retain their original dates. Preserve them as evidence, not a competing
+> current-state authority or automatic repair instruction. [ProjectStatus.md](ProjectStatus.md)
+> owns current state; [GUARDRAILS.md](GUARDRAILS.md) and [AGENTS.md](AGENTS.md) control authority.
+> No audit item is marked complete or activated by this documentation reconciliation.
+
+
 Places in the repo where the operating standard (handshake-tested-verified; prose cites the
 line that produces the behaviour; every code change carries a regression test or a comment
 saying why not; every figure anchored to a SHA; a comment promising a guard either has the

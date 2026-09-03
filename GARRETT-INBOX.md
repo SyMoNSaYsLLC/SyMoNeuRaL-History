@@ -1,5 +1,12 @@
 # GARRETT-INBOX
 
+> **Historical escalation record — reconciled 2026-09-03.** Preserve these findings, questions
+> and dated recommendations; they are not fresh measurements or permission to repair/deploy.
+> Current state is [ProjectStatus.md](ProjectStatus.md); unresolved incoming classification belongs
+> to local INTAKE.md; requests/dispositions to local GARRETT-REQUESTS.md; actionable backlog to
+> [PROJECT-TASKS.md](PROJECT-TASKS.md). Garrett alone authorizes a next task.
+
+
 Things the coder found while Garrett was away that require his judgment or his sudo. Nothing
 here is fixed; each entry is waiting for him.
 

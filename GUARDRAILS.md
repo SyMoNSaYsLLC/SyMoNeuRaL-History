@@ -1,109 +1,72 @@
-# GUARDRAILS.md — the agent's write boundary, decided and durable
+# GUARDRAILS.md — standing project-control and safety rules
 
-This file records the boundary decision from 2026-08-20 (request ledger R-90) so it stops
-living only in session memory. It is the answer to "may the agent write here?" — the
-operational rules (GPU discipline, generator order, test honesty) stay in `.claude/CLAUDE.md`
-and are not duplicated here.
+Reconciled 2026-09-03. Garrett is the owner and sole task authorizer.
+These rules replace the older blanket home-directory write and “default FIX” authority.
+The exact retired text is preserved in [Sept1.md](Sept1.md), under retired root documentation snapshots.
 
-## The boundary
+## One task, one mutation owner
 
-**Writes under `/home/google/` are within the agent's authority.** That includes creating,
-editing and deleting files in this repo, staging backups under `/home/google/Symoneural_backups`,
-and placing artifacts on `/home/google/Desktop`. Provenance challenges against ordinary
-writes inside the home directory are resolved: they do not need per-write permission.
+All work is task-gated. A current task specifies role, mutation authority, scope, authorized paths and
+operations, prerequisites, rollback/evidence contract, and stop condition. Exactly one mutation owner
+exists across the complete agent tree. Everyone else is read-only unless Garrett explicitly transfers
+authority. A provider name, filesystem permission, old backlog, or previously proposed plan confers none.
 
-## The actual guardrails — enumerated, closed list
+No adjacent fixes, cleanup, automatic task promotion, documentation regeneration, service recovery,
+or next gate may be inferred. An existing authorization remains valid within its stated task/scope;
+it does not become permanent general project authority. A discovered defect is reported and classified.
 
-1. **No `/etc` writes.** Unit files and system config are staged in `ops/` as templates;
-   installing them is Garrett's, with his sudo.
-2. **No `/var` writes.** Deploys to `/var/www/symoneural` go through `sudo scripts/deploy.sh`,
-   which is Garrett's to run.
-3. **No `/root`, and no elevation-requiring paths.** If a step needs sudo, it is not the
-   agent's step — it gets staged, documented, and handed over.
-4. **No touching `training/corpus.jsonl`, `training/build_dataset.py`, or `training/adapter/`.**
-   The rule forbids *editing*; archiving them into the owner's local backups (the v3 staging
-   and archive tasks) is the one authorized exception, and the archives carry a
-   SECRETS-INSIDE.txt naming them.
-5. **No `git push`, and no git remote.** History never leaves this box; that absence is doing
-   real trade-secret work. If a remote is ever added, audit what is tracked first.
-6. **No printing secret values, ever.** Key names and lengths only — in logs, commits, chat,
-   archives' indexes, everywhere.
-7. **Review artifacts stay uncommitted.** CLOSEOUT, REVIEW-LOG, SWEEP-READY, REVIEWER-INBOX,
-   AUDIT-SURFACE, CODER-STATE, RECONCILE, GARRETT-INBOX, CODER-TASKS, GARRETT-REQUESTS —
-   working documents at the repo root, never in history. GARRETT-REQUESTS.md is additionally
-   mode 600.
+## Mutation and delivery boundaries
 
-Anything not on this list and under `/home/google/` is authority the agent already has;
-anything on it needs Garrett or is forbidden outright.
+- AUDIT IS NOT REPAIR. Auditors do not edit source, Git, services, packages, configuration, or perform cleanup.
+  A task may explicitly permit a bounded evidence-file write.
+- BUILD IS NOT DEPLOYMENT. Installation, promotion, signing, publication, service replacement/reload,
+  and restart require authorization in the current task.
+- Paths under `/home/google` are not automatically writable by project authority. Privileged paths,
+  external APIs, credentials, devices, spending, and provider dispatch likewise require scoped authorization.
+- Prove prerequisites before mutation. Preserve rollback/evidence material. Stop on an unplanned blocker.
+  Do not erase failed evidence, fabricate provenance, normalize away failures, or claim untested acceptance.
+- Preserve all prior dirty/untracked/ignored work. No reset, restore, delete, stash, clean, amend, stage,
+  commit, remote change, or push beyond the explicit gate.
+- Return the evidence/report, exact mutations, exact non-actions, unresolved findings and verdict, then STOP.
+  Garrett selects the next task.
 
-## The standing authority rule — default is FIX, not FILE
+## Secrets, custody, GPU, and evidence
 
-Decided 2026-08-20 (request ledger R-111). This is the rule for *who does the work*, where the
-list above is the rule for *where writes may land*.
+Do not print or commit credential values, private keys, tokens, or secret-bearing configuration.
+Use names and redacted classifications in reports. Never treat editing a local secret as proof that
+an upstream credential was revoked. Protected `training/corpus.jsonl`, `training/build_dataset.py`,
+and `training/adapter/` require explicit path-specific authorization; historic backup exceptions
+are not continuing write permission. No remote publication is implied by a local commit.
 
-**Any code in this repo may be fixed regardless of `git blame` — including Garrett's own
-scripts.** "Garrett wrote it" is not a reason to file an item instead of fixing it. Filing a
-defect that could have been fixed spends Garrett's attention on work the agent was already
-authorized to do.
+Honor the existing shared GPU governor within an authorized workload. Do not infer permission to
+launch competing jobs, mining, training, model downloads, or inference from available VRAM.
+Separate model COMPUTE residency from desktop GRAPHICS allocations. Measure the authorized acceptance
+boundary; labels, process existence, page HTTP success, or a previous report alone cannot replace
+required live functional evidence.
 
-**`Garrett-only` is reserved for exactly five things.** Nothing else qualifies:
+Historical review/evidence records keep their identity and verdict. Ignored files must not be force-added
+or regenerated merely because documentation references them. A task may explicitly authorize publishing
+particular documentation; record exactly what enters history and preserve unrelated material.
 
-| # | Category | Why it cannot be delegated |
-|---|---|---|
-| 1 | **Physical hardware access** | Someone has to be at the machine. |
-| 2 | **Credentials only he holds** | The agent cannot obtain the secret at all. |
-| 3 | **Third-party dashboards with no API** | No programmatic surface exists to drive. |
-| 4 | **Money** — spend, pricing, monetization | Business decision with financial consequence. |
-| 5 | **Legal / business decisions** | Not an engineering question. |
+## Native platform holds
 
-**An item filed `Garrett-only` that is not one of those five — that classification is itself the
-defect.** Reclassify it and fix the underlying thing.
+Linux native applications, Apple/Darwin, Windows, and Android/Firestick require separately named
+owner-authorized tasks. Existing retired scaffolds and toolchain work are not advanced or removed by
+inference. The former browser/API and SDK/toolchain exceptions are historical, not standing authority
+to build, maintain, repair, or deploy without a current gate.
 
-Two corollaries, both load-bearing:
+## Documentation and commit acceptance
 
-- **Approval is never re-requested.** Once Garrett has approved something it stays approved.
-  Asking again is not caution, it is a second interruption for a decision already made.
-- **If a process requires Garrett to run a command by hand more than once, the manual
-  requirement is the bug.** Automate the repeat. A one-time installer invocation is once; a
-  step he has to remember every week is a defect with a workaround stapled to it.
+[ProjectStatus.md](ProjectStatus.md) is current verified state.
+[SyMoNSaysLLC.md](SyMoNSaysLLC.md) is current business/platform/component/provider/plugin registry.
+[AGENTS.md](AGENTS.md) is the provider-neutral operating contract.
+Historical dated records and provider handovers do not override them.
 
-Category 3 has a real example worth keeping: rotating `SPOTIFY_CLIENT_SECRET` is a Spotify
-dashboard action with no API behind it, so it is genuinely Garrett's — but rewriting the local
-`.env` does **not** invalidate the leaked value, and automating only the local half while
-reporting "rotated" manufactures a false-green claim. Automate the half that can be automated,
-and say plainly that the other half is not done.
+Before EVERY future commit determine whether verified current state changes; if yes, update
+**ProjectStatus.md in that focused commit**. Determine whether architecture, component relationships,
+providers, plugins, runtimes, deployment method, business scope, source location, licensing or
+third-party relationships change; if yes, update **SyMoNSaysLLC.md in that focused commit**.
 
-## The platform build order — gated, and gated per platform
-
-Decided 2026-08-20 (request ledger R-11, R-104, R-118). Recorded here because a build order
-living only in a chat message or a ledger detail line has the same defect R-90 was about: it is
-not a decision anyone else can find.
-
-**The browser API is the only cleared build surface.** Everything is built for it.
-
-The four native platforms are each **individually held**, awaiting Garrett naming that platform:
-
-| Order | Platform | State |
-|---|---|---|
-| — | **Browser API** | **cleared** — the only build surface in progress |
-| 1 | Linux (debian) | held — fresh task when cleared, not a revival |
-| 2 | Apple (Darwin SDK, xtools, swift) | held |
-| 3 | Windows | held — **new scope**, not among the original four |
-| 4 | Android / Firestick | held — **moved from second to last** |
-
-The gate is Garrett's: he decides which applications are valuable and profitable, **per
-application**. Rules that follow from that:
-
-- **No platform build starts on inference**, on roadmap position, or on "obvious next step."
-  Only on Garrett requesting that platform **by name**.
-- **No numbered tasks exist for the four.** Queueing them would present gated work as cleared.
-- The retired `symonsaysllc` Tauri desktop scaffold and `mobiletv` Kotlin scaffold **stay
-  retired**. A cleared platform gets a fresh task.
-- Existing platform work stays exactly where it is: **not advanced, not deleted.**
-
-**The carve-out — SDKs and toolchains are not held.** The development platforms must be ready
-and online: toolchains get built and kept working even though the applications do not. The
-distinction is that a toolchain is infrastructure the moment a platform is cleared, and a
-toolchain that has never been exercised is not ready. The documentation half of this is the
-top-level `yocto/README.md` SDK matrix — which targets are reachable, which need a
-user-supplied SDK, which are aspiration — and it is in scope now.
+This is a **COMMIT ACCEPTANCE REQUIREMENT**, not standing authority to edit beyond the active gate.
+If the necessary update is not authorized, report the scope/acceptance conflict before committing.
+No task list or checkbox can by itself grant mutation authority.

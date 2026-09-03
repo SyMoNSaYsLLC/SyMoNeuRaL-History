@@ -1,5 +1,14 @@
 # PROJECT-TASKS.md — the canonical task list
 
+> **Current authority — 2026-09-03:** This file owns backlog/task IDs, not execution authority.
+> Garrett authorizes one bounded task and one mutation owner at a time. A checkbox, historical
+> approval, next-executor note or timer workflow does not activate work. The older standing-rule
+> narrative below is preserved history wherever it conflicts with [GUARDRAILS.md](GUARDRAILS.md)
+> and [AGENTS.md](AGENTS.md). [ProjectStatus.md](ProjectStatus.md) owns current verified state;
+> [SyMoNSaysLLC.md](SyMoNSaysLLC.md) owns the registry. The September 3 backlog at the end
+> records planned work only; prior acceptance requirements and task notes are preserved.
+
+
 **This file is the canonical task list.** The widget and `run/progress.html` are viewports
 onto it. It holds only **open** work: done and cancelled entries move to
 `review/CLOSED-TASKS.md` verbatim on a two-minute timer, so the length of this file is a
@@ -1293,3 +1302,146 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         note: keeps GPU consumers serial and reports skipped or unavailable coverage as not
         note: verified, never as green. Until the host run produces that record, #109 remains
         note: open even when every source change is present.
+
+## September 3 owner backlog — recorded, not activated
+
+These additions reconcile the current owner gate and design references. All are **OPEN / PLANNED**;
+Garrett must authorize a bounded execution task and mutation owner before work starts.
+Existing #109 and request IDs retain their history; this section does not close them or rewrite
+pre-existing notes. Current measured state is in [ProjectStatus.md](ProjectStatus.md).
+
+◻ #110 — Documentation rendering and text density
+        owner: unassigned — Garrett authorizes the execution gate
+        Repair /docs CSS/source leakage; documentation overflow; excessive marketing and
+        documentation text density. Include /overview and documentation.html in the future brief.
+        Acceptance: intended content renders without literal stylesheet/source leakage; reading
+        order, navigation and controls work; concise copy retains necessary meaning; real-browser
+        checks cover the authorized routes. Source edits and deployment are separate authorities.
+        Evidence: docs/design/references/2026-09-03/INDEX.md (D02, D03, D04, D11).
+
+◻ #111 — Useful responsive layouts at 100% browser zoom
+        owner: unassigned — Garrett authorizes the execution gate
+        Make Live Stack and Image/Remix/RavenCalc views useful at default 100% zoom.
+        Do not use overflow:hidden, clipping, inaccessible fixed heights, or forced browser zoom
+        as a fake no-scroll fix. Use responsive layout/density and accessible expansion where
+        long material requires it; do not promise every possible page fits an arbitrary viewport.
+        Acceptance: record viewport dimensions, device-pixel ratio and 100% zoom; primary controls,
+        generated output and required rack information are reachable/readable on the owner
+        desktop and agreed smaller viewports. No horizontal content loss or hidden controls.
+        Exercise interactions and output states, not geometry alone.
+        Evidence: design INDEX D04-D10; preserve existing #109 acceptance requirements.
+
+◻ #112 — Chat branding and clear Login/account entry
+        owner: unassigned — Garrett authorizes the execution gate
+        Improve Chat layout; replace "Talk to the box" / "Ask the box" with owner-approved
+        Symon / Symon Says wording. Put a clear Login control on the main landing page.
+        Preserve R-191 signup, account creation, owner super-admin and temporary-credential
+        requirements as OPEN; a visible Account link or existing auth code is not completion.
+        Acceptance: browser checks prove entry navigation and authorized login/signup flows;
+        branding is reviewed; backend authorization is independently tested where in scope.
+        Evidence: design INDEX D02, D09; existing #109 / R-191.
+
+◻ #113 — Control Board and concise per-application rackview
+        owner: unassigned — Garrett authorizes the execution gate
+        Refine Control Board into useful, concise controls/observations. Redesign per-app rackview
+        around the current application's telemetry rather than repeating the complete Live Stack.
+        Acceptance: distinguish measured, projected, unverified and unavailable values; controls
+        show honest states and errors; no decorative readiness claims; readable at 100% zoom.
+        Evidence: design INDEX D01, D08, D10; related #109.
+
+◻ #114 — First-party GPU/provider telemetry and execution classes
+        owner: unassigned — Garrett authorizes the execution gate
+        Live Stack execution classes: CPU, GPU, CLOUD, HYBRID, DEVICE; OFFLINE is availability.
+        Distinguish GRAPHICS from COMPUTE; map PID to app/provider where known; expose per-process
+        VRAM, GPU model, driver, CUDA, utilization, memory, temperature, power, governor lease,
+        queue, acquire/release times, unexpected compute PID and post-task leak state.
+        Cloud provider/model/request/token/latency/cost activity comes from the provider router.
+        Cloud providers must not depend on appearing in nvidia-smi. Unknown mappings/costs stay
+        unknown; desktop ChatGPT graphics memory is not proof of local provider inference.
+        Acceptance: controlled workload evidence attributes resources and release correctly;
+        source/capture time and unavailable fields are visible; no fabricated GPU/cloud metrics.
+        Evidence: design INDEX D12; SyMoNSaysLLC telemetry section.
+
+◻ #115 — Symon Coder control plane and bounded specialist subagents
+        owner: unassigned — Garrett authorizes the execution gate
+        Implement the separately planned Task Gate + Mutation Lease + Evidence Contract and
+        Controlled Tool Executor, preserving agent identity versus provider identity.
+        Parent Symon Coder may use provenance, Git, GPU, runtime, test, configuration,
+        license/custody, network and build/reproducibility specialists. Child defaults are
+        PROJECT/MUTATION/REPAIR AUTHORITY NONE; one mutation owner across the complete tree.
+        Acceptance: unauthorized paths/operations are rejected before host execution; evidence
+        distinguishes FACT/CORRELATION/INFERENCE/UNPROVEN/CONFIDENCE/MUTATIONS/STOP CONDITION;
+        parent verdict requires acceptance evidence. Existing coder modules are not this proof.
+        R-180 root authority migration is addressed by this documentation gate; wholesale removal
+        of provider-specific files and implemented control enforcement are not complete.
+        Reference: SyMoNSaysLLC.md; AGENTS.md; existing #90/#104/#109 as applicable.
+
+◻ #116 — Unified Studio and provider routing policy
+        owner: unassigned — Garrett authorizes the execution gate
+        Planned left app/model rail: Chat, Image, Sigils, Project, Coder, RavenCalc, Miner, future.
+        Right tools: Terminal, Browser, Files, Side Chat, Artifacts, Transcript Summary/Verbose.
+        Tabs: Workspace, Multi-Coder, Plugins, Function Block Grid, Model Setup, Providers,
+        Telemetry, Evidence. Local↔Cloud and Light↔Ultra/Code are backend-governed policies,
+        not a claim that every provider supports identical settings.
+        Acceptance: scoped real workflows run with authentication, task authority, truthful
+        capability/availability states and evidence. Prove separate render/runtime integration.
+        Image payload restoration does not establish Studio completion. No implementation here.
+
+◻ #117 — Multi-Coder response, rotation, batch and unanimous training
+        owner: unassigned — Garrett authorizes the execution gate
+        Preserve R-182/R-183/R-184/R-185/R-188 and #109. One prompt yields distinct attributed
+        responses for selected single, dual and tri presets. Disagreement gives the user options
+        and optional clarification/debate. Ordered plan/execute/report/next-plan rotation and
+        batch controls are separate from concurrent answer comparison.
+        Before tri-coder acceptance prove Codex's answer-only boundary, provider readiness and
+        per-user credential/quota isolation; prove live debate rather than assuming from a PID.
+        Training chooses subject/trainers/receiver. Require explicit 100% trainer agreement on
+        one exact version of the prompt before receiver dispatch; changes invalidate approval;
+        no majority, similarity score, hidden compromise, or trainer==receiver substitution.
+        Acceptance: rejected unauthorized actions, preserved choices/history, gated execution,
+        and actual training/evaluation evidence. Agreement alone is not trained-model evidence.
+
+◻ #118 — Plugin registry and execution classification
+        owner: unassigned — Garrett authorizes the execution gate
+        Classify each plugin by CPU/GPU/CLOUD/HYBRID/DEVICE dependencies and professional scope.
+        Establish source/license/third-party/runtime/entitlement/verification relationships under
+        the proprietary SyMoNeuRaL extension layer. Existing exp/reinforce/discovery are not proof
+        of the completed commercial plugin/control platform.
+        Acceptance: backend capability and permission contracts match actual plugin behavior;
+        classification never grants authority; applicable evidence and notices are retained.
+
+◻ #119 — Optional rembg and Whisper restoration
+        owner: unassigned — Garrett authorizes each bounded restoration gate
+        Keep rembg segmentation and Whisper speech payload/runtime gaps OPEN.
+        They do not block the accepted text Image/Sigils render results.
+        Acceptance: exact provenance/licensing/source identity and separate real segmentation
+        or speech workflows, with GPU/CPU ownership/release evidence where applicable.
+        Do not download, configure or launch either merely because this item exists.
+
+◻ #120 — Demo entitlements, remaining channels and delivery acceptance
+        owner: unassigned — Garrett authorizes bounded follow-on gates
+        Retain R-191/R-193: server-side per-user demo assignments; a cattle demo user must not
+        gain DispatchOS access. symonsaysadmin@symoneural.com, bhesley@symoneural.com and
+        gmcdonald@symoneural.com require all-demo access. All-demo is distinct from super-admin;
+        owner super-admin, user creation and temporary credential controls require real proof.
+        Do not silently resolve the earlier singular/plural admin-email spelling discrepancy:
+        use the owner's latest spelling above for the requirement and verify the account identity
+        before a future credential/privilege mutation. No accounts or credentials created here.
+        Keep Miner operation, Studio readiness, /demo/dispatchos, /receipts, /training.html and
+        requested page repairs/tests open where not already accepted. Mining needs its own
+        software/config/device/governor evidence, not image weights.
+        RavenCalc remains CPU-first for exact symbolic algebra; separately scope an OPTIONAL
+        GPU numerical/batched accelerator only for justified matrices/vectors/integration/batches.
+        Acceptance and release/custody scope must be named per next gate, not one all-app PASS.
+
+### Unresolved intake and historical disposition
+
+The ignored local INTAKE retains A-Q12 (DJ/Remix alias and token naming), A-Q13 (Chat cancellation),
+A-Q14 (inline-JavaScript migration scope), and A-R180 (provider-neutral documentation migration).
+No owner answers or completion statuses are invented here; the source entries remain byte-identical.
+GARRETT-REQUESTS remains the local request/disposition ledger. Historical next-executor and
+auto-promotion text in these records does not grant authority.
+
+Restored Chat/Remix and Image/Sigils payloads supersede old “no weights” observations only as
+documented in ProjectStatus; immutable image provenance is now committed. Full R-184, unified Studio,
+per-user auth, optional payloads, Miner and training milestones remain open.
