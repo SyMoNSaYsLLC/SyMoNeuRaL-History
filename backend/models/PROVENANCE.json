@@ -92,6 +92,8 @@
       "bytes_on_disk": 6884606880,
       "upstream_repo": "leejet/FLUX.1-schnell-gguf",
       "upstream_file": "flux1-schnell-q4_k.gguf",
+      "upstream_revision": "c7f665ddaf9f197ff493f41fc211f5480f5f19ac",
+      "sha256": "619697cc4c2bf587416aa1afa98d474a44c80eb4e3a3f64ea8f99ab0ed9adb7a",
       "license": "Apache-2.0",
       "license_text": "licenses/FLUX.1-schnell.MODEL-CARD.md",
       "modified_by_us": false
@@ -102,6 +104,8 @@
       "bytes_on_disk": 5199794784,
       "upstream_repo": "second-state/FLUX.1-schnell-GGUF",
       "upstream_file": "t5xxl-Q8_0.gguf",
+      "upstream_revision": "8c45a2ba25e2d02bd34230989fb54983f39e44ec",
+      "sha256": "fc07757bf7ad40eaf612acc7ed0c0a7ab71189979e0b8b4d14601017baca22de",
       "license": "Apache-2.0",
       "license_text": "licenses/FLUX.1-schnell.MODEL-CARD.md",
       "modified_by_us": false
@@ -112,6 +116,8 @@
       "bytes_on_disk": 246144152,
       "upstream_repo": "second-state/FLUX.1-schnell-GGUF",
       "upstream_file": "clip_l.safetensors",
+      "upstream_revision": "8c45a2ba25e2d02bd34230989fb54983f39e44ec",
+      "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
       "license": "Apache-2.0",
       "license_text": "licenses/FLUX.1-schnell.MODEL-CARD.md",
       "modified_by_us": false
@@ -122,6 +128,8 @@
       "bytes_on_disk": 335304388,
       "upstream_repo": "second-state/FLUX.1-schnell-GGUF",
       "upstream_file": "ae.safetensors",
+      "upstream_revision": "8c45a2ba25e2d02bd34230989fb54983f39e44ec",
+      "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
       "license": "Apache-2.0",
       "license_text": "licenses/FLUX.1-schnell.MODEL-CARD.md",
       "modified_by_us": false

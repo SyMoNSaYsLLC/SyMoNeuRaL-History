@@ -29,19 +29,65 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
 M="$ROOT/backend/models"
-get() { # url dest
-  local url="$1" dest="$2"
-  [ -s "$dest" ] && { echo "  have $(basename "$dest")"; return; }
+verify_sha256() { # file expected; an empty expectation preserves legacy non-image behavior
+  local file="$1" expected="${2:-}" actual
+  [ -n "$expected" ] || return 0
+  actual="$(sha256sum < "$file")" || return 1
+  actual="${actual%% *}"
+  if [ "$actual" != "$expected" ]; then
+    echo "SHA-256 mismatch for $file: expected $expected, got $actual" >&2
+    return 1
+  fi
+}
+get() { # url dest [expected-sha256]
+  local url="$1" dest="$2" expected="${3:-}"
+  [ -s "$dest" ] && {
+    verify_sha256 "$dest" "$expected" || return 1
+    echo "  have $(basename "$dest")"; return
+  }
   echo "  get  $(basename "$dest")"
   curl -fL --retry 5 --retry-delay 3 -C - -o "$dest.part" "$url"
+  verify_sha256 "$dest.part" "$expected" || return 1
   mv "$dest.part" "$dest"
 }
-adopt() { # legacy-path house-path
-  local old="$1" new="$2"
-  [ -s "$new" ] && return 0            # already adopted; say nothing
+adopt() { # legacy-path house-path [expected-sha256]
+  local old="$1" new="$2" expected="${3:-}"
+  if [ -s "$new" ]; then              # already adopted; verify before accepting
+    verify_sha256 "$new" "$expected"; return $?
+  fi
   [ -s "$old" ] || return 0            # never downloaded under the old name
+  verify_sha256 "$old" "$expected" || return 1
   mv "$old" "$new"
   echo "  adopt $(basename "$new") <- $(basename "$old")"
+}
+image_model() { # adopt|get manifest-path; pins are mandatory for these four payloads
+  local action="$1" path="$2" record repo file revision digest
+  record="$(python3 -B - "$M/PROVENANCE.json" "$path" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as manifest:
+    matches = [w for w in json.load(manifest)["weights"] if w["path"] == sys.argv[2]]
+if len(matches) != 1:
+    sys.exit(f"image provenance requires exactly one entry for {sys.argv[2]}")
+w = matches[0]
+for field, pattern in (("upstream_revision", r"[0-9a-f]{40}"), ("sha256", r"[0-9a-f]{64}")):
+    value = w.get(field)
+    if not isinstance(value, str) or not re.fullmatch(pattern, value):
+        sys.exit(f"invalid or missing image provenance {field}: {sys.argv[2]}")
+fields = [w["upstream_repo"], w["upstream_file"], w["upstream_revision"], w["sha256"]]
+if any(not isinstance(value, str) or not value or any(c in value for c in "\t\r\n") for value in fields):
+    sys.exit(f"invalid image provenance fields: {sys.argv[2]}")
+print("\t".join(fields))
+PY
+  )" || return 1
+  IFS=$'\t' read -r repo file revision digest <<< "$record"
+  case "$action" in
+    adopt) adopt "$M/image/$file" "$M/$path" "$digest" ;;
+    get) get "$HF/$repo/resolve/$revision/$file" "$M/$path" "$digest" ;;
+    *) echo "unknown image operation: $action" >&2; return 1 ;;
+  esac
 }
 # Unconditional, and deliberately above the opt-in gate below: a 27B that was fetched under
 # its upstream name must be renamed whether or not this run would fetch it.
@@ -51,10 +97,10 @@ adopt "$M/llm/Qwen2.5-14B-Instruct-Q4_K_M.gguf"  "$M/llm/symon-1.0-14b-q4_k_m.gg
 adopt "$M/llm/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-draft-0.5b-q4_k_m.gguf"
 adopt "$M/llm/Qwen3.6-27B-UD-Q2_K_XL.gguf"       "$M/llm/symon-1.0-27b-q2_k_xl.gguf"
 adopt "$M/llm/mmproj-F16.gguf"                   "$M/llm/symon-1.0-27b-vision-f16.gguf"
-adopt "$M/image/flux1-schnell-q4_k.gguf"         "$M/image/symoneural-image-unet-q4_k.gguf"
-adopt "$M/image/t5xxl-Q8_0.gguf"                 "$M/image/symoneural-image-t5-q8_0.gguf"
-adopt "$M/image/clip_l.safetensors"              "$M/image/symoneural-image-clip.safetensors"
-adopt "$M/image/ae.safetensors"                  "$M/image/symoneural-image-vae.safetensors"
+image_model adopt image/symoneural-image-unet-q4_k.gguf
+image_model adopt image/symoneural-image-t5-q8_0.gguf
+image_model adopt image/symoneural-image-clip.safetensors
+image_model adopt image/symoneural-image-vae.safetensors
 adopt "$M/whisper/ggml-base.en.bin"              "$M/whisper/symoneural-listen-base-en.bin"
 HF=https://huggingface.co
 echo "chat surface:"
@@ -121,10 +167,10 @@ else
   echo "chat surface (32B tier): skipped -- set SYMONEURAL_FETCH_32B=1 to fetch 12.80 GB"
 fi
 echo "image surface:"
-get "$HF/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_k.gguf"                 "$M/image/symoneural-image-unet-q4_k.gguf"
-get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/ae.safetensors"                    "$M/image/symoneural-image-vae.safetensors"
-get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/clip_l.safetensors"                "$M/image/symoneural-image-clip.safetensors"
-get "$HF/second-state/FLUX.1-schnell-GGUF/resolve/main/t5xxl-Q8_0.gguf"                   "$M/image/symoneural-image-t5-q8_0.gguf"
+image_model get image/symoneural-image-unet-q4_k.gguf
+image_model get image/symoneural-image-vae.safetensors
+image_model get image/symoneural-image-clip.safetensors
+image_model get image/symoneural-image-t5-q8_0.gguf
 # Licences travel with the weights. models/ is gitignored (40 GB), so these files exist
 # on disk beside what they cover rather than in git -- and they must be included in any
 # customer image. Apache-2.0 obliges shipping the licence text with the artefact.

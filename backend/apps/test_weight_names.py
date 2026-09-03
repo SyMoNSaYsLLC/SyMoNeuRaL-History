@@ -16,14 +16,25 @@ Three things are deliberately exempt, and `test_the_documented_exemptions_are_st
 pins the list so a fourth cannot be added silently. See the `note` block in the manifest for
 why each one is a lookup key owned by someone else's code rather than a label we chose.
 """
+import hashlib
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "backend" / "models"
 MANIFEST = MODELS / "PROVENANCE.json"
+IMAGE_PATHS = {
+    "image/symoneural-image-unet-q4_k.gguf",
+    "image/symoneural-image-t5-q8_0.gguf",
+    "image/symoneural-image-clip.safetensors",
+    "image/symoneural-image-vae.safetensors",
+}
 
 #: Anchored at both ends of the basename. `symon`, `symoneural`, `symonsays` and `symon-*`
 #: are the sanctioned prefixes; a bare `sym` is not one of them, which is why the character
@@ -65,6 +76,14 @@ class ManifestShape(unittest.TestCase):
                 self.assertTrue(w.get("upstream_file"), "no upstream_file")
                 self.assertTrue(w.get("license"), "no license")
                 self.assertIn("role", w, "no role -- what is this file for?")
+
+    def test_image_entries_require_immutable_revisions_and_sha256(self):
+        images = {w["path"]: w for w in self.weights if w["path"].startswith("image/")}
+        self.assertEqual(set(images), IMAGE_PATHS)
+        for path, w in images.items():
+            with self.subTest(path=path):
+                self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{40}", w["upstream_revision"]))
+                self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{64}", w["sha256"]))
 
     def test_every_entry_is_named_to_the_house_rule(self):
         for w in self.weights:
@@ -139,6 +158,182 @@ class OnDisk(unittest.TestCase):
             checked += 1
         if not checked:
             self.skipTest("no weights on this box")
+
+
+    def test_recorded_image_sha256_matches_existing_payloads(self):
+        checked = 0
+        for w in json.loads(MANIFEST.read_text())["weights"]:
+            path = MODELS / w["path"]
+            if w["path"] not in IMAGE_PATHS or not path.is_file():
+                continue
+            with self.subTest(path=w["path"]), path.open("rb") as payload:
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: payload.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                self.assertEqual(digest.hexdigest(), w["sha256"])
+            checked += 1
+        if not checked:
+            self.skipTest("no image weights on this box")
+
+
+class ImageProvenanceFetch(unittest.TestCase):
+    """Run the real fetch script in a tiny /tmp repository with a local curl stub.
+
+    No network or production paths are used. Same-length wrong bytes must never
+    become an accepted house payload, whether reused, renamed, or downloaded.
+    """
+
+    PAYLOAD = b"verified image fixture\n"
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="symoneural-provenance-", dir="/tmp")
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.models = self.root / "backend/models"
+        self.models.mkdir(parents=True)
+        (self.root / "backend/api.py").touch()
+        (self.root / "scripts").mkdir()
+        self.script = self.root / "scripts/fetch-models.sh"
+        shutil.copyfile(ROOT / "scripts/fetch-models.sh", self.script)
+        self.doc = json.loads(MANIFEST.read_text())
+        self.images = [w for w in self.doc["weights"] if w["path"] in IMAGE_PATHS]
+        for w in self.doc["weights"]:
+            path = self.models / w["path"]
+            path.parent.mkdir(exist_ok=True)
+            if w["path"] in IMAGE_PATHS:
+                w["sha256"] = hashlib.sha256(self.PAYLOAD).hexdigest()
+                w["bytes_on_disk"] = len(self.PAYLOAD)
+            else:
+                path.write_bytes(b"existing unrelated model")
+            if w["license_text"]:
+                license_path = self.models / w["license_text"]
+                license_path.parent.mkdir(exist_ok=True)
+                license_path.write_text("existing license")
+        self._save_manifest()
+        (self.root / "bin").mkdir()
+        curl = self.root / "bin/curl"
+        curl.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "args = sys.argv[1:]\n"
+            "with open(os.environ['CURL_CALLS'], 'a') as log:\n"
+            "    log.write(json.dumps(args) + '\\n')\n"
+            "Path(args[args.index('-o') + 1]).write_bytes(os.environ['CURL_PAYLOAD'].encode())\n"
+        )
+        curl.chmod(0o755)
+        self.calls_file = self.root / "curl.calls"
+        self.env = dict(os.environ, PATH=str(curl.parent) + os.pathsep + os.environ["PATH"],
+                        PYTHONDONTWRITEBYTECODE="1", CURL_CALLS=str(self.calls_file),
+                        CURL_PAYLOAD=self.PAYLOAD.decode(), SYMONEURAL_FETCH_27B="0",
+                        SYMONEURAL_FETCH_32B="0")
+
+    def _save_manifest(self):
+        (self.models / "PROVENANCE.json").write_text(json.dumps(self.doc))
+
+    def _run(self):
+        return subprocess.run(["bash", str(self.script)], cwd=self.root, env=self.env,
+                              text=True, capture_output=True, timeout=20)
+
+    def _calls(self):
+        return [json.loads(line) for line in self.calls_file.read_text().splitlines()] if self.calls_file.exists() else []
+
+    def test_download_urls_are_pinned_and_verified_before_promotion(self):
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertCountEqual([args[-1] for args in self._calls()], [
+            f"https://huggingface.co/{w['upstream_repo']}/resolve/{w['upstream_revision']}/{w['upstream_file']}"
+            for w in self.images
+        ])
+        for w in self.images:
+            path = self.models / w["path"]
+            self.assertEqual(path.read_bytes(), self.PAYLOAD)
+            self.assertFalse(Path(str(path) + ".part").exists())
+
+    def test_existing_verified_house_files_are_reused_without_fetching(self):
+        for w in self.images:
+            (self.models / w["path"]).write_bytes(self.PAYLOAD)
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self._calls(), [])
+
+    def test_matching_legacy_files_are_verified_before_adoption(self):
+        for w in self.images:
+            (self.models / "image" / w["upstream_file"]).write_bytes(self.PAYLOAD)
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self._calls(), [])
+        for w in self.images:
+            self.assertFalse((self.models / "image" / w["upstream_file"]).exists())
+            self.assertEqual((self.models / w["path"]).read_bytes(), self.PAYLOAD)
+
+    def test_same_size_corrupt_house_file_fails_without_replacement(self):
+        w = self.images[0]
+        path = self.models / w["path"]
+        corrupt = b"x" * len(self.PAYLOAD)
+        path.write_bytes(corrupt)
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SHA-256 mismatch", result.stderr)
+        self.assertEqual(path.read_bytes(), corrupt)
+        self.assertEqual(self._calls(), [])
+
+    def test_same_size_corrupt_legacy_file_is_not_adopted(self):
+        w = self.images[0]
+        legacy = self.models / "image" / w["upstream_file"]
+        corrupt = b"x" * len(self.PAYLOAD)
+        legacy.write_bytes(corrupt)
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SHA-256 mismatch", result.stderr)
+        self.assertEqual(legacy.read_bytes(), corrupt)
+        self.assertFalse((self.models / w["path"]).exists())
+        self.assertEqual(self._calls(), [])
+
+    def test_same_size_corrupt_download_is_not_promoted(self):
+        self.env["CURL_PAYLOAD"] = "x" * len(self.PAYLOAD)
+        result = self._run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SHA-256 mismatch", result.stderr)
+        for w in self.images:
+            self.assertFalse((self.models / w["path"]).exists())
+        self.assertEqual(len(self._calls()), 1)
+        part = Path(str(self.models / self.images[0]["path"]) + ".part")
+        self.assertEqual(part.read_bytes(), self.env["CURL_PAYLOAD"].encode())
+
+    def test_missing_or_invalid_pins_fail_closed(self):
+        for field, value in (("upstream_revision", "main"), ("upstream_revision", None),
+                             ("sha256", "0" * 63), ("sha256", None)):
+            with self.subTest(field=field, value=value):
+                old = self.images[0].pop(field)
+                if value is not None:
+                    self.images[0][field] = value
+                self._save_manifest()
+                result = self._run()
+                self.images[0][field] = old
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("image provenance", result.stderr)
+                self.assertEqual(self._calls(), [])
+        self._save_manifest()
+
+    def test_unrelated_model_adoption_and_main_fetch_are_unchanged(self):
+        for w in self.images:
+            (self.models / w["path"]).write_bytes(self.PAYLOAD)
+        language = [w for w in self.doc["weights"] if w["path"].startswith("llm/")]
+        adopted, fetched = language[:2]
+        adopted_path = self.models / adopted["path"]
+        old_bytes = adopted_path.read_bytes()
+        legacy = adopted_path.parent / adopted["upstream_file"]
+        adopted_path.rename(legacy)
+        (self.models / fetched["path"]).unlink()
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(adopted_path.read_bytes(), old_bytes)
+        self.assertFalse(legacy.exists())
+        self.assertEqual([args[-1] for args in self._calls()], [
+            f"https://huggingface.co/{fetched['upstream_repo']}/resolve/main/{fetched['upstream_file']}"
+        ])
+        self.assertEqual((self.models / fetched["path"]).read_bytes(), self.PAYLOAD)
 
 
 class NoForeignNamesInCode(unittest.TestCase):
