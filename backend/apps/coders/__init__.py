@@ -206,6 +206,53 @@ def preset_rows() -> list[dict[str, Any]]:
 #   2. A separate, empty working directory. The child never starts inside this repository.
 #   3. Process-group kill on deadline, so a wedged child cannot outlive the request.
 
+#: RULE 4, and it is an ALLOW-LIST because the deny-list version of this is unsafe by
+#: construction. `docs/ops/EXPORTS.md` already makes the argument for the exporter and it is
+#: the same argument here: a deny-list ships anything nobody classified, so one missed name
+#: leaks; an allow-list omits anything nobody classified, so a new secret is absent until
+#: someone deliberately names it. The two architectures give OPPOSITE answers for the variable
+#: that has not been thought about yet, and only one of them fails closed.
+#:
+#: WHAT WAS ACTUALLY LEAKING. This function passed `{**os.environ, ...}`, so every provider
+#: child was handed the whole API process environment. Measured on the running service
+#: 2026-09-03, that environment contains `SYM_CODER_TOKEN`, `SYM_STUDIO_TOKEN`,
+#: `SYM_PROJECT_TOKEN` and `SYMONEURAL_SESSION_SECRET` -- four secrets, exported into
+#: third-party CLIs that make outbound network calls. Rule 1 above already refuses to put a
+#: prompt in argv because `ps` is world-readable, and cites SESSION_SECRET being redacted from
+#: environment dumps as the precedent; the environment itself was the hole left beside it.
+#:
+#: WHAT THE CHILDREN GENUINELY NEED, and why each entry is here rather than convenient:
+#:   * HOME -- load-bearing, not incidental. The whole design is that a provider runs under
+#:     the operator's OWN logged-in session, and those credentials live in ~/.claude and
+#:     ~/.codex. Drop HOME and every provider reports itself unauthenticated.
+#:   * PATH -- CLAUDE_BIN and CODEX_BIN are absolute, so exec does not need it, but the CLIs
+#:     shell out (node, git) and a child with no PATH fails in ways that read as provider bugs.
+#:   * the locale, XDG, TLS-trust and proxy names -- encoding, config discovery, certificate
+#:     trust and egress. Omitting these breaks correctness, not secrecy.
+#: Nothing project-owned is here. No `SYM_*`, no `SYMONEURAL_*`, and
+#: `test_no_project_secret_reaches_a_provider_child` fails if one ever appears.
+_CHILD_ENV_ALLOW = frozenset({
+    "HOME", "PATH", "USER", "LOGNAME", "SHELL", "TMPDIR", "TERM",
+    "LANG", "LC_ALL", "LC_CTYPE",
+    "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy",
+})
+
+
+def child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment a provider child gets: allow-listed, plus explicit additions.
+
+    `extra` is applied AFTER the filter deliberately. A caller naming a variable has
+    classified it by naming it, which is exactly the act the allow-list exists to require --
+    the filter is there to stop *unclassified* inheritance, not to override a decision.
+    """
+    env = {k: v for k, v in os.environ.items() if k in _CHILD_ENV_ALLOW}
+    env.update(extra or {})
+    return env
+
+
 async def _run(argv: list[str], prompt: str, cwd: str, deadline: float,
                env: dict[str, str] | None = None) -> tuple[int, str, str]:
     proc = await asyncio.create_subprocess_exec(
@@ -214,7 +261,7 @@ async def _run(argv: list[str], prompt: str, cwd: str, deadline: float,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
-        env={**os.environ, **(env or {})},
+        env=child_env(env),
         start_new_session=True,          # own process group -> killable as a group
     )
     try:

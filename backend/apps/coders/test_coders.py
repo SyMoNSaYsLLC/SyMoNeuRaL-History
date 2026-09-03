@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+import unittest.mock
+import os
 
 from . import (Answer, PRESETS, agreement, preset_rows, provider_map, providers,
                _normalise, CODER_IDS)
@@ -301,3 +303,67 @@ class DebateRouteBoundaryTests(unittest.TestCase):
         remote = TestClient(app,client=("198.51.100.1",1234))
         self.assertEqual(remote.get("/local/coders/providers").status_code,404)
         self.assertEqual(local.get("/local/coders/providers").status_code,200)
+
+
+class ChildEnvironmentTests(unittest.TestCase):
+    """A provider child is a THIRD-PARTY binary that makes outbound network calls.
+
+    Whatever is in its environment has left this box's control, so the question is not
+    "would Claude or Codex misuse a token" but "is this box still the only thing that holds
+    it". Until 2026-09-03 the answer was no: `_run` passed `{**os.environ, ...}`, and the
+    running API's environment carries `SYM_CODER_TOKEN`, `SYM_STUDIO_TOKEN`,
+    `SYM_PROJECT_TOKEN` and `SYMONEURAL_SESSION_SECRET`.
+    """
+
+    def test_no_project_secret_reaches_a_provider_child(self):
+        """The regression guard. Named prefixes rather than named variables on purpose: a
+        secret added next month will be `SYM_`-something and nobody will remember to add it
+        here, which is the whole reason the filter is an allow-list."""
+        from . import child_env
+        polluted = dict(
+            os.environ,
+            SYM_CODER_TOKEN="tok-coder", SYM_STUDIO_TOKEN="tok-studio",
+            SYM_PROJECT_TOKEN="tok-project", SYMONEURAL_SESSION_SECRET="s3cr3t",
+            SYMONEURAL_A_FUTURE_SECRET="not-yet-invented",
+        )
+        with unittest.mock.patch.dict(os.environ, polluted, clear=True):
+            env = child_env()
+        leaked = sorted(k for k in env if k.startswith(("SYM_", "SYMONEURAL_")))
+        self.assertEqual(leaked, [], f"project variables reached the child: {leaked}")
+        # And the values, in case a name is ever laundered through a different key.
+        self.assertNotIn("s3cr3t", set(env.values()))
+        self.assertNotIn("tok-studio", set(env.values()))
+
+    def test_the_child_keeps_what_it_needs_to_work(self):
+        """The other direction, because a filter that empties the environment would pass the
+        test above and break every provider. HOME is the load-bearing one: the operator's
+        provider credentials live under it, so an empty HOME means every provider reports
+        itself unauthenticated and the surface looks broken rather than secured."""
+        from . import child_env
+        with unittest.mock.patch.dict(
+                os.environ,
+                {"HOME": "/home/google", "PATH": "/usr/bin", "LANG": "en_US.UTF-8",
+                 "SYM_STUDIO_TOKEN": "tok"}, clear=True):
+            env = child_env()
+        self.assertEqual(env.get("HOME"), "/home/google")
+        self.assertEqual(env.get("PATH"), "/usr/bin")
+        self.assertEqual(env.get("LANG"), "en_US.UTF-8")
+
+    def test_an_explicit_addition_still_wins(self):
+        """`extra` is applied after the filter deliberately: naming a variable IS classifying
+        it, and the allow-list exists to stop unclassified inheritance, not to veto a caller
+        that has decided."""
+        from . import child_env
+        with unittest.mock.patch.dict(os.environ, {"HOME": "/h"}, clear=True):
+            env = child_env({"SYMONEURAL_DELIBERATE": "yes"})
+        self.assertEqual(env.get("SYMONEURAL_DELIBERATE"), "yes")
+
+    def test_run_uses_the_filter_rather_than_os_environ(self):
+        """Structural: the leak was one dict-splat, and the fix is one call. If `_run` ever
+        goes back to splatting the process environment this fails, which the value-level
+        tests above cannot catch without spawning a real provider."""
+        import inspect
+        from . import _run
+        src = inspect.getsource(_run)
+        self.assertIn("env=child_env(env)", src)
+        self.assertNotIn("os.environ", src, "_run reads the process environment directly again")
