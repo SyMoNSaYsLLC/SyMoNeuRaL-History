@@ -1565,8 +1565,8 @@ def cmd_repl(args) -> int:
     # detail, it is derivable from the session id, and `/session` prints it in full. Six rows
     # of bootstrap text was the complaint this splash answers.
     # THE MODE IN FORCE, not the mode that was asked for. This passed `args.permissions or
-    # "auto"` -- the raw request -- while the loop below sends `resolved_permissions(args)` with
-    # every turn. `resolved_permissions`' own docstring names the resulting bug exactly: "a
+    # "auto"` -- the raw request -- while the loop below asks the shared resolver on every
+    # turn. That resolver's own docstring names the resulting bug exactly: "a
     # status line reading `auto` while the loop is denying is a lie shaped like a setting."
     #
     # Both resolutions are worth showing rather than hiding, because both surprise people:

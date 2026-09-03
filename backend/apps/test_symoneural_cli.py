@@ -417,9 +417,10 @@ class StatusLineTests(unittest.TestCase):
         # `(?<!def )` because the definition line matches the call spelling exactly, and a
         # test that counts its own subject is how a structural assertion goes vacuous.
         calls = re.findall(r"(?<!def )resolved_permissions\(args\)", src)
-        self.assertEqual(len(calls), 3,
-                         "three callers must ask the shared resolver: the mode SENT to the "
-                         "server in cmd_agent, the /permissions report, and the status line")
+        self.assertEqual(len(calls), 4,
+                         "four callers must ask the shared resolver: the mode SENT to the "
+                         "server in cmd_agent, the /permissions report, the status line, and "
+                         "the launch splash")
         self.assertEqual(src.count("if have_tty() else"), 1,
                          "the auto resolution exists in more than one place again")
 

@@ -24,10 +24,41 @@ node tests/responsive.mjs           # 24 pages x 8 viewports, against a running 
 node tests/architecture.mjs         # the readability and ownership floors responsive.mjs cannot see
 node tests/accessibility.mjs        # heading outlines and keyboard focus; writes SMOKE-ACCESSIBILITY.md
 node tests/chat_smoke.mjs           # chat.html end to end -- TAKES THE GPU, run it alone
+node tests/coders_smoke.mjs         # local scratch coder sessions + one real debate; provider accounts/GPU
+python3 -m pytest backend -q          # one invocation, from the repo root, no flags to remember
+```
+
+**That python line replaced three, and the reason is worth keeping.** It used to be
+
+```bash
 cd backend && python3 -m pytest apps/ -q \
     --ignore=apps/studio/plugins/reinforce/tests --ignore=apps/remix/tests
 cd backend/apps/remix && python3 -m pytest -q   # the 28 the line above has to exclude
 ```
+
+Every part of that was a workaround an operator had to carry in their head, and each one
+had already failed at least once:
+
+- **the `cd backend`** was load-bearing and undocumented. `apps/**` imports its siblings as
+  `apps.something`, which resolves only when `backend/` is on `sys.path`. Run from the repo
+  root instead and `apps/controlboard`, `apps/dispatchos`, `apps/live` and
+  `apps/streamer/guide` reported `ModuleNotFoundError: No module named 'apps'` as collection
+  ERRORS while passing 169/169 with the path set. `backend/conftest.py` now puts `backend/`
+  on `sys.path` — which is not a test-only convenience, it is what the service already does:
+  `ExecStart=/usr/bin/python3 .../backend/api.py` makes `backend/` `sys.path[0]` at runtime.
+- **the two `--ignore` flags** were an exclusion nobody could see from the failure. The
+  reinforce path in the line above had gone stale — that suite moved to
+  `apps/studio/plugins/reinforce/tests` — and the exclusion is now enforced by the suite
+  itself, which `importorskip`s cupy so it skips cleanly instead of erroring.
+- **the second invocation for `apps/remix`** existed because its tests import
+  `symoneural_dj` directly. `apps/remix/conftest.py` puts that package's own directory on
+  the path for both invocations, so remix is collected with everything else and needs no
+  separate run.
+- **`backend/vendor/`** is excluded by `collect_ignore_glob`, not by a flag. It holds the
+  vendored Anthropic and OpenAI SDKs — 15,297 tracked files with their own suites, including
+  `e2e-tests/` wanting network and provider credentials. Collecting them aborted the whole
+  run at 48 errors before a first-party test executed. Point pytest at `backend/vendor/...`
+  deliberately to run them; what is excluded is their appearance in *our* result.
 
 `run_ui_verification.mjs` is the normal entry point for the four application-wide suites:
 applications, responsive, frontend, then chat. It awaits each child before launching the
