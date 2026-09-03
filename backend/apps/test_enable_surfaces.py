@@ -63,6 +63,23 @@ LOOP_SRC = re.compile(r"^for pair in\b.*?^done$", re.M | re.S)
 # own literal branch rather than being special-cased in the test's expectations.
 GATEWAY_SET = re.compile(r"^\s*set_kv\s+SYMONEURAL_GATEWAY_ENABLED\s+1\s*$", re.M)
 
+#: Surfaces the script writes from a branch of their own rather than from the uniform
+#: `for pair in "$WANT_X X"` loop, so `LOOP_PAIR` cannot see them. Each needs a reason to be
+#: outside the loop, and each has one: Gateway writes two extra facts this script cannot
+#: invent (network, contract), and DispatchOS issues no shared bearer token at all -- its
+#: accounts are scrypt hashes written by `tools/dispatchos_accounts.py`, so the loop's
+#: token-minting body would be wrong for it.
+#:
+#: This was one hard-coded name until 2026-09-03, and the second one to appear was therefore
+#: invisible: `dispatchos` parsed, set WANT_DISPATCHOS, wrote SYMONEURAL_DISPATCHOS_ENABLED,
+#: and still failed `test_every_argument_the_parser_accepts_writes_something` with "nothing
+#: ever reads it" -- a true-sounding message that was false. A table cannot go stale the same
+#: way: adding a branch surface here is one line beside the others.
+BRANCH_WRITES = {
+    "GATEWAY": GATEWAY_SET,
+    "DISPATCHOS": re.compile(r"^\s*set_kv\s+SYMONEURAL_DISPATCHOS_ENABLED\s+1\s*$", re.M),
+}
+
 # The drop-in heredoc line. Compiled with re.M because it is one line inside the script,
 # not the whole file -- assertRegex takes no flags, so this cannot be inlined there.
 ENV_FILE_LINE = re.compile(r"^EnvironmentFile=-\$ENV_FILE$", re.M)
@@ -85,8 +102,7 @@ class EnableSurfacesTests(unittest.TestCase):
         cls.loop = {name for _flag, name in LOOP_PAIR.findall(cls.text)}
         cls.gated = gated_surfaces()
         cls.writable = set(cls.loop)
-        if GATEWAY_SET.search(cls.text):
-            cls.writable.add("GATEWAY")
+        cls.writable |= {n for n, pat in BRANCH_WRITES.items() if pat.search(cls.text)}
 
     def test_the_regexes_in_this_file_still_match_the_script(self):
         """The guard against every other test in this file passing vacuously. If the script is

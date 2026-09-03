@@ -172,7 +172,21 @@ class VendoredSdkTests(unittest.TestCase):
         trees = _vendored_trees()
         if not trees:
             self.skipTest("nothing vendored")
-        files = [str(p.relative_to(ROOT)) for t in trees for p in t.rglob("*") if p.is_file()]
+        # Compiled bytecode is not vendored source and must NOT be committed, so it is excluded
+        # from the question rather than from the answer. `__pycache__/` being gitignored inside a
+        # vendored tree is the pattern working, not swallowing anything: the `.py` beside it is
+        # tracked, and the `.pyc` is regenerable from it by definition.
+        #
+        # Measured 2026-09-03: this went red listing 58 files, every one a `.pyc` under
+        # `__pycache__/`, left behind when a repository-wide pytest run collected the vendored
+        # suites. No vendored source was ignored at all. The failure message told the reader to
+        # add a `.gitignore` negation for `backend/vendor`, which would have started committing
+        # bytecode -- a real change made to satisfy a test that had misread its own evidence.
+        #
+        # Same rule as `test_control_plane_matrix.is_app_module_dir`: a transient cache directory
+        # must never be able to turn a published invariant red.
+        files = [str(p.relative_to(ROOT)) for t in trees for p in t.rglob("*")
+                 if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"]
         self.assertTrue(files, "vendored trees contain no files")
         out = subprocess.run(["git", "check-ignore", "--stdin"], cwd=ROOT,
                              input="\n".join(files), capture_output=True, text=True,

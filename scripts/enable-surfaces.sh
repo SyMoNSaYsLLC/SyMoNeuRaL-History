@@ -2,13 +2,16 @@
 #
 # Switch on the token-gated surfaces that ship OFF by default: Coder, Project, Studio, Asic,
 # and the operator power switch this repo calls Rack. Optionally the TRON licensing Gateway,
-# which needs two facts this script cannot invent.
+# which needs two facts this script cannot invent, and DispatchOS, which issues no shared
+# token at all -- its accounts are per-person scrypt hashes written by
+# tools/dispatchos_accounts.py, so this script only flips its switch.
 #
 #   sudo ./scripts/enable-surfaces.sh project rack
 #   sudo ./scripts/enable-surfaces.sh coder studio                # local-only, see below
 #   sudo ./scripts/enable-surfaces.sh asic --rigs 10.0.0.11,10.0.0.12
 #   sudo ./scripts/enable-surfaces.sh gateway --network symoneural-test \
 #          --contract TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+#   sudo ./scripts/enable-surfaces.sh dispatchos                  # switch only; see above
 #   sudo ./scripts/enable-surfaces.sh --show                      # what is set, no secrets
 #
 # ## Why a drop-in and an env file rather than editing the unit
