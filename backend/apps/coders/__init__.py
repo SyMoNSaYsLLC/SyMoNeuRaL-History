@@ -65,6 +65,33 @@ _LOCKS: dict[str, asyncio.Lock] = {c: asyncio.Lock() for c in CODER_IDS}
 DEADLINE_S = 120.0
 MAX_PROMPT_CHARS = 8000
 MAX_DEBATE_ROUNDS = 3
+
+#: The switch, and OFF is the default. `apps/coder.enabled()` and `apps/asicminer.enabled()`
+#: already do it this way; this surface shipped without one, which left the rack's most
+#: effectful operator surface as the only one that was on the moment the API imported it.
+#:
+#: The asymmetry was backwards. Singular `coder` reads files and runs subprocesses and demands
+#: SYMONEURAL_CODER_ENABLED=1 *and* a token. Plural `coders` spawns provider CLIs under the
+#: operator's own logged-in Claude and Codex sessions -- strictly more authority than the
+#: gated surface -- and asked for nothing but a loopback peer.
+#:
+#: WHY THIS ONE TAKES NO TOKEN, stated so the difference is a decision and not an oversight.
+#: `coder` needs a token because it can be opened to the network: SYMONEURAL_CODER_ALLOW_REMOTE
+#: exists, so loopback is not its boundary and a shared secret has to be. This surface has no
+#: such escape hatch and must never grow one -- `_require_local` checks the socket peer AND
+#: refuses any x-forwarded-* header, and ops/Caddyfile delegates /coders precisely so a proxied
+#: request meets that refusal rather than a static file. A token defended against nothing that
+#: loopback-with-no-remote-option does not already exclude, and would have had to live in a
+#: page served over plain loopback HTTP to be usable.
+#:
+#: So the boundary here is: the switch is off unless deliberately set, and when it is on the
+#: only callers are processes already running as this operator on this machine.
+ENV_ENABLED = "SYMONEURAL_CODERS_ENABLED"
+
+
+def enabled() -> bool:
+    """True only when the operator has deliberately switched this surface on."""
+    return os.environ.get(ENV_ENABLED) == "1"
 MAX_DEBATE_CONTEXT_CHARS = 48000
 
 State = Literal["queued", "running", "completed", "failed", "timed_out", "canceled",

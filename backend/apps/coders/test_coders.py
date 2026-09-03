@@ -289,6 +289,13 @@ class AdapterAndBoundaryTests(unittest.IsolatedAsyncioTestCase):
 
 class DebateRouteBoundaryTests(unittest.TestCase):
     def test_debate_inherits_local_router_guard(self):
+        # Switched ON for the whole test, because the subject here is the LOCALITY gate and
+        # the two are independent. With the surface off every line below would read 404 and
+        # the test would pass while proving nothing about peers or proxy headers --
+        # `SurfaceSwitchTests.test_the_switch_does_not_override_the_locality_gate` is the one
+        # that checks they do not collapse into each other.
+        self.enterContext(unittest.mock.patch.dict(
+            os.environ, {"SYMONEURAL_CODERS_ENABLED": "1"}))
         from fastapi import FastAPI, Depends
         from fastapi.testclient import TestClient
         from api import _require_local
@@ -367,3 +374,55 @@ class ChildEnvironmentTests(unittest.TestCase):
         src = inspect.getsource(_run)
         self.assertIn("env=child_env(env)", src)
         self.assertNotIn("os.environ", src, "_run reads the process environment directly again")
+
+
+class SurfaceSwitchTests(unittest.TestCase):
+    """OFF is the default, and the switch is read per request rather than at import.
+
+    This surface shipped without a switch at all, which left the rack's most effectful
+    operator surface as the only one that was live the moment the API imported it -- while
+    singular `coder`, which has strictly less authority, demanded both an ENABLED flag and a
+    token. The asymmetry was backwards.
+    """
+
+    def _client(self, peer=("127.0.0.1", 1234)):
+        from fastapi import FastAPI, Depends
+        from fastapi.testclient import TestClient
+        from api import _require_local
+        from .routes import router
+        app = FastAPI()
+        app.include_router(router, prefix="/local/coders",
+                           dependencies=[Depends(_require_local)])
+        return TestClient(app, client=peer)
+
+    def test_absent_switch_means_off(self):
+        """Absent, not merely non-'1'. The default has to be off for a variable nobody set."""
+        env = {k: v for k, v in os.environ.items() if k != "SYMONEURAL_CODERS_ENABLED"}
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(self._client().get("/local/coders/providers").status_code, 404)
+
+    def test_switched_off_is_indistinguishable_from_never_built(self):
+        """404 and not 403. A switched-off surface that announced itself would let a local
+        process map what this box could do if it were turned on."""
+        with unittest.mock.patch.dict(os.environ, {"SYMONEURAL_CODERS_ENABLED": "0"}):
+            r = self._client().get("/local/coders/providers")
+        self.assertEqual(r.status_code, 404)
+
+    def test_switched_on_serves_a_loopback_caller(self):
+        """The other direction, or the gate above would pass by breaking the surface."""
+        with unittest.mock.patch.dict(os.environ, {"SYMONEURAL_CODERS_ENABLED": "1"}):
+            r = self._client().get("/local/coders/providers")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("providers", r.json())
+
+    def test_the_switch_does_not_override_the_locality_gate(self):
+        """Two independent gates. Switching the surface ON must not make it reachable from
+        off-box, and must not make an x-forwarded-* header acceptable."""
+        with unittest.mock.patch.dict(os.environ, {"SYMONEURAL_CODERS_ENABLED": "1"}):
+            remote = self._client(peer=("198.51.100.1", 1234))
+            self.assertEqual(remote.get("/local/coders/providers").status_code, 404)
+            local = self._client()
+            for header in ("X-Forwarded-For", "X-Forwarded-Host", "X-Real-IP"):
+                self.assertEqual(
+                    local.get("/local/coders/providers",
+                              headers={header: "198.51.100.1"}).status_code, 404)

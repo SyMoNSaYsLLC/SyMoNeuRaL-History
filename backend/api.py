@@ -4047,6 +4047,12 @@ async def coders_page(request: Request) -> FileResponse:
     serve it happily. Hence the explicit route and the explicit refusal.
     """
     _require_local(request)
+    # The same switch the router beneath this page enforces, checked here too. Serving the
+    # page while every endpoint it calls answers 404 would hand the operator a form that
+    # cannot work and read as a broken surface rather than a switched-off one.
+    from apps.coders import enabled as _coders_enabled  # noqa: PLC0415
+    if not _coders_enabled():
+        raise HTTPException(status_code=404)
     f = ROOT / "backend" / "apps" / "coders" / "page.html"
     if not f.is_file():
         raise HTTPException(status_code=404, detail="coders.html has not been generated")

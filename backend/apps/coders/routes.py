@@ -16,13 +16,35 @@ quietly open this up.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import (CODER_IDS, MAX_PROMPT_CHARS, DEADLINE_S, get_session, preset_rows,
-               providers, recent, run_session, run_debate, record_decision, MAX_DEBATE_ROUNDS)
+from . import (CODER_IDS, MAX_PROMPT_CHARS, DEADLINE_S, ENV_ENABLED, enabled,
+               get_session, preset_rows, providers, recent, run_session, run_debate,
+               record_decision, MAX_DEBATE_ROUNDS)
 
-router = APIRouter()
+
+def _require_enabled() -> None:
+    """The switch, checked on every route rather than at mount time.
+
+    At mount time it would be read ONCE, at import, so flipping the switch would need an API
+    restart to take effect in one direction and -- worse -- a surface enabled at boot would
+    stay enabled for the life of the process no matter what the environment said afterwards.
+    Reading it per request costs one dict lookup and means the switch means what it says.
+
+    404, not 403, and it is the same 404 `_require_local` returns to an off-box caller: a
+    surface that is switched off should be indistinguishable from a surface that was never
+    built, so probing cannot map what this box could do if it were turned on.
+    """
+    if not enabled():
+        raise HTTPException(status_code=404)
+
+
+#: Both gates on the router itself, so a route added to this file later inherits them rather
+#: than relying on its author to remember. `_require_local` is applied where the router is
+#: mounted, in api.py, because it needs the request's peer; this one needs nothing but the
+#: environment and so belongs with the surface it guards.
+router = APIRouter(dependencies=[Depends(_require_enabled)])
 
 
 class AskRequest(BaseModel):

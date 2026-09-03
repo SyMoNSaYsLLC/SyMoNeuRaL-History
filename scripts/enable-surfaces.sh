@@ -12,6 +12,7 @@
 #   sudo ./scripts/enable-surfaces.sh gateway --network symoneural-test \
 #          --contract TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #   sudo ./scripts/enable-surfaces.sh dispatchos                  # switch only; see above
+#   sudo ./scripts/enable-surfaces.sh coders                      # switch only; loopback-only
 #   sudo ./scripts/enable-surfaces.sh --show                      # what is set, no secrets
 #
 # ## Why a drop-in and an env file rather than editing the unit
@@ -77,11 +78,11 @@ show() {
 # ---------------------------------------------------------------- arguments
 
 WANT_CODER=0 WANT_PROJECT=0 WANT_RACK=0 WANT_GATEWAY=0 WANT_STUDIO=0 WANT_ASIC=0
-WANT_DISPATCHOS=0
+WANT_DISPATCHOS=0 WANT_CODERS=0
 GW_NETWORK="" GW_CONTRACT="" ASIC_RIGS=""
 
 [ $# -gt 0 ] || die "Nothing asked for." \
-  "Surfaces: coder project studio asic rack gateway dispatchos (or --show)."
+  "Surfaces: coder coders project studio asic rack gateway dispatchos (or --show)."
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -92,6 +93,7 @@ while [ $# -gt 0 ]; do
     studio)  WANT_STUDIO=1 ;;
     asic)    WANT_ASIC=1 ;;
     dispatchos) WANT_DISPATCHOS=1 ;;
+    coders)  WANT_CODERS=1 ;;
     --network)  GW_NETWORK="${2:-}"; shift ;;
     --rigs)     ASIC_RIGS="${2:-}"; shift ;;
     --contract) GW_CONTRACT="${2:-}"; shift ;;
@@ -203,6 +205,14 @@ done
 # this file that unlocks it. The accounts are in the store, and the passwords are set by
 # tools/dispatchos_accounts.py, which writes them to a root-owned 0600 file rather than to a
 # terminal -- a credential that has been displayed is spent (request ledger R-168).
+# Like dispatchos, a switch and nothing else -- this surface mints no shared bearer token.
+# It is reachable only from a loopback peer with no x-forwarded-* header (api.py
+# `_require_local`), and unlike `coder` it has no ALLOW_REMOTE escape hatch, so there is no
+# network path for a secret to defend. See backend/apps/coders/__init__.py for that reasoning.
+if [ "$WANT_CODERS" -eq 1 ]; then
+  set_kv SYMONEURAL_CODERS_ENABLED 1
+fi
+
 if [ "$WANT_DISPATCHOS" -eq 1 ]; then
   set_kv SYMONEURAL_DISPATCHOS_ENABLED 1
 fi

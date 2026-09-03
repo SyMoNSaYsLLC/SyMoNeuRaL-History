@@ -78,6 +78,11 @@ GATEWAY_SET = re.compile(r"^\s*set_kv\s+SYMONEURAL_GATEWAY_ENABLED\s+1\s*$", re.
 BRANCH_WRITES = {
     "GATEWAY": GATEWAY_SET,
     "DISPATCHOS": re.compile(r"^\s*set_kv\s+SYMONEURAL_DISPATCHOS_ENABLED\s+1\s*$", re.M),
+    # The third, added the day the surface grew a switch. Same shape as DISPATCHOS and for a
+    # related reason: `coders` mints no shared bearer token either, so the loop's token-minting
+    # body would be wrong for it. It is reachable only from a loopback peer with no
+    # x-forwarded-* header and has no ALLOW_REMOTE escape hatch.
+    "CODERS": re.compile(r"^\s*set_kv\s+SYMONEURAL_CODERS_ENABLED\s+1\s*$", re.M),
 }
 
 # The drop-in heredoc line. Compiled with re.M because it is one line inside the script,
