@@ -36,9 +36,11 @@ being faked with a disabled-looking button that secretly does nothing.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import hashlib
 import os
+import pathlib
 import shutil
 import time
 import uuid
@@ -92,6 +94,66 @@ ENV_ENABLED = "SYMONEURAL_CODERS_ENABLED"
 def enabled() -> bool:
     """True only when the operator has deliberately switched this surface on."""
     return os.environ.get(ENV_ENABLED) == "1"
+
+
+# ---- durable journal --------------------------------------------------------------------
+# `_SESSIONS` is a dict owned by one API worker, capped at MAX_SESSIONS and gone on restart.
+# That is the right store for serving a page, and the wrong one for answering "what did this
+# box ask a third-party provider, and what did the operator choose" a week later -- which is
+# the question a surface that spawns provider CLIs under the operator's own accounts has to
+# be able to answer. Same writer as `apps/coder._journal`: O_APPEND plus fsync so concurrent
+# appends interleave by line rather than corrupt, and 0600 because this is operator evidence.
+#
+# WHAT IS DELIBERATELY NOT IN A RECORD: the prompt text and the answer text. The journal is a
+# control-plane record -- who was asked, what happened, what was chosen -- and duplicating
+# model output into a second on-disk copy would widen exposure without answering a question
+# the record cannot already answer. `prompt_sha256` still pins WHICH prompt a row refers to,
+# so two runs of the same text are provably the same text without storing it twice.
+
+#: Repo root: backend/apps/coders/__init__.py -> parents[3].
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+
+
+def state_dir() -> pathlib.Path:
+    """`run/` by default. The override exists so tests never write live runtime state."""
+    raw = os.environ.get("SYMONEURAL_CODERS_STATE_DIR") or str(ROOT / "run")
+    return pathlib.Path(raw).expanduser().resolve()
+
+
+def journal_path() -> pathlib.Path:
+    return state_dir() / "coders.log"
+
+
+def journal(event: str, session_id: str, **detail: Any) -> None:
+    """Append one record. Never raises: evidence must not be able to fail a completed run.
+
+    The opposite choice from `apps/coder._journal`, and the difference is which way the
+    failure should fall. There, the record is written BEFORE a mutation and must be able to
+    refuse it -- an untraced edit to a live site is worse than a refused edit. Here the work
+    is already done and paid for by the time there is anything to record; raising would turn
+    a full disk into a lost provider answer the operator has already waited two minutes for.
+    """
+    try:
+        d = state_dir()
+        d.mkdir(parents=True, exist_ok=True)     # lazy: nothing created at import
+        rec = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "event": event,
+            "session_id": session_id,
+            "pid": os.getpid(),
+        }
+        rec.update(detail)
+        line = json.dumps(rec, sort_keys=True, default=str) + "\n"
+        fd = os.open(journal_path(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.write(fd, line.encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
 MAX_DEBATE_CONTEXT_CHARS = 48000
 
 State = Literal["queued", "running", "completed", "failed", "timed_out", "canceled",
@@ -630,6 +692,13 @@ async def run_session(prompt: str, coder_ids: list[str],
     order = {c: i for i, c in enumerate(coder_ids)}
     s.answers.sort(key=lambda a: order.get(a.coder_id, 99))
     s.state = "done"
+    journal("session", sid,
+            prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
+            prompt_chars=len(prompt),
+            asked=list(coder_ids),
+            outcomes={a.coder_id: a.state for a in s.answers},
+            elapsed_s={a.coder_id: round((a.finished_at or 0) - (a.started_at or 0), 3)
+                       for a in s.answers})
     return s
 
 
@@ -662,6 +731,10 @@ def record_decision(s: Session, coder_id: str, expected_round: int) -> None:
     s.decision = coder_id
     s.decisions.append({"coder_id": coder_id, "round_number": expected_round,
                         "created_at": time.time()})
+    # The operator's choice between answers that exist. This is the row that makes the
+    # journal worth keeping: the outcomes above say what the providers did, this says what
+    # the human decided, and a rotation record is not evidence without both.
+    journal("decision", s.session_id, chose=coder_id, round_number=expected_round)
 
 
 async def run_debate(s: Session, clarification: str, expected_round: int,
@@ -725,4 +798,10 @@ async def run_debate(s: Session, clarification: str, expected_round: int,
     finally:
         r.finished_at = time.time()
         s.state = "done"
+        # In `finally`, so a round that was cancelled or raised is still recorded. A journal
+        # that only holds successes cannot answer "what did this box spend", which is most of
+        # why it exists.
+        journal("debate", s.session_id, round_number=r.number,
+                clarification_chars=len(clarification),
+                outcomes={a.coder_id: a.state for a in r.answers})
     return s

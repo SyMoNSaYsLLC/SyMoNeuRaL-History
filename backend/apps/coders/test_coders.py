@@ -7,6 +7,8 @@ Those are the requirement; a passing fan-out is only the easy half.
 from __future__ import annotations
 
 import asyncio
+import json
+import hashlib
 import unittest
 import unittest.mock
 import os
@@ -426,3 +428,70 @@ class SurfaceSwitchTests(unittest.TestCase):
                 self.assertEqual(
                     local.get("/local/coders/providers",
                               headers={header: "198.51.100.1"}).status_code, 404)
+
+
+class JournalTests(unittest.TestCase):
+    """`_SESSIONS` is a dict owned by one worker, capped and gone on restart. That answers
+    "what is on the page"; it cannot answer "what did this box ask a third-party provider,
+    and what did the operator choose" a week later -- which a surface spawning provider CLIs
+    under the operator's own accounts has to be able to answer."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.enterContext(unittest.mock.patch.dict(
+            os.environ, {"SYMONEURAL_CODERS_STATE_DIR": self._tmp.name}))
+        self.addCleanup(self._tmp.cleanup)
+
+    def _lines(self):
+        from . import journal_path
+        p = journal_path()
+        if not p.exists():
+            return []
+        return [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
+
+    def test_a_record_is_appended_and_fsynced_with_owner_only_permissions(self):
+        from . import journal, journal_path
+        journal("session", "abc123", asked=["symon"])
+        self.assertEqual(oct(journal_path().stat().st_mode)[-3:], "600",
+                         "operator evidence must not be world-readable")
+        rows = self._lines()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["event"], "session")
+        self.assertEqual(rows[0]["session_id"], "abc123")
+        self.assertEqual(rows[0]["asked"], ["symon"])
+        self.assertIn("ts", rows[0])
+
+    def test_records_append_rather_than_replace(self):
+        """The failure that makes a journal worthless is silently keeping only the last row."""
+        from . import journal
+        for i in range(3):
+            journal("session", f"s{i}")
+        self.assertEqual([r["session_id"] for r in self._lines()], ["s0", "s1", "s2"])
+
+    def test_neither_prompt_nor_answer_text_is_written(self):
+        """A control-plane record, not a second copy of model output. `prompt_sha256` still
+        pins WHICH prompt a row refers to without storing it twice."""
+        from . import journal
+        secret = "a prompt that must not land on disk twice"
+        journal("session", "s1",
+                prompt_sha256=hashlib.sha256(secret.encode()).hexdigest(),
+                prompt_chars=len(secret))
+        blob = json.dumps(self._lines())
+        self.assertNotIn(secret, blob)
+        self.assertIn(hashlib.sha256(secret.encode()).hexdigest(), blob)
+
+    def test_a_failed_write_cannot_lose_a_completed_answer(self):
+        """Deliberately the opposite of `apps/coder._journal`, which raises so an untraced
+        mutation is refused. Here the provider work is already done and paid for by the time
+        there is anything to record, so a full disk must not turn into a lost answer."""
+        from . import journal
+        with unittest.mock.patch("os.open", side_effect=OSError("ENOSPC")):
+            journal("session", "s1")          # must not raise
+        self.assertEqual(self._lines(), [])
+
+    def test_nothing_is_created_merely_by_importing(self):
+        """Lazy, like apps/coder. Importing the module on a box where the surface is switched
+        off must not create runtime state."""
+        from . import journal_path
+        self.assertFalse(journal_path().exists())
