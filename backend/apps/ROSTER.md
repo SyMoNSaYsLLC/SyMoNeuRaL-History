@@ -129,6 +129,16 @@ A directory here is not a claim to a row on the front page. These are not omissi
   row on 2026-08-29 (see the fold note above the table) and `discovery` has never had a
   surface. `exp` was the only plugin with a row of its own and the sentence that stood here
   said so; that is the sentence the fold retired.
+- **`coders`** — the multi-coder session surface (R-184): one prompt, every selected coder
+  answers, each answer shown attributed. It is an **operator** surface, not a rack
+  application: it holds no weights, takes no GPU lease of its own (Symon's answer goes
+  through `/api/chat`, which takes the lease the governor already accounts for), and serves
+  no public page. Its routes are `/local/coders/*` and its page is `/coders`, both refused
+  off-box by `_require_local` — because an adapter here spawns provider CLIs under the
+  operator's own logged-in sessions, and `ops/Caddyfile` delegates the whole `/api/*`
+  subtree to the public internet. A rack row would advertise on a public page a surface
+  that deliberately answers 404 to every public caller.
+
 - **`accounts`**, **`capture`**, **`controlboard`**, **`licensing`**, **`news`** —
   infrastructure behind the surfaces, not surfaces. `controlboard` *drives* the rack's
   operator overrides; a row for it would be the rack reporting on itself. `news` renders the
