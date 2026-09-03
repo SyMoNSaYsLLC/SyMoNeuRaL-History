@@ -302,9 +302,31 @@ esac
 #
 # INVARIANT PROVED, stated no more strongly: candidate content, file mode and object type
 # MATCH HEAD AS GIT RECORDS THEM. This is not a claim of post-filter byte-identity on disk.
-# Note also that without `git update-index --refresh` a stat-only change can be reported as
-# modified. That direction is conservative -- it refuses a file that may be identical -- so
-# it is accepted rather than worked around.
+# STAT-ONLY DRIFT, and this paragraph used to say the opposite. It said that without
+# `git update-index --refresh` a stat-only change can be reported as modified, and that the
+# direction is conservative -- refusing a file that may be identical -- "so it is accepted
+# rather than worked around".
+#
+# It is worked around now, because the cost was not theoretical. `diff-index` compares the
+# working tree against the INDEX's cached stat data first, so a file that was rewritten with
+# byte-identical content inside git's one-second racy window reads as modified. That refuses
+# a release for a file that is identical to HEAD, and it does it intermittently, which is the
+# worst shape for a release gate: it passes when you test it and refuses when you ship.
+# Measured here 2026-09-03 -- `test_p2b_modified_candidate_refused_then_restored_succeeds`
+# restores a file exactly and then failed, but only under full-suite load; eleven consecutive
+# isolated runs of the same test passed.
+#
+# THE REFRESH CANNOT WEAKEN THE CHECK, which is the whole reason it is safe to add.
+# `update-index --refresh` re-stats files whose CONTENT still matches the index and updates
+# only their cached stat data. A file whose content genuinely differs stays modified -- there
+# is no argument to this command that makes real drift look clean. So the conservative
+# direction is preserved for every real difference and dropped only for the false ones.
+#
+# `|| true` because it exits non-zero when it finds paths needing update, which is normal and
+# is not an error here. `-q` keeps the "needs update" chatter off stderr, where this script's
+# only output is refusals.
+git -C "$ROOT" update-index --refresh -q >/dev/null 2>&1 || true
+
 drift=0
 for path in "${CANDIDATES[@]}"; do
   # Tracked in HEAD? Three outcomes, all handled: 0 present, 1 absent, >=2 error. An error
