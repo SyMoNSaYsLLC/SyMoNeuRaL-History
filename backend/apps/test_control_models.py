@@ -93,26 +93,60 @@ class ControlModelsStructureTests(unittest.TestCase):
                             f"{name} names no authority -- it may be reimplementing logic")
 
 
-class ZeroPayloadReportingTests(unittest.TestCase):
-    """The measured state is 0 payloads. Every launcher must say so rather than imply success."""
+class PayloadReportingTests(unittest.TestCase):
+    """Every launcher must report the measured payload count rather than imply a state.
+
+    This class asserted `measured == 0` until 2026-09-03, with the failure message "a real
+    payload appeared; A-1 assumptions must be re-verified". A real payload did appear -- six
+    of them, restored from custody -- so the premise has been re-verified and the assertions
+    are now written as invariants that hold at ANY count, including zero.
+
+    That is the point the module docstring was already making: assert the reported count
+    against a live re-measurement rather than against any written number. A test that
+    hard-codes today's number is the same defect as a docstring that does, and it fails the
+    moment the project succeeds at something.
+    """
 
     def setUp(self):
         self.measured = measured_payload_count()
 
-    def test_measured_state_is_zero(self):
-        self.assertEqual(self.measured, 0,
-                         "a real payload appeared; A-1 assumptions must be re-verified")
+    def test_python_and_shell_measurements_agree(self):
+        """Two independent counters of the same thing must not drift.
+
+        `measured_payload_count()` here and `payload_count` in `_models_common.sh` walk
+        `backend/models` with the same rules by hand. If they disagree, one of them is the
+        wrong answer to "what is installed" and there is no way to tell which from output
+        alone -- which is exactly the second-source-of-truth problem control/ exists to stop.
+        """
+        r = subprocess.run(
+            ["bash", "-c",
+             f'set +u; source "{MODELS}/_models_common.sh" >/dev/null 2>&1; payload_count'],
+            capture_output=True, text=True)
+        self.assertEqual(r.stdout.strip(), str(self.measured),
+                         "shell payload_count and the Python re-measurement disagree")
 
     def test_list_reports_payload_count_matching_measurement(self):
         r = run("models-list.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"LEARNED MODEL PAYLOADS: {self.measured}", r.stdout)
 
-    def test_zero_payload_state_is_named_not_implied(self):
+    def test_payload_state_wording_tracks_the_measurement(self):
+        """The zero-state sentence must appear when the count is zero, and only then.
+
+        Both directions matter. Missing it on an empty box reads as a failed command;
+        printing it on a box with six payloads would be a false statement about the
+        machine, which is the failure mode this file was written to catch.
+        """
         r = run("models-list.sh")
-        self.assertIn("no model installed", r.stdout,
-                      "zero-payload state must be stated explicitly")
-        self.assertIn("valid state", r.stdout, "absence must not read as an error")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        if self.measured == 0:
+            self.assertIn("no model installed", r.stdout,
+                          "zero-payload state must be stated explicitly")
+            self.assertIn("valid state", r.stdout, "absence must not read as an error")
+        else:
+            self.assertNotIn("no model installed", r.stdout,
+                             f"{self.measured} payloads on disk, but the launcher still "
+                             f"says no model is installed")
 
     def test_read_launchers_all_exit_zero_with_no_model(self):
         """'No model installed' is success, not failure."""
@@ -120,10 +154,18 @@ class ZeroPayloadReportingTests(unittest.TestCase):
             r = run(name)
             self.assertEqual(r.returncode, 0, f"{name} exited {r.returncode}: {r.stderr[:200]}")
 
-    def test_checksums_says_nothing_to_verify(self):
+    def test_checksums_reports_the_state_it_actually_found(self):
+        """Zero objects is stated as such; a non-empty box must not claim there is nothing
+        to verify. `models-checksums.sh` already branches on the count -- this asserts both
+        arms, so restoring payloads cannot leave it printing the empty-box sentence."""
         r = run("models-checksums.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("no payload objects require verification", r.stdout)
+        if self.measured == 0:
+            self.assertIn("no payload objects require verification", r.stdout)
+        else:
+            self.assertNotIn("no payload objects require verification", r.stdout,
+                             f"{self.measured} payloads on disk, but checksums reports "
+                             f"nothing requires verification")
 
     def test_compat_answerable_without_a_model(self):
         """Runtime capability is independent of model presence."""
@@ -144,10 +186,31 @@ class ProvenanceNotPayloadTests(unittest.TestCase):
                       "must state that a record is not evidence of presence")
 
     def test_record_count_does_not_become_payload_count(self):
+        """The payload line must carry the measured payload count, not the record count.
+
+        This asserted the literal "0" was present in the payload line, which only worked
+        while both numbers were 0 -- it would have passed just as happily if the record
+        count had been printed as the payload count, since both read "0". Comparing the
+        two parsed integers against an independent measurement is the assertion that
+        actually catches the confusion the class is named after.
+        """
         r = run("models-provenance.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
         payload_line = [l for l in r.stdout.splitlines() if "LEARNED MODEL PAYLOADS" in l][0]
-        self.assertIn("0", payload_line,
-                      "records must not be counted as payloads")
+        self.assertIn(f"LEARNED MODEL PAYLOADS: {self.measured}", payload_line,
+                      "the payload line must report the measured payload count")
+        record_lines = [l for l in r.stdout.splitlines() if l.strip().startswith("records:")]
+        self.assertTrue(record_lines, "provenance must report a record count or UNKNOWN")
+        records = int(record_lines[0].split(":")[1].strip())
+        self.assertGreater(records, 0,
+                           "PROVENANCE.json holds records; reporting 0 means the manifest "
+                           "shape was not recognised (it is a list under 'weights')")
+        if records != self.measured:
+            self.assertNotIn(f"LEARNED MODEL PAYLOADS: {records}", r.stdout,
+                             "record count was printed as the payload count")
+
+    def setUp(self):
+        self.measured = measured_payload_count()
 
     def test_licence_reports_unverified_not_a_conclusion(self):
         r = run("models-license.sh")

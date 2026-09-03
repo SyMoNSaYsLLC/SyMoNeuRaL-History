@@ -32,6 +32,25 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# `cupy` is deliberately absent from the system interpreter: backend/DEPENDENCIES.md
+# records that this plugin's tests are excluded from the `apps/` run because "cupy is
+# not on the system interpreter and must not be, because that is the serving path."
+#
+# That exclusion used to live only in an `--ignore` flag operators had to remember, and
+# the path in the documented command (`apps/reinforce/tests`) no longer exists -- this
+# package moved under `apps/studio/plugins/`. So a plain repository-wide `pytest` hit the
+# import below and reported `ModuleNotFoundError: No module named 'cupy'` as a collection
+# ERROR, which is indistinguishable from a broken test at a glance.
+#
+# Skipping here makes the exclusion self-enforcing and keeps cupy off the serving
+# interpreter, which is the same "waive the capability, skip cleanly rather than fail"
+# rule constraint 4 in this module's docstring already applies to single-GPU P2P.
+pytest.importorskip(
+    "cupy",
+    reason="cupy-cuda13x is intentionally not installed on the serving interpreter; "
+           "run this plugin's suite in its own venv (see requirements.txt)",
+)
+
 from symoneural.compute.ops import Ops                      # noqa: E402
 from symoneural.compute.program import (                    # noqa: E402
     KernelCache,

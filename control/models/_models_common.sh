@@ -62,7 +62,14 @@ print_payload_state() {
     printf 'LEARNED MODEL PAYLOADS: UNKNOWN (%s not readable)\n' "$MODELS_DIR"
   else
     printf 'LEARNED MODEL PAYLOADS: %s\n' "$n"
-    [ "$n" -eq 0 ] && printf '  no model installed -- this is a valid state, not an error\n'
+    # An `if` rather than `[ ... ] && printf`, because this is the last statement of the
+    # last function most read launchers call, so its value IS the script's exit status.
+    # `[ 6 -eq 0 ] && ...` short-circuits to 1, and eight read-only launchers therefore
+    # exited 1 -- reporting failure precisely BECAUSE payloads had been restored, while
+    # printing a completely correct inventory. It only passed while the count was 0.
+    if [ "$n" -eq 0 ]; then
+      printf '  no model installed -- this is a valid state, not an error\n'
+    fi
   fi
 }
 

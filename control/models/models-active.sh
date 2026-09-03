@@ -8,4 +8,9 @@ say "── active defaults (configuration, not presence) ───────�
 python3 "$INVENTORY" 2>/dev/null | sed -n '/ACTIVE DEFAULTS/,/^--/p' | sed '$d'
 echo
 print_payload_state
-[ "$(payload_count)" = "0" ] && warn "a selected model is not a loaded model -- 0 payloads on disk"
+# Last statement of the script, so its value is the exit status -- see the note in
+# _models_common.sh's print_payload_state. `[ 6 = 0 ] && warn` short-circuits to 1 and
+# made this read-only launcher report failure once payloads existed.
+if [ "$(payload_count)" = "0" ]; then
+  warn "a selected model is not a loaded model -- 0 payloads on disk"
+fi
