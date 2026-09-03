@@ -139,6 +139,16 @@ A directory here is not a claim to a row on the front page. These are not omissi
   subtree to the public internet. A rack row would advertise on a public page a surface
   that deliberately answers 404 to every public caller.
 
+  **Off by default**, 2026-09-03: `SYMONEURAL_CODERS_ENABLED=1`, checked per request, and
+  `sudo ./scripts/enable-surfaces.sh coders` is the supported way to set it. It takes no
+  token, and the difference from singular `coder` is a decision rather than an oversight --
+  `coder` can be opened to the network by `SYMONEURAL_CODER_ALLOW_REMOTE`, so loopback is not
+  its boundary and a shared secret has to be; this surface has no such escape hatch and must
+  never grow one. Provider children get an **allow-listed** environment (`child_env`), not
+  `os.environ`, so no `SYM_*` or `SYMONEURAL_*` secret reaches a third-party CLI. Sessions,
+  operator decisions and debate rounds are journalled to `run/coders.log` (0600, append +
+  fsync, no prompt or answer text -- `prompt_sha256` pins which prompt a row refers to).
+
 - **`accounts`**, **`capture`**, **`controlboard`**, **`licensing`**, **`news`** —
   infrastructure behind the surfaces, not surfaces. `controlboard` *drives* the rack's
   operator overrides; a row for it would be the rack reporting on itself. `news` renders the

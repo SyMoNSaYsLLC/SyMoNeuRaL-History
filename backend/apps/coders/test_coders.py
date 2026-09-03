@@ -320,8 +320,8 @@ class ChildEnvironmentTests(unittest.TestCase):
     Whatever is in its environment has left this box's control, so the question is not
     "would Claude or Codex misuse a token" but "is this box still the only thing that holds
     it". Until 2026-09-03 the answer was no: `_run` passed `{**os.environ, ...}`, and the
-    running API's environment carries `SYM_CODER_TOKEN`, `SYM_STUDIO_TOKEN`,
-    `SYM_PROJECT_TOKEN` and `SYMONEURAL_SESSION_SECRET`.
+    running API's environment carries the coder, studio and project tokens (still under their pre-rename `SYM_`
+    spellings here) plus `SYMONEURAL_SESSION_SECRET`.
     """
 
     def test_no_project_secret_reaches_a_provider_child(self):
@@ -329,10 +329,16 @@ class ChildEnvironmentTests(unittest.TestCase):
         secret added next month will be `SYM_`-something and nobody will remember to add it
         here, which is the whole reason the filter is an allow-list."""
         from . import child_env
+        # BOTH spellings of each token, because the rename in `apps/symoneuralenv.py` is
+        # partway through this tree: the running service still carries the pre-rename `SYM_`
+        # names while new code writes `SYMONEURAL_`. A filter that caught only one prefix
+        # would look correct on whichever half the author happened to test.
         polluted = dict(
             os.environ,
-            SYM_CODER_TOKEN="tok-coder", SYM_STUDIO_TOKEN="tok-studio",
-            SYM_PROJECT_TOKEN="tok-project", SYMONEURAL_SESSION_SECRET="s3cr3t",
+            SYM_CODER_TOKEN="tok-coder", SYMONEURAL_CODER_TOKEN="tok-coder",
+            SYM_STUDIO_TOKEN="tok-studio", SYMONEURAL_STUDIO_TOKEN="tok-studio",
+            SYM_PROJECT_TOKEN="tok-project", SYMONEURAL_PROJECT_TOKEN="tok-project",
+            SYMONEURAL_SESSION_SECRET="s3cr3t",
             SYMONEURAL_A_FUTURE_SECRET="not-yet-invented",
         )
         with unittest.mock.patch.dict(os.environ, polluted, clear=True):

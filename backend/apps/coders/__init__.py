@@ -304,9 +304,12 @@ def preset_rows() -> list[dict[str, Any]]:
 #:
 #: WHAT WAS ACTUALLY LEAKING. This function passed `{**os.environ, ...}`, so every provider
 #: child was handed the whole API process environment. Measured on the running service
-#: 2026-09-03, that environment contains `SYM_CODER_TOKEN`, `SYM_STUDIO_TOKEN`,
-#: `SYM_PROJECT_TOKEN` and `SYMONEURAL_SESSION_SECRET` -- four secrets, exported into
-#: third-party CLIs that make outbound network calls. Rule 1 above already refuses to put a
+#: 2026-09-03, that environment carries the coder, studio and project tokens plus
+#: `SYMONEURAL_SESSION_SECRET` -- four secrets, exported into third-party CLIs that make
+#: outbound network calls. The three tokens are still present under their pre-rename `SYM_`
+#: spellings on this box, which is why the guard below matches BOTH prefixes rather than the
+#: canonical one: `SYMONEURAL_CODER_TOKEN` and `SYMONEURAL_STUDIO_TOKEN` are the names
+#: `apps/symoneuralenv.py` is migrating them to, and either spelling must be refused. Rule 1 above already refuses to put a
 #: prompt in argv because `ps` is world-readable, and cites SESSION_SECRET being redacted from
 #: environment dumps as the precedent; the environment itself was the hole left beside it.
 #:
