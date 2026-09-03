@@ -321,10 +321,26 @@ The exclusive right to mutate a scope. **This is the record the whole plane exis
 | `owner_boot_id` | TEXT | contents of `/proc/sys/kernel/random/boot_id` at acquisition |
 | `released_at`, `released_by`, `release_reason` | REAL/TEXT | `released` / `expired` / `revoked` / `stale-broken` |
 
+**`state` is advisory for `active` rows and authoritative only for terminal ones.** The terminal
+states — `released`, `revoked`, and an expiry already swept — cannot un-terminate, so a reader may
+trust them. `active` may not be trusted on its own: it means "was active when last swept", and the
+sweep is lazy by design (§4 EXPIRE). Every read path must therefore evaluate
+`state = 'active' AND expires_at > now AND owner_alive()`, never `state = 'active'` alone. The column
+exists so the audit trail records *how* a lease ended; it is a cache of a decision, not the decision.
+A reader that trusts it directly is the fail-open bug this plane exists to prevent, and it would pass
+every test in §12 that does not manipulate the clock.
+
 `owner_boot_id` is not ceremony. `kill -0` on a recycled pid after a reboot reports *alive* for an
 unrelated process, which would make a dead owner's lease look live forever. Comparing the boot id
 first turns every pre-reboot lease into an unambiguous `OWNER_DEAD`. The GPU governor does not need
 this because its lock directory does not survive a reboot; a SQLite row does.
+
+**Confirmed available on this box, 2026-09-03:** `/proc/sys/kernel/random/boot_id` reads
+`c6c8a595-…` (a UUID, regenerated each boot). It is the only mechanism in this plan with no in-repo
+precedent, so it was checked rather than assumed. If it is ever unreadable, the fallback is `btime`
+from `/proc/stat` (currently `1788451599`), which is the boot wall-clock in seconds — coarser, and
+adequate, since the only question asked of it is "same boot or not". Read it once at process start
+and cache it; it cannot change without the process dying.
 
 Creation: `ACQUIRE` (§4). Expiry: `expires_at`. Transitions: §4.
 
@@ -1080,10 +1096,22 @@ green over a plane that refuses nothing.
 
 Two suite-level additions:
 
-- `test_route_matrix_authority.py` — enumerate every `POST`/`PUT`/`DELETE` route on the app and assert
-  each appears in an explicit classification table with one of the four values. A new effectful route
-  added without a classification **fails the suite**. This is what stops the plane decaying: the
-  existing `route_matrix.py` and `test_control_plane_matrix.py` already establish the pattern.
+- `test_route_matrix_authority.py` — assert every effectful route carries one of the four
+  classifications, so a new effectful route added without one **fails the suite**. This is what stops
+  the plane decaying.
+
+  **It must call `apps.route_matrix.collect(app)` and must not enumerate routes itself.** That module
+  already walks `app.routes` — the same structure Starlette matches requests against — and it exists
+  because a route list inferred from a UI label or a curl transcript produced a false "25 broken
+  endpoints" report on 2026-08-26. Its own docstring states the rule: *"a route list must be READ FROM
+  THE ROUTER, never inferred."* A second enumeration would be a second route matrix that can disagree
+  with the first, which is the same failure `.claude/CLAUDE.md` forbids for state documents.
+
+  The two classifications are **orthogonal and both are needed**: `route_matrix`'s existing axis is
+  registration (`REGISTERED EXACTLY` / `NOT REGISTERED` / `WEBSOCKET`) — *does this path exist*. The
+  new axis is authority (`ROUTE_THROUGH_CODER` / `READ_ONLY` / `DISABLE` / `EXPLICIT_EXCEPTION`) —
+  *what may it do*. Add the second as a table in the new test file keyed by `(path, method)` from
+  `collect()`, leaving `route_matrix.py` itself unchanged so the 2026-08-26 lesson keeps its own home.
 - Extend `backend/apps/test_sabotage_matrix.py` with the §12.5/§12.12 negative cases, following the
   repo rule that a behaviour change must be provable by breaking it on purpose.
 
@@ -1116,7 +1144,7 @@ add capability without changing any existing behaviour; the first behaviour chan
 | 2 | `authority/sessions.py` + `leases.py`. The §4 machine over the schema, with `BEGIN IMMEDIATE`, the boot-id + `kill -0` sweep, and cascade revoke. Still no routes. | Tests 12.1, 12.2, 12.4, 12.5, 12.6, 12.8. |
 | 3 | `authority/authz.py` — the single `verify()`. Fail-closed, following `dispatchos/authz.py`'s stated rule. | Test 12.9(a)(b): provider-invariance and no provider comparison. |
 | 4 | `authority/routes.py` mounted at `/local/authority`, `init_db()` at startup. Read routes and lease routes only; **not** `/execute` yet. | Test 12.7 — the real-run restart test. This is the milestone: durable, restart-surviving leases with nothing yet depending on them. |
-| 5 | `coder`: `Authority` dataclass, five primitives take it as a required kwarg, `_journal` gains four fields, `_resolve` takes an effective root. **First behaviour change.** | Tests 12.11, 12.12. Break it on purpose: remove the `verify()` call and watch 12.12 fail. |
+| 5 | `coder`: `Authority` dataclass, five primitives take it as a required kwarg, `_journal` gains four fields, `_resolve` takes an effective root. **First behaviour change.** Migrate `backend/apps/coder/test_coder.py` in the same commit — see below. | Tests 12.11, 12.12. Break it on purpose: remove the `verify()` call and watch 12.12 fail. |
 | 6 | `POST /local/authority/execute` wired to the primitives. There is now a governed mutation path end to end. | A real write through `/execute` under a lease; the journal line carries four ids; the backup version restores it. |
 | 7 | `symoneural-cli authority` subcommands, `run/authority-session.json`, headers on `api_open`. | `authority login → task → acquire → execute → release` by hand, recorded in the SMOKE file. |
 | 8 | Studio: `/tool/{name}` → `410`; `registry.call` refuses `dangerous` without `Authority`; rewrite the `registry.py:212` docstring in the same commit. | Test 12.13, first two assertions. **This closes the publicly-routable hole and is the highest-value single commit in the plan.** |
@@ -1125,6 +1153,16 @@ add capability without changing any existing behaviour; the first behaviour chan
 | 11 | Coders: `SandboxProfile`, provider adapters as `argv(profile, scope)` raising when inexpressible, `ProviderInvocation` persisted, `/decide` bound to a session. | Test 12.14, test 12.9(c). |
 | 12 | Attribution on the exceptions: rack power and gpuminer record `actor_id`/`session_id`; asicminer emulator requires a `runtime` lease. | Rack toggle records an actor, not an address. |
 | 13 | `test_route_matrix_authority.py` — every effectful route classified or the suite fails. Write `SMOKE-authority.md` from a real run. | Add an unclassified `POST` route and watch the suite go red. |
+
+**Step 5 turns `test_coder.py` red, and that is the signal it worked.** That file is ~38 KB and is the
+only existing caller of the five mutation primitives. Making `authority` a required keyword-only
+argument breaks every mutation test in it at call time. Migrating those tests to construct an
+`Authority` against a temp database belongs in the **same commit** as the signature change, because a
+commit that changes a signature and leaves its tests passing untouched has not changed the signature.
+Concretely: if `test_coder.py` is still green after step 5 without being edited, the required kwarg did
+not land — check for a default value that crept in. The read-side tests (`list_dir`, `read_file`,
+`history`, `journal_tail`) keep `token`/`peer` and must **not** be migrated; if they need editing, the
+read mount was changed by mistake.
 
 **Sequencing note.** Step 8 is the one with real urgency: it closes a publicly-routable path to
 arbitrary host command execution. It is placed at 8 rather than 1 because `/execute` (step 6) must
