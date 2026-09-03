@@ -146,7 +146,7 @@ class CountsMatchTheTables(unittest.TestCase):
         self.assertIsNotNone(stated)
         claimed_modules = int(stated.group(2))
         # Directories, which is how `tools/bootcamp_scout.py` counts and therefore what every
-        # document quotes. Measured 2026-08-23: 17 directories, of which only 15 hold an
+        # document quotes. Measured 2026-09-03: 19 directories, of which only 17 hold an
         # `__init__.py` -- `ravencalc` and `remix` are not importable packages. Counting packages
         # here would silently disagree with the Scout by two, which is the drift this class exists
         # to catch, so the definition is pinned rather than left to taste.
@@ -195,8 +195,8 @@ class CountsMatchTheTables(unittest.TestCase):
         failure message names the offender rather than only the count."""
         counted = sorted(p.name for p in APPS.iterdir() if is_app_module_dir(p))
         rejected = sorted(p.name for p in APPS.iterdir() if p.is_dir() and not is_app_module_dir(p))
-        self.assertEqual(17, len(counted),
-                         f"expected 17 app modules, counted {len(counted)}: {counted} "
+        self.assertEqual(19, len(counted),
+                         f"expected 19 app modules, counted {len(counted)}: {counted} "
                          f"(rejected as transient: {rejected})")
 
 
@@ -375,14 +375,39 @@ class WeightNamesResolve(unittest.TestCase):
         if not present:
             self.skipTest("no weight files in this clone (backend/models is gitignored)")
 
-        named = set(re.findall(r"`([a-z0-9._-]+\.(?:gguf|safetensors|bin|onnx))`", read(CAPABILITY)))
+        text = read(CAPABILITY)
+        named = set(re.findall(r"`([a-z0-9._-]+\.(?:gguf|safetensors|bin|onnx))`", text))
+
         # Guard against the assertion going vacuous. The first draft of this test parsed ZERO
         # filenames -- the doc named weights by column header, not by filename -- so it passed
         # without checking anything. A test that cannot fail is worse than no test, because it
         # reports confidence it never earned.
+        #
+        # This counts what the PARSER found, before the present/absent split below. Counting the
+        # present-only subset instead would mean the doc could satisfy the guard by shrinking:
+        # marking a weight ABSENT would lower the number this checks, so documenting an absence
+        # would weaken the parser check, which is backwards.
         self.assertGreaterEqual(len(named), 10,
                                 f"parsed only {len(named)} weight filenames from the capability "
                                 f"matrix; it should name at least 10 in full")
+
+        # A weight the matrix marks **ABSENT** is a claim too, and the opposite one, so it is
+        # checked in the opposite direction rather than skipped. Skipping would let the doc say
+        # ABSENT about a file that is sitting right there -- the same class of untrue-but-green
+        # statement this test was written to catch, only inverted.
+        #
+        # 2026-09-03: `symon-1.0-14b-q4_k_m.gguf` became the first of these. The doc had said
+        # "on disk (8.99 GB) and manifested" while a filesystem-wide search found it nowhere,
+        # and this assertion was what refused to go green over it.
+        absent = {n for n in named
+                  for line in text.splitlines()
+                  if f"`{n}`" in line and "ABSENT" in line}
+        for name in sorted(absent):
+            with self.subTest(weight=name, direction="absent"):
+                self.assertNotIn(name, present,
+                                 f"capability matrix marks {name} ABSENT, but it is on disk "
+                                 f"in {[str(r) for r in self.WEIGHT_ROOTS]}")
+        named -= absent
         for name in sorted(named):
             with self.subTest(weight=name):
                 self.assertIn(name, present,

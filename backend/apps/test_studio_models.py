@@ -154,11 +154,24 @@ class RouteIsReachable(unittest.TestCase):
         separate hand-maintained counts, one omission, four red tests -- which is precisely
         the argument for keeping them hand-maintained instead of deriving them from
         each other.
+
+        16 -> 17 for `apps/coders` at `/local/coders` -- the multi-coder session surface
+        (R-184). One router, and it moves the count by one rather than two even though it has
+        a page, because that page is a plain `@app.get("/coders")` on a file
+        (`apps/coders/page.html`) -- the `/exp` shape, not the dispatchos shape.
+
+        This is the first router mounted under `/local` rather than `/api`, and the prefix is
+        the point rather than a naming preference: `ops/Caddyfile` reverse-proxies the whole
+        `/api/*` subtree to the internet, and these routes spawn provider CLIs under the
+        operator's own logged-in sessions. It is also the first to carry
+        `dependencies=[Depends(_require_local)]` on the `include_router` call itself, so a
+        route added to `apps/coders/routes.py` later is local-only by construction rather
+        than by the author remembering.
         """
         calls = [n for n in ast.walk(TREE)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "include_router"]
-        self.assertEqual(len(calls), 16)
+        self.assertEqual(len(calls), 17)
 
 
 class ValidatorRejectsJunk(unittest.TestCase):

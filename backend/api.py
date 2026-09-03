@@ -4021,6 +4021,40 @@ async def retired_streamer_pages(request: Request) -> RedirectResponse:
     return RedirectResponse(_RETIRED_PAGES[request.url.path], status_code=302)
 
 
+# ---- /local/coders/* -- the multi-coder session surface (R-184) --------------------------
+# Included BEFORE the catch-all static mount below, because `app.mount("/", ...)` swallows
+# every path that no route claimed first.
+#
+# `dependencies=[Depends(_require_local)]` on the router, not on each handler: a new route
+# added to `apps/coders/routes.py` later is then local-only by construction rather than by
+# the author remembering. This surface spawns provider CLIs under the operator's own
+# sessions, so "local-only unless someone forgot" is not a good enough default.
+#
+# `/local/*` is NOT delegated by ops/Caddyfile -- zero matchers for it -- and `_require_local`
+# additionally refuses any request carrying x-forwarded-*, so a future `handle /local*` block
+# could not silently expose this.
+from apps.coders.routes import router as _coders_router  # noqa: E402
+
+
+@app.get("/coders", include_in_schema=False)
+async def coders_page(request: Request) -> FileResponse:
+    """The multi-coder page. LOCAL ONLY, like the surface it drives.
+
+    `_require_local` guards the page as well as the API beneath it. Serving the page
+    publicly while the endpoints 404 would advertise an operator surface to the internet and
+    hand a visitor a form that cannot work -- and `ops/Caddyfile` has no matcher for
+    `/coders`, so it falls to `file_server`, which would find `site/coders.html` on disk and
+    serve it happily. Hence the explicit route and the explicit refusal.
+    """
+    _require_local(request)
+    f = ROOT / "backend" / "apps" / "coders" / "page.html"
+    if not f.is_file():
+        raise HTTPException(status_code=404, detail="coders.html has not been generated")
+    return FileResponse(f, media_type="text/html")
+
+app.include_router(_coders_router, prefix="/local/coders",
+                   dependencies=[Depends(_require_local)])
+
 if SITE.is_dir():
     app.mount("/", StaticFiles(directory=str(SITE), html=True), name="site")
 

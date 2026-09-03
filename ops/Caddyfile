@@ -227,6 +227,35 @@ symoneural.com, www.symoneural.com {
 		reverse_proxy 127.0.0.1:8800
 	}
 
+	# The MULTI-coder page (R-184), and the reason it is delegated is the opposite of every
+	# block above it: those are delegated so the public can reach them, this one is delegated
+	# so the public CANNOT.
+	#
+	# `backend/api.py`'s `/coders` handler calls `_require_local` on the PAGE itself, not just
+	# on the reads beneath it -- unlike @coder, whose page is public and whose `/local/coder/*`
+	# reads are not. Delegating therefore hands the decision to the one process that can make
+	# it: a request arriving through this proxy carries `X-Forwarded-For`, `_require_local`
+	# refuses anything with an `x-forwarded-*` header, and the public gets a refusal from the
+	# API instead of a page.
+	#
+	# WITHOUT this block the request never reaches that check. `apps/test_caddy_delegation.py`
+	# went red naming exactly `['/coders']` -- no matcher, and no file in site/ shadowing it --
+	# so `handle { file_server }` was 404ing it off disk without asking the API. That 404 is
+	# not the safe outcome it looks like: the same fallthrough serves `/coders.html` from disk
+	# if a file is ever sitting there, and one was. `site/coders.html` -- a superseded draft of
+	# this very operator surface, still wired to `/local/coders/ask` -- was staged in the
+	# publish directory, and `scripts/deploy.sh` publishes every top-level `.html`. It has been
+	# moved out of `site/` for that reason; this block is the second of the two locks, so that
+	# re-staging any such file cannot quietly put an operator control panel on the internet.
+	#
+	# One exact path, no subtree. The reads live at `/local/coders/*` and MUST never get a
+	# matcher, for the reason spelled out in the @coder block above: they spawn provider CLIs
+	# under the operator's own logged-in sessions.
+	@coders path /coders
+	handle @coders {
+		reverse_proxy 127.0.0.1:8800
+	}
+
 	# SyMoNeuRaL Image at both spellings, and the first block here that is one entry of a
 	# LIST rather than a page of its own. #81 moves every application to
 	# /livestack/<name>, so this block grows a path pair per application and

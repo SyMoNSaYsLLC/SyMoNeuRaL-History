@@ -27,31 +27,37 @@ present but **runtime absent** · **`X`** named but weight absent · **`—`** n
 | App / module | chat 7B | draft 0.5B | persona LoRA | 14B | FLUX unet | FLUX t5 | FLUX clip | FLUX vae | whisper base.en | u2net |
 |---|---|---|---|---|---|---|---|---|---|---|
 | **`api.py`** (chat, image) | **R** | **R** | **R** | — | **R** | **R** | **R** | **R** | — | — |
-| **`sigils`** | — | — | — | — | **R** | **R** | **R** | **R** | **W** | **R** |
+| **`sigils`** | — | — | — | — | **R** | **R** | **R** | **R** | **X** | **X** |
 | **`studio`** (workflows) | — | — | — | — | **R** | **R** | **R** | **R** | — | — |
 | **`studio`** (`symoneural_gguf` node) | — | — | — | — | — | **R** | — | — | — | — |
-| **`studio/plugins/reinforce`** | — | **R** | **R** | **R** | — | — | — | — | — | — |
-| **`voice`** | — | — | — | — | — | — | — | — | **W** | — |
+| **`studio/plugins/reinforce`** | — | **R** | **R** | **X** | — | — | — | — | — | — |
+| **`voice`** | — | — | — | — | — | — | — | — | **X** | — |
 | all other 11 app modules | — | — | — | — | — | — | — | — | — | — |
 
 ### The ten weights those columns name, by exact filename
 
 Spelled out in full because `backend/apps/test_control_plane_matrix.py` resolves **every one of
-them against the disk**, and a column header cannot be resolved. All ten were present when this
-was written; the adapter is the one that does **not** live under `backend/models`.
+them against the disk**, and a column header cannot be resolved. The adapter is the one that does
+**not** live under `backend/models`.
+
+**Seven of the ten are present as of 2026-09-03; three are not.** All ten were present when this
+was written, which is why the three `ABSENT` markers below are dated corrections rather than an
+original state -- and why the reachability table above now reads **X** where it read **R** or
+**W** for them. `W` means *weight present, runtime absent*; once the weight goes too, the honest
+cell is `X`, and leaving a `W` would understate the gap by naming the smaller of two absences.
 
 | Column | Filename | Location |
 |---|---|---|
 | chat 7B | `symon-1.0-7b-q4_k_m.gguf` | `backend/models/llm/` |
 | draft 0.5B | `symon-1.0-draft-0.5b-q4_k_m.gguf` | `backend/models/llm/` |
 | persona LoRA | `symoneural-lora.gguf` | **`training/adapter/`** — protected, reported separately |
-| 14B | `symon-1.0-14b-q4_k_m.gguf` | `backend/models/llm/` |
+| 14B | `symon-1.0-14b-q4_k_m.gguf` | **ABSENT** — named by the tuner registry, on disk nowhere |
 | FLUX unet | `symoneural-image-unet-q4_k.gguf` | `backend/models/image/` |
 | FLUX t5 | `symoneural-image-t5-q8_0.gguf` | `backend/models/image/` |
 | FLUX clip | `symoneural-image-clip.safetensors` | `backend/models/image/` |
 | FLUX vae | `symoneural-image-vae.safetensors` | `backend/models/image/` |
-| whisper base.en | `symoneural-listen-base-en.bin` | `backend/models/whisper/` |
-| u2net | `u2net.onnx` | `backend/models/rembg/` |
+| whisper base.en | `symoneural-listen-base-en.bin` | **ABSENT** — so is its runtime; ASR does not serve |
+| u2net | `u2net.onnx` | **ABSENT** — rembg background removal does not serve |
 
 **Source lines, so every cell is checkable:** `api.py:187,266,188,277-280` ·
 `sigils/render.py:86-89` · `sigils/listen.py:44,49` · `sigils/segment.py:53-54` ·
@@ -85,9 +91,22 @@ chart did**, nine hours after task #104 had already recorded `contrib/` as missi
 
 **3. The tuner names a model no serving path uses.**
 `studio/plugins/reinforce/registry.py:588-589` names
-`symon-1.0-14b-q4_k_m` and the 0.5b draft. The 14B is on disk (8.99 GB) and manifested, and **no
-serving default points at it** — `CHAT_MODEL` is the 7B. That is Bootcamp's "redshirt" for the
-Chat position, seen from the app side: reachable by the trainer, not by the product.
+`symon-1.0-14b-q4_k_m` and the 0.5b draft, and **no serving default points at it** — `CHAT_MODEL`
+is the 7B. That is Bootcamp's "redshirt" for the Chat position, seen from the app side: reachable
+by the trainer, not by the product.
+
+**CORRECTED 2026-09-03: the 14B is no longer on disk.** This paragraph said "on disk (8.99 GB) and
+manifested", and `docs/specs/coder-spec.md` still says "present, not wired to any surface". A
+filesystem-wide search of `/`, `/home` and `/yocto` for `symon-1.0-14b*` and for any
+`Qwen2.5-14B-*Q4_K_M*` returns nothing — the restoration that brought back the 7B, the 0.5b draft
+and the four FLUX payloads did not bring back the 14B. `backend/models/PROVENANCE.json` still holds
+its record, which is correct and is precisely the distinction that file exists to make: **a
+provenance record describes an artefact's origin and is not evidence the artefact is on disk now.**
+
+Nothing serves it, so this is not a production blocker — it is an absence that had been documented
+as a presence for long enough that a reader would have believed it. Restoring it means re-fetching
+~8.4 GiB from `bartowski/Qwen2.5-14B-Instruct-GGUF` (see `backend/models/NAMES.md`), which is an
+owner call about disk and bandwidth rather than an engineering one, and it blocks no surface.
 
 ## 2. Weights on disk that **no app names at all**
 
