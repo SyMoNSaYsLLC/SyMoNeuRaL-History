@@ -146,7 +146,7 @@ class CountsMatchTheTables(unittest.TestCase):
         self.assertIsNotNone(stated)
         claimed_modules = int(stated.group(2))
         # Directories, which is how `tools/bootcamp_scout.py` counts and therefore what every
-        # document quotes. Measured 2026-09-03: 19 directories, of which only 17 hold an
+        # document quotes. Measured 2026-09-04: 20 directories, of which only 18 hold an
         # `__init__.py` -- `ravencalc` and `remix` are not importable packages. Counting packages
         # here would silently disagree with the Scout by two, which is the drift this class exists
         # to catch, so the definition is pinned rather than left to taste.
@@ -195,8 +195,8 @@ class CountsMatchTheTables(unittest.TestCase):
         failure message names the offender rather than only the count."""
         counted = sorted(p.name for p in APPS.iterdir() if is_app_module_dir(p))
         rejected = sorted(p.name for p in APPS.iterdir() if p.is_dir() and not is_app_module_dir(p))
-        self.assertEqual(19, len(counted),
-                         f"expected 19 app modules, counted {len(counted)}: {counted} "
+        self.assertEqual(20, len(counted),
+                         f"expected 20 app modules, counted {len(counted)}: {counted} "
                          f"(rejected as transient: {rejected})")
 
 

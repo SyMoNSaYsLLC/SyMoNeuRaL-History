@@ -155,7 +155,7 @@ with their source cited in the footnotes: **Voice**, **RavenCalc**, **Coder** an
 | **NeuroScope / Model Atlas** | Inspection | metadata-only GGUF reader | pure Python **built** | none · none · read | `S-low` | `D-public` | `P-none` | n/a | no |
 | **Exp / plugin runtime** | Studio | plugin host | `symoneural-ui` **see §5** | public · token · write-local | **`S-blocked`**³ | `D-credential` | `P-none` | **`queued`** | no |
 
-**20 instances across 19 app modules.** Both numbers are asserted by
+**20 instances across 20 app modules.** Both numbers are asserted by
 `backend/apps/test_control_plane_matrix.py` against the table and the tree, because a count in
 prose that has stopped matching the table under it is this repo's signature drift.
 
@@ -164,8 +164,8 @@ Two reconciliations, so neither number reads as contradicting a neighbour:
 - **20 instances here vs 19 positions in Bootcamp §5.** Different questions, both right. Bootcamp
   charts *positions* including future ones (CLI, Sentinel, OpenEmbedded/SDK); this table rows
   *exposures that exist now* and adds Gateway, the Project store, Reinforce/tuner and Exp.
-- **19 app modules, of which only 17 are importable packages.** `ravencalc` and `remix` are
-  directories with **no `__init__.py`**. The Scout counts directories, so 19 is the number every
+- **20 app modules, of which only 18 are importable packages.** `ravencalc` and `remix` are
+  directories with **no `__init__.py`**. The Scout counts directories, so 20 is the number every
   document quotes — and the two-module gap is recorded here rather than left to be rediscovered.
 
   17 → 19 on 2026-09-03, and neither new module adds an instance row above, which is why the
@@ -175,6 +175,12 @@ Two reconciliations, so neither number reads as contradicting a neighbour:
   exposure in the sense the rows above measure — `ops/Caddyfile` proxies `/api/*` to the internet
   and has no matcher for `/local/*`, and `_require_local` refuses anything carrying an
   `x-forwarded-*` header. A row here would assert a public surface that does not exist.
+
+  19 → 20 on 2026-09-04 for `authority`, which likewise adds no instance row -- the instance
+  count stays at 20 while the module count moves again. It is not an exposure at all: no
+  route, no page, no surface. It is the mutation-authority plane every host effect is gated
+  by, so it sits UNDER the rows above rather than beside them. A table of exposures is the
+  wrong place to list the thing that governs them.
 
 Footnotes are the derivation, not decoration:
 

@@ -129,6 +129,25 @@ A directory here is not a claim to a row on the front page. These are not omissi
   row on 2026-08-29 (see the fold note above the table) and `discovery` has never had a
   surface. `exp` was the only plugin with a row of its own and the sentence that stood here
   said so; that is the sentence the fold retired.
+- **`authority`** — the mutation-authority plane, and the only entry here that is not a
+  surface. It has no route, no page and no user: it is the thing every host effect on this box
+  is gated by. `apps/coder`, `apps/coders` and `apps/studio` can all change this machine, and
+  each used to decide for itself whether a caller was allowed to. Studio in particular admits a
+  caller once with `enabled() + token_ok()`, and behind that gate a request holds 28 tools
+  including a shell and an environment mutator — admission, not authority.
+
+  Two properties carry the design. **Provider identity does not grant mutation authority**: the
+  provider is who is speaking, the grant lives on the task record, and one is never derived from
+  the other. And **the default is refusal** — the task travels in a ContextVar defaulting to
+  None, so a surface that has not been converted to establish a task cannot mutate anything.
+  Converting a surface is what turns it back on.
+
+  The lease is a `mkdir` lock with `kill -0` staleness, both taken from
+  `scripts/gpu-governor.sh` for its reason: the hold must outlive the shell that took it,
+  because the API acquires in one request handler and releases in another. State lives in
+  `run/authority/`, the pre-mutation journal is fsynced before the effect, and a stale holder is
+  reconciled loudly rather than inherited quietly.
+
 - **`coders`** — the multi-coder session surface (R-184): one prompt, every selected coder
   answers, each answer shown attributed. It is an **operator** surface, not a rack
   application: it holds no weights, takes no GPU lease of its own (Symon's answer goes

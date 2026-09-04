@@ -69,8 +69,8 @@ CASES: list[tuple[str, str, str, str, str]] = [
 
     ("the instance count desynced from its own table",
      MATRIX,
-     "**20 instances across 19 app modules.**",
-     "**21 instances across 19 app modules.**",
+     "**20 instances across 20 app modules.**",
+     "**21 instances across 20 app modules.**",
      "CountsMatchTheTables::test_the_stated_instance_count_equals_the_number_of_matrix_rows"),
 
     ("off-the-record offered as available",
@@ -119,8 +119,8 @@ CASES: list[tuple[str, str, str, str, str]] = [
     # other half: the published module count drifting away from the tree.
     ("the app-module count desynced from the tree",
      MATRIX,
-     "**20 instances across 19 app modules.**",
      "**20 instances across 20 app modules.**",
+     "**20 instances across 21 app modules.**",
      "CountsMatchTheTables::test_the_stated_app_module_count_equals_the_tree"),
 
     ("an exposure cell contradicting the mount table in api.py",
