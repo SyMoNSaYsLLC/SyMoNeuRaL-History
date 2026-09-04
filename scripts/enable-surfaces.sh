@@ -64,13 +64,34 @@ show() {
     printf '           (absent -- nothing enabled by this script)\n'
     return
   fi
-  # Values are never printed. A token is either set or it is not; showing it here would put
-  # it in a terminal scrollback and, sooner or later, in a screenshot.
+  # ALLOW-LIST, and the comment this replaces claimed "values are never printed" while
+  # printing every value whose name did not contain TOKEN. `SYMONEURAL_SESSION_SECRET` is in
+  # this exact file and does not contain TOKEN, so `--show` printed the live session-signing
+  # secret in full, under a comment promising it would not. Measured 2026-09-03: a 64-character
+  # value reached two retained agent transcripts, one of them world-readable.
+  #
+  # A deny-list cannot fix this, only postpone it. It has to enumerate every way a future
+  # variable might be named -- SECRET, PASSWORD, KEY, CREDENTIAL, PASSPHRASE, SIGNING, SALT --
+  # and the one nobody thought of is exactly the one that leaks. The allow-list below inverts
+  # the default: a name nobody has classified prints as `<set, N chars>` rather than in full,
+  # so a variable added next month is safe before anyone edits this script. Same argument
+  # docs/ops/EXPORTS.md makes for the exporter and `apps/coders.child_env` for provider
+  # children: the two architectures give opposite answers for the unclassified name, and only
+  # one of them fails closed.
+  #
+  # What is on the list is what an operator needs `--show` FOR: which surfaces are switched on,
+  # which port, and the two non-secret gateway facts. Every entry is a flag, a port or a public
+  # identifier -- nothing here is a credential, and nothing that becomes one may be added.
   while IFS='=' read -r k v; do
     case "$k" in
       ''|'#'*) continue ;;
-      *TOKEN*) printf '  %-28s = <set, %d chars>\n' "$k" "${#v}" ;;
-      *)       printf '  %-28s = %s\n' "$k" "$v" ;;
+      *_ENABLED|SYMONEURAL_PORT|*_NETWORK|*_CONTRACT|*_RIGS|*_BASE_URL|*_ALLOW_REMOTE)
+        printf '  %-28s = %s\n' "$k" "$v" ;;
+      *)
+        # Length only. It answers "is it set, and does it look empty or truncated" -- the two
+        # questions an operator actually has -- without putting the value in a scrollback and,
+        # sooner or later, in a screenshot or a session transcript.
+        printf '  %-28s = <set, %d chars>\n' "$k" "${#v}" ;;
     esac
   done < "$ENV_FILE"
 }

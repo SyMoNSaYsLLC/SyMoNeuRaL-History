@@ -323,3 +323,81 @@ class WriteLoopBehaviourTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShowNeverPrintsACredential(unittest.TestCase):
+    """`--show` printed the live session-signing secret in full.
+
+    The old filter redacted `*TOKEN*` and printed everything else, under a comment that read
+    "Values are never printed". `SYMONEURAL_SESSION_SECRET` lives in the same env file and
+    does not contain TOKEN, so it was printed. Measured 2026-09-03: a 64-character value
+    reached two retained agent transcripts, one of them world-readable by every local user.
+
+    These tests EXECUTE `show()` against a fixture rather than grepping the source, because
+    the bug was never in what the script said -- the comment claimed the safe behaviour while
+    the code did the unsafe one. Only running it can tell those apart.
+    """
+
+    #: Distinct decoy per class, so a failure names which class leaked.
+    FIXTURE = "\n".join([
+        "# a comment",
+        "SYM_CODER_ENABLED=1",
+        "SYMONEURAL_PORT=8800",
+        "SYMONEURAL_GATEWAY_NETWORK=symoneural-test",
+        "SYM_CODER_TOKEN=DECOYTOKEN_aaaaaaaaaaaaaaaa",
+        "SYMONEURAL_SESSION_SECRET=DECOYSECRET_bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "SYMONEURAL_DB_PASSWORD=DECOYPASSWORD_cccccccc",
+        "SYMONEURAL_SIGNING_KEY=DECOYKEY_dddddddddddd",
+        "SYMONEURAL_API_CREDENTIAL=DECOYCRED_eeeeeeeeee",
+        "SYMONEURAL_FUTURE_PASSPHRASE=DECOYFUTURE_ffffffffff",
+        "",
+    ])
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile, os
+        cls._tmp = tempfile.TemporaryDirectory()
+        env_file = Path(cls._tmp.name) / "api.env"
+        env_file.write_text(cls.FIXTURE)
+        # Extract show() and run it alone: the script refuses to run as non-root by design,
+        # and that root check is not what is under test here.
+        src = SCRIPT.read_text()
+        m = re.search(r"(?ms)^show\(\) \{.*?^\}", src)
+        assert m, "show() not found -- re-derive this test"
+        prog = f"ENV_FILE={env_file}\n{m.group(0)}\nshow\n"
+        r = subprocess.run(["bash"], input=prog, capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        cls.out = r.stdout
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_no_decoy_secret_of_any_class_appears(self):
+        """One assertion per class so the failure says which kind of name got through."""
+        for decoy, kind in (("DECOYTOKEN", "TOKEN"), ("DECOYSECRET", "SECRET"),
+                            ("DECOYPASSWORD", "PASSWORD"), ("DECOYKEY", "KEY"),
+                            ("DECOYCRED", "CREDENTIAL")):
+            with self.subTest(kind=kind):
+                self.assertNotIn(decoy, self.out, f"a {kind}-named value was printed in full")
+
+    def test_a_name_nobody_classified_is_redacted_too(self):
+        """The whole point of the allow-list. PASSPHRASE is on no deny-list in this repo and
+        must still be safe, because the variable that leaks is always the one nobody thought
+        of when the filter was written."""
+        self.assertNotIn("DECOYFUTURE", self.out,
+                         "an unclassified name printed in full -- the filter is a deny-list again")
+
+    def test_secrets_are_still_reported_as_present_with_a_length(self):
+        """Redaction must not become silence. An operator needs to know a token is set and
+        whether it looks empty or truncated; that is what `--show` is for."""
+        self.assertIn("SYMONEURAL_SESSION_SECRET", self.out)
+        self.assertRegex(self.out, r"SYMONEURAL_SESSION_SECRET\s+= <set, \d+ chars>")
+        self.assertRegex(self.out, r"SYM_CODER_TOKEN\s+= <set, \d+ chars>")
+
+    def test_ordinary_configuration_still_prints_its_value(self):
+        """The other direction. A filter that redacted everything would pass every test above
+        and make the command useless."""
+        self.assertRegex(self.out, r"SYM_CODER_ENABLED\s+= 1")
+        self.assertRegex(self.out, r"SYMONEURAL_PORT\s+= 8800")
+        self.assertRegex(self.out, r"SYMONEURAL_GATEWAY_NETWORK\s+= symoneural-test")
