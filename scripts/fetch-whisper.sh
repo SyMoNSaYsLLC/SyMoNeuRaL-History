@@ -29,72 +29,55 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 [ -f "$ROOT/scripts/gpu-governor.sh" ] || { echo "repo root not found at $ROOT" >&2; exit 1; }
 
-SRC="$ROOT/contrib/whisper.cpp"
-MODELS="$ROOT/backend/models/whisper"
-MODEL="${1:-base.en}"
-REPO="https://github.com/ggerganov/whisper.cpp.git"
-WEIGHTS="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${MODEL}.bin"
 
-say() { printf '\033[36m==>\033[0m %s\n' "$*"; }
+# ---------------------------------------------------------------------------------
+# SUPERSEDED 2026-09-04, and delegating rather than deleted.
+#
+# The argument above is still the design and is cited from backend/apps/voice/asr.py and
+# from tools/fork_engines.sh, so it stays here where those citations point. What changed is
+# that every operative line below it was wrong:
+#
+#   * it cloned into `contrib/whisper.cpp`, which `/contrib` gitignores and
+#     backend/apps/test_references_boundary.py bans outright. Building there is how this
+#     capability vanished once already, with nothing in git log to say it had.
+#   * it wrote the weight under its UPSTREAM filename, while both call sites load the house
+#     name `symoneural-listen-base-en.bin`. So even a successful run left ASR dead, and that
+#     is part of why it stayed dead: the script appeared to work. The upstream spelling is
+#     deliberately not repeated here -- `apps/test_weight_names.py` bans it from source, and
+#     `backend/models/NAMES.md` is the one place that maps house name to upstream name.
+#
+# The two canonical tools now own the two halves, and both are tracked:
+#
+#     tools/fork_engines.sh listen     builds engines/symoneural-listen, under our names
+#     scripts/fetch-models.sh          fetches the weight under its house name
+#
+# This wrapper runs them in that order so an old command line still does the right thing.
+set -euo pipefail
 
-# ---- source ---------------------------------------------------------------------
-if [ -d "$SRC/.git" ]; then
-  say "whisper.cpp already checked out at $SRC"
+echo "fetch-whisper.sh is superseded; running the two tools that replaced it."
+echo
+
+if [ -x "$ROOT/engines/symoneural-listen/build/bin/symoneural-listen" ]; then
+  echo "==> engine already built at engines/symoneural-listen"
 else
-  say "cloning whisper.cpp -> $SRC"
-  mkdir -p "$(dirname "$SRC")"
-  git clone --depth 1 "$REPO" "$SRC" || { echo "clone failed" >&2; exit 1; }
+  echo "==> building the engine"
+  "$ROOT/tools/fork_engines.sh" listen
 fi
 
-# ---- build ----------------------------------------------------------------------
-# -DGGML_CUDA=OFF is not a default we are accepting, it is a choice we are making. See
-# the header. -DWHISPER_BUILD_TESTS=OFF keeps the build to the one binary we call.
-if [ -x "$SRC/build/bin/whisper-cli" ]; then
-  say "whisper-cli already built"
+WEIGHT="$ROOT/backend/models/whisper/symoneural-listen-base-en.bin"
+if [ -s "$WEIGHT" ]; then
+  echo "==> weight already present: $(basename "$WEIGHT") ($(du -h "$WEIGHT" | cut -f1))"
 else
-  say "building whisper.cpp (CPU only -- this never takes the GPU lock)"
-  cmake -S "$SRC" -B "$SRC/build" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DGGML_CUDA=OFF \
-        -DWHISPER_BUILD_TESTS=OFF \
-        -DWHISPER_BUILD_EXAMPLES=ON >/dev/null || { echo "cmake configure failed" >&2; exit 1; }
-  cmake --build "$SRC/build" --config Release -j "$(nproc)" || { echo "build failed" >&2; exit 1; }
-fi
-[ -x "$SRC/build/bin/whisper-cli" ] || { echo "whisper-cli missing after build" >&2; exit 1; }
-
-# ---- weights --------------------------------------------------------------------
-mkdir -p "$MODELS"
-DEST="$MODELS/ggml-${MODEL}.bin"
-if [ -s "$DEST" ]; then
-  say "model already present: $DEST ($(du -h "$DEST" | cut -f1))"
-else
-  say "downloading ggml-${MODEL}.bin"
-  curl -fL --retry 3 -o "$DEST.part" "$WEIGHTS" || { rm -f "$DEST.part"; echo "download failed" >&2; exit 1; }
-  mv "$DEST.part" "$DEST"
-  say "model at $DEST ($(du -h "$DEST" | cut -f1))"
+  echo "==> fetching the weight via scripts/fetch-models.sh"
+  echo "    NOTE: that script fetches every chat-tier payload too, including the 14B"
+  echo "    (~8.4 GB) if it is absent. To fetch only this one, copy the speech-surface"
+  echo "    line out of scripts/fetch-models.sh -- it carries the upstream URL, which is"
+  echo "    kept there rather than repeated here."
+  "$ROOT/scripts/fetch-models.sh"
 fi
 
-# ---- licences -------------------------------------------------------------------
-# MIT obliges only that the copyright line and permission notice travel with the code -- but
-# "only" is still an obligation, and `LICENSES.md` §9 checks `backend/models/licenses/` for
-# exactly this. `contrib/whisper.cpp/LICENSE` arrives with the clone and covers the binary;
-# the weights are a separate artefact from a separate publisher and need their own text.
-L="$ROOT/backend/models/licenses"; mkdir -p "$L"
-lic() { # url dest
-  [ -s "$L/$2" ] && { echo "  have $2"; return; }
-  if curl -fsSL --retry 3 -o "$L/$2.part" "$1" 2>/dev/null && [ -s "$L/$2.part" ]; then
-    mv "$L/$2.part" "$L/$2"; echo "  get  $2"
-  else
-    rm -f "$L/$2.part"; echo "  MISS $2 (fetch by hand before shipping a build)" >&2
-  fi
-}
-say "licences"
-# The GGUF conversions are republished by ggerganov under MIT (model card declares it), and
-# they are conversions of OpenAI's Whisper, which is MIT at source. Both texts are kept: the
-# redistributor's and the originator's, because the weights are a derived work of the latter.
-lic "https://raw.githubusercontent.com/ggml-org/whisper.cpp/master/LICENSE" \
-    whisper.cpp.LICENSE.txt
-lic "https://raw.githubusercontent.com/openai/whisper/main/LICENSE" \
-    openai-whisper.LICENSE.txt
-
-say "done -- $("$SRC/build/bin/whisper-cli" --help 2>&1 | head -1)"
+echo
+echo "done. Verify with a real transcription rather than a file listing:"
+echo "  engines/symoneural-listen/build/bin/symoneural-listen \\"
+echo "    -m $WEIGHT \\"
+echo "    -f engines/symoneural-listen/samples/jfk.wav -nt"

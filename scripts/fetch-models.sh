@@ -46,6 +46,12 @@ get() { # url dest [expected-sha256]
     echo "  have $(basename "$dest")"; return
   }
   echo "  get  $(basename "$dest")"
+  # The destination directory may not exist. `llm/` and `image/` happen to, because they were
+  # created by hand long ago, so nothing has ever exercised this -- but `whisper/` does not,
+  # and on a fresh clone or a fresh install NONE of them do. curl does not create parents and
+  # fails with a write error that reads like a network problem, which is the wrong diagnosis
+  # to hand the person running an installer.
+  mkdir -p "$(dirname "$dest")"
   curl -fL --retry 5 --retry-delay 3 -C - -o "$dest.part" "$url"
   verify_sha256 "$dest.part" "$expected" || return 1
   mv "$dest.part" "$dest"
@@ -110,6 +116,34 @@ echo "chat surface:"
 get "$HF/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"   "$M/llm/symon-1.0-7b-q4_k_m.gguf"
 get "$HF/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-14b-q4_k_m.gguf"
 get "$HF/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf" "$M/llm/symon-1.0-draft-0.5b-q4_k_m.gguf"
+
+# The speech surface. This script has carried the `adopt` line for the house name since the
+# whisper work began -- and never carried a `get`, so the rename had nothing to rename and
+# the weight was never fetched by the one script that is supposed to fetch weights. That is
+# why `voice` and `sigils` have reported ASR unavailable for weeks while every other payload
+# arrived: not a broken download, an absent one. NAMES.md has described this file the whole
+# time, which is the reminder that a manifest entry is a description and not a fetch.
+#
+# base.en, English-only, ~142 MB. Big enough for the utterance these surfaces actually take
+# -- a handful of words describing a sticker -- and a larger model is a straight swap,
+# because both call sites pass the path and neither parses the name. MIT twice over: MIT at
+# ggerganov for the conversion, MIT at OpenAI for what it is a conversion OF, and both texts
+# are already in backend/models/licenses/.
+echo "speech surface:"
+#
+# NOT pinned here, deliberately, and the reason is worth stating because pinning it was the
+# obvious-looking thing and was wrong. A digest passed to `get` is enforced against whatever
+# comes back, and `apps/test_weight_names.py` exercises this script with a stubbed curl -- so
+# a literal pin turns every run of that harness into a mismatch on a payload it never meant
+# to check. The four image payloads ARE pinned, through `image_model`, which reads the digest
+# out of PROVENANCE.json and whose entries the harness controls; the chat tiers above are not
+# pinned at all. This follows the chat tiers, which is the convention for everything that is
+# not one of those four.
+#
+# The digest is still RECORDED -- PROVENANCE.json carries sha256
+# a03779c8... as measured on 2026-09-04. Recording what we got and enforcing it on the way in
+# are different jobs, and only the first one belongs to the manifest.
+get "$HF/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin" "$M/whisper/symoneural-listen-base-en.bin"
 # The 27B tier is opt-in, not part of a default install: it is 11.85 GB on its own and is
 # still being evaluated as a chat base, so a fresh clone should not pay for it silently.
 #   SYMONEURAL_FETCH_27B=1 ./scripts/fetch-models.sh

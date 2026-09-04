@@ -138,6 +138,7 @@
       "path": "whisper/symoneural-listen-base-en.bin",
       "role": "speech-to-text for the voice and sigils surfaces; passed by path, so safe to rename",
       "bytes_on_disk": 147964211,
+      "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
       "upstream_repo": "ggerganov/whisper.cpp",
       "upstream_file": "ggml-base.en.bin",
       "license": "MIT",

@@ -27,11 +27,11 @@ present but **runtime absent** · **`X`** named but weight absent · **`—`** n
 | App / module | chat 7B | draft 0.5B | persona LoRA | 14B | FLUX unet | FLUX t5 | FLUX clip | FLUX vae | whisper base.en | u2net |
 |---|---|---|---|---|---|---|---|---|---|---|
 | **`api.py`** (chat, image) | **R** | **R** | **R** | — | **R** | **R** | **R** | **R** | — | — |
-| **`sigils`** | — | — | — | — | **R** | **R** | **R** | **R** | **X** | **X** |
+| **`sigils`** | — | — | — | — | **R** | **R** | **R** | **R** | **R** | **X** |
 | **`studio`** (workflows) | — | — | — | — | **R** | **R** | **R** | **R** | — | — |
 | **`studio`** (`symoneural_gguf` node) | — | — | — | — | — | **R** | — | — | — | — |
 | **`studio/plugins/reinforce`** | — | **R** | **R** | **X** | — | — | — | — | — | — |
-| **`voice`** | — | — | — | — | — | — | — | — | **X** | — |
+| **`voice`** | — | — | — | — | — | — | — | — | **R** | — |
 | all other 11 app modules | — | — | — | — | — | — | — | — | — | — |
 
 ### The ten weights those columns name, by exact filename
@@ -40,11 +40,18 @@ Spelled out in full because `backend/apps/test_control_plane_matrix.py` resolves
 them against the disk**, and a column header cannot be resolved. The adapter is the one that does
 **not** live under `backend/models`.
 
-**Seven of the ten are present as of 2026-09-03; three are not.** All ten were present when this
-was written, which is why the three `ABSENT` markers below are dated corrections rather than an
-original state -- and why the reachability table above now reads **X** where it read **R** or
+**Eight of the ten are present as of 2026-09-04; two are not.** All ten were present when this
+was written, which is why the `ABSENT` markers below are dated corrections rather than an
+original state -- and why the reachability table above reads **X** where it read **R** or
 **W** for them. `W` means *weight present, runtime absent*; once the weight goes too, the honest
 cell is `X`, and leaving a `W` would understate the gap by naming the smaller of two absences.
+
+**CORRECTED 2026-09-04: whisper `base.en` is back, and so is its runtime, so the two ASR cells
+now read `R`.** This is the one movement on this table that went the good way. Both halves were
+missing and both are now present: `engines/symoneural-listen` is built from source under our own
+names by `tools/fork_engines.sh listen`, and the weight is on disk at 147,964,211 bytes. Neither
+is asserted -- `backend/SMOKE-listen-asr.md` records a real transcription of real speech, which
+is the only evidence that distinguishes `R` from a hopeful `W`.
 
 | Column | Filename | Location |
 |---|---|---|
@@ -56,7 +63,7 @@ cell is `X`, and leaving a `W` would understate the gap by naming the smaller of
 | FLUX t5 | `symoneural-image-t5-q8_0.gguf` | `backend/models/image/` |
 | FLUX clip | `symoneural-image-clip.safetensors` | `backend/models/image/` |
 | FLUX vae | `symoneural-image-vae.safetensors` | `backend/models/image/` |
-| whisper base.en | `symoneural-listen-base-en.bin` | **ABSENT** — so is its runtime; ASR does not serve |
+| whisper base.en | `symoneural-listen-base-en.bin` | `backend/models/whisper/` — present 2026-09-04, with its runtime; ASR serves |
 | u2net | `u2net.onnx` | **ABSENT** — rembg background removal does not serve |
 
 **Source lines, so every cell is checkable:** `api.py:187,266,188,277-280` ·
@@ -73,21 +80,29 @@ is a capacity fact before it is a capability fact: ~11.8 GiB resident on a **16,
 so Image, Sigils and Studio cannot all hold it independently, and none of them can co-reside with
 the 20B chat candidate. Bootcamp §5 records the same finding from the depth-chart side.
 
-**2. The ASR runtime is unusable, and it takes two apps down with it, not one.** Both
-`voice/asr.py:53-54` and `sigils/listen.py:44` resolve `whisper-cli` to
-`contrib/whisper.cpp/build/bin/whisper-cli`. **`contrib/` does not exist** and `.gitignore:63`
-ignores `/contrib`. Two `whisper-cli` binaries **do** exist elsewhere — both **973,872 B**, both
-under `references/` — but `references/` is INSPIRE_ONLY and
-`backend/apps/test_references_boundary.py:70` bans **both** `references/<tree>/` and the
-`contrib/whisper.cpp/` spelling from product code. So they are **quarantined, not available**.
-Hence **`W`** and not `R` in both rows: the weight is present and 1/1 manifested, and nothing
-that may legally read it exists.
+**2. The ASR runtime was unusable and took two apps down with it — RESOLVED 2026-09-04.**
+Both `voice/asr.py` and `sigils/listen.py` resolved `whisper-cli` to a path under `contrib/`,
+which **did not exist** and which `.gitignore` ignores. Two `whisper-cli` binaries did exist
+under `references/` — both **973,872 B** — but `references/` is INSPIRE_ONLY and
+`backend/apps/test_references_boundary.py` bans that spelling from product code, so they were
+**quarantined, not available**.
 
-Both call sites are honest about it — `voice/asr.py:106-109` returns
-`"whisper-cli missing at <path>"` and `sigils/listen.py:85` gates on
-`WHISPER.is_file() and model_path(name).is_file()`. **The code never claimed otherwise; a depth
-chart did**, nine hours after task #104 had already recorded `contrib/` as missing. See
-`docs/specs/symoneural-control-plane-matrix.md` §5a for the timeline and the mechanism.
+**What fixed it was building the engine we were entitled to build, not finding the binary.**
+`tools/fork_engines.sh listen` now forks the vendored upstream into
+`engines/symoneural-listen` under our own names — the same treatment the other two engines got
+— and both call sites resolve there. CPU-only by decision, not default: `ldd` reports zero CUDA
+libraries linked, so it cannot take the card, which is what lets a spoken sticker transcribe
+*while* another surface holds the GPU instead of queueing behind it.
+
+The lesson this row exists to carry is not "the binary was missing". It is that **the binary
+lived in a gitignored directory**, so it could vanish leaving nothing in `git log` to say it
+ever had — the same way the miner's benchmark binary went. Two instances made it a pattern;
+building into `engines/` from a tracked script is the fix for the pattern.
+
+Both call sites were honest throughout — `voice/asr.py` returned `"whisper-cli missing at
+<path>"` and `sigils/listen.py` gated on the file existing. **The code never claimed
+otherwise; a depth chart did**, nine hours after task #104 had already recorded `contrib/` as
+missing. See `docs/specs/symoneural-control-plane-matrix.md` §5a for that timeline.
 
 **3. The tuner names a model no serving path uses.**
 `studio/plugins/reinforce/registry.py:588-589` names
