@@ -2134,6 +2134,18 @@ def build_status() -> Status:
     image_ok = all(p.exists() for p in FLUX.values()) and DIFFUSE_ENGINE.exists()
 
     def gpu_unit(name: str, ok: bool) -> str:
+        """`ready` means LOADABLE ON DEMAND, not resident. Stated because it was misread.
+
+        `chat_ok`/`image_ok` above are filesystem existence checks -- weights present, engine
+        binary present -- and this box loads nothing until a request arrives. So `ready` is the
+        honest word for "click it and it will serve", and an idle card underneath it is normal
+        rather than a contradiction. A reviewer reasonably read `ready` + an empty GPU as a
+        false claim, which is why the meaning is now written down beside the computation
+        instead of living in whoever last read this function.
+
+        What would be dishonest is a DETAIL line asserting present-tense residency, and two of
+        them did until 2026-09-03 -- see the `~N GB when loaded` strings below.
+        """
         if not ok:
             return "offline"
         if holder == name:
@@ -2211,11 +2223,11 @@ def build_status() -> Status:
                  # its numbers are real cannot hide where its weights came from.
                  spec=CHAT_MODEL_LABEL + (" + persona adapter" if adapter_applies()
                                           else " · Q4_K_M"),
-                 detail="~5 GB resident · SymonChat S1-7B"),
+                 detail="~5 GB when loaded · SymonChat S1-7B"),
             Unit(id="image", label="SyMoNeuRaL Image", slot="2U",
                  state=gpu_unit("image", image_ok), bus="gpu", href="/image.html",
                  spec="SymonImage F1 · q4_k",
-                 detail="~7 GB resident · SymonImage F1" if image_ok
+                 detail="~7 GB when loaded · SymonImage F1" if image_ok
                         else "weights loading"),
             Unit(id="remix", label="SyMoNeuRaL Remix", slot="1U",
                  state=gpu_unit("remix", chat_ok), bus="gpu", href="/remix.html",

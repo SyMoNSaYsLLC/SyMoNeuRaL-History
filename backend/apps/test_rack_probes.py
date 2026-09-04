@@ -192,3 +192,44 @@ class LiveRackAgreesWithDisk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoUnitClaimsResidencyItDoesNotMeasure(unittest.TestCase):
+    """A rack row may say what a model WOULD cost. It may not say what is loaded now.
+
+    `/api/status` reported chat and image as `ready` with details reading "~5 GB resident"
+    and "~7 GB resident". `ready` is honest -- `chat_ok`/`image_ok` are existence checks and
+    this box loads nothing until a request arrives, so it means "loadable on demand". The
+    detail lines were not: measured 2026-09-03 while both said resident, the card held
+    1,429 MiB in total INCLUDING the desktop, and the governor's holder was None. Twelve
+    gigabytes claimed, none of it there.
+
+    That is the failure this repo's own rules name -- a decorative status that reports a
+    number nothing measured. Footprint-when-loaded is a true statement at any load state;
+    "resident" is a measurement, and nothing in `build_status()` measures it per unit.
+    """
+
+    SRC = (ROOT / "backend" / "api.py").read_text()
+
+    def test_no_detail_string_asserts_present_tense_residency(self):
+        """Scoped to `detail=` so prose, docstrings and comments explaining the history --
+        including the one directly above `gpu_unit` -- are not what this matches."""
+        offenders = [d for d in re.findall(r'detail="([^"]*)"', self.SRC)
+                     if re.search(r"\bresident\b", d)]
+        self.assertEqual(offenders, [], (
+            "a unit detail claims residency. Nothing in build_status() measures per-unit VRAM, "
+            "so this is a number with no reading behind it. Say '~N GB when loaded'."))
+
+    def test_the_footprint_figures_survive_as_a_conditional_claim(self):
+        """The other direction: deleting the sizes would pass the test above and lose real
+        information an operator uses to reason about a 16 GiB card three surfaces share."""
+        self.assertIn("when loaded", self.SRC,
+                      "the footprint figures were removed rather than reworded")
+
+    def test_ready_is_documented_where_it_is_computed(self):
+        """The misreading that started this was reasonable, and the fix for a reasonable
+        misreading is to write the meaning down beside the code, not to remember it."""
+        m = re.search(r"def gpu_unit\(.*?\n(.*?)\n\s*if not ok:", self.SRC, re.S)
+        self.assertIsNotNone(m, "gpu_unit changed shape; re-derive this test")
+        self.assertIn("LOADABLE ON DEMAND", m.group(1),
+                      "gpu_unit no longer states what `ready` means")
