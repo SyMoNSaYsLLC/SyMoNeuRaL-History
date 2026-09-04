@@ -39,7 +39,7 @@ exit 0. **It runs, and it announces our name.** A file of the right size proves 
 | | |
 |---|---|
 | artefact | `engines/symoneural-miner/build/kawpowminer/symoneural-miner` |
-| bytes | 6,218,920 |
+| bytes | 6,218,920 — **now 6,293,648**, see the hardening note below |
 | CUDA | `COMPUTE=120` (sm_120), `ETHASHCUDA=ON`, `ETHASHCL=OFF` |
 | RUNPATH | `/usr/local/cuda/lib64:/usr/local/cuda/lib64/stubs:` |
 
@@ -75,6 +75,29 @@ it, and `KAWPOW_BINARY` is a signpost quoted back by `selftest()` — no code pa
 process. An unconfigured box that started hashing because a binary appeared would be the exact
 failure this surface is built to prevent. What changed is that the signpost now points at
 something that exists; what did not change is that nothing runs it.
+
+## REBUILT 2026-09-04 with ELF hardening
+
+`941d756d` added `-fstack-protector-strong` and `-Wl,-z,relro -Wl,-z,now` after
+`symoneural-buildv2`'s native auditor failed this binary — and the other three engines — on
+partial RELRO and a missing stack protector. Rebuilt from scratch and re-audited:
+
+| Check | Before | After |
+|---|---|---|
+| full RELRO (GNU_RELRO + BIND_NOW) | FAIL | **PASS** |
+| stack protector (`__stack_chk_fail`) | FAIL | **PASS** |
+| PIE, non-exec stack, no W+X, build-id | PASS | PASS |
+| RPATH/RUNPATH present | FAIL | FAIL — *deliberate* |
+| imports `execve fork dlopen dlmopen` | FAIL | FAIL — upstream's own |
+
+It still runs: `SyMoNeuRaL Miner 1.2.4`, exit 0. Binary grew 6,218,920 → **6,293,648** bytes,
+which is the protector, and is the only reason to distrust the size-match note below — the
+2026-08-17 reference binary and this one are **no longer** the same size, so that coincidence
+has stopped being available as a false reassurance.
+
+The RUNPATH failure is not a defect here. That rule assumes a privileged binary; this one is
+unprivileged, and its RUNPATH names the system CUDA toolkit, which is at the same absolute path
+on any machine that has it.
 
 ## What this file does NOT claim
 

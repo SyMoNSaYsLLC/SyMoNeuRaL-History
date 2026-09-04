@@ -301,7 +301,53 @@ no chmod or cosmetic relocation is required or authorized.
 | Coder / Studio | Task Gate + Mutation Lease + Evidence Contract; controlled execution; bounded subagents; unified Studio rails/tabs and policy-driven routing. |
 | Multi-Coder | Prove Codex boundary, production debate acceptance, per-user provider isolation, batch/rotation, exact unanimous trainer approval and actual receiver training evidence. |
 | Models / LoRA | First-party persona adapter restored from custody and verified applied at serving time [E10] -- and still applied: a 2026-09-04 chat request measured **94.7 tok/s with `adapter: true`**. Held-out evaluation remains outstanding; restoration is not new training and the broader milestone is incomplete. **Whisper is RESOLVED** (`f5f0a7e4`: engine, weight, and a real transcription -- see `backend/SMOKE-listen-asr.md`); **rembg/u2net remains OPEN**; two tokenizers remain UNKNOWN_STOP and the historical reinforce smoke adapter remains unrestored. The 14B named by the tuner registry is absent from disk. Restored upstream base weights are not trained first-party model evidence. |
-| **Runtimes (first-party)** | **DONE 2026-09-04: `symoneural-miner` is built.** It was the one runtime MISSING rather than absent by design -- `cryptominer` resolved `KAWPOW_BINARY` into gitignored `contrib/`, the third instance of the pattern that already ate the ASR engine and this repo's own mining benchmark binary. Built offline from vendored kawpowminer 1.2.4 + cpp-kawpow 1.1.0 with static boost/jsoncpp/CLI11, under our own name, and it runs: `SyMoNeuRaL Miner 1.2.4`, exit 0. Evidence: `backend/SMOKE-miner-runtime.md`. No hashrate is claimed and no GPU work was done. **Four of five runtimes are now first-party** (`llm`, `diffuse`, `listen`, `miner`). **`symoneural-ui` (ComfyUI) is the last vendored one**; Studio is the only rack row that depends on it, and that is now the whole first-party backlog. Still open: `symoneural-diffuse` ships an absolute CUDA RUNPATH pointing into its own build tree and is **not relocatable by an installer** -- the fix is the `CMAKE_BUILD_RPATH_USE_ORIGIN=ON` flag already used for `listen` and `miner`. (The miner's RUNPATH is also absolute but names the system CUDA toolkit, which is at the same path on any machine that has it; that one is correct.) Optional, not gaps: `streamer` (ffmpeg) and `live` (obs) execute third-party binaries and have no first-party runtime; six rack rows execute nothing external at all and need none. |
+| **Runtimes (first-party)** | **DONE 2026-09-04: `symoneural-miner` is built.** It was the one runtime MISSING rather than absent by design -- `cryptominer` resolved `KAWPOW_BINARY` into gitignored `contrib/`, the third instance of the pattern that already ate the ASR engine and this repo's own mining benchmark binary. Built offline from vendored kawpowminer 1.2.4 + cpp-kawpow 1.1.0 with static boost/jsoncpp/CLI11, under our own name, and it runs: `SyMoNeuRaL Miner 1.2.4`, exit 0. Evidence: `backend/SMOKE-miner-runtime.md`. No hashrate is claimed and no GPU work was done. **Four of five runtimes are now first-party** (`llm`, `diffuse`, `listen`, `miner`). **`symoneural-ui` (ComfyUI) is the last vendored one**; Studio is the only rack row that depends on it, and that is now the whole first-party backlog. **CORRECTED 2026-09-04, and the correction is the interesting part.** This row previously said
+`symoneural-diffuse` carried an absolute RUNPATH "pointing into its own build tree" and was the
+installer blocker. That was **backwards on both counts**, and was written from a glance at a
+path that merely looked absolute rather than from asking what it pointed AT:
+
+| Engine | RUNPATH | Verdict |
+|---|---|---|
+| `symoneural-diffuse` | `/usr/local/cuda-13.3/targets/x86_64-linux/lib` | system CUDA — **portable**; versioned, so brittle across a toolkit upgrade, but not a blocker |
+| `symoneural-miner` | `/usr/local/cuda/lib64` | system CUDA, unversioned — correct |
+| `symoneural-llm` | `.../engines/symoneural-llm/build/bin` | **the actual build-tree leak** |
+
+`$ORIGIN` can only make *build-tree* paths relative; it cannot help with a system toolkit path,
+which is why `CMAKE_BUILD_RPATH_USE_ORIGIN=ON` left diffuse unchanged and the flag looked
+ineffective. And `symoneural-llm` read `$ORIGIN` this morning: the identity rebuild in
+`aa1bdff2` did not carry that flag, so **that commit introduced the regression**. Caught by
+re-auditing after a rebuild rather than by trusting the earlier reading, which is the whole
+argument for measuring the artefact instead of the intention.
+
+**RESOLVED**: `symoneural-llm` was rebuilt with the flag and reads `RUNPATH: [$ORIGIN:]` again.
+No engine now carries a build-tree path.
+
+### ELF hardening — all four engines rebuilt and re-audited, 2026-09-04
+
+`symoneural-buildv2`'s native auditor was pointed at these binaries for the first time and
+failed **all four identically**: partial RELRO only, and no stack-protector reference. Nobody
+had chosen that; upstream does not set the flags and CMake's Release profile does not add them.
+`941d756d` added `-fstack-protector-strong` and `-Wl,-z,relro -Wl,-z,now` to every engine.
+
+| Engine | Audit failures before → after | Still serves? |
+|---|---|---|
+| `symoneural-llm` | 3 → **1** | chat **95.7 tok/s**, adapter applied, `Server: SyMoNeuRaL LLM` |
+| `symoneural-diffuse` | 4 → **2** | runs; announces `SyMoNeuRaL Diffuse` |
+| `symoneural-listen` | 4 → **2** | transcribes correctly |
+| `symoneural-miner` | 4 → **2** | `SyMoNeuRaL Miner 1.2.4`, exit 0 |
+
+**The remaining failures are deliberate and are not defects.** Every engine still fails
+"RPATH/RUNPATH present" — a rule written for a *privileged* binary, where a RUNPATH is attack
+surface. These are unprivileged, and their RUNPATH is either `$ORIGIN` (which is the only
+reason an installer can relocate them) or the system CUDA toolkit. Three also import
+`fork`/`dlopen`/`system`, which is upstream's own backend loading. `_FORTIFY_SOURCE` is
+reported SKIP rather than FAIL and was deliberately not set: it needs an optimisation level to
+do anything and silently does nothing without one, so setting it across four differently
+configured trees would buy a false sense of coverage.
+
+**The hardening cost is workload-dependent, and both numbers are stated rather than the
+flattering one:** the GPU chat path went 94.7 → 95.7 tok/s (free, within noise); the CPU-bound
+ASR path went 884.67 → 1091.72 ms (**about 23%**). Optional, not gaps: `streamer` (ffmpeg) and `live` (obs) execute third-party binaries and have no first-party runtime; six rack rows execute nothing external at all and need none. |
 | Miner | Configured software, safe GPU/governor behavior, real-device proof where applicable; no operation authorized here. Runtime gap recorded in the Runtimes row above. |
 | **This file** | **A tripwire that fails when the pinned checkpoint SHA is not an ancestor-or-equal of HEAD.** Twice now this document has described a tree that no longer existed, and both times a human caught it rather than a check. Until that exists, every SHA here must be read against `git rev-parse HEAD`. Second item: **14 of this file's 19 links do not survive a clone** -- 9 are absolute paths under `/home/google/...` and 5 point into `review/`, which `.gitignore:166` ignores. They all resolve on this box, which is why the problem is invisible from here. Relocating evidence is a custody decision and is Garrett's, not a repair to make silently. |
 | Accounts / demos | Visible Login/signup; owner super-admin and temporary credential administration; server-enforced per-demo assignment and independently tested all-demo access. |

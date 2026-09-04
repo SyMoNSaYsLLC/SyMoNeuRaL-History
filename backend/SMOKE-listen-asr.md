@@ -27,7 +27,29 @@ That sentence is the reading that matters. A timing proves the process ran; **on
 prove it heard**, and the empty-string case is exactly the fake-green that
 `tests/fixtures/README.md` refuses to paper over with a tone.
 
-## Timings, `base.en` at `-t 8`
+## REBUILT 2026-09-04 with ELF hardening — the timing below is superseded
+
+`941d756d` added `-fstack-protector-strong` and `-Wl,-z,relro -Wl,-z,now` to every engine,
+after `symoneural-buildv2`'s native auditor failed all four on partial RELRO and a missing
+stack protector. This engine was rebuilt from scratch and **re-measured rather than re-dated**:
+
+| | before hardening | after |
+|---|---|---|
+| total | 884.67 ms | **1091.72 ms** |
+| audit failures | 4 | **2** |
+
+**The protector costs about 23% on this sub-second CPU task.** That number is stated because
+the alternative — quietly keeping the faster figure beside a slower binary — is the exact
+failure this file's own closing section refuses. The transcript is unchanged and still correct.
+
+The two remaining audit failures are both deliberate: a `$ORIGIN` RUNPATH (which is what makes
+the engine relocatable by an installer, and the auditor's rule assumes a *privileged* binary),
+and imports of `system`/`dlopen` that come from upstream's own backend loading.
+
+The table immediately below is the **pre-hardening** reading, kept as taken rather than
+rewritten, because a measurement belongs to the tree it was taken on.
+
+## Timings, `base.en` at `-t 8` — pre-hardening, superseded above
 
 | Stage | Measured |
 |---|---|
