@@ -272,10 +272,16 @@ class AdapterAndBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(answer.state, "failed")
 
     async def test_cancel_reaps_provider_process(self):
+        """Tests process REAPING, not authorisation, so it holds a provider grant. Without
+        one `_run` refuses before spawning anything and there is no child left to reap --
+        the gate working, not a regression in the behaviour this pins."""
         import asyncio, sys, os, tempfile
         from pathlib import Path
+        from apps import authority
         from . import _run
-        with tempfile.TemporaryDirectory() as d:
+        grant = authority.Task(task_id="t-reap", owner="test",
+                               mutation_authority=("provider",))
+        with authority.acting_as(grant), tempfile.TemporaryDirectory() as d:
             pidfile = Path(d)/"pid"
             script = "import os,time;open('pid','w').write(str(os.getpid()));time.sleep(30)"
             task = asyncio.create_task(_run([sys.executable,"-B","-c",script],"",d,60))
@@ -501,3 +507,64 @@ class JournalTests(unittest.TestCase):
         off must not create runtime state."""
         from . import journal_path
         self.assertFalse(journal_path().exists())
+
+
+class ProviderSpawnRequiresAuthority(unittest.TestCase):
+    """Spawning `claude` or `codex` runs a third-party CLI under the operator's own logged-in
+    session. This module's docstring names that plainly: "whoever can reach this surface can
+    spend his account". Reaching the surface is admission; spending the account is authority.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.enterContext(unittest.mock.patch.dict(
+            os.environ, {"SYMONEURAL_AUTHORITY_DIR": tempfile.mkdtemp(),
+                         "SYMONEURAL_CODERS_STATE_DIR": tempfile.mkdtemp()}))
+
+    def test_a_spawn_with_no_task_is_refused_before_the_process_starts(self):
+        import asyncio
+        from apps import authority
+        from . import _run
+        with self.assertRaises(authority.NoTask):
+            asyncio.run(_run(["/bin/echo", "hi"], "p", "/tmp", 5.0))
+
+    def test_a_grant_for_another_scope_does_not_buy_provider_spend(self):
+        """`provider` is deliberately not `service`. A task granted a shell must not silently
+        also get the right to spend the operator's third-party quota."""
+        import asyncio
+        from apps import authority
+        from . import _run
+        for scope in ("workspace", "service", "environment"):
+            with self.subTest(scope=scope):
+                t = authority.Task(task_id=f"t-{scope}", owner="test",
+                                   mutation_authority=(scope,))
+                with authority.acting_as(t):
+                    with self.assertRaises(authority.NotAuthorised):
+                        asyncio.run(_run(["/bin/echo", "hi"], "p", "/tmp", 5.0))
+
+    def test_the_provider_grant_permits_the_spawn(self):
+        """The other direction, or the gate could pass every test above by refusing always."""
+        import asyncio
+        from apps import authority
+        from . import _run
+        t = authority.Task(task_id="t-ok", owner="test", provider="claude",
+                           mutation_authority=("provider",))
+        with authority.acting_as(t):
+            code, out, _ = asyncio.run(_run(["/bin/echo", "hi"], "p", "/tmp", 10.0))
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), "hi")
+
+    def test_the_gate_authorises_without_taking_an_exclusive_lease(self):
+        """Providers are deliberately concurrent -- run_session fans out with asyncio.gather
+        and _LOCKS serialises each provider against itself. A scope-wide lease would serialise
+        Claude against Codex and destroy that. So the spawn uses enforce(), not guard(), and
+        no lease may be held afterwards."""
+        import asyncio
+        from apps import authority
+        from . import _run
+        t = authority.Task(task_id="t-nolease", owner="test",
+                           mutation_authority=("provider",))
+        with authority.acting_as(t):
+            asyncio.run(_run(["/bin/echo", "hi"], "p", "/tmp", 10.0))
+        self.assertIsNone(authority.current_holder("provider"),
+                          "the spawn took an exclusive lease and would serialise providers")

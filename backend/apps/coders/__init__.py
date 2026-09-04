@@ -35,6 +35,8 @@ being faked with a disabled-looking button that secretly does nothing.
 """
 from __future__ import annotations
 
+from apps import authority
+
 import asyncio
 import datetime
 import json
@@ -347,6 +349,17 @@ def child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
 
 async def _run(argv: list[str], prompt: str, cwd: str, deadline: float,
                env: dict[str, str] | None = None) -> tuple[int, str, str]:
+    # AUTHORITY GATE at `provider` scope. This spawns a third-party CLI under the operator's
+    # own logged-in session -- credential delegation, and his quota. Being admitted to the
+    # surface is not the right to spend his account.
+    #
+    # `enforce` (authorise) and NOT `guard` (authorise + take an exclusive lease), because the
+    # providers are deliberately concurrent: `run_session` fans out with `asyncio.gather` and
+    # `_LOCKS[coder_id]` already serialises each provider against itself. A scope-wide lease
+    # would serialise Claude against Codex and quietly destroy the parallelism the design
+    # exists for -- the plane is here to decide WHO MAY, not to re-solve a concurrency problem
+    # that already has a correct answer one layer down.
+    authority.enforce("provider", f"spawn:{pathlib.Path(argv[0]).name}")
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.PIPE,

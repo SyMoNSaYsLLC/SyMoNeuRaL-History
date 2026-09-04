@@ -93,7 +93,14 @@ class LeaseExpired(AuthorityError):
 
 #: Scopes are coarse on purpose. A scope per file would be unenforceable bookkeeping; these
 #: are the resources whose concurrent mutation actually corrupts something.
-SCOPES = ("workspace", "repository", "service", "environment", "deployment", "model-state")
+SCOPES = ("workspace", "repository", "service", "environment", "deployment", "model-state",
+          "provider")
+#: `provider` is separate from `service` on purpose. `service` is this box -- systemd units,
+#: a shell, anything with root's blast radius. `provider` is the operator's own logged-in
+#: third-party account: spawning `claude` or `codex` spends HIS quota under HIS credentials,
+#: which is a different resource, a different cost and a different thing to be accountable
+#: for. Folding it into `service` would mean a task granted a shell also silently got the
+#: right to spend money.
 
 
 def _utc() -> str:
