@@ -263,3 +263,59 @@ class LiveSystemTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnitOrderingAndStartLimits(unittest.TestCase):
+    """Two defects that systemd reports by doing nothing at all.
+
+    Both were invisible because a wrong directive in a unit file is not an error -- systemd
+    ignores it and carries on, so the file reads correct and the behaviour is absent.
+    """
+
+    OPS = REPO / "ops"
+    BEFORE_WEB = ("symoneural-api", "symoneural-gateway", "symoneural-deploy")
+
+    def test_the_units_order_before_the_runtime_that_actually_serves(self):
+        """`Before=caddy.service` is satisfied-by-absence on a host where caddy is disabled.
+
+        caddy owned :80/:443 until the 2026-08-26 cutover; `symoneural-web` owns them now and
+        `caddy.service` is disabled. Ordering against a unit that never starts is a no-op, so
+        these three had NO boot ordering against the process that serves -- the API, the
+        gateway and the site publish had no guarantee of being up first.
+
+        Both lines are required, not one: a host still running stock Caddy needs the caddy
+        ordering, and on this host it costs nothing.
+        """
+        for name in self.BEFORE_WEB:
+            with self.subTest(unit=name):
+                src = (self.OPS / f"{name}.service").read_text()
+                self.assertRegex(src, r"(?m)^Before=caddy\.service$",
+                                 f"{name}: stock-Caddy ordering was dropped rather than kept")
+                self.assertRegex(src, r"(?m)^Before=symoneural-web\.service$",
+                                 f"{name}: no ordering against the runtime that actually serves")
+
+    def test_start_limits_are_in_the_section_systemd_reads(self):
+        """`StartLimitIntervalSec`/`StartLimitBurst` belong to [Unit]. In [Service] systemd
+        ignores them -- `systemd-analyze verify` says so and `systemctl show` measured the
+        effective window as 10s, the built-in default, on units whose comments promise 120s.
+
+        Asserted by section, not by presence, because presence is exactly what was already
+        true while the setting did nothing.
+        """
+        for name in ("symoneural-api", "symoneural-gateway"):
+            with self.subTest(unit=name):
+                src = (self.OPS / f"{name}.service").read_text()
+                # Split on the SECTION HEADER, anchored to start-of-line, not on the string.
+                # The comment above the directives explains that [Service] is the wrong place
+                # and therefore contains the literal "[Service]" -- a plain `.split()` lands on
+                # that prose and truncates the [Unit] section before the directives it is
+                # looking for. Caught by this test failing on its first run.
+                m = re.search(r"(?m)^\[Service\]$", src)
+                self.assertIsNotNone(m, f"{name}: no [Service] section header")
+                unit_sec, after = src[:m.start()], src[m.end():]
+                self.assertIn("StartLimitIntervalSec=120", unit_sec,
+                              f"{name}: StartLimitIntervalSec is not in [Unit]")
+                self.assertIn("StartLimitBurst=5", unit_sec,
+                              f"{name}: StartLimitBurst is not in [Unit]")
+                self.assertNotIn("StartLimitIntervalSec", after,
+                                 f"{name}: a copy remains in [Service], where it is ignored")

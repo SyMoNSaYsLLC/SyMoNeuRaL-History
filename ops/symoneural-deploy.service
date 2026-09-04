@@ -24,7 +24,17 @@ Documentation=file://@@ROOT@@/docs/SERVER-READY.md
 # correct outcome, because the last good tree is a working site and a half-published one
 # is not.
 After=local-fs.target
+# Before=caddy.service is kept and is a NO-OP on this host, which is the whole problem this
+# second line fixes. `caddy.service` was the production owner of :80 and :443 until the
+# 2026-08-26 cutover; it is now disabled, and systemd treats an ordering constraint against a
+# unit that never starts as satisfied-by-absence. So this unit had NO boot ordering against the
+# process that actually serves, and "start before the web server" quietly stopped being true.
+#
+# Both lines, not a replacement: a host still running stock Caddy needs the first, and
+# ordering against a unit that is absent there costs nothing either. Ordering is declarative
+# and cheap; guessing which shape a host is at install time is not.
 Before=caddy.service
+Before=symoneural-web.service
 
 # If the staging tree is not there, this box is not the build box, and the unit should be
 # skipped rather than failed. A red unit that is red for a reason nobody can act on trains

@@ -3,6 +3,13 @@
 # install time. systemd has no notion of a relative path, so this is the only way the
 # unit can live in a repo that gets cloned anywhere.
 Description=SyMoNeuRaL inference API (chat, image, calc, remix)
+# StartLimit* live in [Unit], NOT [Service], and this pair sat in [Service] until 2026-09-03
+# where systemd silently ignored them -- `systemd-analyze verify` says "Unknown key
+# 'StartLimitIntervalSec' in section [Service], ignoring", and `systemctl show` measured the
+# effective window as 10s, the built-in default, identical to a unit that declares nothing.
+# So the crash-loop protection the comment below describes had never once applied.
+StartLimitIntervalSec=120
+StartLimitBurst=5
 Documentation=https://symoneural.com/docs
 # The GPU has to be there before we start; nvidia-persistenced keeps the driver initialised
 # so the first request after a reboot does not pay driver-load latency.
@@ -10,7 +17,17 @@ After=network-online.target nvidia-persistenced.service
 Wants=network-online.target
 # Caddy proxies /api, /docs and /openapi.json to us. It can start without us -- the static
 # site must serve whether or not inference is up -- so this is a soft ordering only.
+# Before=caddy.service is kept and is a NO-OP on this host, which is the whole problem this
+# second line fixes. `caddy.service` was the production owner of :80 and :443 until the
+# 2026-08-26 cutover; it is now disabled, and systemd treats an ordering constraint against a
+# unit that never starts as satisfied-by-absence. So this unit had NO boot ordering against the
+# process that actually serves, and "start before the web server" quietly stopped being true.
+#
+# Both lines, not a replacement: a host still running stock Caddy needs the first, and
+# ordering against a unit that is absent there costs nothing either. Ordering is declarative
+# and cheap; guessing which shape a host is at install time is not.
 Before=caddy.service
+Before=symoneural-web.service
 
 [Service]
 Type=exec
@@ -37,8 +54,6 @@ Restart=always
 RestartSec=3
 # If it is crash-looping, stop rather than thrashing the GPU. Five failures in two minutes
 # means something is wrong that restarting will not fix.
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 Environment=PYTHONUNBUFFERED=1
 Environment=SYMONEURAL_PORT=8800

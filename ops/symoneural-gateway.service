@@ -3,6 +3,13 @@
 # time. systemd has no notion of a relative path, so this is the only way the unit can live in
 # a repo that gets cloned anywhere. Same shape as ops/symoneural-api.service.
 Description=SyMoNeuRaL HTTP gateway (routing, WebSocket relay, payload validation)
+# StartLimit* live in [Unit], NOT [Service], and this pair sat in [Service] until 2026-09-03
+# where systemd silently ignored them -- `systemd-analyze verify` says "Unknown key
+# 'StartLimitIntervalSec' in section [Service], ignoring", and `systemctl show` measured the
+# effective window as 10s, the built-in default, identical to a unit that declares nothing.
+# So the crash-loop protection the comment below describes had never once applied.
+StartLimitIntervalSec=120
+StartLimitBurst=5
 # Same pre-712e15b path the ExecStart below carried; corrected in the same sweep. Harmless to
 # systemd, but a stale pointer here sends the next reader to a directory that is not there.
 Documentation=file://@@ROOT@@/backend/apps/gateway/README.md
@@ -16,7 +23,17 @@ Wants=network-online.target
 
 # Caddy terminates TLS and proxies /api, /v1 and /swagger-ui to us. Same soft ordering the API
 # uses: the static site must serve whether or not this is up.
+# Before=caddy.service is kept and is a NO-OP on this host, which is the whole problem this
+# second line fixes. `caddy.service` was the production owner of :80 and :443 until the
+# 2026-08-26 cutover; it is now disabled, and systemd treats an ordering constraint against a
+# unit that never starts as satisfied-by-absence. So this unit had NO boot ordering against the
+# process that actually serves, and "start before the web server" quietly stopped being true.
+#
+# Both lines, not a replacement: a host still running stock Caddy needs the first, and
+# ordering against a unit that is absent there costs nothing either. Ordering is declarative
+# and cheap; guessing which shape a host is at install time is not.
 Before=caddy.service
+Before=symoneural-web.service
 
 [Service]
 Type=exec
@@ -68,8 +85,6 @@ KillSignal=SIGTERM
 
 Restart=always
 RestartSec=2
-StartLimitIntervalSec=120
-StartLimitBurst=5
 
 StandardOutput=journal
 StandardError=journal
