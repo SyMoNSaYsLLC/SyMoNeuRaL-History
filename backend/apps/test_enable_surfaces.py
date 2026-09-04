@@ -401,3 +401,54 @@ class ShowNeverPrintsACredential(unittest.TestCase):
         self.assertRegex(self.out, r"SYM_CODER_ENABLED\s+= 1")
         self.assertRegex(self.out, r"SYMONEURAL_PORT\s+= 8800")
         self.assertRegex(self.out, r"SYMONEURAL_GATEWAY_NETWORK\s+= symoneural-test")
+
+
+class EveryRequiredSecretClassIsCovered(unittest.TestCase):
+    """The exact name list the 2026-09-03 disclosure review required, asserted one by one.
+
+    `ShowNeverPrintsACredential` proves the allow-list behaviour with decoys. This class is
+    deliberately literal instead: it names each variable the review called out, so a future
+    reader can match the requirement to a test without reasoning about the filter.
+    """
+
+    REDACT = ["SYM_CODER_TOKEN", "SYM_STUDIO_TOKEN", "SYM_PROJECT_TOKEN",
+              "SYMONEURAL_SESSION_SECRET", "SYMONEURAL_DB_PASSWORD", "APP_PASSWD",
+              "TLS_PRIVATE_KEY", "SERVICE_API_KEY", "SYMONEURAL_API_CREDENTIAL",
+              "AUTH_COOKIE", "JWT_SIGNING_KEY"]
+    PLAIN = ["SYM_CODER_ENABLED", "SYMONEURAL_PORT", "SYMONEURAL_GATEWAY_NETWORK"]
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile, subprocess
+        lines = [f"{n}=DECOY_{i}_{'x' * 20}" for i, n in enumerate(cls.REDACT)]
+        lines += ["SYM_CODER_ENABLED=1", "SYMONEURAL_PORT=8800",
+                  "SYMONEURAL_GATEWAY_NETWORK=symoneural-test", ""]
+        cls._tmp = tempfile.TemporaryDirectory()
+        env_file = Path(cls._tmp.name) / "api.env"
+        env_file.write_text("\n".join(lines))
+        m = re.search(r"(?ms)^show\(\) \{.*?^\}", SCRIPT.read_text())
+        r = subprocess.run(["bash"], input=f"ENV_FILE={env_file}\n{m.group(0)}\nshow\n",
+                           capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        cls.out = r.stdout
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_every_named_secret_class_is_redacted(self):
+        for i, name in enumerate(self.REDACT):
+            with self.subTest(var=name):
+                self.assertNotIn(f"DECOY_{i}_", self.out, f"{name} printed its value")
+                self.assertRegex(self.out, rf"{re.escape(name)}\s+= <set, \d+ chars>")
+
+    def test_non_secret_switches_still_display(self):
+        for name, val in (("SYM_CODER_ENABLED", "1"), ("SYMONEURAL_PORT", "8800"),
+                          ("SYMONEURAL_GATEWAY_NETWORK", "symoneural-test")):
+            with self.subTest(var=name):
+                self.assertRegex(self.out, rf"{re.escape(name)}\s+= {re.escape(val)}")
+
+    def test_no_decoy_value_appears_anywhere_in_the_output(self):
+        """Belt and braces across the whole blob, in case a future format change moves a
+        value onto a line the per-variable regexes do not inspect."""
+        self.assertNotIn("DECOY_", self.out)

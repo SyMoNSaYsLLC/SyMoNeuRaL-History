@@ -56,7 +56,13 @@ DEFAULT_TIMEOUT = 120
 # the operator can read any of these off disk with `read_file` -- but this result is fed back
 # into an LLM context that is rendered into a browser and may be written to the API log, and
 # a token that leaks there leaks to a different audience than the one that asked.
-_SECRETISH = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "KEY", "CREDENTIAL", "APIKEY")
+#: Substring match against the UPPER-cased name. COOKIE and SIGNING were added 2026-09-03:
+#: a session cookie and a signing key are bearer material exactly like a token, and the
+#: sibling leak in `scripts/enable-surfaces.sh` was caused by a list that stopped one name
+#: short. Broad-and-slightly-over-inclusive is the right error here -- masking a harmless
+#: variable costs a length instead of a value; missing one costs the credential.
+_SECRETISH = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "KEY", "CREDENTIAL", "APIKEY",
+              "COOKIE", "SIGNING")
 
 
 def _clip(s: str) -> tuple[str, int]:
