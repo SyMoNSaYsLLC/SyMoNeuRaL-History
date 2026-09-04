@@ -78,6 +78,8 @@ throws takes the caller down with it.
 """
 from __future__ import annotations
 
+from apps import authority
+
 import datetime
 import difflib
 import fnmatch
@@ -673,7 +675,27 @@ def _mutate(full: pathlib.Path, action: str, **detail) -> str:
 
     If either the snapshot or the journal fails, this raises and the mutation does not
     happen. An edit that cannot be traced or undone is not permitted.
+
+    AUTHORITY GATE, and this is the right place for it because this function is already the
+    chokepoint the module's own design forces every workspace change through: `write_file`,
+    `delete_file` and `restore` call it directly, and `patch_file` reaches it via
+    `write_file`. Nothing can add a fifth workspace mutator that skips this without also
+    skipping the backup and the journal, which the docstring above already forbids.
+
+    `token_ok` + `peer_ok` in `_guard` decide whether a CALLER may reach this surface;
+    this decides whether THIS TASK may change the workspace right now, while holding an
+    exclusive lease on it. Admission and authority are different questions and the coder
+    surface previously only asked the first.
+
+    Raised as `_Refused` rather than letting `AuthorityError` escape: every public function
+    here already converts `_Refused` into the `{"ok": False, "error": ...}` contract its
+    callers expect, so the refusal arrives in the module's own shape instead of as an
+    exception that would cross the API boundary as a 500.
     """
+    try:
+        authority.enforce("workspace", action)
+    except authority.AuthorityError as e:
+        raise _Refused(f"mutation authority: {e}") from None
     version = _snapshot(full)
     _journal(action, _rel(full), version=version, **detail)
     return version
@@ -829,7 +851,12 @@ def restore(path: str, version: str, *, token: str | None, peer: str | None) -> 
     src, was_absent = found
     try:
         undo = _mutate(full, "restore", to_version=version, absent=was_absent)
-    except (_Refused, OSError) as e:
+    except _Refused as e:
+        # Reported separately from OSError below: an authority refusal and a failed backup
+        # are different problems with different fixes, and "journal/backup failed" sent the
+        # reader to check disk space for what was actually a missing task grant.
+        return {"ok": False, "error": str(e)}
+    except OSError as e:
         return {"ok": False, "error": f"journal/backup failed, restore refused: {e}"}
     try:
         if was_absent:
@@ -926,6 +953,14 @@ def run(argv: list[str], *, token: str | None, peer: str | None,
     bad = _guard(token, peer)
     if bad:
         return bad
+    # AUTHORITY GATE at `service` scope, not `workspace`: this execs a binary that can do
+    # anything the API user can, including touching things far outside the workspace the
+    # file tools are confined to. A task granted only `workspace` must not reach it -- that
+    # is the lateral move the scope split exists to stop.
+    try:
+        authority.enforce("service", "run")
+    except authority.AuthorityError as e:
+        return {"ok": False, "error": f"mutation authority: {e}"}
     if isinstance(argv, str):
         return {"ok": False, "error": "argv must be a list of strings, not a command line — "
                                       "this surface never invokes a shell"}

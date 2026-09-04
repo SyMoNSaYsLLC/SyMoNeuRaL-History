@@ -41,11 +41,36 @@ def _restore_env(name: str, value: str | None) -> None:
 
 
 class Base(unittest.TestCase):
-    """A temp workspace, a temp state dir, and the surface switched on."""
+    """A temp workspace, a temp state dir, the surface switched on, and a mutation grant.
+
+    The grant is new as of 2026-09-04. These classes test coder's MECHANICS -- path
+    containment, rollback, journalling, denylists -- and since `_mutate` became an authority
+    chokepoint every one of them refuses without a bound task. Without the grant twenty of
+    them fail with "mutation authority: ... requires a task record", which is the gate
+    working rather than a regression in the behaviour they pin.
+
+    `AuthorityGate` at the bottom of this file covers the other half: the same admitted
+    caller, with no grant, refused.
+
+    Both scopes are granted because the classes below span both -- file tools take
+    `workspace`, `run()` takes `service`. `AuthorityGate` proves one does not imply the other.
+    """
 
     ENABLED = True
+    GRANT = ("workspace", "service")
 
     def setUp(self):
+        from apps import authority
+        self._authdir = tempfile.mkdtemp(prefix="symcoder-auth-")
+        os.environ["SYMONEURAL_AUTHORITY_DIR"] = self._authdir
+        self._acting = authority.acting_as(authority.Task(
+            task_id="t-coder-mechanics", owner="test", provider="test",
+            mutation_authority=self.GRANT))
+        self._acting.__enter__()
+        self.addCleanup(self._acting.__exit__, None, None, None)
+        self._setup_env()
+
+    def _setup_env(self):
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="symcoder-test-"))
         self.ws = self.tmp / "ws"
         self.state = self.tmp / "state"
@@ -788,3 +813,79 @@ class TestNoGpu(Base):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class AuthorityGate(Base):
+    """The half `Base`'s grant no longer exercises: an admitted caller with no authority.
+
+    `token_ok` + `peer_ok` decide whether a CALLER may reach this surface. The authority
+    plane decides whether THIS TASK may change the workspace right now. Until 2026-09-04 the
+    coder surface only asked the first question, so a valid token was a standing licence to
+    write, delete, restore and exec.
+    """
+
+    #: No grant at all. Everything else about the fixture is a fully admitted caller.
+    GRANT = ()
+
+    def _kw(self):
+        return dict(token=TOKEN, peer="127.0.0.1")
+
+    def test_write_is_refused_and_nothing_is_written(self):
+        target = self.ws / "new.txt"
+        r = coder.write_file("new.txt", "x", **self._kw())
+        self.assertFalse(r["ok"])
+        self.assertIn("mutation authority", r["error"])
+        self.assertFalse(target.exists(), "the file was written despite the refusal")
+
+    def test_run_is_refused_at_service_scope(self):
+        r = coder.run(["echo", "hi"], **self._kw())
+        self.assertFalse(r["ok"])
+        self.assertIn("mutation authority", r["error"])
+        self.assertIn("service", r["error"])
+
+    def test_delete_and_patch_are_refused_without_changing_the_file(self):
+        """Seeded under a grant so the refusal is about authority and not about the file
+        being absent -- the first version of this check passed for the wrong reason."""
+        from apps import authority
+        seeded = authority.Task(task_id="t-seed", owner="test",
+                                mutation_authority=("workspace",))
+        with authority.acting_as(seeded):
+            coder.write_file("seed.txt", "original", **self._kw())
+        target = self.ws / "seed.txt"
+        before = target.read_text()
+
+        r = coder.patch_file("seed.txt", "original", "changed", **self._kw())
+        self.assertFalse(r["ok"]); self.assertIn("mutation authority", r["error"])
+        r = coder.delete_file("seed.txt", **self._kw())
+        self.assertFalse(r["ok"]); self.assertIn("mutation authority", r["error"])
+
+        self.assertTrue(target.exists(), "the file was deleted despite the refusal")
+        self.assertEqual(target.read_text(), before, "the file changed despite the refusal")
+
+    def test_read_only_operations_still_work_without_any_grant(self):
+        """Read-only paths deliberately need no lease. Requiring one would make `status` and
+        `list_dir` unusable for the page that renders them, and gain nothing: they change
+        nothing to serialise against."""
+        for label, r in (("status", coder.status(**self._kw())),
+                         ("list_dir", coder.list_dir(".", **self._kw())),
+                         ("diff", coder.diff("nothing.txt", "x", **self._kw()))):
+            with self.subTest(op=label):
+                self.assertNotIn("mutation authority", str(r.get("error", "")))
+
+    def test_a_workspace_grant_does_not_reach_the_executor(self):
+        """The lateral move the scope split exists to stop: `run()` execs a binary that can
+        touch anything the API user can, far outside the workspace the file tools confine."""
+        from apps import authority
+        ws_only = authority.Task(task_id="t-ws", owner="test",
+                                 mutation_authority=("workspace",))
+        with authority.acting_as(ws_only):
+            self.assertTrue(coder.write_file("ok.txt", "x", **self._kw())["ok"])
+            r = coder.run(["echo", "hi"], **self._kw())
+            self.assertFalse(r["ok"], "a workspace grant reached the executor")
+            self.assertIn("service", r["error"])
+
+    def test_an_authority_refusal_is_not_reported_as_a_backup_failure(self):
+        """Two different problems with two different fixes. 'journal/backup failed' sent the
+        reader to check disk space for what was a missing grant."""
+        r = coder.write_file("x.txt", "x", **self._kw())
+        self.assertNotIn("journal/backup failed", r["error"])
