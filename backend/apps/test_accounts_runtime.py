@@ -192,7 +192,13 @@ class MigrationClassifiesEveryKey(unittest.TestCase):
                 self.assertEqual(self._domain(k), "surfaces")
 
     def test_an_undeclared_key_is_UNKNOWN_rather_than_defaulted(self):
-        for k in ("SYMONEURAL_A_FUTURE_SECRET", "TOTALLY_NEW_KEY", "SYM_SOMETHING_ELSE"):
+        # Both spellings of the fictional key, for two reasons: an undeclared name must be
+        # UNKNOWN whichever prefix it carries, and `test_credential_header`'s tripwire refuses
+        # any file naming a legacy SYM_* var without its SYMONEURAL_* twin -- which it did to
+        # this very line on first run, correctly, because a bare SYM_ name here is
+        # indistinguishable from a real one someone forgot to rename.
+        for k in ("SYMONEURAL_A_FUTURE_SECRET", "TOTALLY_NEW_KEY",
+                  "SYM_SOMETHING_ELSE", "SYMONEURAL_SOMETHING_ELSE"):
             with self.subTest(key=k):
                 self.assertEqual(self._domain(k), "UNKNOWN",
                                  "an unclassified key was given a default domain")
