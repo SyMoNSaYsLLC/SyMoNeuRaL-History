@@ -411,7 +411,14 @@ class EveryRequiredSecretClassIsCovered(unittest.TestCase):
     reader can match the requirement to a test without reasoning about the filter.
     """
 
-    REDACT = ["SYM_CODER_TOKEN", "SYM_STUDIO_TOKEN", "SYM_PROJECT_TOKEN",
+    #: BOTH spellings of each token. The rename in `apps/symoneuralenv.py` is partway through
+    #: this tree -- the running service still carries the pre-rename `SYM_` names while new
+    #: code writes `SYMONEURAL_` -- so a filter proven against one half is not proven. Naming
+    #: both also satisfies `test_credential_header`'s tripwire, which went red on the first
+    #: version of this list for exactly the reason that tripwire exists.
+    REDACT = ["SYM_CODER_TOKEN", "SYMONEURAL_CODER_TOKEN",
+              "SYM_STUDIO_TOKEN", "SYMONEURAL_STUDIO_TOKEN",
+              "SYM_PROJECT_TOKEN", "SYMONEURAL_PROJECT_TOKEN",
               "SYMONEURAL_SESSION_SECRET", "SYMONEURAL_DB_PASSWORD", "APP_PASSWD",
               "TLS_PRIVATE_KEY", "SERVICE_API_KEY", "SYMONEURAL_API_CREDENTIAL",
               "AUTH_COOKIE", "JWT_SIGNING_KEY"]
