@@ -84,6 +84,70 @@ fork_llm() {
         --exclude 'models/*.gguf' \
         "$src/" "$dst/"
 
+    # ---- identity, not just filenames -------------------------------------------------
+    #
+    # OUTPUT_NAME below renames the ARTIFACTS. It does nothing about the identity the running
+    # program announces, and this engine announced somebody else's on every single response:
+    #
+    #   Server: llama.cpp          on every HTTP reply, to every client
+    #   owned_by: llamacpp         in the OpenAI-compatible /v1/models body, twice
+    #   llamacpp:*                 the entire Prometheus metric namespace
+    #   "llama.cpp does not ..."   in exception text a user reads
+    #
+    # `/v1/*` is a published route, so this was our product reporting a third-party identity
+    # to anything that asked. Renaming the .so files while the server introduces itself as
+    # llama.cpp is renaming the box and not the label.
+    #
+    # `subst` asserts. If an upstream refresh moves a string, the build STOPS rather than
+    # quietly shipping the upstream name again -- the same contract fork_diffuse's version
+    # banner uses, and the reason that one has never regressed. Checked in this order: if the
+    # old spelling is present, rewrite it; else if ours is already there, this is a re-run;
+    # else the string moved and we refuse.
+    subst() { # file old new
+        local f="$dst/$1" old="$2" new="$3"
+        [ -f "$f" ] || { echo "fork_engines: $1 is not where it was" >&2; return 1; }
+        if grep -qF "$old" "$f"; then
+            python3 - "$f" "$old" "$new" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace(sys.argv[2], sys.argv[3]))
+PY
+        elif ! grep -qF "$new" "$f"; then
+            echo "fork_engines: neither the upstream nor our spelling is in $1;" >&2
+            echo "  the string moved. Find it and rename it, or this engine ships under" >&2
+            echo "  somebody else's identity. Looked for: $old" >&2
+            return 1
+        fi
+    }
+
+    log "installing our identity"
+    # The one that goes out on EVERY response.
+    subst tools/server/server-http.cpp   '{"Server", "llama.cpp"}'  '{"Server", "SyMoNeuRaL LLM"}'
+    # The OpenAI-compatible model owner, in two places. Lowercase and no spaces: it is an API
+    # value other software matches on, not prose.
+    subst tools/server/server-models.cpp  '"owned_by",      "llamacpp"' '"owned_by",      "symoneural"'
+    subst tools/server/server-context.cpp '{"owned_by", "llamacpp"}'    '{"owned_by", "symoneural"}'
+    # Exception and description text a person reads.
+    subst tools/server/server-chat.cpp \
+        "llama.cpp does not support 'previous_response_id'." \
+        "SyMoNeuRaL LLM does not support 'previous_response_id'."
+    subst tools/server/server-chat.cpp \
+        "'input_file' is not supported by llamacpp at this moment" \
+        "'input_file' is not supported by SyMoNeuRaL LLM at this moment"
+    subst tools/server/server-schema.cpp \
+        'Use backend sampling instead of llama.cpp sampling' \
+        'Use backend sampling instead of SyMoNeuRaL LLM sampling'
+    # The MCP server's advertised name.
+    subst tools/server/server-mcp.cpp '"llama.cpp"' '"SyMoNeuRaL LLM"'
+    # The Prometheus namespace. Nothing of ours parses these names -- `symon_client.py` and
+    # `symon_client.js` return /metrics as opaque text -- so this is free to change now and
+    # expensive to change once a dashboard exists.
+    subst tools/server/server-task.cpp 'llamacpp:' 'symoneural:'
+    # The CMake project name. Verified not load-bearing before touching it: PROJECT_NAME is
+    # referenced nowhere in this tree's CMake, so nothing keys install paths or config files
+    # off it.
+    subst CMakeLists.txt 'project("llama.cpp" C CXX)' 'project("symoneural-llm" C CXX)'
+
     log "installing our names"
     mkdir -p "$dst/cmake"
     cat > "$dst/cmake/symoneural-names.cmake" <<'CMAKE'
