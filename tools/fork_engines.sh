@@ -44,10 +44,20 @@ JOBS="$(nproc)"
 # the whole reason this engine did not exist for so long is that its source was assumed to
 # be somewhere it was not. First hit that actually looks like the tree wins; if none does,
 # fork_listen says where it looked instead of failing with an empty path.
-listen_src() {
-    local c
-    for c in "$SRC/whisper.cpp" \
-             "$ROOT/references/referencestochatgpt/whisper.cpp"; do
+# Generalised to all three engines, not just this one. `references/contrib` no longer holds
+# llama.cpp or stable-diffusion.cpp either -- it holds a miner build script and cuda-samples
+# -- so `fork_engines.sh llm` and `diffuse` could not rebuild the two engines this box
+# actually serves from, and nothing noticed: the binaries were already built and sitting in
+# engines/, which is gitignored. That is a packaging problem before it is a build problem.
+# An installer that cannot rebuild an engine from source can only ship a binary somebody
+# built by hand once, which is the state this repo has been burned by twice already.
+#
+# Each candidate is confirmed to LOOK like the tree rather than merely exist -- an empty
+# directory of the right name is the failure this guards against.
+upstream_src() {
+    local name="$1" c
+    for c in "$SRC/$name" \
+             "$ROOT/references/referencestochatgpt/$name"; do
         [ -f "$c/CMakeLists.txt" ] && [ -d "$c/src" ] && { printf '%s' "$c"; return 0; }
     done
     return 1
@@ -57,8 +67,10 @@ log() { printf '\n=== %s\n' "$*"; }
 
 # ---------------------------------------------------------------- symoneural-llm
 fork_llm() {
-    local src="$SRC/llama.cpp" dst="$DST/symoneural-llm"
-    [ -d "$src" ] || { echo "no upstream source at $src" >&2; return 1; }
+    local src dst="$DST/symoneural-llm"
+    src="$(upstream_src llama.cpp)" || {
+        echo "no llama.cpp upstream found under references/ -- looked beside the other" >&2
+        echo "  engines and under the vendored tree that actually holds it." >&2; return 1; }
 
     log "syncing llm source -> $dst"
     mkdir -p "$dst"
@@ -147,8 +159,10 @@ CMAKE
 
 # ------------------------------------------------------------ symoneural-diffuse
 fork_diffuse() {
-    local src="$SRC/stable-diffusion.cpp" dst="$DST/symoneural-diffuse"
-    [ -d "$src" ] || { echo "no upstream source at $src" >&2; return 1; }
+    local src dst="$DST/symoneural-diffuse"
+    src="$(upstream_src stable-diffusion.cpp)" || {
+        echo "no stable-diffusion.cpp upstream found under references/ -- looked beside the" >&2
+        echo "  other engines and under the vendored tree that actually holds it." >&2; return 1; }
 
     log "syncing diffuse source -> $dst"
     mkdir -p "$dst"
@@ -242,7 +256,7 @@ CMAKE
 # `engines/` under our own name is the fix for the pattern, not just for this engine.
 fork_listen() {
     local src dst="$DST/symoneural-listen"
-    if ! src="$(listen_src)"; then
+    if ! src="$(upstream_src whisper.cpp)"; then
         echo "no whisper upstream found under references/ -- looked beside the other two" >&2
         echo "  engines and under the vendored tree that actually holds it." >&2
         return 1
