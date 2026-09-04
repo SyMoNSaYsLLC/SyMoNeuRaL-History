@@ -20,7 +20,15 @@ moment, and the only honest way to read one is to compare it against `git rev-pa
 yourself.** Second: the durable repair is a check that fails when the pinned SHA is not an
 ancestor-or-equal of HEAD, in the manner of the count tripwires that have caught real drift
 three times in this repo. Re-pinning by hand a third time would produce this same paragraph in
-another day. **That check does not exist yet and is listed under Remaining work.**
+another day.
+
+**That check now exists**, as `backend/apps/test_projectstatus_checkpoint.py`, and it is why
+the pin above is no longer the only thing standing between this document and its third
+identical failure. Note what it does and does not do: it fails when the pin is not in this
+history at all, and it merely *reports* how far behind HEAD the pin has drifted. The distance
+is deliberately not an assertion -- a suite that goes red because someone committed twice since
+the last documentation pass is a suite people run with `-k` to skip, and a skipped guard
+protects nothing.
 
 **Superseded: `5427f2a5`, `docs: establish canonical project authorities`.** That SHA stood
 here while the tree advanced fifteen commits past it, which is precisely the drift this file
@@ -72,11 +80,23 @@ Current runtime position, measured 2026-09-04:
 | `symoneural-listen` | `engines/symoneural-listen` | **yes** — new 2026-09-04, CPU-only |
 | `symoneural-ui` | `engines/symoneural-ui` | **NO — vendored ComfyUI**, the last one |
 
-**Services deliberately stopped on owner instruction, 2026-09-04**, and this is a state
-description rather than a fault: `symoneural-web` (stopped), `symoneural-gateway` (stopped and
-disabled), `cloudflared` (stopped and disabled — a third-party binary whose unit named
-`/usr/local/bin/cloudflared` while the binary is at `/usr/bin/cloudflared`, and which had
-therefore failed **12,850** times since boot). Only `symoneural-api` runs. The gateway's source
+**`/etc/symoneural` NO LONGER EXISTS, and the box is fine without it.** The owner deleted it on
+2026-09-04 after `82b493db` made it optional. Every surface switch and token used to come from
+`/etc/symoneural/api.env`, attached through a drop-in `systemctl cat` does not display and
+declared `ignore_errors=yes` — so deleting it would have disabled accounts, coder, studio,
+project and dispatchos **silently**, with the service still reporting healthy. Configuration now
+lives in `run/config/`, which is gitignored (so a secret there cannot be committed), mode 600,
+owned by the account the service runs as. **Verified across a real reboot with the directory
+already deleted**: all twelve rack units present, `coder`/`project`/`dispatchos` all `ready`,
+`NRestarts=0`. Managing configuration no longer requires root.
+
+**Services stopped on owner instruction, 2026-09-04**, a state description rather than a fault:
+`symoneural-gateway` (stopped and disabled), `cloudflared` (stopped and disabled — a
+third-party binary whose unit named `/usr/local/bin/cloudflared` while the binary is at
+`/usr/bin/cloudflared`, and which had therefore failed **12,850** times since boot).
+`symoneural-web` was stopped but never *disabled*, so the reboot started it again and it is
+active — recorded here because a service that returns by itself is exactly the kind of state
+this document exists to make visible. The gateway's source
 and its 24 test files are untouched; removal was not performed, and the two premises offered for
 it -- that it parented a shell, and that it carried the miner runtime -- were both measured false.
 
@@ -354,7 +374,12 @@ order this file would rank them:
    backlog. It is a Python application rather than a compiled engine, so the `fork_engines.sh`
    pattern used four times does not transfer unchanged; this needs a decision before it needs work.
 2. **`symoneural-diffuse`'s absolute RUNPATH** -- one flag, blocks installer relocation.
-3. **The checkpoint-drift tripwire** for this file, which has now gone stale twice.
+3. ~~The checkpoint-drift tripwire for this file~~ -- **DONE.**
+   `backend/apps/test_projectstatus_checkpoint.py` asserts the pinned SHA is an ancestor of
+   HEAD, and prints how far behind it is once past 20 commits. Ancestry rather than equality
+   on purpose: requiring equality would go red on the next unrelated commit, and a check people
+   learn to skip protects nothing. The distance is advisory, which is precisely the reading
+   nobody had on 2026-09-03.
 
 Configuring the miner to actually mine is not on this list: it needs a pool, a wallet and a
 token, which is money and therefore Garrett's, not engineering.
