@@ -151,6 +151,77 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
         "$DST/extra_model_paths.yaml"
     say "rewrote upstream weight names in extra_model_paths.yaml"
   fi
+
+  # --- our name on our own output -------------------------------------------------------
+  #
+  # Every image this engine saves was called `ComfyUI_00001_.png`. That is a third-party
+  # product name stamped onto an artefact WE generated and hand to a user -- the only place in
+  # this fork where the upstream identity leaves the box on something we made.
+  #
+  # This is a default INPUT VALUE, not an API contract, which is what makes it safe to change
+  # and is the distinction that decides the rest of this migration. The two things that still
+  # say ComfyUI are `<title>ComfyUI</title>`, which ships inside the
+  # `comfyui_frontend_package` wheel in `.venv` and is wiped by any pip install, and the
+  # `comfyui_version` key in `/system_stats`, which the upstream frontend's own JS reads --
+  # renaming that field would break the UI this engine serves. Neither is touched here.
+  # `backend/apps/studio/comfy.py` uses `/system_stats` only as a liveness probe and never
+  # reads that key, so nothing of ours depends on it either way.
+  #
+  # Asserted rather than sed'd blind, for the reason fork_engines.sh spells out at length: a
+  # plain substitution silently no-ops when an upstream refresh moves a string, and the engine
+  # goes back to signing our output with somebody else's name on a green build.
+  ui_subst() { # file old new label
+    local f="$DST/$1" old="$2" new="$3"
+    [ -f "$f" ] || { say "  FAIL  $1 is not where it was"; return 1; }
+    if grep -qF "$old" "$f"; then
+      python3 - "$f" "$old" "$new" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace(sys.argv[2], sys.argv[3]))
+PY
+      say "  renamed $4"
+    elif ! grep -qF "$new" "$f"; then
+      say "  FAIL  neither spelling present in $1 -- the string moved; find it or this"
+      say "        engine signs our output with somebody else's name. Looked for: $old"
+      return 1
+    fi
+  }
+
+  # Swept by PATTERN over every save node, not by a hand-written file list. The first attempt
+  # here listed three files and missed five -- nodes_audio, nodes_video_model, nodes_images,
+  # nodes_text, nodes_mask, nodes_video, nodes_save_3d -- which is exactly how a rename ends up
+  # half-applied and reads as done. Upstream adds save nodes; a list does not notice, a sweep
+  # does.
+  #
+  # The match is deliberately narrow: a quoted literal that is `ComfyUI` on its own, or
+  # `<dir>/ComfyUI`, or `ComfyUI_<suffix>`. Every occurrence of those forms in these files was
+  # read before this was written -- twelve are `filename_prefix` defaults and one is the glTF
+  # `"generator"` field stamped into 3D assets we produce. All thirteen are metadata WE put on
+  # OUR output. Nothing else in the tree is touched, which is why this cannot wander into a
+  # node category, an import path, or a comment.
+  python3 - "$DST" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+pat = re.compile(r'"((?:[A-Za-z0-9_]+/)?)ComfyUI((?:_[A-Za-z0-9_]+)?)"')
+files = [root / "nodes.py"] + sorted((root / "comfy_extras").glob("*.py"))
+total = files_hit = 0
+for p in files:
+    if not p.is_file():
+        continue
+    text = p.read_text(encoding="utf-8", errors="ignore")
+    new, n = pat.subn(r'"\1SyMoNeuRaL\2"', text)
+    if n:
+        p.write_text(new, encoding="utf-8")
+        total += n
+        files_hit += 1
+if total == 0:
+    # Already ours, or the forms moved. Distinguish the two rather than passing silently.
+    if not any(p.is_file() and "SyMoNeuRaL" in p.read_text(errors="ignore") for p in files):
+        sys.exit("fork_render_ui: no output-prefix literal matched in any save node, and none "
+                 "carries our name either -- the forms moved. Find them, or this engine signs "
+                 "our output with somebody else's name.")
+print(f"  renamed {total} output-identity literal(s) across {files_hit} save-node file(s)")
+PY
 fi
 
 # --- verify, by opening things rather than by reasoning about them -------------------------
