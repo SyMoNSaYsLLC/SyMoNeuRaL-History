@@ -152,3 +152,71 @@ class RewritePreservesEverythingElse(unittest.TestCase):
         whole, so this holds -- asserted because it is easy to regress."""
         out = self._rewrite("SYMONEURAL_SESSION_SECRET=aGVsbG8=\nC=x=y\n")
         self.assertIn("C=x=y", out, "an unrelated value containing '=' was truncated")
+
+
+MIGRATE = ROOT / "scripts" / "migrate-api-env.sh"
+
+
+class MigrationClassifiesEveryKey(unittest.TestCase):
+    """`scripts/migrate-api-env.sh` splits the legacy combined env file by security domain.
+
+    The property that matters is FAILS CLOSED: a key with no declared destination must abort
+    the migration rather than land in a default domain. Defaulting is exactly how a credential
+    ends up in the file a feature-switch script is allowed to rewrite and print, which is the
+    failure the split exists to make impossible.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        m = re.search(r"(?ms)^domain_of\(\)\s*\{.*?^\}", MIGRATE.read_text())
+        assert m, "domain_of() not found -- re-derive this test"
+        cls.fn = m.group(0)
+
+    def _domain(self, key):
+        r = subprocess.run(["bash", "-c", f"{self.fn}\ndomain_of {key}"],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def test_the_session_signer_goes_to_the_accounts_domain(self):
+        """The whole point. If this ever says surfaces, the signer is back inside the reach
+        of the script whose --show leaked it."""
+        self.assertEqual(self._domain("SYMONEURAL_SESSION_SECRET"), "accounts")
+
+    def test_surface_tokens_stay_in_the_surface_domain(self):
+        """Ownership, not sensitivity. These are secrets too, but enable-surfaces.sh is their
+        legitimate owner -- splitting on 'is it secret' would move them and break that script."""
+        for k in ("SYM_CODER_TOKEN", "SYM_STUDIO_TOKEN", "SYM_PROJECT_TOKEN",
+                  "SYMONEURAL_STUDIO_TOKEN", "SYMONEURAL_CODERS_ENABLED"):
+            with self.subTest(key=k):
+                self.assertEqual(self._domain(k), "surfaces")
+
+    def test_an_undeclared_key_is_UNKNOWN_rather_than_defaulted(self):
+        for k in ("SYMONEURAL_A_FUTURE_SECRET", "TOTALLY_NEW_KEY", "SYM_SOMETHING_ELSE"):
+            with self.subTest(key=k):
+                self.assertEqual(self._domain(k), "UNKNOWN",
+                                 "an unclassified key was given a default domain")
+
+    def test_both_spellings_of_the_renamed_surfaces_are_covered(self):
+        """apps/symoneuralenv.py's rename is partway through this tree, so the live service
+        carries SYM_ names while new code writes SYMONEURAL_. A classifier that knew only one
+        half would abort a real migration on the other."""
+        for legacy, canonical in (("SYM_CODER_TOKEN", "SYMONEURAL_CODER_TOKEN"),
+                                  ("SYM_STUDIO_TOKEN", "SYMONEURAL_STUDIO_TOKEN"),
+                                  ("SYM_PROJECT_TOKEN", "SYMONEURAL_PROJECT_TOKEN")):
+            with self.subTest(pair=legacy):
+                self.assertEqual(self._domain(legacy), self._domain(canonical))
+                self.assertNotEqual(self._domain(legacy), "UNKNOWN")
+
+    def test_it_refuses_a_non_root_caller(self):
+        for cmd in ("plan", "migrate", "verify", "retire"):
+            with self.subTest(cmd=cmd):
+                r = subprocess.run([str(MIGRATE), cmd], capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("must run as root", r.stderr)
+
+    def test_no_subcommand_prints_a_value(self):
+        body = MIGRATE.read_text()
+        self.assertNotRegex(body, r"printf[^\n]*\$\{?line\}?[^\n]*>&?[12]?\s*$",
+                            "a value line appears to be printed to a stream")
+        self.assertIn("cut -d= -f1", body, "diff reporting no longer reduces to key names")
