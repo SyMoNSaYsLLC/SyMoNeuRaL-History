@@ -112,10 +112,24 @@ class WhatItRefuses(_Sandbox):
 
 
 class WhatItAccepts(_Sandbox):
-    def test_both_prefixes_load(self):
+    def test_both_prefixes_load_and_the_legacy_one_is_still_promotable(self):
+        """A legacy name from a FILE must end up indistinguishable from one from the environment.
+
+        This is why `api.py` calls `runtimeconfig.load()` before `symoneuralenv.promote()`. If
+        the loader ran after, a file-supplied `SYM_LEGACY` would never become
+        `SYMONEURAL_LEGACY` and the file would be a second-class source with subtly different
+        behaviour -- the kind of difference that is invisible until a surface reads the
+        canonical spelling and finds nothing.
+        """
         self.write("a.env", "SYM_LEGACY=1\nSYMONEURAL_CURRENT=2\n")
         loaded = runtimeconfig.load(warn=False)
         self.assertEqual(sorted(loaded), ["SYMONEURAL_CURRENT", "SYM_LEGACY"])
+
+        import symoneuralenv  # noqa: PLC0415 -- only this test needs it
+        symoneuralenv.promote(warn=False)
+        self.assertEqual(os.environ.get("SYMONEURAL_LEGACY"), "1",
+                         "a legacy name that arrived from a config file must promote exactly "
+                         "like one that arrived from the environment")
 
     def test_files_are_read_in_a_stable_order(self):
         """Two files setting one key must resolve the same way on every boot. Directory order

@@ -41,15 +41,50 @@ every operator has to remember -- the same reasoning `apps/studio/plugins/reinfo
 applies to cupy, where the documented exclusion had silently gone stale. Their tests are
 still runnable deliberately, by pointing pytest straight at `backend/vendor/...`; what is
 excluded is their appearance in *our* result.
+
+3. The suite must not read this box's real configuration
+--------------------------------------------------------
+`apps/runtimeconfig.py` loads `run/config/*.env` into `os.environ` at import of `api.py`, so
+that the service can be configured without a root-owned file in `/etc`. Correct in
+production, and wrong in a test process for two separate reasons.
+
+**It made the suite order-dependent.** `apps/test_symoneural_cli.py::SplashTests` asserts on
+what the CLI prints when no Studio token is set. Those eleven tests pass alone and five of
+them failed in a full run, because something earlier had already imported the loader and put
+this box's real Studio token into the shared environment -- carried in the file under the
+legacy spelling `SYM_STUDIO_TOKEN`, which `apps/symoneuralenv.py` then promotes to
+`SYMONEURAL_STUDIO_TOKEN`, so both names were live by the time the splash read one. A test
+that passes alone and fails in company is the worst kind: the failure names the innocent test.
+
+**And it put real secrets in the test process.** The names loaded include
+`SYMONEURAL_SESSION_SECRET` and three surface tokens. `test_symoneural_cli.py` spawns the
+real CLI through a pty, and a subprocess inherits its parent's environment -- so the session
+signing secret was reaching processes launched by the suite. That is a secret-hygiene defect
+independent of any test outcome, and it is why the fix belongs here rather than in the one
+test file that happened to notice.
+
+Pointing `SYMONEURAL_CONFIG_DIR` at an empty directory is the whole fix: `runtimeconfig`
+honours it above every other location, finds no `.env` files, and loads nothing. A test that
+wants to exercise the loader sets the variable itself -- `apps/test_runtimeconfig.py` does
+exactly that -- so this closes the leak without closing the door.
 """
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 _BACKEND = str(Path(__file__).resolve().parent)
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
+
+# Set at import of this conftest, which pytest reads before collecting anything beneath it --
+# so it is in place before any test module imports `api.py` or `runtimeconfig`. Kept alive for
+# the life of the process on purpose: a TemporaryDirectory that is garbage collected would take
+# the directory with it, and `runtimeconfig.config_dir()` would fall through to the real one.
+_HERMETIC_CONFIG = tempfile.mkdtemp(prefix="symoneural-test-config-")
+os.environ["SYMONEURAL_CONFIG_DIR"] = _HERMETIC_CONFIG
 
 # Relative to this directory, which is what pytest resolves these against.
 collect_ignore_glob = ["vendor/*"]
