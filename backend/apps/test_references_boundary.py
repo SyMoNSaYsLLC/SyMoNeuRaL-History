@@ -63,6 +63,15 @@ ALLOWED = {
     # those archives should live is recorded as a question for Garrett rather than answered
     # here. Narrow on purpose: this names one file, so the next offender still fails.
     "scripts/qemu-antminer.sh": "reads vendor firmware archives; relocation is an open question",
+    # The engine fork tool, exempted for the opposite reason to the one above: it takes a
+    # vendored upstream tree as build INPUT -- the way you would treat a release tarball --
+    # and writes our engine to `engines/` as OUTPUT. After it runs the shipped product has no
+    # path into the read-only tree at all, which is the outcome this rule exists to produce.
+    # It was passing only because it spells the parent without a trailing slash, which `BAD`
+    # does not match. That is a punctuation accident, not a decision, and it would have broken
+    # the moment an upstream source sat one directory deeper -- which is exactly what happened
+    # when the ASR engine's source turned out to live under a differently-named parent.
+    "tools/fork_engines.sh": "takes references/ as build input, writes engines/ as output",
 }
 
 #: A path into a third-party working tree, in either spelling. `\b` on the left so that

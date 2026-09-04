@@ -39,6 +39,20 @@ SRC="$ROOT/references/contrib"
 DST="$ROOT/engines"
 JOBS="$(nproc)"
 
+# The ASR upstream is not under references/contrib with the other two -- it was vendored
+# into a differently-named parent. Searched rather than hard-coded to one spelling, because
+# the whole reason this engine did not exist for so long is that its source was assumed to
+# be somewhere it was not. First hit that actually looks like the tree wins; if none does,
+# fork_listen says where it looked instead of failing with an empty path.
+listen_src() {
+    local c
+    for c in "$SRC/whisper.cpp" \
+             "$ROOT/references/referencestochatgpt/whisper.cpp"; do
+        [ -f "$c/CMakeLists.txt" ] && [ -d "$c/src" ] && { printf '%s' "$c"; return 0; }
+    done
+    return 1
+}
+
 log() { printf '\n=== %s\n' "$*"; }
 
 # ---------------------------------------------------------------- symoneural-llm
@@ -212,11 +226,112 @@ CMAKE
     cmake --build "$dst/build" --target sd-cli -j "$JOBS"
 }
 
+# ---------------------------------------------------------------- symoneural-listen
+#
+# THE ASR ENGINE, AND WHY IT IS CPU-ONLY. This is not a default being accepted, it is the
+# same choice `scripts/fetch-whisper.sh` made and argued: one card, one tenant at a time.
+# A spoken sticker is ASR -> text -> render, and if the ASR were a CUDA tenant that becomes
+# take the lock, transcribe, release, wait out the drain floor, take the lock again. So the
+# transcription stays off the card, where it runs *while* another surface holds the GPU.
+# RavenCalc is the precedent. `-DGGML_CUDA=OFF` below is that decision, written down.
+#
+# WHY IT LIVES HERE RATHER THAN IN contrib/. `contrib/` is banned by
+# `backend/apps/test_references_boundary.py` and, more to the point, `/contrib` is
+# gitignored -- which is how this capability disappeared the first time, and how the miner's
+# benchmark binary disappeared too. Two instances made it a pattern; building into
+# `engines/` under our own name is the fix for the pattern, not just for this engine.
+fork_listen() {
+    local src dst="$DST/symoneural-listen"
+    if ! src="$(listen_src)"; then
+        echo "no whisper upstream found under references/ -- looked beside the other two" >&2
+        echo "  engines and under the vendored tree that actually holds it." >&2
+        return 1
+    fi
+
+    log "syncing listen source -> $dst  (from ${src#"$ROOT"/})"
+    mkdir -p "$dst"
+    # '/build/' anchored for the reason fork_diffuse spells out at length, and here it also
+    # drops the 973 KB whisper-cli already sitting in the vendored tree -- a binary under a
+    # third-party name that must not be what we ship.
+    rsync -a --delete --exclude '.git/' --exclude '/build/' "$src/" "$dst/"
+
+    # The CLI prints a third-party product name in output a person reads. Same treatment and
+    # same assertion as diffuse: if an upstream refresh moves this string the build stops
+    # rather than quietly shipping somebody else's name again.
+    local banner="$dst/examples/cli/cli.cpp"
+    if grep -q '"whisper\.cpp version: %s' "$banner"; then
+        sed -i 's/"whisper\.cpp version: %s/"SyMoNeuRaL Listen version: %s/' "$banner"
+    elif ! grep -q '"SyMoNeuRaL Listen version: %s' "$banner"; then
+        echo "fork_engines: the version banner in $banner is not where it was; find it and" >&2
+        echo "  rename it, or this engine ships under somebody else's product name." >&2
+        return 1
+    fi
+
+    log "installing our names"
+    mkdir -p "$dst/cmake"
+    cat > "$dst/cmake/symoneural-names.cmake" <<'CMAKE'
+# See the note in symoneural-llm/cmake/symoneural-names.cmake -- same mechanism, same
+# reason. "cuda" is the exempt vendor name and stays.
+if(GGML_BACKEND_DL)
+    message(FATAL_ERROR "symoneural-names.cmake: GGML_BACKEND_DL is ON; refusing.")
+endif()
+
+set(SYMONEURAL_NAME_MAP
+    "whisper"       "symoneural_listen_core"
+    "ggml"          "symoneural_tensor"
+    "ggml-base"     "symoneural_tensor_base"
+    "ggml-cpu"      "symoneural_tensor_cpu"
+    "whisper-cli"   "symoneural-listen"
+)
+
+list(LENGTH SYMONEURAL_NAME_MAP _n)
+math(EXPR _last "${_n} / 2 - 1")
+foreach(_i RANGE ${_last})
+    math(EXPR _ti "${_i} * 2")
+    math(EXPR _ni "${_ti} + 1")
+    list(GET SYMONEURAL_NAME_MAP ${_ti} _target)
+    list(GET SYMONEURAL_NAME_MAP ${_ni} _outname)
+    if(TARGET ${_target})
+        set_target_properties(${_target} PROPERTIES OUTPUT_NAME "${_outname}")
+        message(STATUS "symoneural: ${_target} -> ${_outname}")
+    endif()
+endforeach()
+CMAKE
+
+    if ! grep -qF 'symoneural-names.cmake' "$dst/CMakeLists.txt"; then
+        printf '\n# SyMoNeuRaL: rename the shipped artefacts. Must stay last.\n%s\n' \
+            'include(${CMAKE_CURRENT_LIST_DIR}/cmake/symoneural-names.cmake)' \
+            >> "$dst/CMakeLists.txt"
+    fi
+
+    log "configuring listen (CPU only -- this never takes the GPU lock)"
+    # CMAKE_BUILD_RPATH_USE_ORIGIN makes the RUNPATH `$ORIGIN` instead of the absolute path
+    # of whatever directory this happened to be built in. That is a packaging requirement,
+    # not a tidiness one: an engine whose RUNPATH names /home/google/... loads nothing once
+    # an installer puts it under /opt or /usr/lib, and it fails at load time on the user's
+    # machine rather than at build time on ours. `symoneural-llm` already reads `$ORIGIN`;
+    # `symoneural-diffuse` does NOT -- it carries an absolute CUDA path -- so the claim in
+    # this file's header that both are $ORIGIN is currently true of one of them. Recorded
+    # here because the fix for diffuse is the same flag and is not this commit's job.
+    cmake -S "$dst" -B "$dst/build" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_CUDA=OFF \
+        -DWHISPER_BUILD_TESTS=OFF \
+        -DWHISPER_BUILD_EXAMPLES=ON \
+        -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+    log "building listen cli"
+    cmake --build "$dst/build" --target whisper-cli -j "$JOBS"
+}
+
 case "${1:-all}" in
     llm)     fork_llm ;;
     diffuse) fork_diffuse ;;
-    all)     fork_llm; fork_diffuse ;;
-    *)       echo "usage: $0 [llm|diffuse|all]" >&2; exit 2 ;;
+    listen)  fork_listen ;;
+    all)     fork_llm; fork_diffuse; fork_listen ;;
+    *)       echo "usage: $0 [llm|diffuse|listen|all]" >&2; exit 2 ;;
 esac
 
 log "done -- artefacts under $DST"

@@ -24,7 +24,7 @@ The card is 15.92 GiB and chat (~5 GB) and image (~7 GB) already cannot co-resid
 constraint is why `scripts/gpu-governor.sh` exists. A voice surface looks like it should be a
 third tenant -- ASR, evict, chat, evict, TTS, with the governor's 1.5 GB VRAM drain wait
 between each stage. It is not, because the engine on this box is a CPU build:
-`contrib/whisper.cpp/build/CMakeCache.txt` carries `GGML_CUDA:BOOL=OFF`.
+`engines/symoneural-listen/build/CMakeCache.txt` carries `GGML_CUDA:BOOL=OFF`.
 
 | Reading | Measured | Consequence |
 |---|---|---|

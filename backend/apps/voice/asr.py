@@ -1,8 +1,12 @@
-"""Speech to text: ffmpeg to 16 kHz mono, then `whisper-cli`, then two failure checks.
+"""Speech to text: ffmpeg to 16 kHz mono, then `symoneural-listen`, then two failure checks.
 
 Everything in here is CPU work and none of it touches `scripts/gpu-governor.sh`. That is not
-a preference, it is what the build on this box is: `contrib/whisper.cpp/build/CMakeCache.txt`
-carries `GGML_CUDA:BOOL=OFF`. Measured with `base.en` at `-t 8`: peak RSS **284 MiB**, **0**
+a preference, it is what the build on this box is:
+`engines/symoneural-listen/build/CMakeCache.txt` carries `GGML_CUDA:BOOL=OFF`, set by
+`tools/fork_engines.sh listen` and argued there. The evidence path named here until
+2026-09-04 was under `contrib/`, which no longer exists -- a claim whose source cannot be
+opened is the thing this file's own §2.2 warning is about.
+Measured with `base.en` at `-t 8`: peak RSS **284 MiB**, **0**
 VRAM, and a 3-second utterance end to end in **579 ms**. See `docs/specs/voice-spec.md` §2 for
 the table those came out of, and read §2.2 before putting any latency figure on a page.
 
@@ -50,8 +54,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 
+# Our engine, under our name, built by `tools/fork_engines.sh listen`. The default used to
+# name a third-party binary under `contrib/`, which was two problems in one line: `/contrib`
+# is gitignored, so the capability vanished with nothing in `git log` to say it had, and the
+# path is one `backend/apps/test_references_boundary.py` bans outright -- it escaped that
+# test only because the segments are separate string literals, so the banned spelling never
+# appears as text. Neither of those was a decision anyone made.
 WHISPER_CLI = Path(os.environ.get("SYMONEURAL_WHISPER_CLI")
-                   or ROOT / "contrib" / "whisper.cpp" / "build" / "bin" / "whisper-cli")
+                   or ROOT / "engines" / "symoneural-listen" / "build" / "bin"
+                   / "symoneural-listen")
 MODEL = Path(os.environ.get("SYMONEURAL_WHISPER_MODEL")
              or ROOT / "backend" / "models" / "whisper" / "symoneural-listen-base-en.bin")
 
