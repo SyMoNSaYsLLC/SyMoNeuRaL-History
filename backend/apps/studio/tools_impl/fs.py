@@ -14,6 +14,8 @@ is refused as binary rather than returned as mojibake.
 """
 from __future__ import annotations
 
+from apps import authority
+
 import os
 import pathlib
 import shutil
@@ -202,6 +204,12 @@ def write_file(path: str, content: str, append: bool = False, make_parents: bool
         append: Append instead of replacing.
         make_parents: Create missing parent directories.
     """
+    # AUTHORITY GATE. Studio admission ('workspace' effect) is not authority: passing
+    # `enabled() + token_ok()` makes a caller admitted, not an owner. A write can replace source the release is built from.
+    # No bound task -> NoTask -> refused, so this stays disabled until a surface is
+    # converted to establish one. That default is the containment.
+    authority.enforce('workspace', 'write_file')
+
     p = workspace.resolve(path)
     existed = p.is_file()
     was = p.stat().st_size if existed else 0
@@ -225,6 +233,12 @@ def delete_path(path: str, recursive: bool = False) -> dict:
         path: Absolute, or relative to the project root.
         recursive: Required to remove a non-empty directory.
     """
+    # AUTHORITY GATE. Studio admission ('workspace' effect) is not authority: passing
+    # `enabled() + token_ok()` makes a caller admitted, not an owner. A recursive delete is the least recoverable effect on this surface.
+    # No bound task -> NoTask -> refused, so this stays disabled until a surface is
+    # converted to establish one. That default is the containment.
+    authority.enforce('workspace', 'delete_path')
+
     p = workspace.resolve(path)
     if not p.exists() and not p.is_symlink():
         return {"error": "not_found", "path": str(p)}

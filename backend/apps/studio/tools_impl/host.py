@@ -39,6 +39,8 @@ nothing in this file inspects or refuses what it is asked to do.
 """
 from __future__ import annotations
 
+from apps import authority
+
 import json
 import os
 import pathlib
@@ -86,6 +88,12 @@ def run_command(command: str, cwd: str = "", timeout: int = DEFAULT_TIMEOUT) -> 
         cwd: Working directory. Defaults to the project root.
         timeout: Seconds before the whole process group is killed and reported as timed out.
     """
+    # AUTHORITY GATE. Studio admission ('service' effect) is not authority: passing
+    # `enabled() + token_ok()` makes a caller admitted, not an owner. A shell here can restart units, edit files and read any secret this process holds.
+    # No bound task -> NoTask -> refused, so this stays disabled until a surface is
+    # converted to establish one. That default is the containment.
+    authority.enforce('service', 'run_command')
+
     where = workspace.resolve(cwd) if cwd else (workspace.ROOT or pathlib.Path.cwd())
     if not pathlib.Path(where).is_dir():
         return {"error": "bad_cwd", "cwd": str(where)}
@@ -176,6 +184,12 @@ def env_set(name: str, value: str, persist_to: str = "") -> dict:
         value: Variable value.
         persist_to: Path to an env file to update as well. An existing line is replaced.
     """
+    # AUTHORITY GATE. Studio admission ('environment' effect) is not authority: passing
+    # `enabled() + token_ok()` makes a caller admitted, not an owner. Setting an env var can flip a surface switch or a credential for the whole process.
+    # No bound task -> NoTask -> refused, so this stays disabled until a surface is
+    # converted to establish one. That default is the containment.
+    authority.enforce('environment', 'env_set')
+
     os.environ[name] = value
     result: dict = {"name": name, "process_env": "set", "persisted": None,
                     "note": "already-imported settings are not re-read; restart to apply"}

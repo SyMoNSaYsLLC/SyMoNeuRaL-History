@@ -39,6 +39,7 @@ import tempfile
 import time
 import tokenize
 import unittest
+import unittest.mock
 from unittest import mock
 
 from . import comfy, gate, graph, registry, routes, workflows, workspace
@@ -788,6 +789,22 @@ class JobTrackingTests(unittest.TestCase):
 
 
 class RunCommandTests(unittest.TestCase):
+    """These test run_command's MECHANICS -- timeout kill, output capture -- not its
+    authorisation. Since the authority plane landed, the tool refuses without a bound task,
+    so each test holds a `service` grant for its duration. Without this they fail with
+    NoTask, which is the gate working correctly rather than a regression in the behaviour
+    they were written to pin. `AuthorityRefusesUngrantedCallers` below covers the other half.
+    """
+
+    def setUp(self):
+        import os, tempfile
+        from apps import authority
+        self.enterContext(unittest.mock.patch.dict(
+            os.environ, {"SYMONEURAL_AUTHORITY_DIR": tempfile.mkdtemp()}))
+        self.enterContext(authority.acting_as(authority.Task(
+            task_id="t-run-command-mechanics", owner="test",
+            mutation_authority=("service",))))
+
     def test_a_backgrounded_child_does_not_outlive_the_timeout(self):
         from .tools_impl import host
 
@@ -1009,3 +1026,21 @@ class MissingWorkspaceTests(unittest.TestCase):
         # `page.js` renders `ws.root || 'not found'` with a `set SYMONEURAL_STUDIO_ROOT` hint. That
         # branch was dead code while `/state` 500'd instead of reaching it.
         self.assertEqual(described["override_env"], "SYMONEURAL_STUDIO_ROOT")
+
+
+class AuthorityRefusesUngrantedCallers(unittest.TestCase):
+    """The other half of RunCommandTests: with no task bound, the shell refuses.
+
+    Studio admits a caller with `enabled() + token_ok()`; that is admission, not authority.
+    This is the assertion that the 28 tools behind that gate do not come with the right to
+    change the host.
+    """
+
+    def test_run_command_refuses_without_a_task(self):
+        import os, tempfile
+        from apps import authority
+        from .tools_impl import host
+        with unittest.mock.patch.dict(os.environ,
+                                      {"SYMONEURAL_AUTHORITY_DIR": tempfile.mkdtemp()}):
+            with self.assertRaises(authority.NoTask):
+                host.run_command("echo this must not run")
