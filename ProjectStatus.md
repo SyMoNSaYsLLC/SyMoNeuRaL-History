@@ -5,8 +5,19 @@
 Canonical current verified project-state authority, reconciled **2026-09-03 EDT** after the
 accepted Persona / LoRA restoration and safe workspace cleanup reports.
 Canonical repository: `/home/google/Symoneural`; branch: `main`.
-Accepted starting HEAD: **`5427f2a5f5ec40761d6d957fab810644bae6292a`**,
-`docs: establish canonical project authorities`. Starting staged/stash counts: **0 / 0**.
+Accepted HEAD: **`d79513b1`** (this section reconciled 2026-09-03 ~15:5x EDT).
+Staged / stash counts: **0 / 0**.
+
+**Superseded: `5427f2a5`, `docs: establish canonical project authorities`.** That SHA stood
+here while the tree advanced fifteen commits past it, which is precisely the drift this file
+exists to prevent -- a canonical current-state document describing a tree that had not existed
+for hours. It was caught by an independent release red-team, not by this document. The commits
+between are the 2026-09-03 production-closure run: repository-wide pytest collection
+(`71e78186`), the multi-coder surface and its publish-path removal (`1dbcc4c9`), three tripwire
+repairs (`423ae6d5`), the permission-mode display fix (`f023365e`, `f7f423e6`), the export
+drift fix (`6ead248b`), the coders secret-containment, default-off switch and journal
+(`ca5cb4e2`, `c5697bef`, `c1cf1e9d`), the garbo disposition (`4ad4aee4`), and the
+install-caddy refusal (`3145876a`).
 
 The earlier engineering checkpoint remains `1d72cc6e5435a9c9572f0ea6b5faf2aa2d0933a0`,
 `models: harden image payload provenance` [E5]. The first documentation consolidation is [E9].
@@ -50,8 +61,10 @@ cleanup verification workload; its current process/lock inspection is limited to
 
 | Area | Status | Evidence boundary / remaining acceptance |
 |---|---|---|
-| September 3 baseline | VERIFIED | Owner-reconciled final checkpoint [E1]; earlier HOLD reports remain historical. |
+| September 3 baseline | VERIFIED at `d79513b1` | Owner-reconciled checkpoint [E1]; earlier HOLD reports remain historical. **Re-pinned 2026-09-03**: this row read VERIFIED while the accepted HEAD above still named `5427f2a5`, fifteen commits behind. A verdict is only as current as the SHA beside it. |
 | Production serving chain | LIVE in dated evidence | Sep 3 02:41:49 EDT socket/unit evidence [E2]; [E11] later records all three services still active after cleanup. No new public functional probe. |
+| Boot-publish guarantee | **NOT INSTALLED** | `symoneural-deploy.service` — the oneshot that republishes staged `site/` to `/var/www/symoneural` at boot — has no unit file in `/etc/systemd/system`. `ops/verify-runtime.sh` exits 1 on this alone (22 PASS / 9 FAIL); every other boundary check passes. Bounded: the webroot already holds the correct bytes and persists across reboot, so a reboot still serves — but the guarantee does not exist and any staged change needs `scripts/deploy.sh` run by hand. |
+| Web runtime self-healing | **NOT SELF-HEALING** | `symoneural-web.service` is `Restart=no`, unlike api and gateway which are `Restart=always`. A crash of the TLS runtime does not come back on its own. |
 | Image | LIVE / VERIFIED | Sep 3 approximately 03:25 EDT: HTTP 200, 768×768 RGB, output retrieval 200 [E3]. |
 | Text-generated Sigils | LIVE / VERIFIED | Same batch: HTTP 200, 512×512 RGBA, 85.88% transparent, nondegenerate [E3]. |
 | Four image payloads | VERIFIED / REPRODUCIBLE within scope | Pinned acquisition/identity and fail-closed fixture tests [E4]; committed [E5]. No deterministic-render or whole-build claim. |
@@ -61,7 +74,8 @@ cleanup verification workload; its current process/lock inspection is limited to
 | Multi-Coder response/debate | Partly VERIFIED; full acceptance BLOCKED | Initial Symon+Claude live evidence; three-round debate verified on scratch API :8898 [E7]. Current production debate acceptance unestablished. |
 | Codex answer-only boundary | BLOCKED | Probe performed a file read; required boundary not proven. Four of seven presets unavailable [E7]. |
 | Symon Coder control plane / subagents | PLANNED | Existing workspace and multi-response modules are not the proposed task/lease/executor architecture. |
-| Unified Studio | PLANNED; existing bench incomplete | Image restoration does not prove the separate Studio render backend or unified UI. |
+| Unified Studio — inference surface | SERVING | `/api/studio/state` answers `enabled:true`. Distinct from the render backend below; the two were previously one row and the working half hid the broken half. |
+| Unified Studio — render backend | **DEGRADED IN PRODUCTION** | ComfyUI on `127.0.0.1:8188` does not answer and `/api/status` reports the unit `offline`. Nothing starts it at boot: `scripts/symoneural-ui.sh start` is a manual step with no unit behind it. Every Studio render claim is unsupported while this is down. |
 | rembg / Whisper | OPEN | Segmentation/speech payload gaps; not blockers for verified text Image/Sigils [E3]. |
 | Miner operation | BLOCKED in last operational evidence | Disabled/unconfigured paths and unproven device/runtime readiness [E8]; not fixed by image weights. |
 | Login / customer entitlements | OPEN | Existing account/entitlement code is not acceptance of all R-188/R-191/R-193 requirements. |
@@ -72,25 +86,31 @@ cleanup verification workload; its current process/lock inspection is limited to
 
 ## Protected/current baseline
 
-The exact starting short status for this checkpoint was:
+The short status, re-measured 2026-09-03:
 
 ```text
  M .claude/HANDOVER.md
  M .claude/settings.local.json
  M PROJECT-TASKS.md
- M backend/api.py
- M backend/apps/ROSTER.md
- M docs/ops/EXPORTS.md
- M docs/ops/MEASUREMENTS.md
-?? backend/apps/coders/
-?? site/coders.html
-?? tests/coders_smoke.mjs
 ```
 
-Six previously modified tracked paths and six untracked coder/page/test files remain
-**RECONCILED PRIOR STATE**. The expanded coder directory contains `__init__.py`, `page.html`,
-`routes.py`, and `test_coders.py`. The settings-only display change remains
-**EXPLAINED SYSTEM EFFECT**. The former imported AGENTS pointer's origin remains explained;
+Three modified tracked files, **0 untracked**, 0 staged, 0 stash. All three are records rather
+than source: a handoff pointer, task notes, and a settings display toggle. No source file is
+dirty.
+
+**The previous block listed seven more paths and every one of those claims is now false.**
+`backend/api.py`, `backend/apps/ROSTER.md`, `docs/ops/EXPORTS.md`, `docs/ops/MEASUREMENTS.md`,
+`backend/apps/coders/` and `tests/coders_smoke.mjs` are all tracked and clean --
+they were committed during the 2026-09-03 closure run. `site/coders.html` is **absent by
+design**: it was a superseded draft of the local-only operator surface sitting in the directory
+`scripts/deploy.sh` publishes, so it was moved to
+`SyMoNeuRaL-Workspace/evidence/coders-surface-disposition-20260903/` (byte-identical copies
+retained) and `ops/Caddyfile` gained a `/coders` matcher so the API refuses the path rather
+than `file_server` serving it.
+
+Recording the correction rather than quietly replacing the block: a status file that keeps
+listing committed work as uncommitted trains its readers to disbelieve it. The settings-only
+display change remains **EXPLAINED SYSTEM EFFECT**. The former imported AGENTS pointer's origin remains explained;
 [E9] deliberately replaced it with the now-committed root contract. This gate does not edit AGENTS.
 Ignored review evidence and `run/progress.html` remain **GENERATED / IGNORED STATE**.
 
