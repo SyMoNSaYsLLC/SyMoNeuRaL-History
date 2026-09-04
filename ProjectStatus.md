@@ -2,11 +2,25 @@
 
 ## Checkpoint
 
-Canonical current verified project-state authority, reconciled **2026-09-03 EDT** after the
-accepted Persona / LoRA restoration and safe workspace cleanup reports.
+Canonical current verified project-state authority, reconciled **2026-09-04 EDT** after the
+runtime first-party migration run.
 Canonical repository: `/home/google/Symoneural`; branch: `main`.
-Accepted HEAD: **`d79513b1`** (this section reconciled 2026-09-03 ~15:5x EDT).
+Accepted HEAD: **`aa1bdff2`** (this section reconciled 2026-09-04 ~15:5x EDT).
 Staged / stash counts: **0 / 0**.
+Backend suite at this SHA: **2281 passed, 0 failed, 55 skipped**, measured, not carried forward.
+
+**THIS FILE HAS NOW GONE STALE THE SAME WAY TWICE, AND THE PATTERN IS THE FINDING.** The entry
+below records `5427f2a5` standing while the tree advanced fifteen commits. That was re-pinned to
+`d79513b1` on 2026-09-03 -- and by 2026-09-04 the tree had advanced **nineteen** commits past
+*that*. A second occurrence of an identical failure is not bad luck; it is a document whose
+accuracy depends on somebody remembering, against a tree that moves every commit.
+
+Two things follow, and only the second is a fix. First: **a SHA in this file is a claim about a
+moment, and the only honest way to read one is to compare it against `git rev-parse HEAD`
+yourself.** Second: the durable repair is a check that fails when the pinned SHA is not an
+ancestor-or-equal of HEAD, in the manner of the count tripwires that have caught real drift
+three times in this repo. Re-pinning by hand a third time would produce this same paragraph in
+another day. **That check does not exist yet and is listed under Remaining work.**
 
 **Superseded: `5427f2a5`, `docs: establish canonical project authorities`.** That SHA stood
 here while the tree advanced fifteen commits past it, which is precisely the drift this file
@@ -21,18 +35,50 @@ install-caddy refusal (`3145876a`).
 
 The earlier engineering checkpoint remains `1d72cc6e5435a9c9572f0ea6b5faf2aa2d0933a0`,
 `models: harden image payload provenance` [E5]. The first documentation consolidation is [E9].
-This checkpoint advances the starting HEAD by one documentation-only commit; its identity is
-recorded in the [checkpoint report](/home/google/SyMoNeuRaL-Workspace/evidence/documentation-checkpoint-20260903/DOCUMENTATION-CHECKPOINT-20260903.md).
-No runtime, source implementation, model payload, cleanup action or deployed artifact is changed
-by this documentation gate.
+
+### The nineteen commits this file did not know about, 2026-09-03 → 2026-09-04
+
+Grouped by what they did, because a list of subject lines is not a state description:
+
+- **Mutation authority** — one plane and three surfaces routed through it: `8e99549e` (the plane
+  itself, plus Studio's four `dangerous=True` tools), `d14ce57d` (every `apps/coder` host effect),
+  `eb6d0f42` (the `apps/coders` provider spawn). `b0195e1d` updated the module counts.
+- **Secret containment** — `debef396` (`--show` was printing the live session-signing secret),
+  `6d6e08aa`, `f2a4a8fa`, `2d30b667` (a separate owner for the signer domain), `16b1cd44`
+  (api.env split by security domain, values unchanged), `98964d7b`.
+- **Runtimes made first-party** — `4b91a754` (the ASR engine built under our own name in
+  `engines/symoneural-listen`, after weeks of both call sites naming a binary in gitignored
+  `contrib/`), `f5f0a7e4` (its weight fetched; **ASR serves for the first time**), `af2d907d`
+  (all three upstreams found where they actually are, so the engines can be rebuilt at all),
+  `aa1bdff2` (**the LLM engine was announcing `Server: llama.cpp` on every HTTP response and
+  `owned_by: llamacpp` in `/v1/models`**; both now ours, verified against the running server).
+- **Truthfulness and units** — `4352767a` (stop claiming resident VRAM the box does not measure),
+  `34b2975c` (boot ordering, and a start limit that was in the wrong section to apply),
+  `cebaf674` (the canonical component/application/artifact model), `4d80c5cd`, `bca945f1`.
 
 ## Active work
 
-Garrett authorized one documentation checkpoint for two completed owner-authorized state changes.
-Codex is its sole mutation owner. Claude is **STOPPED — MUTATION AUTHORITY: NONE** and is not
-dispatched by this gate. Only ProjectStatus requires a current-state update; the existing registry
-relationships are unchanged. PROJECT-TASKS and all prior dirty work remain untouched.
-On delivery Codex stops with no mutation authority. No next task is selected.
+**Runtime first-party migration, in progress.** Mutation owner: the agent working in
+`/home/google/Symoneural`. This supersedes the 2026-09-03 documentation gate, under which Codex
+was sole mutation owner and Claude was STOPPED; that gate is closed and its stop condition was
+met. Nothing in this section grants authority for a future task.
+
+Current runtime position, measured 2026-09-04:
+
+| Runtime | Home | First-party? |
+|---|---|---|
+| `symoneural-llm` | `engines/symoneural-llm` | **yes** — artefacts and announced identity |
+| `symoneural-diffuse` | `engines/symoneural-diffuse` | **yes** — artefacts; identity not audited |
+| `symoneural-listen` | `engines/symoneural-listen` | **yes** — new 2026-09-04, CPU-only |
+| `symoneural-ui` | `engines/symoneural-ui` | **NO — vendored ComfyUI**, the last one |
+
+**Services deliberately stopped on owner instruction, 2026-09-04**, and this is a state
+description rather than a fault: `symoneural-web` (stopped), `symoneural-gateway` (stopped and
+disabled), `cloudflared` (stopped and disabled — a third-party binary whose unit named
+`/usr/local/bin/cloudflared` while the binary is at `/usr/bin/cloudflared`, and which had
+therefore failed **12,850** times since boot). Only `symoneural-api` runs. The gateway's source
+and its 24 test files are untouched; removal was not performed, and the two premises offered for
+it -- that it parented a shell, and that it carried the miner runtime -- were both measured false.
 
 ## Current state
 
@@ -234,8 +280,10 @@ no chmod or cosmetic relocation is required or authorized.
 | Live Stack | CPU/GPU/CLOUD/HYBRID/DEVICE execution and OFFLINE state; concise per-app rackview; first-party GPU and provider-router telemetry. |
 | Coder / Studio | Task Gate + Mutation Lease + Evidence Contract; controlled execution; bounded subagents; unified Studio rails/tabs and policy-driven routing. |
 | Multi-Coder | Prove Codex boundary, production debate acceptance, per-user provider isolation, batch/rotation, exact unanimous trainer approval and actual receiver training evidence. |
-| Models / LoRA | First-party persona adapter restored from custody and verified applied at serving time [E10]. Held-out evaluation remains outstanding; restoration is not new training and the broader milestone is incomplete. rembg/Whisper remain OPEN; two tokenizers remain UNKNOWN_STOP and the historical reinforce smoke adapter remains unrestored. Restored upstream base weights are not trained first-party model evidence. |
-| Miner | Configured software, safe GPU/governor behavior, real-device proof where applicable; no operation authorized here. |
+| Models / LoRA | First-party persona adapter restored from custody and verified applied at serving time [E10] -- and still applied: a 2026-09-04 chat request measured **94.7 tok/s with `adapter: true`**. Held-out evaluation remains outstanding; restoration is not new training and the broader milestone is incomplete. **Whisper is RESOLVED** (`f5f0a7e4`: engine, weight, and a real transcription -- see `backend/SMOKE-listen-asr.md`); **rembg/u2net remains OPEN**; two tokenizers remain UNKNOWN_STOP and the historical reinforce smoke adapter remains unrestored. The 14B named by the tuner registry is absent from disk. Restored upstream base weights are not trained first-party model evidence. |
+| **Runtimes (first-party)** | **`symoneural-miner` is the one runtime that is MISSING rather than absent by design.** `cryptominer/__init__.py:107` resolves `KAWPOW_BINARY` to `contrib/kawpowminer/...`, and `/contrib` is gitignored -- **the third instance of the pattern that already ate the ASR engine and the miner's own benchmark binary.** Buildable offline now: kawpowminer 1.2.4 source and all four dependency archives (boost 1.83.0, jsoncpp 1.8.0, CLI11 1.8.0, cpp-kawpow 1.1.0) are vendored under `references/referencestochatgpt/`. A working binary from 2026-08-17 exists there too but is quarantined under `references/`, exactly as the two `whisper-cli` binaries were. **`symoneural-ui` (ComfyUI) is the last vendored runtime**; Studio is the only rack row that depends on it. `symoneural-diffuse` ships an absolute CUDA RUNPATH and is **not relocatable by an installer** -- the fix is the `CMAKE_BUILD_RPATH_USE_ORIGIN=ON` flag already used for `listen`. Optional, not gaps: `streamer` (ffmpeg) and `live` (obs) execute third-party binaries and have no first-party runtime; six rack rows execute nothing external at all and need none. |
+| Miner | Configured software, safe GPU/governor behavior, real-device proof where applicable; no operation authorized here. Runtime gap recorded in the Runtimes row above. |
+| **This file** | **A tripwire that fails when the pinned checkpoint SHA is not an ancestor-or-equal of HEAD.** Twice now this document has described a tree that no longer existed, and both times a human caught it rather than a check. Until that exists, every SHA here must be read against `git rev-parse HEAD`. Second item: **14 of this file's 19 links do not survive a clone** -- 9 are absolute paths under `/home/google/...` and 5 point into `review/`, which `.gitignore:166` ignores. They all resolve on this box, which is why the problem is invisible from here. Relocating evidence is a custody decision and is Garrett's, not a repair to make silently. |
 | Accounts / demos | Visible Login/signup; owner super-admin and temporary credential administration; server-enforced per-demo assignment and independently tested all-demo access. |
 | Delivery / licensing | Resolve historical inventory/source-location discrepancies and satisfy per-artifact release gates in a separately authorized task. |
 | Workspace / custody | Safe cleanup complete within its audited boundary; 45 held items remain. Preserve vault and LoRA recovery roots; leave mode-555 rollback evidence in place. Any further disposition needs Garrett's separate gate. |
@@ -271,7 +319,18 @@ not be inferred from HTTP 200 page shells, files on disk, model renaming, screen
 ## Open blockers
 
 Codex's answer-only boundary and R-188 isolation block full multi-coder exposure/acceptance.
-Studio and Miner have separate runtime/configuration gaps. Optional segmentation and speech remain open.
+Studio and Miner have separate runtime/configuration gaps: **Studio's is a vendored runtime**
+(ComfyUI, not first-party, and nothing starts it at boot -- `/api/status` reports it `offline`
+and says so honestly), **Miner's is a missing one** (see the Runtimes row). Those are different
+problems and the distinction is the point: one is built and unowned, the other is unbuilt.
+**Speech is CLOSED** as of `f5f0a7e4` -- the ASR engine is first-party, the weight is on disk,
+and a real transcription is recorded. Segmentation (u2net / rembg) remains open.
+The `voice` surface is not on the rack: it needs `SYMONEURAL_VOICE_ENABLED=1` and
+`SYMONEURAL_VOICE_TOKEN` in root-owned config, and because `/api/*` is public, enabling it
+without the token would spend this box's CPU for strangers. That is an owner action.
+Eleven `apps/voice` ASR tests still skip for want of `tests/fixtures/speech.wav`; the repo's own
+README puts recording it on Garrett's side, and pointing them at a sample by environment
+variable passes 33/33, which is evidence the path works and not a substitute for the fixture.
 Dated license inventories contain unresolved distribution statements; no licensing/release PASS is asserted.
 Protected working-tree work remains intentionally uncommitted and must not be swept into another commit.
 The two UNKNOWN_STOP tokenizers and historical reinforce smoke adapter remain unrestored; no restoration
@@ -280,8 +339,18 @@ in-place HOLD, not a required repair. The vault remains KEEP / DURABLE_EVIDENCE.
 
 ## Next owner-authorized task
 
-**None assigned after this documentation checkpoint. STOP after its deliverable.**
-Garrett decides the next bounded task, its mutation owner, evidence contract, and stop condition.
+**Build `engines/symoneural-miner` from the vendored kawpowminer source**, owner-authorized
+2026-09-04. It is the last application runtime that is missing rather than absent by design, all
+sources and dependency archives are on disk so no network fetch is required, and the pattern is
+the one already executed twice today for `symoneural-listen`: fork into `engines/` under our own
+names via a step in the tracked `tools/fork_engines.sh`, never into gitignored `contrib/`, and
+prove it with a real run rather than a file listing.
+
+Acceptance, so this cannot be declared done from a directory listing: the binary exists under
+our name at `engines/symoneural-miner/build/bin/symoneural-miner`; no third-party product name
+survives in what ships; `cryptominer/__init__.py` resolves `KAWPOW_BINARY` there instead of
+`contrib/`; and a stamped smoke record beside the code carries a reading only a real invocation
+could produce. Garrett decides everything after that.
 
 ## Definition of done
 
