@@ -419,7 +419,20 @@ order this file would rank them:
 1. **ComfyUI behind Studio** -- the last vendored runtime, and now the entire first-party
    backlog. It is a Python application rather than a compiled engine, so the `fork_engines.sh`
    pattern used four times does not transfer unchanged; this needs a decision before it needs work.
-2. **`symoneural-diffuse`'s absolute RUNPATH** -- one flag, blocks installer relocation.
+2. ~~`symoneural-diffuse`'s absolute RUNPATH -- one flag, blocks installer relocation.~~
+   **WITHDRAWN: this candidate was never real, and the entry was wrong twice over.** Diffuse's
+   RUNPATH names the *system* CUDA toolkit, which is at the same absolute path on any machine
+   that has it -- portable, and no flag would change it, because `$ORIGIN` can only relativise
+   paths inside the build tree. The engine that actually carried a build-tree path was
+   **`symoneural-llm`**, and `aa1bdff2` introduced it. Both are settled at `b4d701cc`: llm
+   reads `RUNPATH: [$ORIGIN:]` again and **no engine carries a build-tree path**. The full
+   correction is in the Runtimes row above.
+
+   Left visible rather than deleted, because *how* it survived is the useful part: the
+   correction above was written and this line was not, so the canonical status document
+   asserted the fixed version in one section and the false version in another. That is the
+   half-applied-rename failure this same file warns about for ComfyUI, appearing in the file
+   that warns about it. A second reader caught it, not the author and not a test.
 3. ~~The checkpoint-drift tripwire for this file~~ -- **DONE.**
    `backend/apps/test_projectstatus_checkpoint.py` asserts the pinned SHA is an ancestor of
    HEAD, and prints how far behind it is once past 20 commits. Ancestry rather than equality
