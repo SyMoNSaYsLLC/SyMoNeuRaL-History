@@ -39,6 +39,39 @@ SRC="$ROOT/references/contrib"
 DST="$ROOT/engines"
 JOBS="$(nproc)"
 
+# ---- ELF hardening, applied to every engine ------------------------------------------------
+#
+# Added after the native auditor in symoneural-buildv2 was pointed at the four engines this
+# script produces and failed the same two checks on ALL of them:
+#
+#     FAIL  partial RELRO only: GNU_RELRO present but no BIND_NOW   (need -Wl,-z,now)
+#     FAIL  no stack-protector reference                            (need -fstack-protector-strong)
+#
+# These are the defaults upstream never set and CMake's Release profile does not add. Nobody
+# chose them; they were simply absent, which is the difference between a decision and a gap.
+#
+# `now` turns partial RELRO into full: the GOT is resolved at load and then made read-only, so
+# a write primitive cannot redirect a not-yet-resolved import. `relro` is stated explicitly
+# rather than relied on -- it is the default on this toolchain and defaults are what change
+# under you. `-fstack-protector-strong` rather than `-all`: strong covers the functions that
+# actually take arrays and address-taken locals at a fraction of the cost, which matters in a
+# tensor kernel loop.
+#
+# _FORTIFY_SOURCE is deliberately NOT set here. It requires an optimisation level to do
+# anything, silently does nothing without one, and emits a warning when a build overrides -O --
+# so setting it globally across four very differently-configured trees would produce noise and
+# a false sense of coverage. The auditor reports it as SKIP rather than FAIL for exactly that
+# reason, and a SKIP that is honest beats a flag that is decorative.
+#
+# NOT addressed, and not a defect: the auditor also fails RPATH/RUNPATH present, and it is
+# right to for the binary it was written for. That check assumes a privileged binary, where a
+# RUNPATH is an attack surface. These engines are unprivileged and their RUNPATH is `$ORIGIN`,
+# which is the thing that lets an installer relocate them at all -- removing it would trade a
+# risk we do not carry for a bug we would. Recorded here so the next person reading a red line
+# in that report knows it was considered rather than missed.
+SYMONEURAL_HARDEN_C="-fstack-protector-strong"
+SYMONEURAL_HARDEN_LD="-Wl,-z,relro -Wl,-z,now"
+
 # The ASR upstream is not under references/contrib with the other two -- it was vendored
 # into a differently-named parent. Searched rather than hard-coded to one spelling, because
 # the whole reason this engine did not exist for so long is that its source was assumed to
@@ -223,6 +256,10 @@ CMAKE
         -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
         -DLLAMA_CURL=OFF \
         -DLLAMA_BUILD_TESTS=OFF \
+        -DCMAKE_C_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_CXX_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_EXE_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
+        -DCMAKE_SHARED_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache
@@ -306,6 +343,11 @@ CMAKE
         -DSD_CUDA=ON \
         -DCMAKE_CUDA_ARCHITECTURES=120 \
         -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+        -DCMAKE_C_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_CXX_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_EXE_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
+        -DCMAKE_SHARED_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
+        -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache
@@ -407,6 +449,10 @@ CMAKE
         -DWHISPER_BUILD_TESTS=OFF \
         -DWHISPER_BUILD_EXAMPLES=ON \
         -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
+        -DCMAKE_C_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_CXX_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_EXE_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
+        -DCMAKE_SHARED_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
@@ -495,7 +541,10 @@ CMAKE
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="$dst/deps" \
         -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
-        -DCMAKE_CXX_FLAGS="-DBOOST_BIND_GLOBAL_PLACEHOLDERS"
+        -DCMAKE_C_FLAGS="$SYMONEURAL_HARDEN_C" \
+        -DCMAKE_EXE_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
+        -DCMAKE_SHARED_LINKER_FLAGS="$SYMONEURAL_HARDEN_LD" \
+        -DCMAKE_CXX_FLAGS="-DBOOST_BIND_GLOBAL_PLACEHOLDERS $SYMONEURAL_HARDEN_C"
 
     log "building the miner"
     cmake --build "$dst/build" -j "$JOBS"
