@@ -65,6 +65,33 @@ upstream_src() {
 
 log() { printf '\n=== %s\n' "$*"; }
 
+# Rewrite one identity string in a fork, and ASSERT rather than hope.
+#
+# `$dst` is the calling fork_* function's engine directory -- bash resolves it dynamically, so
+# this stays one definition shared by every engine instead of a copy per fork that can drift.
+#
+# Three-way on purpose, and the third branch is the one that earns its keep: rewrite the
+# upstream spelling if it is there; accept ours if this is a re-run; otherwise STOP. A plain
+# `sed` would silently no-op when an upstream refresh moves a string, and the engine would go
+# back to shipping somebody else's name with a green build. fork_diffuse's version banner has
+# used this contract since it was written and has never regressed.
+subst() { # file old new
+    local f="$dst/$1" old="$2" new="$3"
+    [ -f "$f" ] || { echo "fork_engines: $1 is not where it was" >&2; return 1; }
+    if grep -qF "$old" "$f"; then
+        python3 - "$f" "$old" "$new" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace(sys.argv[2], sys.argv[3]))
+PY
+    elif ! grep -qF "$new" "$f"; then
+        echo "fork_engines: neither the upstream nor our spelling is in $1;" >&2
+        echo "  the string moved. Find it and rename it, or this engine ships under" >&2
+        echo "  somebody else's identity. Looked for: $old" >&2
+        return 1
+    fi
+}
+
 # ---------------------------------------------------------------- symoneural-llm
 fork_llm() {
     local src dst="$DST/symoneural-llm"
@@ -103,23 +130,6 @@ fork_llm() {
     # banner uses, and the reason that one has never regressed. Checked in this order: if the
     # old spelling is present, rewrite it; else if ours is already there, this is a re-run;
     # else the string moved and we refuse.
-    subst() { # file old new
-        local f="$dst/$1" old="$2" new="$3"
-        [ -f "$f" ] || { echo "fork_engines: $1 is not where it was" >&2; return 1; }
-        if grep -qF "$old" "$f"; then
-            python3 - "$f" "$old" "$new" <<'PY'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text().replace(sys.argv[2], sys.argv[3]))
-PY
-        elif ! grep -qF "$new" "$f"; then
-            echo "fork_engines: neither the upstream nor our spelling is in $1;" >&2
-            echo "  the string moved. Find it and rename it, or this engine ships under" >&2
-            echo "  somebody else's identity. Looked for: $old" >&2
-            return 1
-        fi
-    }
-
     log "installing our identity"
     # The one that goes out on EVERY response.
     subst tools/server/server-http.cpp   '{"Server", "llama.cpp"}'  '{"Server", "SyMoNeuRaL LLM"}'
@@ -404,12 +414,100 @@ CMAKE
     cmake --build "$dst/build" --target whisper-cli -j "$JOBS"
 }
 
+# ---------------------------------------------------------------- symoneural-miner
+#
+# THE THIRD TIME THIS EXACT BUG HAS BEEN FOUND. `cryptominer/__init__.py` resolved its miner to
+# `contrib/kawpowminer/build/kawpowminer/kawpowminer`, and `/contrib` is gitignored -- so the
+# binary the Miner surface needs could vanish leaving nothing in `git log` to say it had. That
+# is how the ASR engine disappeared, and how this repo's own 52-53 MH/s benchmark binary
+# disappeared. Two instances made it a pattern; this is the third, and the fix is the same one:
+# build into `engines/` under our own name, from a script that is tracked.
+#
+# WHY THE DEPENDENCIES ARE COPIED RATHER THAN POINTED AT. The vendored tree carries a prebuilt
+# `kawpow-deps` prefix -- boost 1.83, jsoncpp, and cpp-kawpow's libethash, all STATIC. Pointing
+# CMAKE_PREFIX_PATH straight at it under `references/` would work and would leave this engine
+# unable to build without a read-only tree it is not supposed to depend on. They are static, so
+# they are linked in and nothing is loaded from there at runtime either way; copying makes that
+# true at BUILD time as well, which is what "first-party" has to mean if it means anything.
+#
+# WHAT IS NOT RENAMED, and why the exception is stated rather than taken silently: `project()`.
+# Unlike llama.cpp, PROJECT_NAME is load-bearing here -- `CMakeLists.txt` feeds it to
+# `cable_add_buildinfo_library` and to CPACK_PACKAGE_FILE_NAME -- so renaming it would rewrite
+# generated build-info symbols and packaging paths for a name no user ever sees. The strings a
+# person actually reads are renamed below.
+fork_miner() {
+    local src dst="$DST/symoneural-miner" deps
+    src="$ROOT/references/referencestochatgpt/kawpowminer"
+    deps="$ROOT/references/referencestochatgpt/kawpow-deps"
+    [ -f "$src/CMakeLists.txt" ] || {
+        echo "no kawpowminer upstream at ${src#"$ROOT"/}" >&2; return 1; }
+    [ -d "$deps/lib" ] || {
+        echo "no prebuilt dependency prefix at ${deps#"$ROOT"/} -- boost/jsoncpp/ethash" >&2
+        echo "  are built by references/contrib/build-kawpowminer.sh and are expected to" >&2
+        echo "  already exist; building them here would add ~40 minutes and a network fetch." >&2
+        return 1; }
+
+    log "syncing miner source -> $dst"
+    mkdir -p "$dst"
+    # '/build/' anchored, and it matters more here than elsewhere: the vendored tree carries a
+    # working kawpowminer binary from 2026-08-17 under a third-party name. That binary is
+    # exactly what must NOT be what we ship, and an unanchored pattern would also eat
+    # cmake/cable's own build helpers.
+    rsync -a --delete --exclude '.git/' --exclude '/build/' "$src/" "$dst/"
+
+    log "vendoring the static dependency prefix"
+    rsync -a --delete "$deps/" "$dst/deps/"
+
+    log "installing our identity"
+    # The banner and the --version line, which are the two places a person reads a name.
+    subst kawpowminer/main.cpp \
+        'kawpowminer - GPU ProgPOW(0.9.3) miner for Zing' \
+        'SyMoNeuRaL Miner - GPU ProgPOW(0.9.3) miner for Zing'
+    subst kawpowminer/main.cpp '"kawpowminer "' '"SyMoNeuRaL Miner "'
+
+    log "installing our names"
+    mkdir -p "$dst/cmake"
+    cat > "$dst/cmake/symoneural-names.cmake" <<'CMAKE'
+# See symoneural-llm/cmake/symoneural-names.cmake -- same mechanism, same reason. OUTPUT_NAME
+# rewrites the artefact written to disk and leaves every CMake target reference alone, so the
+# build graph is untouched. "cuda" stays: it names the vendor's toolkit, not a product.
+if(TARGET kawpowminer)
+    set_target_properties(kawpowminer PROPERTIES OUTPUT_NAME "symoneural-miner")
+    message(STATUS "symoneural: kawpowminer -> symoneural-miner")
+endif()
+CMAKE
+
+    if ! grep -qF 'symoneural-names.cmake' "$dst/CMakeLists.txt"; then
+        printf '\n# SyMoNeuRaL: rename the shipped artefacts. Must stay last.\n%s\n' \
+            'include(${CMAKE_CURRENT_LIST_DIR}/cmake/symoneural-names.cmake)' \
+            >> "$dst/CMakeLists.txt"
+    fi
+
+    # COMPUTE=120 is sm_120, this card. HUNTER_ENABLED=OFF because Hunter would go to the
+    # network for the dependencies we just vendored. BOOST_BIND_GLOBAL_PLACEHOLDERS is not
+    # optional: Boost >= 1.73 stopped injecting `_1` into the global namespace, and the source
+    # patches for that are already applied in the vendored checkout.
+    log "configuring miner (CUDA, sm_120)"
+    cmake -S "$dst" -B "$dst/build" \
+        -DHUNTER_ENABLED=OFF \
+        -DCOMPUTE=120 \
+        -DETHASHCL=OFF -DETHASHCUDA=ON \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="$dst/deps" \
+        -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
+        -DCMAKE_CXX_FLAGS="-DBOOST_BIND_GLOBAL_PLACEHOLDERS"
+
+    log "building the miner"
+    cmake --build "$dst/build" -j "$JOBS"
+}
+
 case "${1:-all}" in
     llm)     fork_llm ;;
     diffuse) fork_diffuse ;;
     listen)  fork_listen ;;
-    all)     fork_llm; fork_diffuse; fork_listen ;;
-    *)       echo "usage: $0 [llm|diffuse|listen|all]" >&2; exit 2 ;;
+    miner)   fork_miner ;;
+    all)     fork_llm; fork_diffuse; fork_listen; fork_miner ;;
+    *)       echo "usage: $0 [llm|diffuse|listen|miner|all]" >&2; exit 2 ;;
 esac
 
 log "done -- artefacts under $DST"

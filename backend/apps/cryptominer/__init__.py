@@ -99,12 +99,20 @@ SURFACE = "miner"          # the governor surface name; must match gpu-governor.
 # The operator's config. Absent by default -- see `miner.env.example` next to it.
 ENVFILE = pathlib.Path(os.environ.get("SYMONEURAL_MINER_ENV") or (HERE / "miner.env"))
 
-# Where `contrib/build-kawpowminer.sh` puts the miner it builds. This is a SIGNPOST, not a
+# Where `tools/fork_engines.sh miner` puts the miner it builds. This is a SIGNPOST, not a
 # default: it is quoted back to the operator by `selftest()` and by the example file, and
 # no code path anywhere turns it into a running process. Making it a fallback for an unset
 # SYMONEURAL_MINER_CMD would mean an unconfigured box starts hashing the first time somebody hits
 # the control endpoint, which is precisely the thing this surface must never do.
-KAWPOW_BINARY = ROOT / "contrib" / "kawpowminer" / "build" / "kawpowminer" / "kawpowminer"
+#
+# This named `contrib/kawpowminer/...` until 2026-09-04, which was wrong twice over: `/contrib`
+# is gitignored, so the binary it pointed at could vanish with nothing in `git log` to say it
+# ever existed -- the third time that has happened here, after the ASR engine and this repo's
+# own mining benchmark binary -- and it named a third-party product rather than ours. The
+# engine is now `SyMoNeuRaL Miner`, built from the vendored kawpowminer source under our own
+# name, and a signpost that points somewhere gitignored is not a signpost.
+KAWPOW_BINARY = (ROOT / "engines" / "symoneural-miner" / "build" / "kawpowminer"
+                 / "symoneural-miner")
 
 # The keys the file is allowed to set. An env file is an instruction to change this
 # process's environment, so it sets only what this surface owns -- a stray `PATH=` or

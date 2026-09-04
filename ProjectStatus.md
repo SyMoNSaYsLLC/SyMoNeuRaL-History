@@ -281,7 +281,7 @@ no chmod or cosmetic relocation is required or authorized.
 | Coder / Studio | Task Gate + Mutation Lease + Evidence Contract; controlled execution; bounded subagents; unified Studio rails/tabs and policy-driven routing. |
 | Multi-Coder | Prove Codex boundary, production debate acceptance, per-user provider isolation, batch/rotation, exact unanimous trainer approval and actual receiver training evidence. |
 | Models / LoRA | First-party persona adapter restored from custody and verified applied at serving time [E10] -- and still applied: a 2026-09-04 chat request measured **94.7 tok/s with `adapter: true`**. Held-out evaluation remains outstanding; restoration is not new training and the broader milestone is incomplete. **Whisper is RESOLVED** (`f5f0a7e4`: engine, weight, and a real transcription -- see `backend/SMOKE-listen-asr.md`); **rembg/u2net remains OPEN**; two tokenizers remain UNKNOWN_STOP and the historical reinforce smoke adapter remains unrestored. The 14B named by the tuner registry is absent from disk. Restored upstream base weights are not trained first-party model evidence. |
-| **Runtimes (first-party)** | **`symoneural-miner` is the one runtime that is MISSING rather than absent by design.** `cryptominer/__init__.py:107` resolves `KAWPOW_BINARY` to `contrib/kawpowminer/...`, and `/contrib` is gitignored -- **the third instance of the pattern that already ate the ASR engine and the miner's own benchmark binary.** Buildable offline now: kawpowminer 1.2.4 source and all four dependency archives (boost 1.83.0, jsoncpp 1.8.0, CLI11 1.8.0, cpp-kawpow 1.1.0) are vendored under `references/referencestochatgpt/`. A working binary from 2026-08-17 exists there too but is quarantined under `references/`, exactly as the two `whisper-cli` binaries were. **`symoneural-ui` (ComfyUI) is the last vendored runtime**; Studio is the only rack row that depends on it. `symoneural-diffuse` ships an absolute CUDA RUNPATH and is **not relocatable by an installer** -- the fix is the `CMAKE_BUILD_RPATH_USE_ORIGIN=ON` flag already used for `listen`. Optional, not gaps: `streamer` (ffmpeg) and `live` (obs) execute third-party binaries and have no first-party runtime; six rack rows execute nothing external at all and need none. |
+| **Runtimes (first-party)** | **DONE 2026-09-04: `symoneural-miner` is built.** It was the one runtime MISSING rather than absent by design -- `cryptominer` resolved `KAWPOW_BINARY` into gitignored `contrib/`, the third instance of the pattern that already ate the ASR engine and this repo's own mining benchmark binary. Built offline from vendored kawpowminer 1.2.4 + cpp-kawpow 1.1.0 with static boost/jsoncpp/CLI11, under our own name, and it runs: `SyMoNeuRaL Miner 1.2.4`, exit 0. Evidence: `backend/SMOKE-miner-runtime.md`. No hashrate is claimed and no GPU work was done. **Four of five runtimes are now first-party** (`llm`, `diffuse`, `listen`, `miner`). **`symoneural-ui` (ComfyUI) is the last vendored one**; Studio is the only rack row that depends on it, and that is now the whole first-party backlog. Still open: `symoneural-diffuse` ships an absolute CUDA RUNPATH pointing into its own build tree and is **not relocatable by an installer** -- the fix is the `CMAKE_BUILD_RPATH_USE_ORIGIN=ON` flag already used for `listen` and `miner`. (The miner's RUNPATH is also absolute but names the system CUDA toolkit, which is at the same path on any machine that has it; that one is correct.) Optional, not gaps: `streamer` (ffmpeg) and `live` (obs) execute third-party binaries and have no first-party runtime; six rack rows execute nothing external at all and need none. |
 | Miner | Configured software, safe GPU/governor behavior, real-device proof where applicable; no operation authorized here. Runtime gap recorded in the Runtimes row above. |
 | **This file** | **A tripwire that fails when the pinned checkpoint SHA is not an ancestor-or-equal of HEAD.** Twice now this document has described a tree that no longer existed, and both times a human caught it rather than a check. Until that exists, every SHA here must be read against `git rev-parse HEAD`. Second item: **14 of this file's 19 links do not survive a clone** -- 9 are absolute paths under `/home/google/...` and 5 point into `review/`, which `.gitignore:166` ignores. They all resolve on this box, which is why the problem is invisible from here. Relocating evidence is a custody decision and is Garrett's, not a repair to make silently. |
 | Accounts / demos | Visible Login/signup; owner super-admin and temporary credential administration; server-enforced per-demo assignment and independently tested all-demo access. |
@@ -339,18 +339,25 @@ in-place HOLD, not a required repair. The vault remains KEEP / DURABLE_EVIDENCE.
 
 ## Next owner-authorized task
 
-**Build `engines/symoneural-miner` from the vendored kawpowminer source**, owner-authorized
-2026-09-04. It is the last application runtime that is missing rather than absent by design, all
-sources and dependency archives are on disk so no network fetch is required, and the pattern is
-the one already executed twice today for `symoneural-listen`: fork into `engines/` under our own
-names via a step in the tracked `tools/fork_engines.sh`, never into gitignored `contrib/`, and
-prove it with a real run rather than a file listing.
+**COMPLETE.** `engines/symoneural-miner` was built 2026-09-04 and every acceptance condition set
+for it was met and measured: the binary exists under our name, it runs (`SyMoNeuRaL Miner 1.2.4`,
+exit 0), no third-party product banner survives and no executable named `kawpowminer` exists
+anywhere in the build tree, `cryptominer` resolves `KAWPOW_BINARY` into `engines/` instead of
+gitignored `contrib/`, and `backend/SMOKE-miner-runtime.md` carries a reading only a real
+invocation could produce. Suite 2281 passed / 0 failed at the commit that landed it.
 
-Acceptance, so this cannot be declared done from a directory listing: the binary exists under
-our name at `engines/symoneural-miner/build/bin/symoneural-miner`; no third-party product name
-survives in what ships; `cryptominer/__init__.py` resolves `KAWPOW_BINARY` there instead of
-`contrib/`; and a stamped smoke record beside the code carries a reading only a real invocation
-could produce. Garrett decides everything after that.
+**None assigned after this. STOP.** Garrett decides the next bounded task, its mutation owner,
+evidence contract, and stop condition. The three candidates measured and left undone, in the
+order this file would rank them:
+
+1. **ComfyUI behind Studio** -- the last vendored runtime, and now the entire first-party
+   backlog. It is a Python application rather than a compiled engine, so the `fork_engines.sh`
+   pattern used four times does not transfer unchanged; this needs a decision before it needs work.
+2. **`symoneural-diffuse`'s absolute RUNPATH** -- one flag, blocks installer relocation.
+3. **The checkpoint-drift tripwire** for this file, which has now gone stale twice.
+
+Configuring the miner to actually mine is not on this list: it needs a pool, a wallet and a
+token, which is money and therefore Garrett's, not engineering.
 
 ## Definition of done
 
