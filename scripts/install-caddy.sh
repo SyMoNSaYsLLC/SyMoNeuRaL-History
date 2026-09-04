@@ -11,6 +11,19 @@
 # It is safe to re-run: it validates the config before stopping anything, so a bad config
 # leaves whatever is currently serving in place.
 #
+# THAT SENTENCE STOPPED BEING TRUE, and this note is the correction rather than a deletion.
+# `symoneural-web.service` -- the first-party HTTP/TLS runtime that now serves :80 and :443 --
+# declares `Conflicts=caddy.service caddy-api.service`, because two processes cannot own those
+# ports. `Conflicts=` is bidirectional: `systemctl restart caddy` below does not fail against a
+# running symoneural-web, it makes systemd STOP symoneural-web to make room. Re-running this on
+# this box would therefore take the production site down and replace it with stock Caddy, which
+# is the opposite of "leaves whatever is currently serving in place".
+#
+# The script is kept, because a host that genuinely runs stock Caddy still needs it. It now
+# refuses to run when the first-party runtime is the installed web server -- see the preflight
+# guard below. Deleting the `systemctl enable caddy` line instead would have left a script that
+# silently half-installs a web server it never starts.
+#
 # What it does NOT do: touch /var/www/symoneural. Deploying the site is still deploy.sh.
 set -euo pipefail
 
@@ -92,6 +105,32 @@ if systemctl list-unit-files apache2.service >/dev/null 2>&1; then
   echo "  apache2 stopped and disabled (still installed, not removed)"
 else
   echo "  apache2 not present -- nothing to stop"
+fi
+
+# REFUSAL, not a warning. By this point the config has validated and apache2 is stopped, but
+# nothing that serves symoneural.com has been touched yet -- so this is the last moment at which
+# refusing costs nothing. Checked as `enabled OR active` because either one means this host has
+# been cut over to the first-party runtime: enabled-but-stopped is a box mid-reboot, and
+# active-but-disabled is a box someone started by hand.
+if systemctl list-unit-files symoneural-web.service >/dev/null 2>&1 \
+   && { systemctl is-enabled --quiet symoneural-web 2>/dev/null \
+        || systemctl is-active  --quiet symoneural-web 2>/dev/null; }; then
+  cat >&2 <<'REFUSE'
+
+REFUSED: symoneural-web.service is the web server on this host.
+
+  It owns :80 and :443 and declares Conflicts=caddy.service, so enabling Caddy here would
+  make systemd STOP symoneural-web -- taking symoneural.com down and replacing the
+  first-party TLS runtime with stock Caddy.
+
+  Nothing has been changed. The config validated and apache2 was left as it was.
+
+  If you are deliberately migrating this host BACK to stock Caddy, do it explicitly:
+      sudo systemctl disable --now symoneural-web
+      sudo ./scripts/install-caddy.sh
+
+REFUSE
+  exit 3
 fi
 
 say "Starting Caddy"

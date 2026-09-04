@@ -257,3 +257,51 @@ class CaddyDelegationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InstallCaddyCannotEvictTheFirstPartyRuntime(unittest.TestCase):
+    """`scripts/install-caddy.sh` predates `symoneural-web` and still enables stock Caddy.
+
+    `symoneural-web.service` declares `Conflicts=caddy.service caddy-api.service` because two
+    processes cannot own :80 and :443. `Conflicts=` is BIDIRECTIONAL, so `systemctl restart
+    caddy` does not fail against a running symoneural-web -- systemd stops symoneural-web to
+    make room. Re-running the installer on this box would take symoneural.com down and replace
+    the first-party TLS runtime with stock Caddy, which is the exact opposite of the script's
+    own "safe to re-run" claim.
+
+    The fix is a refusal rather than deleting the enable, because a host that genuinely runs
+    stock Caddy still needs the installer. These assertions pin the refusal in place.
+    """
+
+    SCRIPT = REPO / "scripts" / "install-caddy.sh"
+    UNIT = REPO / "ops" / "symoneural-web.service"
+
+    def test_the_conflicts_declaration_that_makes_this_dangerous_still_exists(self):
+        """If Conflicts= is ever dropped, the guard below is arguing about nothing and the
+        reasoning in both files needs re-deriving rather than silently passing."""
+        unit = self.UNIT.read_text()
+        self.assertRegex(unit, r"(?m)^Conflicts=.*caddy\.service",
+                         "symoneural-web no longer declares Conflicts=caddy.service")
+
+    def test_the_installer_refuses_before_it_enables_caddy(self):
+        """Order is the whole assertion. A guard placed AFTER `systemctl enable caddy` would
+        read as protection and provide none."""
+        src = self.SCRIPT.read_text()
+        # The COMMAND, anchored to start-of-line, not the string. The header comment explains
+        # why the enable was kept rather than deleted and therefore quotes it verbatim -- a
+        # plain `find` matches that prose, which sits above the guard and inverts this test.
+        m = re.search(r"(?m)^systemctl enable caddy\s*$", src)
+        self.assertIsNotNone(m, "the enable line is gone; re-derive this test")
+        enable = m.start()
+        guard = src.find("REFUSED: symoneural-web.service is the web server on this host.")
+        self.assertNotEqual(guard, -1, "the first-party-runtime refusal is gone")
+        self.assertLess(guard, enable,
+                        "the refusal must come before Caddy is enabled, not after")
+
+    def test_the_refusal_checks_enabled_or_active_not_just_active(self):
+        """Either state means this host was cut over. Enabled-but-stopped is a box mid-reboot;
+        active-but-disabled is one started by hand. Checking only `is-active` would let the
+        installer evict the runtime on a machine that happened to be rebooting."""
+        src = self.SCRIPT.read_text()
+        self.assertIn("is-enabled --quiet symoneural-web", src)
+        self.assertIn("is-active  --quiet symoneural-web", src)
