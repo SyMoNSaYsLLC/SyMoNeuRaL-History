@@ -83,6 +83,22 @@ sys.path.insert(0, str(HERE / "apps"))
 # after the app packages were imported would be too late for those two and for any that
 # join them. See `apps/symoneuralenv.py` for why this is promotion rather than a
 # read-both-spellings helper at 771 call sites.
+# Read this box's own configuration BEFORE promoting, and before any app package is imported.
+# Order matters twice over. Before `promote()`, so a legacy `SYM_*` name that arrives from a
+# config file is promoted exactly like one that arrives from the environment -- otherwise the
+# file would be a second-class source with subtly different behaviour. And before the app
+# imports below, for the reason the comment above gives: modules that read a variable at module
+# scope have already read it by the time a later loader would run.
+#
+# This is what makes `/etc/symoneural` optional rather than load-bearing. That directory is
+# root-owned, is attached through a drop-in `systemctl cat` does not show, and is declared
+# `ignore_errors=yes` -- so deleting it disabled every surface on this box while the service
+# still reported healthy. The process now reads its own configuration from a directory owned by
+# the account that runs it. `EnvironmentFile` still wins where it is present, because a name
+# already in `os.environ` is never overridden.
+import runtimeconfig  # noqa: E402
+runtimeconfig.load()
+
 import symoneuralenv  # noqa: E402
 symoneuralenv.promote()
 
