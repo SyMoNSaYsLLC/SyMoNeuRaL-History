@@ -1231,6 +1231,31 @@ better, resolving a folder move against the disk, survives as `resolve:`.
 
 ◻ #109 — Finish the application-wide UI pass and prove every owned behaviour
         owner: coder
+        note: 2026-09-02 codex — R-193 adds persistent per-user demo-site assignments enforced
+        note: on pages/APIs/resources. Cattle-only user must be denied DispatchOS even by URL.
+        note: All current/future demos: symonsaysadmin@symoneural.com, bhesley@symoneural.com,
+        note: gmcdonald@symoneural.com. Super-admin is a separate role for symonsaysadmin.
+        note: Admin creates users and assigns/revokes demos; client claims and static serving
+        note: cannot bypass authorization. Joe Buck/Cattle is an acceptance example, not a
+        note: request to fabricate a real account. Carry this into the next Codex account plan.
+        note: 2026-09-02 codex — R-184 debate implemented: at most three user-started rounds,
+        note: full attributed history, version-bound user choices, duplicate/failure handling.
+        note: Required tests 98 passed; 20 browser checks including real Symon/Claude debate.
+        note: New backend/private page staged; production still 48629/1544/1454. No restart.
+        note: Codex read-only probe read a canary by tool; answer-only boundary remains unproven.
+        note: No tri-coder, durable session, R-188 auth, rotation or training completion claimed.
+        note: Response: review/RESPONSE-2026-09-02-codex-R184-debate.md.
+        note: Next executor Claude: review/NEXT-CLAUDE-2026-09-02-channel-restoration.md.
+        note: 2026-09-02 codex — Owner additions R-189/R-191: restore Image and Sigils models,
+        note: repair Studio rendering and Miner; investigate each actual runtime, not labels.
+        note: Repair and browser-test /docs, /demo/dispatchos, /overview, /livestack,
+        note: /controlboard, /receipts and /training.html. All owned pages usable at 100% zoom;
+        note: measure viewport/DPR, prevent clipping/horizontal overflow, keep readable text.
+        note: Main landing header needs a visible Login button linked to the existing sign-in
+        note: flow and account creation. Latest super-admin address: symonsaysadmin@symoneural.com.
+        note: Owner can manage users and temporary demo passwords/credentials; enforce roles
+        note: server-side and keep provider-account isolation under R-188. Nothing provisioned.
+        note: R-190 measured 8182 MiB model residency with FREE GPU lock; test image/chat handoff.
         note: 2026-09-02 codex — Completed Claude's R-186 minimum restoration: 7B/draft
         note: hashes and bytes verified, 14 weight tests passed, real GPU Chat and Remix
         note: outputs; serving PIDs unchanged. No training or launcher implementation claimed.
@@ -1270,6 +1295,38 @@ better, resolving a folder move against the disk, survives as `resolve:`.
         the 7B + 0.5B draft (~5GB) which unblocks chat and remix. Attribution is not optional
         (NAMES.md:15-17). Restoring base weights is NOT the training milestone.
         Plan: review/NEXT-CODEX-2026-09-02-R186-model-restore.md
+        note: 2026-09-02 claude — R-184 multi-response surface BUILT and browser-verified,
+        note: NOT deployed and NOT complete. One prompt fans out to the selected coders; each
+        note: answer renders attributed and unmerged; disagreement surfaces every proposal with
+        note: no winner picked; the operator's click records the decision and the rejected
+        note: answer is preserved. Real run: symon 1,2,3,4,5,6,7,8,9,10 at 129.6 tok/s and
+        note: claude 1, 2, 3, ... agree=True; a live disagreement (Blue vs Teal) exercised the
+        note: branch. Mounted /local/coders/* NOT /api/* — these adapters spawn provider CLIs
+        note: under the operator's own sessions and Caddy delegates all of /api/*; public
+        note: probes return 404 and forwarded-header spoofs return 404.
+        note: STILL OPEN, so R-184 is NOT done: the discussion/debate round is not implemented
+        note: (page says so); Codex is offered UNAVAILABLE because its answer-only boundary is
+        note: unproven, leaving 4 of 7 presets disabled with reasons; rotation and training
+        note: modes report unavailable. 89 tests pass. Production untouched (PID 1509) — the
+        note: new routes need a restart this batch did not authorize; it is prepared and
+        note: handed off. Deliberately NO new check: added here, because writing
+        note: SMOKE-CODER-LAUNCHER.md would complete the existing check and archive #109 with
+        note: the launcher unbuilt — the #94 failure.
+        note: response: review/RESPONSE-2026-09-02-claude-R184-multi-response.md
+        note: next plan: review/NEXT-CODEX-2026-09-02-R184-boundary-and-debate.md
+        R-188 — Per-user subscription auth. BLOCKING for any non-/local exposure. Today the
+        coder surface has NO per-user credential model: Claude and Codex both run under the
+        session logged in on this box, so every request spends the OPERATOR's account and the
+        launcher works for exactly one person. Symon is the exception (local weights, no
+        subscription). Each user must authenticate their own Claude/ChatGPT-Codex/SyMoNeuRaL
+        subscriptions with their own allowance and permissions; one user's credential must
+        never be spendable by another. This is the constructive half of the spec's existing
+        ban on exposing or copying the owner's provider credentials. Architecture-changing:
+        credential storage + quota accounting + authorization together. Use the .deb artefacts
+        to establish real CLI contracts rather than guessing.
+        note: 2026-09-02 claude — the R-184 multi-response surface is TRANSPORT ONLY and has
+        note: no power until R-188 exists. It is deliberately /local-only for exactly this
+        note: reason; do not widen its exposure before per-user auth lands.
         check: exists docs/ops/SMOKE-CODER-LAUNCHER.md
         note: 2026-09-02 codex — The launcher is specified, not implemented. Write its SMOKE
         note: only after actual integrated runs; mocks and missing providers cannot establish
