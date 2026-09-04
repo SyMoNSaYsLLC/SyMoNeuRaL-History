@@ -67,6 +67,44 @@ active browser process group, and writes `docs/ops/SMOKE-APPLICATIONS.md`. The c
 success marker appears only when all four exit zero; a partial or interrupted run cannot
 manufacture it. Use `--dry-run` to inspect the order without an API or browser.
 
+> **THIS DOCTRINE CANNOT BE EXECUTED ON THIS HOST AS IT STANDS, 2026-09-03.** Every suite above
+> launches `channel: 'chrome'` — the system Google Chrome — and there is none:
+> `/opt/google/chrome/chrome` is absent, no `google-chrome`/`chromium`/`chromium-browser` is on
+> `PATH`, and `~/.cache/ms-playwright` holds no browser. `frontend.mjs` and
+> `applications_smoke.mjs` were attempted read-only and both aborted with
+> `browserType.launch: Chromium distribution 'chrome' is not found`. **Every UI, responsive,
+> accessibility and browser-behaviour figure below therefore rests on August readings that
+> cannot be re-measured here.**
+>
+> Playwright itself IS installed (`tests/node_modules/playwright` 1.56.1), and a headless
+> Chromium exists at `/usr/lib/chromium/chromium-headless-shell`. **Neither suite was repointed
+> at it, deliberately.** `tests/browser.mjs` says why in its own header: the suites use the
+> browser real visitors use, which is what makes the readings mean anything. Substituting a
+> different engine would keep the numbers flowing while quietly changing what they measure —
+> a worse failure than an honest gap. The fix is to install Chrome and re-measure, not to
+> re-point the harness.
+>
+> The suite named `applications` in the command list above is the file
+> `tests/applications_smoke.mjs`.
+
+**2203 pass, 0 fail and 56 skip at `4c36b77f`, measured 2026-09-03 in 293.9 s** from the
+repo root with the single canonical command `python3 -m pytest backend -q`. Reproduced twice
+on the same tree by an independent read-only session (293.65 s and 296.34 s), exit code read
+directly as **0** rather than inferred from the summary line.
+
+**`--collect-only` reads 2258, one LOWER than the 2259 outcomes the run accounts for, and that
+gap is benign.** This file declares the collect-vs-run comparison the collection-abort tripwire,
+so the difference is explained here rather than left for the next operator to read as an abort:
+`apps/studio/plugins/reinforce/tests/conftest.py` calls `pytest.importorskip("cupy")` at module
+level, which reports **one skip while contributing zero collected items**. That accounts for the
+difference exactly. A collection abort produces no number at all, not a number short by one.
+
+The jump from 1818 is mostly not new tests. `backend/conftest.py` (`71e78186`) put `backend/`
+on `sys.path` and dropped `backend/vendor/` from collection; before it, four app modules --
+`controlboard`, `dispatchos`, `live`, `streamer/guide` -- reported `ModuleNotFoundError: No
+module named 'apps'` as collection ERRORS while passing 169/169 once the path was set, and the
+vendored SDK suites aborted the whole run at 48 errors before a first-party test executed.
+
 **1818 pass, 0 fail and 14 skip at `ca0571b7`, measured 2026-08-22 from `backend/` in
 143.73 s, with `--collect-only` collecting 1832 in 1.24 s and `apps/remix` 28/28 in 0.44 s —
 1846 across the two invocations, and 1818 + 14 = 1832 is the arithmetic that says nothing

@@ -9,12 +9,14 @@
     "describe an artifact that no longer serves. `regenerate.sh --check` now cross-checks the",
     "recorded path against the unit's ExecStart for exactly that reason.",
     "",
-    "KNOWN DEPENDENCY, NOT YET RESOLVED: `ops/build-gateway.sh` still sets",
-    "OUT=$SRC/target/release/symon-gateway and writes this file. A gateway build will therefore",
-    "re-stale this manifest. That script is outside the artifact-custody scope, and the",
-    "underlying cause -- a half-completed gateway rename, which also holds",
-    "apps/test_gateway_unit.py red -- needs its own authorization. Recorded here rather than",
-    "silently patched.",
+    "RESOLVED 2026-09-03, and the note is rewritten rather than deleted so the next reader can",
+    "see the dependency existed and how it closed. It said `ops/build-gateway.sh` still set",
+    "OUT=$SRC/target/release/symon-gateway, so any gateway build would re-stale this manifest,",
+    "and that the underlying half-completed rename also held apps/test_gateway_unit.py red.",
+    "Both halves are now closed: build-gateway.sh:80 derives OUT=\"$SRC/target/release/$BIN_NAME\"",
+    "from Cargo.toml rather than hard-coding a name, so a build writes the binary this manifest",
+    "already describes; and apps/test_gateway_unit.py passes 9/9. Re-verified at HEAD 4c36b77f:",
+    "the sha256 below matches the on-disk artifact and the running process's /proc/PID/exe.",
     "",
     "Toolchain fields are carried forward from the 2026-08-26 migration record, which names the",
     "same rustc/cargo for that day's builds. `built_on` is NOT carried forward: the previous",
@@ -47,5 +49,5 @@
     "note": "pre-cutover control, still on disk, no longer launched"
   },
   "source_reproducible": "unverified -- no reproducibility experiment has been run for this artifact",
-  "verified_on": "2026-08-29"
+  "verified_on": "2026-09-03"
 }
