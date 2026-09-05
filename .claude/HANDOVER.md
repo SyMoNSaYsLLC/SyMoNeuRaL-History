@@ -1,5 +1,41 @@
 # HANDOVER — symoneural.com
 
+## Current handoff — 2026-09-02, Codex R-184 discussion completion
+
+**Next executor: Claude.** Read `review/NEXT-CLAUDE-2026-09-02-channel-restoration.md`.
+Response: `review/RESPONSE-2026-09-02-codex-R184-debate.md`.
+This current entry supersedes the older executor pointers preserved below.
+
+The user-triggered three-round discussion is implemented and scratch-browser verified;
+98 required tests and 20 browser checks passed against the working tree at HEAD e517a343.
+Every reply/round is retained, stale/duplicate requests are refused, the user alone chooses.
+Codex stays unavailable: its real read-only probe successfully read a temporary canary via a
+tool, so no answer-only refusal is established. R-184/#109 remain open; no tri-coder claim.
+
+Claude's earlier activation is measured at API PID 48629 (18:57:59 EDT), Gateway 1544,
+Web 1454. Codex performed no restart/reboot. The new debate package template/backend are
+staged for a future authorized activation; the existing site/coders.html stays unchanged.
+No commit, push, model download, account provisioning or training occurred in this batch.
+Private evidence/rollback copies: review/codex-boundary-debate-20260902/.
+
+R-193 (latest owner addition): persist and enforce per-user demo assignments on pages,
+APIs and resources. Cattle-only must not access DispatchOS. All-demo entitlement for
+symonsaysadmin@symoneural.com, bhesley@symoneural.com and gmcdonald@symoneural.com;
+super-admin remains a separate role. Included in both response and next-plan addenda.
+
+Owner additions: R-189 Image/Sigils/Studio/Miner repair; R-190 GPU question measured as
+8182 MiB idle model residency with FREE lease; R-191 named route upgrades and 100% zoom
+layout acceptance plus landing-page Login/account creation. Latest requested super admin is
+**symonsaysadmin@symoneural.com**, with user/temporary demo credential administration.
+R-188 provider-account isolation remains a separate prerequisite for non-local coder access.
+R-192: handoff watcher deleted at the owner's request. Do not recreate or auto-dispatch.
+
+Image/Sigils' four configured weights are absent; diffusion engine and existing Symon
+naming are present. Studio inference answers; render service 8188 does not. Miner is
+separately disabled/unconfigured. The next plan restores channels and preserves the larger
+account/layout backlog. Keep historical Gate 1.1 FAIL and all unrelated changes/evidence.
+
+
 ## Current handoff — 2026-09-02, Codex R-186 completion
 
 **Next executor: Claude.** Read `review/NEXT-CLAUDE-2026-09-02-R184-connected-session.md`.
@@ -26,6 +62,50 @@ not proven. Same-host HTTPS success does not close that missing proof. Preserve 
 reports and the pre-existing docs/ops/EXPORTS.md change.
 
 ## 2026-09-02 — Coder rotation, launcher requirement, and next handoff
+
+**R-188 added 2026-09-02 — per-user subscription auth is the blocking gap.** The coder
+surface has **no per-user credential model**: Claude and Codex both run under whatever
+session is logged in on this box, so every request spends the **operator's own account** and
+the launcher works for exactly one person. Symon is the exception — local weights, no
+subscription. Until R-188 lands the multi-coder work is **transport only**, which is why it
+is `/local`-only and must not be widened. Any user-facing exposure is blocked on it.
+
+**Caddy — three distinct things, only one retired.** Do not "remove caddy": `symoneural-web`
+**is** Caddy, imported as a library (`go.mod` requires `caddyserver/caddy/v2 v2.11.4`;
+`main.go` ends in `caddycmd.Main()`), and it runs `--config /etc/caddy/Caddyfile`. So (1)
+`caddy.service` as **active ingress** is retired and stays `inactive/disabled`; (2)
+`/usr/bin/caddy` + its unit are the **deliberately retained rollback runner** and the
+`caddy validate` tool `install-caddy.sh` uses; (3) the **engine** is running right now inside
+the 76 MB binary on `:443`. `caddy.service` is a **distro file** at
+`/usr/lib/systemd/system/` and is not git-tracked, so there is nothing to untrack;
+`ops/Caddyfile` **is** tracked and is the config symoneural-web reads — deleting it breaks
+ingress. `caddy inactive` must keep appearing in gate reports: it is the evidence that the
+`Conflicts=` directive is being honoured (Gate 1 W-2, Gate 1.1). The one genuinely stale item
+is `scripts/install-caddy.sh`, which still runs `systemctl enable caddy` and would fight
+`Conflicts=` on its next run.
+
+**2026-09-02 (Claude) — R-184 multi-response surface built, browser-verified, NOT deployed.**
+One prompt to every selected coder, each answer attributed and unmerged, disagreement
+surfacing every proposal without picking a winner, operator decision recorded. Verified in a
+real browser against a scratch API on `:8899`; **production was never touched** (api still
+PID 1509) because new routes need a restart this batch did not authorize — that restart is
+prepared in the next plan, not performed.
+
+Symon answered from the weights Codex restored: `1,2,3,4,5,6,7,8,9,10` at **129.6 tok/s**.
+A live disagreement (Symon *Blue* / Claude *Teal*) exercised the branch end to end.
+
+Mounted at **`/local/coders/*`, never `/api/*`** — these adapters spawn provider CLIs under
+the operator's own logged-in sessions, and `ops/Caddyfile` delegates the whole `/api/*`
+subtree publicly. Public probes and forwarded-header spoofs both return **404**.
+
+**R-184 is NOT complete:** the discussion/debate round is unimplemented (the page says so),
+and Codex is offered **unavailable** because its answer-only boundary is unproven — 4 of 7
+presets are disabled with reasons. Rotation and training modes report unavailable.
+
+**Next executor: Codex** — `review/NEXT-CODEX-2026-09-02-R184-boundary-and-debate.md`:
+prove the Codex boundary (or leave it unavailable), implement the debate round, and prepare
+the production restart. Response:
+`review/RESPONSE-2026-09-02-claude-R184-multi-response.md`.
 
 **R-186 added 2026-09-02 (Claude) — model weights, and two premises already satisfied.**
 Garrett asked to use Codex's Hugging Face connector to bring in the preferred model, *"rebrand
