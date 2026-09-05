@@ -35,5 +35,6 @@
   "model": "opus[1m]",
   "verbose": true,
   "$comment": "Semi-supervised mode for the SyMoNeuRaL build: file edits and writes apply without a prompt, Bash and everything else still asks. Project-level settings take precedence over ~/.claude/settings.json, which defaults to 'plan' -- that default would stall a fresh agent on its first tool call. This was 'bypassPermissions' for the unattended overnight runs (HANDOVER.md, section 'Running unattended'); put that back only for a run nobody is watching, because it also stops the deny list below from ever surfacing a prompt. For fully supervised work, delete this file or set defaultMode to 'plan'.",
-  "$pathComment": "Deny patterns are relative globs on purpose. They used to hardcode /home/google/MIT_AI_Training/MIT_AI_Training, which silently stopped guarding anything the moment the checkout moved -- the guard would have been absent exactly when it mattered."
+  "$pathComment": "Deny patterns are relative globs on purpose. They used to hardcode /home/google/MIT_AI_Training/MIT_AI_Training, which silently stopped guarding anything the moment the checkout moved -- the guard would have been absent exactly when it mattered.",
+  "spinnerTipsEnabled": false
 }
