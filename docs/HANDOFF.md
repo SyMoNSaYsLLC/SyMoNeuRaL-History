@@ -11,7 +11,7 @@ language below is historical and is superseded by this line.
 
 ## Current handoff — 2026-09-08, consolidation + restructure + application verification
 
-**Next executor: Claude.** The next task is the **first-party miner**: adopt Apache-2.0
+**Next executor: any coding agent or person.** (This line read "Claude" until 2026-09-08; the provider-specific form is retired.) The next task is the **first-party miner**: adopt Apache-2.0
 `cpp-kawpow` via `tools/index_references.py adopt`, stand up a CPU path that passes its own
 progpow test vectors, then the CUDA kernel for sm_120. This current entry supersedes the
 older executor pointers preserved below.

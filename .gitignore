@@ -130,7 +130,11 @@ ops/middleware/*.wasm
 # ---- the render UI ----
 # Garrett dropped an upstream clone at the repo root and this rule excluded it by name. It is
 # not there any more: the 2026-08 restructure swept it into external/, and on 2026-08-21
-# `tools/fork_render_ui.sh` forked it to `engines/symoneural-ui` -- which the `/engines/` rule
+# `tools/fork_render_ui.sh` forked it to `engines/symoneural-ui` -- which the `# /engines/ — the directory is GONE as of 2026-09-08. The five runtimes moved to the
+# repo root and the compatibility symlinks were deleted once the live API was proved to
+# be running the fixed paths. The rule is kept commented rather than removed so that a
+# stray engines/ reappearing is noticed rather than silently ignored.
+# /engines/` rule
 # further down already covers, so THIS pattern now excludes nothing and is kept only for the
 # paragraph below. Do not "tidy" the name back to something that matches: a rule matching a
 # literal directory name stops matching the moment the directory is renamed, and 8.4 GB of
