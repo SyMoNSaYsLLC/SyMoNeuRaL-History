@@ -22,7 +22,22 @@ import pathlib
 import subprocess
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+def _find_root(start: pathlib.Path) -> pathlib.Path:
+    """The pattern this test exists to enforce, used by this test.
+
+    The first version of this file opened with `ROOT = pathlib.Path(__file__).parents[2]`
+    -- the exact construct it was written to count. The ratchet caught its own author on the
+    next full run: 82 silent findings against a baseline of 81, and the eighty-second was
+    this file. Left recorded rather than quietly corrected, because a guard that exempts
+    itself is the first step to a guard that exempts everything.
+    """
+    for cand in (start, *start.parents):
+        if (cand / "backend" / "api.py").is_file():
+            return cand
+    raise RuntimeError(f"no repo root above {start}")
+
+
+ROOT = _find_root(pathlib.Path(__file__).resolve())
 AUDIT = ROOT / "symoneural-audit" / "bin" / "symoneural-audit"
 
 #: Measured 2026-09-08 at b0acd286+. Lower this when files are repaired. Never raise it:

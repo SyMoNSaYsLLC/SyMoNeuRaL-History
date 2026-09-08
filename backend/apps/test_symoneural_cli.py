@@ -187,7 +187,12 @@ class LoadAndLayoutTests(unittest.TestCase):
         computes the repo root independently (from this file, two levels up) and requires
         the CLI to have landed on the same one -- not merely on *a* directory."""
         cli = load_cli()
-        self.assertEqual(cli.HERE, ROOT / "bin")
+        # The client was promoted from bin/ to symoneural-code/bin/ on 2026-09-08, so HERE
+        # is one level deeper. `bin/symoneural-cli` is now a symlink to it and still works.
+        # The assertion that matters is unchanged and is the line below: whatever HERE is,
+        # ROOT must be the real repo root -- which is what the promotion broke and what the
+        # marker walk fixed.
+        self.assertEqual(cli.HERE, ROOT / "symoneural-code" / "bin")
         self.assertEqual(cli.ROOT, ROOT)
         self.assertTrue((cli.ROOT / "backend" / "api.py").is_file())
 

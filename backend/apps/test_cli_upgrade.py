@@ -26,7 +26,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "bin" / "symoneural-cli"
+CLI = ROOT / "symoneural-code" / "bin" / "symoneural-cli"   # the real file; bin/ holds a symlink
+#: `sudo_argv` builds its re-exec line from the CLI's own `__file__`, which resolves
+#: through the bin/ symlink to the real path under symoneural-code/. Asserting the
+#: symlink path here would test the shim rather than the command that actually runs.
 
 
 def load_cli() -> types.ModuleType:

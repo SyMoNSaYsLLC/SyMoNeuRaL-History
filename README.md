@@ -28,36 +28,49 @@ Every top-level directory, what it is, and how it is used. **Tracked** means a c
 it. **Ignored** means it is derived, bulk, or host-local: a clone rebuilds or refetches it,
 and nothing in it may be treated as a source of truth. Sizes measured 2026-09-08.
 
-### The five first-party runtimes
+### The runtime folders
 
-Promoted out of `engines/` on 2026-09-08 so each runtime is its own top-level component.
-All five are **derived trees, ignored**: `tools/fork_engines.sh` is the tracked recipe, and
-each directory carries a generated `README.md`, a `LICENSE`, and a `THIRD_PARTY_NOTICES.md`
-that says exactly what it is derived from.
+Nine, each its own top-level component. They split into two kinds and the difference is
+whether a clone carries them.
+
+**Ours — first-party source, tracked.**
+
+| Directory | What it is |
+|---|---|
+| `symoneural-api/` | the API and orchestration runtime, `:8800`. A licensed entry point; the application stays in `backend/`. |
+| `symoneural-code/` | `symoneural-cli`, `symoneural-code`, `symoneural-discovery` — the operator command line and the interactive session. |
+| `symoneural-audit/` | finds code that breaks when a directory moves. Written the day a move broke the client. |
+| `symoneural-adaptive-fabric/` | **PLANNED, NOT_IMPLEMENTED.** A home and a README; no code. Status quoted from `docs/architecture/COMPONENT-MAP.tsv:15`. |
+
+**Derived — built from vendored upstream source by `tools/fork_engines.sh`, gitignored.**
+The recipe is tracked; the 11 GB of objects are not. Each carries a generated `README.md`,
+a `LICENSE`, and a `THIRD_PARTY_NOTICES.md` naming what it came from.
 
 | Directory | Size | Role | Licence position |
 |---|---|---|---|
-| `symoneural-llm/` | 383M | language-model serving, HTTP on `127.0.0.1:8081` | SyMoNeuRaL over permissive upstream |
-| `symoneural-diffuse/` | 797M | diffusion image generation on the RTX 5070 Ti | SyMoNeuRaL over permissive upstream |
+| `symoneural-llm/` | 383M | language-model serving, `127.0.0.1:8081` | SyMoNeuRaL over permissive upstream |
+| `symoneural-diffuse/` | 797M | diffusion image generation | SyMoNeuRaL over permissive upstream |
 | `symoneural-listen/` | 57M | speech recognition, CPU only | SyMoNeuRaL over permissive upstream |
-| `symoneural-miner/` | 805M | mining control: GPU, ASIC and settlement | **upstream copyleft — not first-party** |
-| `symoneural-ui/` | 8.2G | graph and workflow editor for the render surface | **upstream copyleft — not first-party** |
+| `symoneural-miner/` | 805M | mining control: GPU, ASIC, settlement | **upstream copyleft — not first-party** |
+| `symoneural-ui/` | 8.2G | graph and workflow editor | **upstream copyleft — not first-party** |
 
 ```bash
 tools/fork_engines.sh all         # sync, patch identity, build all five
-tools/fork_engines.sh llm         # one engine
 tools/fork_engines.sh licences    # licences, notices and READMEs only, no rebuild
 python3 tools/probe_engines.py    # audit artefact identity, announced identity, real work
+bin/symoneural-audit --strict depth-root
 ```
 
-The last two rows are the honest part of this table. `fork_engines.sh` **refuses** to write
-the SyMoNeuRaL licence over a copyleft upstream, because a licence is a grant from the
-copyright holders and editing the file would remove a notice the project must keep rather
-than change the grant. Replacing those two with first-party implementations is open work.
+The last two rows of the derived table are the honest part. `fork_engines.sh` **refuses** to
+write the SyMoNeuRaL licence over a copyleft upstream: a licence is a grant from the
+copyright holders, and editing the file would remove a notice the project must keep rather
+than change the grant. Replacing both with first-party implementations is open work —
+`cpp-kawpow` is Apache-2.0 and can carry a first-party miner; the render surface can be
+built over the already-MIT `symoneural-diffuse`.
 
-`engines/` still exists and holds five compatibility symlinks into the directories above, so
-a long-running process started before the move keeps resolving. It is removed once nothing
-depends on the old paths.
+`engines/` still holds five compatibility symlinks into the derived directories, and `bin/`
+holds symlinks into `symoneural-code/` and the two entry points, so nothing that named the
+old paths broke. Both sets are temporary.
 
 ### Code a clone carries
 

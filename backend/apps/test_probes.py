@@ -174,10 +174,18 @@ class EngineAuditCoversEveryEngine(unittest.TestCase):
     def test_every_engine_directory_is_declared(self):
         # The silent failure for this tool: a sixth engine appears under engines/
         # and the audit reports "5 of 5 built" without ever looking at it.
-        on_disk = {p.name for p in ROOT.iterdir() if p.is_dir() and p.name.startswith("symoneural-")}
+        # A DERIVED engine, not merely a directory whose name starts with symoneural-.
+        # After 2026-09-08 the repo root also holds symoneural-api/, symoneural-code/,
+        # symoneural-audit/ and symoneural-adaptive-fabric/, which are first-party source
+        # and not engines at all -- a name prefix cannot tell them apart. What can is
+        # THIRD_PARTY_NOTICES.md: fork_engines.sh writes one into every tree it derives
+        # from an upstream, and nothing writes one into code we authored.
+        on_disk = {p.name for p in ROOT.iterdir()
+                   if p.is_dir() and p.name.startswith("symoneural-")
+                   and (p / "THIRD_PARTY_NOTICES.md").is_file()}
         declared = {e["id"] for e in probe_engines.ENGINES}
         self.assertEqual(set(), on_disk - declared,
-                         f"engines/ contains {sorted(on_disk - declared)} which "
+                         f"a derived engine tree {sorted(on_disk - declared)} exists which "
                          f"probe_engines.ENGINES does not declare")
         self.assertEqual(set(), declared - on_disk,
                          f"ENGINES declares {sorted(declared - on_disk)} with no "
