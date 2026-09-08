@@ -195,6 +195,17 @@ class WindowSmokeTests(unittest.TestCase):
         if disp:
             cls._display_was = os.environ.get("DISPLAY")
             os.environ["DISPLAY"] = disp
+        elif os.environ.get("SYMONEURAL_TEST_ALLOW_VISIBLE_WINDOW") != "1":
+            # No throwaway display available. The previous behaviour was to fall back to
+            # whatever DISPLAY was given, which on this box is the owner's desktop -- and a
+            # window appearing there unbidden is the complaint that started this. Skipping
+            # is the safer default: an un-run window check costs coverage, a window on
+            # somebody's screen costs their trust in what the machine is doing. Set
+            # SYMONEURAL_TEST_ALLOW_VISIBLE_WINDOW=1 to opt back in deliberately.
+            raise unittest.SkipTest(
+                "no offscreen display available (Xvfb missing or would not start) and "
+                "SYMONEURAL_TEST_ALLOW_VISIBLE_WINDOW is not 1, so this will not open a "
+                "window on the active display")
 
         import gi
         gi.require_version("Gtk", "3.0")

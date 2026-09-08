@@ -292,3 +292,9 @@ web/symoneural-web/build/symoneural-web
 /symoneural-listen/
 /symoneural-miner/
 /symoneural-ui/
+
+# symoneural-code/ and symoneural-audit/ are deliberately NOT listed above. They are
+# runtime folders like the five, but they are OURS -- first-party source, not a derived
+# tree built from somebody else's release tarball -- so a clone carries them. That is the
+# whole distinction: the five are rebuilt by tools/fork_engines.sh and would be 11 GB of
+# committed objects; these two are what we wrote.
