@@ -16,8 +16,9 @@ language below is historical and is superseded by this line.
 progpow test vectors, then the CUDA kernel for sm_120. This current entry supersedes the
 older executor pointers preserved below.
 
-**State at handoff.** HEAD `e6000070`, branch main, tree clean, 0 staged, 0 stashed. Suite
-**2340 passed / 0 failed / 59 skipped**, measured at this SHA. `symoneural-api` and
+**State at handoff (updated).** HEAD `eeaa9e14`, branch main, tree clean, 0 staged, 0 stashed. Suite
+**2367 passed / 0 failed / 59 skipped**, measured at this SHA. `engines/` is gone; the repository is
+proved independent of `.claude` by running the whole suite with that directory absent. `symoneural-api` and
 `symoneural-web` active and enabled, site 302. `symoneural-gateway` inactive and disabled,
 source intact. Full detail is in `ProjectStatus.md` under *Current state → 2026-09-08*;
 this entry says only what will bite the next executor.

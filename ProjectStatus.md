@@ -3,11 +3,12 @@
 ## Checkpoint
 
 Canonical current verified project-state authority, reconciled **2026-09-08 EDT** after the
-home-directory consolidation, the runtime restructure and the application verification.
+home-directory consolidation, the runtime restructure, the application verification, the
+first-party miner core, the Claude-to-SyMoNeuRaL migration and the `.claude` neutralisation.
 Canonical repository: `/home/google/Symoneural`; branch: `main`.
-Accepted HEAD: **`e6000070`** (this section reconciled 2026-09-08, measured at that SHA).
+Accepted HEAD: **`eeaa9e14`** (this section reconciled 2026-09-08, measured at that SHA).
 Staged / stash counts: **0 / 0**. Tracked modifications: **0**.
-Backend suite at this SHA: **2340 passed, 0 failed, 59 skipped**, measured, not carried forward.
+Backend suite at this SHA: **2367 passed, 0 failed, 59 skipped**, measured, not carried forward.
 
 The previous entry stood at `aa1bdff2` while the tree advanced **42 commits**, which is the
 third instance of the pattern this section warns about below. The `6da52783` tripwire passed
