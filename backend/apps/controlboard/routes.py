@@ -84,8 +84,29 @@ def read_power(request: Request):
 
 
 @router.post("/power/{unit_id}", summary="Take one unit off the rack, or put it back")
-def set_power(unit_id: str, body: PowerRequest, request: Request):
+async def set_power(unit_id: str, request: Request):
+    """The body is parsed by hand, AFTER the gate, and that ordering is the point.
+
+    Measured 2026-09-08 with the switch disabled: `GET /api/rack/power` answered 404 as the
+    module docstring promises, and `POST /api/rack/power/{unit_id}` answered **422 naming
+    its required field** -- because a declared `body: PowerRequest` parameter makes FastAPI
+    validate the body before the handler runs, so `_guard` was never consulted. A visitor
+    learned that this installation has an operator control, and learned the shape of its
+    payload, which is exactly what the 404-rather-than-403 argument exists to prevent.
+
+    The token gate was never bypassed. What was bypassed was the concealment, by the
+    framework, one layer above the code that implements it.
+
+    So `request` is taken raw and the JSON is read after `_guard` returns. The 422 for a
+    genuinely malformed body is still produced -- it is raised below, once the caller has
+    proved they are an authorised operator on this box and telling them what is wrong with
+    their payload is a kindness rather than a disclosure.
+    """
     peer = _guard(request)
+    try:
+        body = PowerRequest(**(await request.json()))
+    except Exception as exc:                       # malformed JSON, or the field missing
+        raise HTTPException(status_code=422, detail=f"want {{\"offline\": bool}}: {exc}")
     if unit_id not in TOGGLEABLE:
         # 404 rather than 400: an id that is not on the allowlist has no switch, and saying
         # "that unit exists but you may not touch it" would be a distinction this surface

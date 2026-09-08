@@ -62,9 +62,19 @@ def setUpModule() -> None:
     ROUTES = _router()
 
 
+#: Both mounted namespaces, not just the public one.
+#:
+#: This read `/api/` only, and the consequence was measured on 2026-09-08: nine `/local/*`
+#: routes had no owner and no documentation page, and the totality test was green the whole
+#: time. They did not FAIL the check -- they were never inside it. An operator surface is
+#: exactly the kind that ends up undocumented, because nobody browsing the public docs
+#: notices its absence.
+_AUDITED_NAMESPACES = ("/api/", "/local/")
+
+
 def _api_paths() -> set[str]:
     return {getattr(r, "path", "") for r in ROUTES
-            if getattr(r, "path", "").startswith("/api/")}
+            if getattr(r, "path", "").startswith(_AUDITED_NAMESPACES)}
 
 
 class RegistryIsAPartition(unittest.TestCase):

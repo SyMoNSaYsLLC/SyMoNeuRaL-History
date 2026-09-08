@@ -2222,6 +2222,20 @@ def build_status() -> Status:
     train_detail = ("fine-tune in progress — serving surfaces queue" if holder == "train"
                     else ("adapter loaded · for model/adapter tuning"
                           if adapter_applies() else "no adapter built"))
+    # DEFECT 6, fixed the way the note above argues for. The rack reported `train` as
+    # `ready` while all four of its parameterless GETs answered 503 -- "SyMoNeuRaL Reinforce
+    # is off". Both readings were true: an adapter IS loaded, and the HTTP surface is NOT
+    # accepting work. The comment above deliberately refuses to merge them, because `state`
+    # here means "is an adapter loaded" and overwriting it would assert a different true
+    # thing in place of that one.
+    #
+    # So `state` is left alone and the detail says the other half. A reader who sees `ready`
+    # now also sees that nothing will answer, which is the gap that mattered -- `studio`
+    # already reports offline with a precise reason, so the rack could express this and
+    # simply did not for this unit.
+    if not reinforce.enabled():
+        train_detail += " · surface off — set SYMONEURAL_REINFORCE_ENABLED=1 and " \
+                        "SYMONEURAL_REINFORCE_TOKEN; routes answer 503 until then"
     # `exp` keeps publishing its own status dict; only the shape it is carried in changes.
     # Read once so the child and any future reader of it cannot disagree within one response.
     exp_row = exp.status()

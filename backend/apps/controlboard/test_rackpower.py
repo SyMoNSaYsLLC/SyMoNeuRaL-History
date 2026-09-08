@@ -17,6 +17,7 @@ import os
 import pathlib
 
 import pytest
+import unittest
 
 from apps import controlboard as rp
 
@@ -453,3 +454,44 @@ def test_the_attribution_records_the_forwarded_client(switched_on, monkeypatch):
             "X-Forwarded-For": "203.0.113.7, 127.0.0.1"}
     r = client.post("/api/rack/power/image", json={"offline": True}, headers=head)
     assert r.json()["by"] == "203.0.113.7"
+
+
+class TheDisabledSurfaceRevealsNothing(unittest.TestCase):
+    """404 on every route when the switch is off, including the one with a body.
+
+    The module docstring's argument is that a public rack served to anyone must not tell a
+    visitor this installation has an operator control worth attacking. Measured 2026-09-08,
+    the GET honoured that and the POST did not: a declared `body: PowerRequest` parameter
+    makes FastAPI validate before the handler runs, so `_guard` was never reached and the
+    reply was **422 naming the required field**. The token gate held; the concealment was
+    bypassed by the framework, one layer above the code implementing it.
+    """
+
+    def setUp(self):
+        for var in ("SYMONEURAL_RACK_ENABLED", "SYMONEURAL_RACK_TOKEN"):
+            os.environ.pop(var, None)
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from . import routes
+        app = FastAPI()
+        app.include_router(routes.router, prefix="/api/rack")
+        return TestClient(app)
+
+    def test_the_post_answers_404_and_not_422_when_the_switch_is_off(self):
+        r = self._client().post("/api/rack/power/chat", json={"offline": True})
+        self.assertEqual(404, r.status_code,
+                         f"expected the same answer an absent feature gives; got "
+                         f"{r.status_code} {r.text[:120]}")
+        self.assertNotIn("offline", r.text,
+                         "the reply names the payload field, which tells a visitor the "
+                         "shape of a control they were not supposed to learn exists")
+
+    def test_an_empty_body_also_answers_404_when_the_switch_is_off(self):
+        """The 422 path specifically: no body at all used to be the loudest disclosure."""
+        r = self._client().post("/api/rack/power/chat")
+        self.assertEqual(404, r.status_code, r.text[:120])
+
+    def test_the_get_still_answers_404_too(self):
+        self.assertEqual(404, self._client().get("/api/rack/power").status_code)

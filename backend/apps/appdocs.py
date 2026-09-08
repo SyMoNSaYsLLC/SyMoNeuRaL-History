@@ -105,7 +105,11 @@ APPLICATIONS: tuple[Application, ...] = (
         auth="public", limits=_limits("remix")),
     Application(
         id="coder", label="SyMoNeuRaL Coder", kind="application", parent=None,
-        runtime="symoneural-llm", page="/livestack/coder", prefixes=("/local/coder",),
+        runtime="symoneural-llm", page="/livestack/coder", # `/local/coders` as well as `/local/coder`: the routes are plural
+        # (`/local/coders/ask`, `/local/coders/sessions`, ...) and the declared
+        # prefix was singular, so six real routes matched no owner. Both spellings
+        # are kept because the singular form is the page path.
+        prefixes=("/local/coder", "/local/coders"),
         summary="The local workspace agent: a browser terminal over this box's own tree.",
         auth="loopback only — every route below is refused to any caller that did not come "
              "from a process on this machine, and refused again if it carries proxy headers. "
@@ -273,12 +277,23 @@ APPLICATIONS: tuple[Application, ...] = (
         limits="login attempts are throttled per account and per address."),
     Application(
         id="controlboard", label="Control Board", kind="platform", parent="platform",
-        runtime="symoneural-platform", page="/controlboard", prefixes=("/api/rack",),
-        summary="The operator's rack power switches. Taking a unit off the rack refuses its "
-                "HTTP work as well as changing its light — the reading and the gate are two "
-                "halves of one fact.",
-        auth="operator", limits="only five surfaces are switchable; the exclusions are "
-                                "reasoned, not accidental.",
+        runtime="symoneural-platform", page="/controlboard",
+        # `/local/*` added 2026-09-08. These three were mounted and owned by nobody, so they
+        # appeared on no documentation page -- and the totality test could not have caught
+        # them, because it only looked at `/api/*`. They belong here: `.claude/CLAUDE.md`
+        # describes /local/progress and the Ready/Drop buttons that POST to /local/intake as
+        # the operator's controls on the progress page, and /local/tasknote appends a task
+        # comment from the same page. Operator surfaces are exactly the ones that end up
+        # undocumented, because nobody reading the public docs notices they are missing.
+        prefixes=("/api/rack", "/local/progress", "/local/intake", "/local/tasknote"),
+        summary="The operator's rack power switches, and the progress page's own controls. "
+                "Taking a unit off the rack refuses its HTTP work as well as changing its "
+                "light — the reading and the gate are two halves of one fact. The /local/* "
+                "routes are loopback-only and refuse anything that crossed the proxy.",
+        auth="operator; the /local/* routes are additionally loopback-only and refuse any "
+             "request carrying a proxy header",
+        limits="only five surfaces are switchable; the exclusions are "
+               "reasoned, not accidental.",
         operator_only=("/api/rack/power/{unit_id}",)),
     Application(
         id="voice", label="SyMoNeuRaL Voice", kind="application", parent=None,
