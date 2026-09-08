@@ -413,6 +413,9 @@ _RATE_SUGGESTED = {
 }
 
 
+from apps.ratelimits import BUDGETS as _BUDGETS
+
+
 def _rate_for(surface: str) -> tuple[int, int]:
     """Read a surface's budget from the environment. Unset means no limit."""
     raw = os.getenv(f"SYMONEURAL_RATE_{surface.upper()}", "").strip()
@@ -423,7 +426,11 @@ def _rate_for(surface: str) -> tuple[int, int]:
         except ValueError:
             log.warning("ignoring malformed SYMONEURAL_RATE_%s=%r, want N/N",
                         surface.upper(), raw)
-    return (0, 0)          # 0 means "no bucket at all" -- see check_rate
+    # Fall back to the published budget rather than to no limit. This returned (0, 0),
+    # which check_rate reads as "allow", so every figure on /docs was decorative: 150
+    # ravencalc posts in 1.64 s drew no 429 on 2026-09-08. A published ceiling that is not
+    # applied is worse than no ceiling, because a reader plans against it.
+    return _BUDGETS.get(surface, (0, 0))
 
 
 LIMITS = {name: _rate_for(name) for name in _RATE_SUGGESTED}
@@ -3729,6 +3736,28 @@ for _name, _file in LIVESTACK_PAGES.items():
 # Declared above the StaticFiles mount, for the same reason every route here is.
 LOCAL_ONLY = ("127.0.0.1", "::1", "localhost")
 
+#: Headers whose presence proves a request crossed a reverse proxy.
+#:
+#: Was `x-forwarded-for`, `x-forwarded-host`, `x-real-ip`. Measured 2026-09-08: all six
+#: probed `/local/*` routes accepted a request carrying `Forwarded`, `Via` or
+#: `X-Forwarded-Proto`, none of which was checked. `X-Forwarded-Proto` is the one that
+#: mattered most, because the docstring's whole argument is that Caddy sets these on
+#: everything it proxies -- and Caddy sets that one on everything it proxies. `Forwarded`
+#: is RFC 7239, the standardised replacement for the X- spellings, so a modern proxy may
+#: send only it.
+#:
+#: The peer check was never bypassed; this is the secondary defence, and it was the half
+#: the docstring leaned on for the future `handle /local*` case it was written to survive.
+_PROXY_HEADERS = (
+    "forwarded",                # RFC 7239
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",        # Caddy sets this on everything it proxies
+    "x-forwarded-port",
+    "x-real-ip",
+    "via",                      # RFC 9110; any conforming proxy appends it
+)
+
 
 def _require_local(request: Request) -> None:
     """Refuse anything that did not come from a process on this machine.
@@ -3740,8 +3769,7 @@ def _require_local(request: Request) -> None:
     the peer check alone would wave through.
     """
     peer = request.client.host if request.client else ""
-    forwarded = any(h in request.headers
-                    for h in ("x-forwarded-for", "x-forwarded-host", "x-real-ip"))
+    forwarded = any(h in request.headers for h in _PROXY_HEADERS)
     if peer not in LOCAL_ONLY or forwarded:
         # 404, not 403. A 403 confirms the route exists; there is no reason to tell a remote
         # caller that this box has a private intake surface at all.

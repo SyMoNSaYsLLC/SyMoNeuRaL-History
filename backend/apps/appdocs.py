@@ -44,6 +44,10 @@ from __future__ import annotations
 import dataclasses
 import html
 
+from .ratelimits import prose as _limits   # published figures come from the
+                                          # enforced table, never retyped
+
+
 
 @dataclasses.dataclass(frozen=True)
 class Application:
@@ -91,14 +95,14 @@ APPLICATIONS: tuple[Application, ...] = (
         runtime="symoneural-llm", page="/chat.html", prefixes=("/api/chat",),
         summary="Streamed conversation with the model resident on the card. Takes the GPU "
                 "lease; other GPU surfaces queue behind it.",
-        auth="public", limits="120 requests/min per address, 3,000/hour."),
+        auth="public", limits=_limits("chat")),
     Application(
         id="remix", label="SyMoNeuRaL Remix", kind="application", parent=None,
         runtime="symoneural-llm", page="/remix.html", prefixes=("/api/remix",),
         summary="Track and set generation. A client of the same language runtime as Chat, "
                 "listed separately because an operator taking one offline must not take "
                 "the other with it.",
-        auth="public", limits="40 requests/min per address, 1,000/hour."),
+        auth="public", limits=_limits("remix")),
     Application(
         id="coder", label="SyMoNeuRaL Coder", kind="application", parent=None,
         runtime="symoneural-llm", page="/livestack/coder", prefixes=("/local/coder",),
@@ -128,7 +132,7 @@ APPLICATIONS: tuple[Application, ...] = (
         prefixes=("/api/image", "/api/gen"),
         summary="Diffusion rendering. `POST /api/image` queues a render and answers with a "
                 "name; `GET /api/gen/<name>` serves the produced file.",
-        auth="public", limits="20 requests/min per address, 500/hour."),
+        auth="public", limits=_limits("image")),
     Application(
         id="sigils", label="SyMoNeuRaL Sigils", kind="application", parent=None,
         runtime="symoneural-image-engine", page="/sigils.html",
@@ -144,14 +148,23 @@ APPLICATIONS: tuple[Application, ...] = (
         prefixes=("/api/ravencalc",),
         summary="Symbolic algebra on the CPU. It never queues, which is why it stays "
                 "available while the rack shows every GPU surface busy.",
-        auth="public", limits="240 requests/min per address, 6,000/hour."),
+        auth="public", limits=_limits("ravencalc")),
     # ---- symoneural-project -------------------------------------------------------------
     Application(
         id="project", label="SyMoNeuRaL Project", kind="application", parent=None,
         runtime="symoneural-project", page="/project.html", prefixes=("/api/project",),
         summary="Projects, items, events, files and backups. SQLite and text; it stores "
                 "nothing executable.",
-        auth="public read, write on the same surface", limits="no GPU lease is taken."),
+        # Corrected 2026-09-08. This read "public read, write on the same surface" and the
+        # surface answers 401 on every route, including the parameterless GETs -- measured,
+        # all three. `project/store.py:150` requires SYMONEURAL_PROJECT_TOKEN and the app's
+        # own README says "both, or the surface does not exist". The enforcement was right;
+        # the declaration was wrong, and appdocs.py is what renders /docs/project, so this
+        # page was telling visitors a credentialled surface was open.
+        auth="token — `X-Symoneural-Token` on every route, read and write alike. The "
+             "surface does not exist at all unless SYMONEURAL_PROJECT_ENABLED=1 and "
+             "SYMONEURAL_PROJECT_TOKEN are both set.",
+        limits="no GPU lease is taken."),
     # ---- symoneural-studio --------------------------------------------------------------
     Application(
         id="studio", label="SyMoNeuRaL Studio", kind="application", parent=None,
