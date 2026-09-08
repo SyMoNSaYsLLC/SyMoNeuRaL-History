@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-SyMoNeuRaL-Proprietary
+# Copyright (c) 2026 SymonSays LLC. All rights reserved.
+# SyMoNeuRaL is a subdivision of SymonSays LLC. Licence: /LICENSE at the repository root.
+"""End-to-end smoke for the first-party miner core. Loopback only, no real mining.
+
+`--version` proves a file exists. This proves the layers that exist actually work together:
+a fail-closed config is built and validated, a client connects to a local pool fixture,
+completes the Stratum handshake, receives real work, derives a *deterministic candidate*
+from that work with the first-party Keccak, formats it as a share, submits it, and the pool
+accepts it. Then everything shuts down and the socket is released.
+
+**The candidate is NOT a KawPoW solution.** KawPoW is Keccak-f[800] plus the ProgPoW random
+program over a DAG, and that loop is not implemented first-party here — see
+`docs/ALGORITHM-GAP.md`. What this smoke demonstrates is the *pipeline*: work in, a
+deterministic hash computed by our own code, a correctly formatted share out, and a pool
+that accepted the frame. Calling that "mining" would be the relabelling this repository
+keeps getting burned by.
+
+Writes `SMOKE-miner-core.md` beside the runtime, because a smoke record that cannot be
+written without running the thing is the repo's own answer to checks that pass on disk
+alone (`.claude`-era rule, now in the project authority docs).
+
+    symoneural-miner-smoke              # run it, write the record
+    symoneural-miner-smoke --no-write   # run it, print only
+"""
+from __future__ import annotations
+
+import datetime
+import pathlib
+import subprocess
+import sys
+import threading
+import time
+
+
+def find_root(start: pathlib.Path) -> pathlib.Path:
+    """Walk up for the marker; never count parents. See symoneural-audit/README.md."""
+    for cand in (start, *start.parents):
+        if (cand / "backend" / "api.py").is_file():
+            return cand
+    raise SystemExit(f"symoneural-miner-smoke: no repo root above {start}")
+
+
+ROOT = find_root(pathlib.Path(__file__).resolve().parent)
+CORE = ROOT / "symoneural-miner-core"
+sys.path.insert(0, str(CORE / "src"))
+
+from symoneural_miner_core import config as C          # noqa: E402
+from symoneural_miner_core import keccak               # noqa: E402
+from symoneural_miner_core import stratum as S         # noqa: E402
+from symoneural_miner_core.fakepool import FakePool    # noqa: E402
+
+WALLET = "R" + "9" * 33          # shape-valid, deliberately not a real address
+WORKER = "smoke"
+
+
+def candidate_from(job: S.Job, nonce: int) -> tuple[str, str]:
+    """A deterministic value derived from real job fields by our own Keccak.
+
+    Header hash and seed hash come from the pool. They are folded into the 800-bit state
+    with the nonce and permuted once. This is a *pipeline* demonstration and is explicitly
+    not the KawPoW hash: no ProgPoW loop, no DAG. Deterministic so the smoke can assert an
+    exact value rather than "something happened".
+    """
+    hh = bytes.fromhex(job.header_hash[2:])
+    sh = bytes.fromhex(job.seed_hash[2:])
+    state = [0] * 25
+    for i in range(8):
+        state[i] = int.from_bytes(hh[i * 4:(i + 1) * 4], "little")
+    for i in range(8):
+        state[8 + i] = int.from_bytes(sh[i * 4:(i + 1) * 4], "little")
+    state[16] = nonce & 0xFFFFFFFF
+    state[17] = (nonce >> 32) & 0xFFFFFFFF
+    out = keccak.keccak_f800(state)
+    mix = b"".join(w.to_bytes(4, "little") for w in out[:8]).hex()
+    return f"{nonce:016x}", mix
+
+
+def main(argv: list[str]) -> int:
+    write = "--no-write" not in argv
+    results: list[tuple[str, bool, str]] = []
+
+    def check(name: str, ok: bool, detail: str = "") -> None:
+        results.append((name, bool(ok), detail))
+        print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
+
+    print("symoneural-miner-core smoke — loopback only, no public pool, no real wallet\n")
+
+    # 1. fail-closed: an empty environment must not arm
+    off = C.load({})
+    check("empty environment refuses to arm", not off.enabled,
+          off.why_not().split(";")[0])
+
+    # 2. a complete config against the fixture arms
+    jobs: list[S.Job] = []
+    with FakePool(accept_shares=True, difficulty=2.0) as pool:
+        cfg = C.load({
+            "SYMONEURAL_MINER_ENABLED": "1",
+            "SYMONEURAL_MINER_POOL": pool.endpoint_str,
+            "SYMONEURAL_MINER_WALLET": WALLET,
+            "SYMONEURAL_MINER_WORKER": WORKER,
+        })
+        check("loopback configuration arms", cfg.enabled, str(cfg.endpoint))
+        check("wallet is masked in the loggable form", WALLET not in str(cfg.redacted()),
+              cfg.redacted()["wallet"])
+        if not cfg.enabled:
+            return 1
+
+        cl = S.StratumClient(cfg.endpoint, cfg.wallet, cfg.worker, on_job=jobs.append)
+        cl.connect()
+        t = threading.Thread(target=lambda: _swallow(cl.run), daemon=True)
+        t.start()
+        cl.handshake()
+
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not (jobs and cl.authorized):
+            time.sleep(0.02)
+
+        check("stratum handshake completed", cl.subscribed and cl.authorized,
+              f"authorized as {WORKER}")
+        check("difficulty received", cl.difficulty == 2.0, str(cl.difficulty))
+        check("real work received from the pool", bool(jobs),
+              jobs[0].job_id if jobs else "none")
+        if not jobs:
+            cl.close()
+            return 1
+
+        job = jobs[0]
+        nonce_hex, mix = candidate_from(job, 0x0123456789ABCDEF)
+        again = candidate_from(job, 0x0123456789ABCDEF)
+        check("candidate is deterministic", (nonce_hex, mix) == again, mix[:16] + "…")
+        check("candidate differs for a different nonce",
+              candidate_from(job, 1)[1] != mix)
+
+        share = S.Share(job_id=job.job_id, nonce=nonce_hex, mix_hash=mix)
+        params = share.as_params(f"{cfg.wallet}.{cfg.worker}")
+        check("share is correctly formatted", params[2].startswith("0x")
+              and params[3].startswith("0x") and len(params) == 4, params[2])
+
+        cl.submit(share)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and cl.shares_accepted < 1:
+            time.sleep(0.02)
+        check("pool accepted the submitted frame", cl.shares_accepted == 1,
+              f"{len(pool.submissions)} submission(s) seen by the pool")
+
+        cl.close()
+        check("client closed and socket released", cl._sock is None)
+        t.join(timeout=3)
+        check("reader thread exited", not t.is_alive())
+
+    # 3. the primitive, against the published standard
+    check("first-party Keccak matches the published SHA3-256 vector",
+          keccak.sha3_256(b"abc").hex()
+          == "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532")
+
+    passed = sum(1 for _, ok, _ in results if ok)
+    total = len(results)
+    print(f"\n{passed}/{total} checks passed")
+
+    if write:
+        rec = CORE / "SMOKE-miner-core.md"
+        head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short=8", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        rec.write_text(
+            "# SMOKE — symoneural-miner-core\n\n"
+            f"Measured {datetime.datetime.now().astimezone().isoformat(timespec='seconds')} "
+            f"at HEAD `{head}`.\n\n"
+            "Loopback fixture only. **No public pool was contacted, no real wallet was "
+            "used, and no share was submitted to any network.** The wallet is a "
+            "shape-valid placeholder.\n\n"
+            "| Check | Result | Detail |\n|---|---|---|\n"
+            + "".join(f"| {n} | {'PASS' if ok else 'FAIL'} | {d} |\n"
+                      for n, ok, d in results)
+            + f"\n**{passed}/{total} passed.**\n\n"
+            "## What this does and does not prove\n\n"
+            "Proves: the config refuses to arm by default; a validated loopback endpoint "
+            "arms; the Stratum handshake, difficulty delivery and job receipt work against "
+            "a real socket; a deterministic candidate is derived from real job fields by "
+            "first-party Keccak; the share is formatted as pools document; a pool accepted "
+            "the frame; and the client shuts down releasing its socket.\n\n"
+            "Does **not** prove: KawPoW correctness, GPU execution, or any hashrate. The "
+            "ProgPoW loop and its kernel are not implemented first-party — see "
+            "`docs/ALGORITHM-GAP.md`. No hashrate figure appears in this file because none "
+            "was measured.\n")
+        print(f"wrote {rec.relative_to(ROOT)}")
+
+    return 0 if passed == total else 1
+
+
+def _swallow(fn):
+    try:
+        fn()
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
