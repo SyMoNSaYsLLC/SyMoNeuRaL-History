@@ -129,11 +129,16 @@ ENGINES = (
     {"id": "symoneural-listen", "binary": "symoneural-listen",
      "role": "speech recognition, CPU only",
      "version_flag": None, "help_flag": "--help", "serving": None},
-    {"id": "symoneural-miner", "binary": None,
+    # `bindir` because this one does not build into build/bin: the vendored
+    # kawpowminer CMake project puts its executable in build/kawpowminer/. The
+    # spec used to say `binary: None` with a note asserting "no built binary
+    # under build/bin", which was written on 2026-09-07 -- three days after
+    # f5f0a7e4 built it -- and was true of the path, not of the engine. A probe
+    # that reports a built engine as missing is worse than no probe.
+    {"id": "symoneural-miner", "binary": "symoneural-miner",
+     "bindir": "kawpowminer",
      "role": "mining control: GPU, ASIC and settlement", "serving": None,
-     "note": "no built binary under build/bin. The rack reports the surface "
-             "offline and names what is missing; building or enabling it is a "
-             "mutation and is not part of an audit."},
+     "version_flag": "--version", "help_flag": "--help"},
     {"id": "symoneural-ui", "binary": None,
      "role": "graph and workflow editor", "serving": None,
      "note": "vendored ComfyUI, and the one runtime ProjectStatus.md already "
@@ -211,7 +216,7 @@ def audit_identity(spec: dict, do_sha: bool) -> dict:
         out["note"] = spec.get("note", "")
         return out
 
-    path = ROOT / "engines" / spec["id"] / "build" / "bin" / spec["binary"]
+    path = ROOT / "engines" / spec["id"] / "build" / spec.get("bindir", "bin") / spec["binary"]
     out["built"] = path.is_file()
     if not out["built"]:
         out["note"] = f"declared binary absent at {path.relative_to(ROOT)}"
