@@ -65,10 +65,20 @@ SUFFIXES = (".py", ".sh", ".bash", ".service", ".yaml", ".yml", ".toml", ".json"
 # argument is a string literal. Requiring the quote separates them without an exempt list,
 # which matters because an exempt list is how a guard quietly stops guarding.
 _DIRS = "|".join(NO_EXEC_DIRS)
-EXECUTES = re.compile(
+
+# Two patterns, because the quote requirement below is right for Python and wrong for
+# systemd. `ExecStart=` was originally an alternative inside CALLS_EXEC and could therefore
+# never fire: a unit file writes `ExecStart=/path/to/thing` with no quotes anywhere on the
+# line, so the trailing `["'][^"'\n]*` could not match and the branch was dead code. Caught
+# by a synthetic control -- an ExecStart line pointing into archive/ -- which the guard
+# reported as MISSED after the first commit of this file. A branch that cannot fire is worse
+# than a missing one, because the code reads as covered.
+UNIT_EXEC = re.compile(r"^\s*Exec(?:Start|StartPre|StartPost|Reload|Stop)\s*=.*?"
+                       r"(?:%s)/" % _DIRS, re.MULTILINE)
+
+CALLS_EXEC = re.compile(
     r"(?:subprocess\.(?:run|Popen|call|check_call|check_output)"
-    r"|os\.(?:exec[lv]p?e?|system|spawn\w+)"
-    r"|ExecStart\s*=)"
+    r"|os\.(?:exec[lv]p?e?|system|spawn\w+))"
     # A shell-invocation branch (`bash|sh|exec|python3 <path>`) was tried and removed. `sh`
     # matches the tail of `du -sh`, which is how `tools/fork_render_ui.sh` -- the script that
     # forked ComfyUI into engines/ -- got reported for measuring a directory it is allowed to
@@ -134,8 +144,10 @@ class ReferenceMaterialDoesNotExecute(unittest.TestCase):
                 text = path.read_text(errors="replace")
             except OSError:
                 continue
+            code = _code_only(text)
             hits = sorted({m.group(0).strip()[:110]
-                           for m in EXECUTES.finditer(_code_only(text))})
+                           for pat in (CALLS_EXEC, UNIT_EXEC)
+                           for m in pat.finditer(code)})
             if hits:
                 offenders[rel] = hits
         self.assertEqual(
