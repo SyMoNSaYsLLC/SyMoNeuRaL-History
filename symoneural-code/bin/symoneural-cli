@@ -1747,6 +1747,53 @@ def cmd_repl(args) -> int:
 
 # --------------------------------------------------------------------------
 
+def cmd_import_claude(args) -> int:
+    """Import the owner's own Claude Code material into first-party SyMoNeuRaL state.
+
+    Two destinations, and the split is the safety property: project configuration is
+    tracked, private runtime state is gitignored, `0700`/`0600`, and never added to Git by
+    this command. Credentials, proprietary implementation, hidden prompts, caches and tool
+    traces are refused in code rather than by convention -- see
+    `symoneural-code/src/symoneural_import/claude.py`, which is tested against real
+    malformed input, a real symlink escape, a real traversal and real credential shapes.
+
+    `--apply` is required to write anything. A migration command that mutates state on a
+    bare invocation is one typo away from a surprise, so the default is a dry run.
+    """
+    sys.path.insert(0, str(ROOT / "symoneural-code" / "src"))
+    from symoneural_import import claude as imp
+
+    src = Path(args.source).expanduser()
+    project_dest = ROOT / "docs" / "imported"
+    private_dest = Path(os.environ.get("SYMONEURAL_STATE_DIR")
+                        or (ROOT / "run" / "private")).expanduser()
+
+    dry = not args.apply
+    res = imp.run_import(src, project_dest=project_dest, private_dest=private_dest,
+                         dry_run=dry)
+    counts = res.counts()
+
+    print(f"import-claude  source={src}")
+    print(f"  mode          {'DRY RUN — nothing written' if dry else 'APPLY'}")
+    print(f"  project dest  {project_dest}   (tracked)")
+    print(f"  private dest  {private_dest}   (gitignored, 0700/0600)")
+    print("  dispositions:")
+    for k in sorted(counts):
+        print(f"    {k:<30} {counts[k]}")
+    print(f"  {'would write  ' if dry else 'wrote        '} {len(res.written)}")
+    if res.collisions:
+        print(f"  collisions    {len(res.collisions)} (existing state NOT overwritten)")
+    if res.reauth_required:
+        print(f"  reauth needed {', '.join(sorted(set(res.reauth_required)))}")
+
+    if args.manifest:
+        mp = Path(args.manifest)
+        mp.write_text(imp.manifest_tsv(res))
+        os.chmod(mp, 0o600)
+        print(f"  manifest      {mp}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="symoneural-cli", description="One command over the local SyMoNeuRaL stack.")
@@ -1887,6 +1934,15 @@ def main() -> int:
                    help="with --serve, streamable HTTP on 127.0.0.1:PORT instead of stdio")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_mcp)
+
+    p = sub.add_parser("import-claude",
+                       help="import your own Claude Code material into SyMoNeuRaL state")
+    p.add_argument("--source", default=str(Path.home() / ".claude"),
+                   help="Claude Code state directory to read (default ~/.claude)")
+    p.add_argument("--apply", action="store_true",
+                   help="actually write; without it this is a dry run")
+    p.add_argument("--manifest", help="write the source-to-destination manifest here")
+    p.set_defaults(fn=cmd_import_claude)
 
     sub.add_parser("_stop-chat").set_defaults(fn=cmd_stop_chat)
 
