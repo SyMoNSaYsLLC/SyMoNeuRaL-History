@@ -24,17 +24,82 @@ Before a scoped commit, assess the required ProjectStatus and registry updates u
 
 ## Repository map
 
-- `backend/api.py` and `backend/apps/`: API integration and first-party application modules.
-- `backend/apps/gateway/src/`: Rust HTTP Gateway; separate Python licensing code shares its parent directory.
-- `web/symoneural-web/`: first-party serving wrapper around upstream Caddy.
-- `engines/symoneural-llm/`, `engines/symoneural-diffuse/`, `engines/symoneural-ui/`: upstream runtime trees.
-- `backend/models/PROVENANCE.json`: model/payload source attribution and identity records.
-- `site/`: application/site sources; presence does not prove production deployment.
-- `ops/`, `scripts/`, `tools/`: gated build, operations and evidence mechanisms.
-- `review/`: mostly ignored, host-local evidence; not guaranteed in a fresh clone.
+Every top-level directory, what it is, and how it is used. **Tracked** means a clone carries
+it. **Ignored** means it is derived, bulk, or host-local: a clone rebuilds or refetches it,
+and nothing in it may be treated as a source of truth. Sizes measured 2026-09-08.
 
-Current production observations and their limitations belong in ProjectStatus. Do not use old
-quick-start/deployment instructions as proof of the present serving topology or as authority to change it.
+### The five first-party runtimes
+
+Promoted out of `engines/` on 2026-09-08 so each runtime is its own top-level component.
+All five are **derived trees, ignored**: `tools/fork_engines.sh` is the tracked recipe, and
+each directory carries a generated `README.md`, a `LICENSE`, and a `THIRD_PARTY_NOTICES.md`
+that says exactly what it is derived from.
+
+| Directory | Size | Role | Licence position |
+|---|---|---|---|
+| `symoneural-llm/` | 383M | language-model serving, HTTP on `127.0.0.1:8081` | SyMoNeuRaL over permissive upstream |
+| `symoneural-diffuse/` | 797M | diffusion image generation on the RTX 5070 Ti | SyMoNeuRaL over permissive upstream |
+| `symoneural-listen/` | 57M | speech recognition, CPU only | SyMoNeuRaL over permissive upstream |
+| `symoneural-miner/` | 805M | mining control: GPU, ASIC and settlement | **upstream copyleft — not first-party** |
+| `symoneural-ui/` | 8.2G | graph and workflow editor for the render surface | **upstream copyleft — not first-party** |
+
+```bash
+tools/fork_engines.sh all         # sync, patch identity, build all five
+tools/fork_engines.sh llm         # one engine
+tools/fork_engines.sh licences    # licences, notices and READMEs only, no rebuild
+python3 tools/probe_engines.py    # audit artefact identity, announced identity, real work
+```
+
+The last two rows are the honest part of this table. `fork_engines.sh` **refuses** to write
+the SyMoNeuRaL licence over a copyleft upstream, because a licence is a grant from the
+copyright holders and editing the file would remove a notice the project must keep rather
+than change the grant. Replacing those two with first-party implementations is open work.
+
+`engines/` still exists and holds five compatibility symlinks into the directories above, so
+a long-running process started before the move keeps resolving. It is removed once nothing
+depends on the old paths.
+
+### Code a clone carries
+
+| Directory | Size | What it is | How it is used |
+|---|---|---|---|
+| `backend/` | 24G | `api.py` and `apps/` — the API and every first-party application module | `cd backend && python3 -m pytest -q` runs the suite |
+| `frontend/` | 484M | browser-side sources for the application surfaces | built by `tools/build_studio.py` and the site pipeline |
+| `web/` | 73M | `symoneural-web/` — the first-party HTTP/TLS runtime, Caddy imported as a library | serves `:80`/`:443`; config is `ops/Caddyfile` |
+| `site/` | 12M | site and application page sources | staged and published by the deploy path |
+| `scripts/` | 304K | operational scripts: setup, GPU governor, modelops, archive guard | read the header before running one; several mutate the box |
+| `tools/` | 1.8M | build, audit and evidence generators | `fork_engines.sh`, `probe_engines.py`, `probe_apps.py`, `build_progress.py`, `index_references.py` |
+| `ops/` | 380K | deployment config and artefact manifests | `ops/Caddyfile` is the live web config; `ops/manifests/` records artefact identity |
+| `control/` | 124K | one folder to run and test the server locally | see its own README |
+| `bin/` | 295M | operator entry points — `symoneural-cli`, `symoneural-code`, `symoneural-discovery` | `bin/symoneural-code` opens an interactive session |
+| `desktop/`, `desktop-client/` | 60K, 2.4G | GTK/VTE window over `bin/symoneural-code`, and the native client | `desktop/shell.py` |
+| `harness/` | 192K | test harness support | used by the suite |
+| `tests/` | 14M | cross-cutting tests that are not unit tests of one app | |
+| `docs/` | 22M | the manual, architecture maps, ops runbooks, decisions and the handoff chain | `docs/ops/EXPORTS.md` before any byte leaves the box |
+| `brand/` | 2.6M | brand assets | |
+| `deploy/` | 164M | deployment payloads | |
+| `training/` | 7.7G | training corpus, configuration and adapters | **protected** — see `docs/ops/EXPORTS.md` rule 2 |
+| `yocto/` | 1.6M | twelve `meta-symoneural-*` layers and their scripts | embedded image builds |
+| `incoming/` | 41M | staging for reference projects being rebranded | `tools/index_references.py adopt <project>`; only `PROVENANCE.md` is tracked |
+
+### Not carried by a clone
+
+| Directory | Size | What it is |
+|---|---|---|
+| `external/` | 149G | **third-party material, read-only.** 46 upstream OSS trees, vendored engine sources, SDKs, saved documents. Renamed from `references/` on 2026-09-08. Nothing in it may be imported, built, linked or executed — enforced by `backend/apps/test_reference_isolation.py`, not merely written down. |
+| `archive/` | 285G | consolidated bulk: workspace archives, backups, build evidence, session transcripts, weight staging. Ours, but not source. |
+| `releases/` | 49M | release tarballs and their MANIFESTs, produced by the export pipeline. Renamed from `archives/` because one letter of difference from `archive/` is a hazard. |
+| `run/` | 819M | runtime state and generated pages, including `run/progress.html` and `run/config/` |
+| `review/` | 4.2M | host-local evidence; not guaranteed in a fresh clone |
+
+### The one rule about `external/`
+
+> *"we cannot use code in external its for reference only we must rebrand if we want to use
+> it"* — standing owner rule, quoted in `tools/index_references.py`.
+
+The way past it is to move the thing, not to argue with it: `tools/index_references.py adopt`
+copies a project into `incoming/` with its licence detected and a `PROVENANCE.md` written,
+and from there it can be rebranded into first-party code.
 
 ## Historical and local records
 
