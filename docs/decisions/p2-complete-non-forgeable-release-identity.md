@@ -112,9 +112,14 @@ release identity verified
 genuinely signed tag to bless an archive built from another commit is a real attack shape, and
 it is refused even when the signature check passes.
 
-**No key exists**, so the verifier is **injected** via `SYM_TAG_VERIFY_CMD` (default
+**No key exists**, so the verifier is **injected** via `SYMONEURAL_TAG_VERIFY_CMD` (default
 `git verify-tag`). The future key ceremony supplies the real authority by making that default
 usable — **no redesign of P2 required**.
+
+> Named `SYM_TAG_VERIFY_CMD` when this ruling was written, before the `SYMONEURAL_` rename.
+> Both spellings are kept here on purpose: the original so the record still matches what was
+> decided, the current one because that is the name a reader should actually set today. The
+> `SYM_` spelling is deprecated and will stop being read.
 
 ## Sabotage — three prongs, each measured
 
