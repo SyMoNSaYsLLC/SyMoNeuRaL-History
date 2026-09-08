@@ -241,3 +241,25 @@ archives/
 # an identical digest). A targeted ignore rather than ignoring the whole component, so the
 # generated SBOM and build manifest beside it stay reviewable in a diff.
 web/symoneural-web/build/symoneural-web
+
+# ---- Consolidated home-directory bulk: archives, backups and weight staging ----
+# 2026-09-08. Twenty-six loose directories under /home/google were reviewed and brought
+# under this repo so there is one tree to back up instead of a scattered home directory.
+# They split three ways, and only the third is tracked:
+#
+#   references/   somebody else's code and saved documents, read-only. Already ignored
+#                 above. The consolidation added oss/ (46 upstream trees), TensorRT-LLM,
+#                 ComfyUI-Installs, ComfyUI-Shared, bentoml, ninjatraining, Toolchains,
+#                 Platforms and the vendor agent material.
+#   archive/      this rule. Bulk that is not reference material and not source: 253 GB of
+#                 workspace archives, 16 GB of backups, build outputs, and model/LoRA
+#                 weight staging. Nothing here is ours to relicense and nothing here is
+#                 read by the running system.
+#   docs/         the small first-party part -- decision records, reconciliation notes,
+#                 restoration manifests, host diagnostics. Tracked, and committed one
+#                 directory per commit so a mistake is attributable to a single item.
+#
+# The moves were same-filesystem renames, so they cost no disk: 618 GB used before and
+# 618 GB after. Tracking archive/ would double 273 GB into .git objects and would put
+# model weights into history permanently, which docs/ops/EXPORTS.md rule 2 forbids.
+/archive
