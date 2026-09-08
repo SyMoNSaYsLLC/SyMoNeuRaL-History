@@ -380,3 +380,63 @@ class ThePrivateRootIsAlsoLockedDown(Bed):
         fresh = pathlib.Path(self.tmp.name) / "untouched"
         I.run_import(self.src, project_dest=self.proj, private_dest=fresh, dry_run=True)
         self.assertFalse(fresh.exists(), "a dry run must not create anything")
+
+
+class ApplyIsGenuinelyIdempotent(Bed):
+    """Non-destructive and idempotent are different properties. Both are required.
+
+    Two earlier versions were only the first. Version one wrote a `.imported-N` sibling for
+    every existing destination, so a second apply took 114 files to 228. Version two
+    compared content against the PRIMARY destination only, so the genuine name-collision
+    cases still grew by five files on every run: 115, 120, 125. Both were safe. Neither was
+    idempotent, and only running apply twice showed it.
+    """
+
+    def _two_sources_one_name(self):
+        for proj, body in (("-home-a", "alpha"), ("-home-b", "beta")):
+            d = self.src / "projects" / proj
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "dup.jsonl").write_text(
+                json.dumps({"message": {"role": "user", "content": body}}) + "\n")
+        m = self.src / "projects" / "-home-a" / "memory"
+        m.mkdir(parents=True, exist_ok=True)
+        (m / "n.md").write_text("note\n")
+
+    def _count(self) -> int:
+        return len([p for p in self.priv.rglob("*") if p.is_file()])
+
+    def test_repeated_applies_do_not_grow_the_destination(self):
+        self._two_sources_one_name()
+        counts = []
+        for _ in range(3):
+            self.run_it(dry=False)
+            counts.append(self._count())
+        self.assertEqual(counts[0], counts[1], f"second apply grew: {counts}")
+        self.assertEqual(counts[1], counts[2], f"third apply grew: {counts}")
+
+    def test_the_second_apply_reports_already_native_rather_than_migrated(self):
+        self._two_sources_one_name()
+        self.run_it(dry=False)
+        again = self.run_it(dry=False)
+        self.assertGreater(again.counts().get("ALREADY_NATIVE", 0), 0)
+
+    def test_distinct_content_under_one_name_is_still_preserved_once(self):
+        """Both sources must survive -- exactly once each, not once per run."""
+        self._two_sources_one_name()
+        self.run_it(dry=False)
+        self.run_it(dry=False)
+        sess = sorted(p.name for p in (self.priv / "sessions").iterdir())
+        self.assertEqual(2, len(sess), sess)
+        bodies = {json.loads((self.priv / "sessions" / n).read_text())["turns"][0]["content"]
+                  for n in sess}
+        self.assertEqual({"alpha", "beta"}, bodies)
+
+    def test_changed_source_content_creates_exactly_one_new_sibling(self):
+        self._two_sources_one_name()
+        self.run_it(dry=False)
+        before = self._count()
+        (self.src / "projects" / "-home-a" / "memory" / "n.md").write_text("changed\n")
+        self.run_it(dry=False)
+        self.assertEqual(before + 1, self._count())
+        self.run_it(dry=False)
+        self.assertEqual(before + 1, self._count(), "a further rerun must add nothing")

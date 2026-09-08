@@ -164,15 +164,37 @@ def _contain(root: pathlib.Path, rel: str) -> pathlib.Path:
 
 
 def _write(path: pathlib.Path, data: str, *, private: bool,
-           res: Result, dry_run: bool) -> pathlib.Path:
-    """Never overwrite. On collision, write a sibling and record it."""
+           res: Result, dry_run: bool) -> pathlib.Path | None:
+    """Never overwrite. Identical content is a no-op; different content gets a sibling.
+
+    Returning None for "already present and identical" is what makes a rerun IDEMPOTENT
+    rather than merely non-destructive. The first version wrote a `.imported-N` sibling for
+    every existing destination, so a second apply took 114 files to 228 -- safe, and wrong.
+    Non-destructive and idempotent are different properties and the task asked for both.
+    """
+    if path.exists() and path.is_file():
+        try:
+            if path.read_text(encoding="utf-8", errors="replace") == data:
+                return None                      # already imported, byte-identical
+        except OSError:
+            pass
     target = path
     if target.exists():
+        # Before creating a NEW sibling, look through the existing ones. Two sources can
+        # legitimately map to the same destination name (duplicate session stems in
+        # different project directories), and the first fix only compared against the
+        # PRIMARY destination -- so every rerun added another `.imported-N` for the same
+        # content. 115 files became 120, then 125. Non-destructive, still not idempotent.
         n = 1
         while True:
             cand = target.with_name(f"{target.name}.imported-{n}")
             if not cand.exists():
                 break
+            try:
+                if cand.read_text(encoding="utf-8", errors="replace") == data:
+                    return None                  # this exact content is already imported
+            except OSError:
+                pass
             n += 1
         res.collisions.append(str(target))
         target = cand
@@ -330,10 +352,13 @@ def run_import(src: pathlib.Path, *, project_dest: pathlib.Path,
                                 reason="content matches a credential pattern"))
             continue
         dst = _contain(private_dest, f"memory/{mem.name}")
-        _write(dst, text, private=True, res=res, dry_run=dry_run)
-        res.rows.append(Row(rel, "memory", "MIGRATED",
+        wrote = _write(dst, text, private=True, res=res, dry_run=dry_run)
+        res.rows.append(Row(rel, "memory",
+                            "MIGRATED" if wrote is not None else "ALREADY_NATIVE",
                             destination=str(dst.relative_to(private_dest.parent)),
-                            transformation="verbatim", count=1, verification="written",
+                            transformation="verbatim", count=1,
+                            verification="written" if wrote is not None
+                            else "present and byte-identical",
                             reason="owner-authored operational knowledge"))
 
     # --- 2. user-authored commands, skills, agents, hooks
@@ -353,8 +378,9 @@ def run_import(src: pathlib.Path, *, project_dest: pathlib.Path,
                                     reason="content matches a credential pattern"))
                 continue
             dst = _contain(project_dest, f"{kind}s/{f.name}")
-            _write(dst, text, private=False, res=res, dry_run=dry_run)
-            res.rows.append(Row(rel, kind, "MIGRATED",
+            wrote = _write(dst, text, private=False, res=res, dry_run=dry_run)
+            res.rows.append(Row(rel, kind,
+                                "MIGRATED" if wrote is not None else "ALREADY_NATIVE",
                                 destination=str(dst.relative_to(project_dest.parent)),
                                 transformation="verbatim", count=1, verification="written",
                                 reason="owner-authored"))
@@ -377,8 +403,9 @@ def run_import(src: pathlib.Path, *, project_dest: pathlib.Path,
         payload = json.dumps({"schema": SCHEMA, "session": s.stem, "turns": turns},
                              indent=2) + "\n"
         dst = _contain(private_dest, f"sessions/agent-{s.stem}.json")
-        _write(dst, payload, private=True, res=res, dry_run=dry_run)
-        res.rows.append(Row(rel, "session", "MIGRATED",
+        wrote = _write(dst, payload, private=True, res=res, dry_run=dry_run)
+        res.rows.append(Row(rel, "session",
+                            "MIGRATED" if wrote is not None else "ALREADY_NATIVE",
                             destination=str(dst.relative_to(private_dest.parent)),
                             transformation=f"role/content only, {len(turns)} turn(s)",
                             count=len(turns), verification="schema-validated",
