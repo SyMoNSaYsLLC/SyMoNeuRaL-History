@@ -140,22 +140,69 @@ class RegistryCoversDisk(unittest.TestCase):
 
 
 class Idempotent(unittest.TestCase):
+    """Generator determinism, kept separate from manifest freshness.
 
-    def test_generating_twice_changes_nothing(self):
-        """Three generators in this repository have accumulated a copy per run."""
-        before = {name: (MANIFESTS / name).read_bytes() for name in REQUIRED}
+    These were one test and should not have been. A generated manifest records the
+    revision it was generated FROM, and committing it produces a new revision -- so the
+    committed copy can never name the commit that contains it. That is the same
+    impossibility as a file containing its own checksum, which this project already hit
+    once when BACKUP.json carried the hash of the ZIP it was inside.
+
+    Conflating the two made a real property (the generator does not accumulate output)
+    fail for an unrelated and unavoidable reason (HEAD moved). So determinism is tested by
+    generating twice and comparing THOSE two runs, and freshness is tested separately with
+    the revision columns excluded.
+    """
+
+    @staticmethod
+    def _generate() -> dict[str, bytes]:
         r = subprocess.run(
             [sys.executable, str(ROOT / "tools" / "build_restore_manifests.py")],
             cwd=ROOT, capture_output=True, text=True, timeout=900)
-        self.assertEqual(r.returncode, 0,
-                         f"the generator failed:\n{r.stdout}\n{r.stderr}")
+        if r.returncode != 0:
+            raise AssertionError(f"the generator failed:\n{r.stdout}\n{r.stderr}")
+        return {name: (MANIFESTS / name).read_bytes() for name in REQUIRED}
+
+    def test_generating_twice_changes_nothing(self):
+        """Three generators in this repository have accumulated a copy per run."""
+        first = self._generate()
+        second = self._generate()
         for name in REQUIRED:
             with self.subTest(manifest=name):
                 self.assertEqual(
-                    before[name], (MANIFESTS / name).read_bytes(),
-                    f"{name} changed on a second generation with no source change. "
-                    f"Either a measurement is non-deterministic or the generator is "
-                    f"re-reading its own output.")
+                    first[name], second[name],
+                    f"{name} differs between two consecutive generations. Either a "
+                    f"measurement is non-deterministic or the generator is re-reading "
+                    f"its own output.")
+
+    def test_committed_manifests_match_the_working_tree_apart_from_the_revision(self):
+        """Freshness. Revision columns are excluded for the reason in the class docstring."""
+        committed = {}
+        for name in REQUIRED:
+            r = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:restore/manifests/{name}"],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                committed[name] = r.stdout
+        self.assertTrue(committed, "no manifests are committed yet")
+
+        self._generate()
+
+        def strip_rev(text: str) -> list[list[str]]:
+            lines = text.splitlines()
+            header = lines[0].split("\t")
+            drop = {i for i, h in enumerate(header)
+                    if h in ("SOURCE_REVISION", "PIN_VERIFIED")}
+            return [[c for i, c in enumerate(ln.split("\t")) if i not in drop]
+                    for ln in lines]
+
+        for name, old_text in committed.items():
+            with self.subTest(manifest=name):
+                self.assertEqual(
+                    strip_rev(old_text),
+                    strip_rev((MANIFESTS / name).read_text()),
+                    f"{name} in HEAD differs from what the registry generates now "
+                    f"(revision columns excluded). Regenerate and commit: "
+                    f"python3 tools/build_restore_manifests.py")
 
 
 class ReferentialIntegrity(unittest.TestCase):

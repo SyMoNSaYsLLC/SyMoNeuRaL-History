@@ -1,19 +1,19 @@
 COMPONENT_ID	SOURCE_ROOT	SOURCE_REVISION	TRACKED_FILE_COUNT	UNTRACKED_SOURCE_COUNT	GENERATED_SOURCE_COUNT	CANONICAL_SOURCE	BUILDABLE_FROM_TRACKED_SOURCE	INSTALLED_ONLY_FILES	EXTERNAL_SOURCE_DEPENDENCY	EXTERNAL_SOURCE_REACQUIRABLE	SOURCE_BUNDLE	SOURCE_BUNDLE_SHA256	STATUS
-symoneural-llm	symoneural-llm	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	PASS
-symoneural-diffuse	symoneural-diffuse	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	PASS
-symoneural-listen	symoneural-listen	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	N/A (EXPERIMENTAL)
-symoneural-miner	symoneural-miner	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	N/A (DISABLED)
-symoneural-ui	symoneural-ui	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	N/A (DISABLED)
-symoneural-api	backend	3d8fb76fadf41913dfc8500db9b83a50b961b566	15706	0	0	YES	YES	0	NO	n/a	-	-	PASS
-symoneural-api-runtime	symoneural-api	3d8fb76fadf41913dfc8500db9b83a50b961b566	3	0	0	YES	YES	0	NO	n/a	-	-	N/A (INFRASTRUCTURE)
-symoneural-web	site	3d8fb76fadf41913dfc8500db9b83a50b961b566	114	0	0	YES	YES	0	NO	n/a	-	-	PASS
-symoneural-gateway	backend/apps/gateway	3d8fb76fadf41913dfc8500db9b83a50b961b566	25	0	0	YES	YES	0	NO	n/a	-	-	N/A (DISABLED)
-symoneural-code	symoneural-code	3d8fb76fadf41913dfc8500db9b83a50b961b566	8	0	0	YES	YES	0	NO	n/a	-	-	PASS
-symoneural-cli	symoneural-code/bin/symoneural-cli	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	0	0	YES	YES	0	NO	n/a	-	-	PASS
-symoneural-discovery	symoneural-code/bin/symoneural-discovery	3d8fb76fadf41913dfc8500db9b83a50b961b566	1	0	0	YES	YES	0	NO	n/a	-	-	PASS
-symoneural-audit	symoneural-audit	3d8fb76fadf41913dfc8500db9b83a50b961b566	3	0	0	YES	YES	0	NO	n/a	-	-	PASS
-symoneural-miner-core	symoneural-miner-core	3d8fb76fadf41913dfc8500db9b83a50b961b566	13	0	0	YES	YES	0	NO	n/a	-	-	N/A (DISABLED)
-symoneural-adaptive-fabric	symoneural-adaptive-fabric	3d8fb76fadf41913dfc8500db9b83a50b961b566	2	0	0	YES	YES	0	NO	n/a	-	-	N/A (declared, not implemented)
-symoneural-restore	restore	3d8fb76fadf41913dfc8500db9b83a50b961b566	24	0	0	YES	YES	0	NO	n/a	-	-	N/A (INFRASTRUCTURE)
-symoneural-buildv2	archive/buildv2	3d8fb76fadf41913dfc8500db9b83a50b961b566	0	0	0	YES	YES	0	NO	n/a	-	-	N/A (INFRASTRUCTURE)
-symoneural-yocto	yocto	3d8fb76fadf41913dfc8500db9b83a50b961b566	70	0	0	YES	YES	0	NO	n/a	-	-	N/A (EXPERIMENTAL)
+symoneural-llm	symoneural-llm	873f3ccc31e1f70f167118980c85d49dd57f7317	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	PASS
+symoneural-diffuse	symoneural-diffuse	873f3ccc31e1f70f167118980c85d49dd57f7317	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	PASS
+symoneural-listen	symoneural-listen	873f3ccc31e1f70f167118980c85d49dd57f7317	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	N/A (EXPERIMENTAL)
+symoneural-miner	symoneural-miner	873f3ccc31e1f70f167118980c85d49dd57f7317	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	N/A (DISABLED)
+symoneural-ui	symoneural-ui	873f3ccc31e1f70f167118980c85d49dd57f7317	1	n/a (derived tree, ignored by design)	0	UPSTREAM_PIN + tracked fork script	YES	0	YES	YES	-	-	N/A (DISABLED)
+symoneural-api	backend	873f3ccc31e1f70f167118980c85d49dd57f7317	15706	0	0	YES	YES	0	NO	n/a	-	-	PASS
+symoneural-api-runtime	symoneural-api	873f3ccc31e1f70f167118980c85d49dd57f7317	3	0	0	YES	YES	0	NO	n/a	-	-	N/A (INFRASTRUCTURE)
+symoneural-web	site	873f3ccc31e1f70f167118980c85d49dd57f7317	114	0	0	YES	YES	0	NO	n/a	-	-	PASS
+symoneural-gateway	backend/apps/gateway	873f3ccc31e1f70f167118980c85d49dd57f7317	25	0	0	YES	YES	0	NO	n/a	-	-	N/A (DISABLED)
+symoneural-code	symoneural-code	873f3ccc31e1f70f167118980c85d49dd57f7317	8	0	0	YES	YES	0	NO	n/a	-	-	PASS
+symoneural-cli	symoneural-code/bin/symoneural-cli	873f3ccc31e1f70f167118980c85d49dd57f7317	1	0	0	YES	YES	0	NO	n/a	-	-	PASS
+symoneural-discovery	symoneural-code/bin/symoneural-discovery	873f3ccc31e1f70f167118980c85d49dd57f7317	1	0	0	YES	YES	0	NO	n/a	-	-	PASS
+symoneural-audit	symoneural-audit	873f3ccc31e1f70f167118980c85d49dd57f7317	3	0	0	YES	YES	0	NO	n/a	-	-	PASS
+symoneural-miner-core	symoneural-miner-core	873f3ccc31e1f70f167118980c85d49dd57f7317	13	0	0	YES	YES	0	NO	n/a	-	-	N/A (DISABLED)
+symoneural-adaptive-fabric	symoneural-adaptive-fabric	873f3ccc31e1f70f167118980c85d49dd57f7317	2	0	0	YES	YES	0	NO	n/a	-	-	N/A (declared, not implemented)
+symoneural-restore	restore	873f3ccc31e1f70f167118980c85d49dd57f7317	24	0	0	YES	YES	0	NO	n/a	-	-	N/A (INFRASTRUCTURE)
+symoneural-buildv2	archive/buildv2	873f3ccc31e1f70f167118980c85d49dd57f7317	0	0	0	YES	YES	0	NO	n/a	-	-	N/A (INFRASTRUCTURE)
+symoneural-yocto	yocto	873f3ccc31e1f70f167118980c85d49dd57f7317	70	0	0	YES	YES	0	NO	n/a	-	-	N/A (EXPERIMENTAL)

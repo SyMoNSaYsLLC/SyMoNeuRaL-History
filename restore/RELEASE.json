@@ -3,7 +3,7 @@
   "branch": "main",
   "claude_backup_root": ".private/claude-backups",
   "component_count": 18,
-  "created_at": "2026-09-08T18:47:07-04:00",
+  "created_at": "2026-09-08T18:50:39-04:00",
   "generated_at_note": "created_at is the commit date of repository_head, so this document is a function of the commit and not of when the generator happened to run",
   "git_bundle_path": ".private/git-backup/Symoneural-all.bundle",
   "host": {
@@ -23,7 +23,7 @@
   "production_component_count": 8,
   "release_id": "r20260908",
   "repository_clean": false,
-  "repository_head": "3d8fb76fadf41913dfc8500db9b83a50b961b566",
+  "repository_head": "873f3ccc31e1f70f167118980c85d49dd57f7317",
   "restore_entrypoint": "restore/symoneural-restore",
   "runtime_artifact_root": ".private/runtime-artifacts/r20260908",
   "schema_version": 1,
