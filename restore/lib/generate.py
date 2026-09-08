@@ -192,7 +192,8 @@ def gen_build_recipes() -> int:
               "BUILD_AUTHORITY", "TOOLCHAIN", "TOOLCHAIN_VERSION", "TARGET_PLATFORM",
               "TARGET_ARCH", "BUILD_PROFILE", "DEPENDENCY_LOCK", "PREP_COMMAND",
               "BUILD_COMMAND", "TEST_COMMAND", "OUTPUT_ARTIFACT", "INSTALL_COMMAND",
-              "INSTALL_PATH", "CLEAN_BUILD_SUPPORTED", "NETWORK_REQUIRED", "NOTES"]
+              "INSTALL_PATH", "CLEAN_BUILD_SUPPORTED", "CLEAN_REBUILD_MEASURED",
+              "REPRODUCIBLE_BYTES", "NETWORK_REQUIRED", "NOTES"]
     rev = M.head()
     # Measured once, reused: these are host facts, not per-component facts.
     versions = {n: M.tool_version(n) for n in
@@ -206,7 +207,8 @@ def gen_build_recipes() -> int:
                      c.toolchain, tv, "linux-x86_64", c.target_arch, c.build_profile,
                      c.dependency_lock, c.prep_command, c.build_command, c.test_command,
                      c.output_artifact, c.install_command, c.install_path,
-                     c.clean_build_supported, c.network_required, c.notes])
+                     c.clean_build_supported, c.clean_rebuild, c.reproducible_bytes,
+                     c.network_required, c.notes])
     return write_tsv("BUILD-RECIPES.tsv", header, rows, minimum=15)
 
 

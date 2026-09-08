@@ -216,6 +216,12 @@ def tool_version(name: str) -> str:
         "caddy": ["caddy", "version"],
         "ninja": ["ninja", "--version"],
         "ccache": ["ccache", "--version"],
+        # `go --version` is not a thing -- the subcommand is `go version`, and the generic
+        # `--version` probe exits non-zero, which this module then correctly reported as
+        # UNMEASURED. Correct, but useless: the value exists and we were asking wrong.
+        "go": ["go", "version"],
+        "cargo": ["cargo", "--version"],
+        "rustc": ["rustc", "--version"],
     }
     out = run(probes.get(name, [name, "--version"]), timeout=30)
     if out in ("UNMEASURED", "TIMEOUT", "TOOL_NOT_INSTALLED"):

@@ -72,6 +72,9 @@ PLATFORM: list[tuple[str, str, str, str, str, str]] = [
     ("dep-ccache", "ccache", "ccache", "ccache", "BUILD_TOOL",
      "tools/fork_engines.sh (optional; makes an unchanged rebuild cheap)"),
     ("dep-ninja", "Ninja", "ninja", "ninja-build", "BUILD_TOOL", "optional cmake generator"),
+    ("dep-go", "Go", "go", "golang-go", "TOOLCHAIN", "symoneural-web"),
+    ("dep-cargo", "Cargo", "cargo", "cargo", "TOOLCHAIN", "symoneural-gateway"),
+    ("dep-rustc", "rustc", "rustc", "rustc", "TOOLCHAIN", "symoneural-gateway"),
 ]
 
 
@@ -211,6 +214,31 @@ def gen_dependencies(write_tsv) -> int:
                      NUL, used, "BUILD" if cls == "BUILD_TOOL" else "RUNTIME",
                      "YES" if ver != "ABSENT" else "YES (ABSENT on this host)",
                      f"sudo apt-get install -y {pkg}", "NO", "NO"])
+
+    # ---- linked third-party libraries that are NOT vendored source.
+    #
+    # Caddy is the clearest case in the project of the distinction the reset turns on:
+    # web/symoneural-web/main.go is first-party Go that IMPORTS Caddy as an Apache-2.0
+    # library. No Caddy source travels in the backup; `go mod download` reacquires it
+    # against go.sum. It gets a row because a dependency nobody wrote down is a dependency
+    # that goes missing.
+    rows.append(["dep-caddy", "Caddy (linked library, not vendored)", "v2.11.4",
+                 "Apache-2.0", "GO_MODULE", "go", "github.com/caddyserver/caddy/v2",
+                 "https://github.com/caddyserver/caddy",
+                 "pinned in web/symoneural-web/go.sum (573 entries)",
+                 "symoneural-web", "BUILD+RUNTIME", "YES",
+                 "cd web/symoneural-web && go mod download", "NO", "NO"])
+
+    # ---- the Go toolchain requirement, which is a genuine restore blocker.
+    rows.append(["dep-go-toolchain", "Go toolchain for symoneural-web",
+                 f"required >= 1.25.1; host bootstrap {M.tool_version('go')}",
+                 "BSD-3-Clause", "TOOLCHAIN", "apt + GOTOOLCHAIN=auto", "golang-go",
+                 "https://go.dev", "golang.org/toolchain@v0.0.1-go1.25.1.linux-amd64",
+                 "symoneural-web", "BUILD", "YES",
+                 "Install Go >= 1.25.1, OR keep GOTOOLCHAIN=auto and allow the network "
+                 "fetch. With GOTOOLCHAIN=local on a 1.24.x host the build FAILS rc=1. "
+                 "The module and toolchain caches are NOT carried in the archive.",
+                 "NO", "NO"])
 
     # ---- the GPU driver: not apt on this host, and saying so is the point
     rows.append(["dep-nvidia-driver", "NVIDIA driver", M.gpu(), "proprietary",

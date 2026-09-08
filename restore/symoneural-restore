@@ -472,7 +472,13 @@ def cmd_smoke(a) -> int:
         print(f"\n{BOLD}{s['SMOKE_ID']}{OFF}  ({s['APPLICATION_ID']})")
         print(f"    expects: {s['EXPECTED_RESULT']}")
         print(f"    network: {s['NETWORK_SCOPE']}   mutating: {s['MUTATING']}")
-        if s["MUTATING"] == "YES" and not a.allow_mutating and a.apply:
+        # startswith, not ==. The cell reads "YES (writes one PNG under
+        # backend/output)" because the manifest explains what it mutates, and an
+        # exact-match guard silently did not fire -- the image smoke ran and wrote
+        # a PNG on a run that had not passed --allow-mutating. A safety check that
+        # depends on a cell being exactly one word is not a safety check.
+        if s["MUTATING"].upper().startswith("YES") and not a.allow_mutating \
+                and a.apply:
             print(f"    {YELLOW}skipped -- mutating; pass --allow-mutating{OFF}")
             continue
         show_command(s["COMMAND"], not a.apply)

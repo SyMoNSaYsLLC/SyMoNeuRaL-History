@@ -130,6 +130,14 @@ class Component:
     tracked_in_git: str = "YES"
     generated_from: str = "-"
 
+    # ---- clean-rebuild evidence, MEASURED. The owner's spec is explicit that
+    # CLEAN_REBUILD_GATE must not be claimed from a repository inventory test, so this
+    # field is only ever set from an actual build performed in the isolated bundle-only
+    # rehearsal tree, with the compiler's real exit status captured to a logfile.
+    # "-" means no rebuild was attempted, which is different from one that failed.
+    clean_rebuild: str = "-"
+    reproducible_bytes: str = "-"
+
 
 # =========================================================================================
 # COMPONENTS
@@ -181,6 +189,8 @@ COMPONENTS: tuple[Component, ...] = (
         notes="Serves /api/chat. RUNPATH is $ORIGIN so every library it loads is one this "
               "build produced. GGML_BACKEND_DL must stay OFF or the OUTPUT_NAME renaming "
               "makes the CUDA backend undiscoverable at runtime.",
+        clean_rebuild="PASS (fork_engines.sh llm rc=0 from reacquired llama.cpp)",
+        reproducible_bytes="NO -- identical size and 4 NEEDED, CUDA build metadata differs",
     ),
 
     Component(
@@ -210,8 +220,16 @@ COMPONENTS: tuple[Component, ...] = (
         upstream_local_path="external/referencestochatgpt/stable-diffusion.cpp",
         tracked_in_git="NO",
         generated_from="pinned upstream + tools/fork_engines.sh",
-        notes="Serves /api/image. Silently rounds unsupported dimensions; api.py documents "
-              "the clamp at its call site.",
+        notes="Serves /api/image. Silently rounds unsupported dimensions; api.py "
+              "documents the clamp at its call site. RESTORE CONSTRAINT: unlike the other "
+              "engines this binary's RUNPATH is the ABSOLUTE path "
+              "/usr/local/cuda-13.3/targets/x86_64-linux/lib, not $ORIGIN -- measured on "
+              "both the production and the rebuilt artefact, so it is by design. A "
+              "restored machine needs the CUDA runtime at that exact location or the "
+              "engine builds successfully and then fails to load its libraries at RUN "
+              "time, which surfaces only when a visitor asks for an image.",
+        clean_rebuild="PASS (fork_engines.sh diffuse rc=0 from reacquired stable-diffusion.cpp)",
+        reproducible_bytes="NO -- +20,480 bytes, explained by the embedded git-describe version string the binary prints at startup",
     ),
 
     Component(
@@ -242,6 +260,8 @@ COMPONENTS: tuple[Component, ...] = (
         generated_from="pinned upstream + tools/fork_engines.sh",
         notes="ASR. EXPERIMENTAL rather than PRODUCTION: `voice` has no page, so no rack "
               "row points at it and nothing user-facing depends on it today.",
+        clean_rebuild="PASS (fork_engines.sh listen rc=0 from reacquired whisper.cpp)",
+        reproducible_bytes="YES -- sha256 identical to the production artefact",
     ),
 
     Component(
@@ -384,25 +404,80 @@ COMPONENTS: tuple[Component, ...] = (
         component_id="symoneural-web",
         canonical_name="SyMoNeuRaL Web",
         cls="service",
-        source_root="site",
-        language="HTML/CSS/JS",
-        build_system="python generators (tools/build_*.py)",
-        build_authority="tools/build_rack.py, tools/build_cachebust.py",
+        source_root="web/symoneural-web",
+        language="Go",
+        build_system="go",
+        build_authority="ops/build-symoneural-web.sh",
         production_status=PRODUCTION,
         first_party_status=FIRST_PARTY,
-        primary_artifact="site/",
-        service="symoneural-web.service + Caddy",
-        prep_command="-",
-        build_command="python3 tools/build_rack.py && python3 tools/build_cachebust.py",
-        test_command="cd backend && python3 -m pytest apps/test_build_progress.py -q",
-        output_artifact="site/",
+        primary_artifact="web/symoneural-web/build/symoneural-web",
+        service="symoneural-web.service",
+        toolchain="go",
+        target_arch="x86_64",
+        build_profile="release (default gc toolchain)",
+        dependency_lock="web/symoneural-web/go.sum",
+        prep_command="cd web/symoneural-web && go mod download   # needs Go >= 1.25.1",
+        build_command="ops/build-symoneural-web.sh",
+        test_command="cd web/symoneural-web && go vet ./...",
+        output_artifact="web/symoneural-web/build/symoneural-web",
         install_command="sudo install -m0644 ops/symoneural-web.service "
                         "/etc/systemd/system/ && sudo systemctl daemon-reload",
         install_path="/etc/systemd/system/symoneural-web.service",
-        notes="This is the PUBLIC WEB SERVER for symoneural.com and it has no fallback. "
-              "It was nearly disabled on 2026-09-08 on the strength of a service-map row "
-              "that said 'defined but disabled' while the unit file said enabled+active. "
-              "Measure the unit, never the row.",
+        network_required="YES -- modules AND possibly the toolchain itself; see NOTES",
+        notes="THE PRODUCTION WEB SERVER for symoneural.com, and it has no fallback. "
+              "An earlier draft recorded its source as site/ and its build system as "
+              "python generators -- conflating the served ASSETS with the SERVER. The "
+              "unit's measured ExecStart is web/symoneural-web/build/symoneural-web run "
+              "--environ --config /etc/caddy/Caddyfile. Served assets are the separate "
+              "symoneural-site component. "
+              "CLASSIFICATION: main.go is 146 lines of FIRST-PARTY Go that IMPORTS Caddy "
+              "as an Apache-2.0 LIBRARY -- it does not fork, patch or vendor it, and it "
+              "explicitly refuses the copy-caddy-under-our-name shortcut as a false "
+              "authorship claim. So the application source is ours and Caddy is a package "
+              "dependency: THIRD_PARTY_SOURCE_CARRIED_IN_BACKUP=NO, "
+              "REBUILDABLE_FROM_LOCKED_MODULES=YES via go.sum (573 entries). "
+              "BUILD AUTHORITY is ops/build-symoneural-web.sh, NOT a plain `go build`: it "
+              "stamps -ldflags -X main.version/gitCommit/buildID/licenseSHA and emits "
+              "THIRD_PARTY_NOTICES.md over 547 modules plus go-modules.tsv and "
+              "build-manifest.json. A plain go build produces a binary whose --version "
+              "honestly reports `unknown`, which is by design -- verified by building it "
+              "both ways. "
+              "TOOLCHAIN: go.mod requires go 1.25.1; this host's Debian Go is 1.24.4 and "
+              "GOTOOLCHAIN=auto silently fetches golang.org/toolchain@v0.0.1-go1.25.1 as "
+              "a module. With GOTOOLCHAIN=local the build FAILS rc=1. A restored machine "
+              "therefore needs Go >= 1.25.1 or network access to fetch it; the module and "
+              "toolchain caches are NOT carried in the archive.",
+        clean_rebuild="PASS (ops/build-symoneural-web.sh rc=0, go vet rc=0)",
+        reproducible_bytes="NO -- binary embeds its own git commit and build id",
+    ),
+
+    Component(
+        component_id="symoneural-site",
+        canonical_name="SyMoNeuRaL Site",
+        cls="frontend",
+        source_root="site",
+        language="HTML/CSS/JS",
+        build_system="python generators",
+        build_authority="tools/build_rack.py, tools/build_cachebust.py",
+        production_status=PRODUCTION,
+        first_party_status=FIRST_PARTY,
+        primary_artifact="site",
+        parent_component="symoneural-web",
+        service="served by symoneural-web.service",
+        toolchain="python3",
+        target_arch="any",
+        build_command="python3 tools/build_rack.py && python3 tools/build_cachebust.py",
+        test_command="cd backend && python3 -m pytest apps/test_build_progress.py "
+                     "apps/test_roster.py -q",
+        output_artifact="site",
+        install_command="(none -- served in place from the repository)",
+        install_path="site",
+        notes="The pages a visitor sees: chat.html, image.html, sigils.html and the rest. "
+              "Hand-authored HTML plus two generators -- build_rack.py emits the pre-JS "
+              "rack fallback from backend/apps/ROSTER.md so those rows stop being carried "
+              "by hand, and build_cachebust.py stamps asset URLs. Separate from "
+              "symoneural-web because assets and the server that serves them fail, build "
+              "and restore independently.",
     ),
 
     Component(
@@ -410,22 +485,42 @@ COMPONENTS: tuple[Component, ...] = (
         canonical_name="SyMoNeuRaL Gateway",
         cls="service",
         source_root="backend/apps/gateway",
-        language="Python",
-        build_system="none",
-        build_authority="-",
+        language="Rust (service binary) + Python (settlement modules)",
+        build_system="cargo",
+        build_authority="cargo build --release",
         production_status=DISABLED,
         first_party_status=FIRST_PARTY,
-        primary_artifact="backend/apps/gateway",
+        primary_artifact="backend/apps/gateway/target/release/symoneural-gateway",
         parent_component="symoneural-api",
         service="symoneural-gateway.service (disabled)",
         blocker="No contract, no wallet, no key material. Its rack LED has never been "
-                "anything but grey. Disabled by configuration, not by defect.",
-        test_command="cd backend && python3 -m pytest apps/gateway -q",
+                "anything but grey. Disabled by configuration, not by defect -- the "
+                "source and build mapping below are truthful regardless.",
+        toolchain="cargo, rustc",
+        target_arch="x86_64",
+        build_profile="release",
+        dependency_lock="backend/apps/gateway/Cargo.lock",
+        prep_command="cd backend/apps/gateway && cargo fetch --locked",
+        build_command="cd backend/apps/gateway && cargo build --release --locked",
+        test_command="cd backend/apps/gateway && cargo test --release --locked",
+        output_artifact="backend/apps/gateway/target/release/symoneural-gateway",
         install_command="sudo install -m0644 ops/symoneural-gateway.service "
-                        "/etc/systemd/system/",
+                        "/etc/systemd/system/ && sudo systemctl daemon-reload",
         install_path="/etc/systemd/system/symoneural-gateway.service",
-        notes="Thirteen TRON settlement modules. Folded into the `miner` rack row as a "
-              "SubUnit on 2026-08-22; the directory deliberately did NOT move.",
+        network_required="YES (cargo fetch, once)",
+        notes="TWO runtimes in one directory, and an earlier draft of this registry "
+              "recorded only the Python one. The SERVICE executes a Rust binary -- the "
+              "unit's measured ExecStart is target/release/symoneural-gateway, built by "
+              "cargo from 8 .rs files with 362 crates pinned in Cargo.lock. The thirteen "
+              "TRON settlement modules (abi.py, address.py, chain.py, keccak.py, ...) are "
+              "Python mounted inside the API and serve /gateway.html's state; they are "
+              "not what the unit runs. Describing the deployed gateway as "
+              "Python/no-build because Python files are present would have left a "
+              "restored machine with a unit pointing at a binary nothing knew how to "
+              "build -- which is exactly the defect test_gateway_unit.py was written "
+              "after: the ExecStart named a file that did not exist and no test noticed.",
+        clean_rebuild="PASS (cargo build --release --locked rc=0 from an empty target/; cargo test rc=0 but RUST_TEST_COUNT=0, which is a passing command and NOT functional coverage)",
+        reproducible_bytes="NO -- identical size, arch and 4 NEEDED, but sha differs",
     ),
 
     Component(
@@ -994,61 +1089,113 @@ class Smoke:
 
 
 SMOKES: tuple[Smoke, ...] = (
+    # EVERY route and body below was validated against the LIVE API on 2026-09-08 by
+    # reading /openapi.json and issuing the request. That check found SIX of the first
+    # draft's thirteen smokes naming routes this API has never served --
+    # /api/ravencalc/estimate, /api/coder/status, /api/studio/status, /api/exp/status,
+    # /api/live/status, /api/streamer/status -- all invented from the roster's route
+    # pattern rather than measured. On a restored machine each would have failed and been
+    # indistinguishable from a broken restore, which is the worst possible failure mode
+    # for a restore smoke: it accuses the backup.
+    #
+    # The window for that check closes when this disk is erased, so it was taken while the
+    # API was still up, and `apps/test_restore_manifests.py` now re-checks every HTTP
+    # smoke against a captured route list.
+    #
+    # EXPECTED_RESULT carries the measured status code. A 401 or a 503 is a PASS where the
+    # surface is auth-gated or disabled by configuration -- it proves the route exists and
+    # the gate works, which is exactly what a restore needs to know. Treating only 200 as
+    # success would report a correctly-disabled component as a broken one.
+
     Smoke("smoke-chat", "chat", "symoneural-api running; symoneural-llm built",
-          "curl -fsS -m 120 -X POST http://127.0.0.1:8800/api/chat "
+          "curl -fsS -m 180 -X POST http://127.0.0.1:8800/api/chat "
           "-H 'Content-Type: application/json' "
-          "-d '{\"message\":\"reply with the single word ok\"}'",
-          "a streamed non-empty completion from the local model", "loopback", "NO", "YES"),
+          "-d '{\"prompt\":\"reply with the single word ok\"}'",
+          "HTTP 200 and a non-empty completion generated by the local model. Body field "
+          "is `prompt` (measured, not assumed).", "loopback", "NO", "YES"),
+
     Smoke("smoke-image", "image", "symoneural-api running; symoneural-diffuse built",
           "curl -fsS -m 600 -X POST http://127.0.0.1:8800/api/image "
           "-H 'Content-Type: application/json' "
-          "-d '{\"prompt\":\"a grey square\",\"width\":512,\"height\":512}'",
-          "JSON carrying a url that resolves to a PNG on disk", "loopback",
-          "YES (writes one PNG to backend/output)", "YES"),
+          "-d '{\"prompt\":\"a plain grey square\",\"width\":512,\"height\":512}'",
+          "HTTP 200 and a url resolving to a PNG on disk", "loopback",
+          "YES (writes one PNG under backend/output)", "YES"),
+
     Smoke("smoke-sigils", "sigils", "symoneural-api running",
-          "curl -fsS -m 300 -X POST http://127.0.0.1:8800/api/sigils/render "
-          "-H 'Content-Type: application/json' -d '{\"seed\":1}'",
-          "a rendered sigil, not a 404", "loopback", "YES", "YES"),
+          "curl -fsS -m 30 http://127.0.0.1:8800/api/sigils/state",
+          "HTTP 200, schema sigil/state/v1, installed=true. The mutating render path is "
+          "/api/sigils/render with a `prompt` body; state is used here so the smoke is "
+          "safe to run repeatedly on a fresh restore.", "loopback", "NO", "YES"),
+
     Smoke("smoke-remix", "remix", "symoneural-api running",
-          "cd backend/apps/remix && python3 -m pytest -q",
-          "the remix sub-project suite passes", "none", "NO", "YES"),
+          "curl -sS -m 30 -o /dev/null -w '%{http_code}' -X POST "
+          "http://127.0.0.1:8800/api/remix -H 'Content-Type: application/json' -d '{}'",
+          "HTTP 422 naming the missing `prompt` field -- the route exists and validates. "
+          "A full remix needs a prompt and GPU time; this proves the surface is wired "
+          "without spending either.", "loopback", "NO", "YES"),
+
     Smoke("smoke-ravencalc", "ravencalc", "symoneural-api running",
-          "curl -fsS http://127.0.0.1:8800/api/ravencalc/estimate?hashrate=1000000",
-          "a numeric estimate, computed", "loopback", "NO", "YES"),
-    Smoke("smoke-project", "project", "symoneural-api running; project-data restored",
-          "curl -fsS http://127.0.0.1:8800/api/project/list",
-          "the restored project list", "loopback", "NO", "YES"),
-    Smoke("smoke-coder", "coder", "symoneural-api running; authority plane up",
-          "curl -fsS http://127.0.0.1:8800/api/coder/status",
-          "status JSON; a mutation without a task grant must be REFUSED", "loopback",
-          "NO", "YES"),
-    Smoke("smoke-studio", "studio", "symoneural-api running",
-          "curl -fsS http://127.0.0.1:8800/api/studio/status",
-          "status JSON with the plugin list including reinforce and exp", "loopback",
-          "NO", "YES"),
-    Smoke("smoke-reinforce", "reinforce", "training-adapters restored",
-          "cd backend && python3 -m pytest apps/studio/plugins/reinforce -q",
-          "the reinforce plugin suite passes", "none", "NO", "YES"),
-    Smoke("smoke-exp", "exp", "symoneural-api running",
-          "curl -fsS http://127.0.0.1:8800/api/exp/status", "status JSON", "loopback",
-          "NO", "YES"),
-    Smoke("smoke-live", "live", "symoneural-api running",
-          "curl -fsS http://127.0.0.1:8800/api/live/status",
-          "status JSON; NVENC cost is unmeasured and the row says so", "loopback",
-          "NO", "YES"),
-    Smoke("smoke-streamer", "streamer", "symoneural-api running",
-          "curl -fsS http://127.0.0.1:8800/api/streamer/status", "status JSON", "loopback",
-          "NO", "YES"),
-    Smoke("smoke-dispatchos", "dispatchos", "symoneural-api running",
-          "curl -fsS http://127.0.0.1:8800/api/dispatchos/status", "status JSON",
+          "curl -fsS -m 30 -X POST http://127.0.0.1:8800/api/ravencalc "
+          "-H 'Content-Type: application/json' -d '{\"expression\":\"2+2\"}'",
+          "HTTP 200, result.text=\"4\", exact=true and check.passed=true -- a real "
+          "symbolic computation verified by the engine subtracting the simplified form "
+          "from the original, not a status ping.", "loopback", "NO", "YES"),
+
+    Smoke("smoke-project", "project", "symoneural-api running; project-db restored",
+          "curl -sS -m 30 -o /dev/null -w '%{http_code}' "
+          "http://127.0.0.1:8800/api/project/state",
+          "HTTP 401 unauthenticated. That is the PASS: the route exists and the account "
+          "gate is enforcing. A 200 here without a session would be the defect.",
           "loopback", "NO", "YES"),
+
+    Smoke("smoke-coder", "coder", "symoneural-api running",
+          "curl -fsS -m 30 http://127.0.0.1:8800/local/coder/status",
+          "HTTP 200, ok=true, allow_remote=false, and a populated denied_segments list. "
+          "Coder serves NO /api route by design -- its endpoints are /local/* behind a "
+          "peer-address check, because ops/Caddyfile proxies /api/* to the public "
+          "internet.", "loopback only -- refused off-box", "NO", "YES"),
+
+    Smoke("smoke-studio", "studio", "symoneural-api running",
+          "curl -fsS -m 30 http://127.0.0.1:8800/api/studio/state",
+          "HTTP 200 with enabled and workspace.root, and workspace.found_by=\"walk\" -- "
+          "which also confirms the marker-walk root resolution rather than parent counting",
+          "loopback", "NO", "YES"),
+
+    Smoke("smoke-reinforce", "reinforce", "symoneural-api running",
+          "curl -sS -m 30 -o /dev/null -w '%{http_code}' "
+          "http://127.0.0.1:8800/api/train/status",
+          "HTTP 503 while SYMONEURAL_REINFORCE_ENABLED is unset -- the measured, correct "
+          "answer for a surface that is off by default. 200 after enabling it.",
+          "loopback", "NO", "YES"),
+
+    Smoke("smoke-exp", "exp", "symoneural-api running",
+          "curl -fsS -m 30 http://127.0.0.1:8800/api/exp/state",
+          "HTTP 200. Note the route is /api/exp/state; /api/exp/status does not exist.",
+          "loopback", "NO", "YES"),
+
+    Smoke("smoke-live", "live", "symoneural-api running",
+          "curl -fsS -m 30 http://127.0.0.1:8800/api/live/state",
+          "HTTP 200. NVENC cost is unmeasured and apps/live/README.md says so.",
+          "loopback", "NO", "YES"),
+
+    Smoke("smoke-streamer", "streamer", "symoneural-api running",
+          "curl -fsS -m 30 http://127.0.0.1:8800/api/streamer/state",
+          "HTTP 200", "loopback", "NO", "YES"),
+
+    Smoke("smoke-dispatchos", "dispatchos", "symoneural-api running",
+          "curl -fsS -m 30 http://127.0.0.1:8800/api/dispatchos/status",
+          "HTTP 200", "loopback", "NO", "YES"),
+
     Smoke("smoke-miner", "miner", "none -- the miner is DISABLED",
           "python3 symoneural-miner-core/bin/symoneural-miner-smoke --no-write",
-          "13/13 checks against the LOOPBACK fixture. No public pool, no real wallet, no "
-          "share submitted to any network, no hashrate claimed.",
+          "13/13 checks against the LOOPBACK fixture: fail-closed config refuses to arm, "
+          "a validated loopback endpoint arms, Stratum handshake and job receipt work "
+          "against a real socket, a deterministic candidate is derived by first-party "
+          "Keccak, the pool accepts the frame, the socket is released. NO public pool, NO "
+          "real wallet, NO share submitted to any network, NO hashrate claimed. The HTTP "
+          "surface /api/gpuminer/status returns 503 (disabled on this installation).",
           "loopback fixture only", "NO", "YES"),
 )
-
 
 # =========================================================================================
 # RESTORE ORDER
