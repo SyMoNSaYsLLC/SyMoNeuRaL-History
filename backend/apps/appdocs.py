@@ -76,16 +76,45 @@ class Application:
 
 # The functional runtimes, from the controlling architecture. Named here so a docs page can
 # state its runtime owner without every entry repeating the prose.
-RUNTIMES = {
+#
+# Two kinds, and mixing them with nothing to tell them apart is what let two wrong names
+# survive. Corrected 2026-09-08:
+#
+#   `symoneural-image-engine` was in this set and is not a component -- it is an ALIAS,
+#   recorded as such in COMPONENT-MAP.tsv's ALIASES column for `symoneural-diffuse`. An
+#   earlier note here called it fictional, which overstated it; the accurate statement is
+#   that an alias was being used where the component ID belongs, while the component ID
+#   itself -- `symoneural-diffuse`, what `sigils/render.py:73` actually executes -- was
+#   absent from this set entirely. So the validator would have REFUSED the real name and
+#   did accept the nickname. A guard that rejects the truth is worse than no guard.
+#
+#   `symoneural-listen` was likewise absent, and `voice` therefore declared
+#   `symoneural-llm` -- the language engine -- for a speech-recognition surface that runs
+#   `symoneural-listen/build/bin/symoneural-listen` (`voice/asr.py:64`).
+#
+# Neither error broke anything, because this field is read by people and by /docs rather
+# than by a loader. Both were found by reading the registry against the source.
+
+#: Runtimes that are a process on disk, in their own top-level directory.
+PROCESS_RUNTIMES = {
     "symoneural-llm": "language model serving on the RTX 5070 Ti",
-    "symoneural-image-engine": "diffusion image generation on the RTX 5070 Ti",
+    "symoneural-diffuse": "diffusion image generation on the RTX 5070 Ti",
+    "symoneural-listen": "speech recognition, CPU only",
+    "symoneural-miner": "mining control: GPU, ASIC and settlement",
+}
+
+#: Logical groupings of in-process modules. Real components in the architecture, but not a
+#: separate process, so there is no directory to point at. Kept distinct from the set above
+#: so a reader can tell which kind a name is, and so a typo cannot hide among them.
+LOGICAL_RUNTIMES = {
     "symoneural-project": "project and CLI state, CPU only",
     "symoneural-ravencalc": "symbolic algebra, CPU only, never queues",
     "symoneural-studio": "graph and workflow orchestration, adapters and plugins",
     "symoneural-live": "streaming and broadcast I/O",
-    "symoneural-miner": "mining control: GPU, ASIC and settlement",
     "symoneural-platform": "the web, gateway and API chain itself",
 }
+
+RUNTIMES = {**PROCESS_RUNTIMES, **LOGICAL_RUNTIMES}
 
 
 APPLICATIONS: tuple[Application, ...] = (
@@ -132,14 +161,14 @@ APPLICATIONS: tuple[Application, ...] = (
     # ---- symoneural-image-engine --------------------------------------------------------
     Application(
         id="image", label="SyMoNeuRaL Image", kind="application", parent=None,
-        runtime="symoneural-image-engine", page="/livestack/image",
+        runtime="symoneural-diffuse", page="/livestack/image",
         prefixes=("/api/image", "/api/gen"),
         summary="Diffusion rendering. `POST /api/image` queues a render and answers with a "
                 "name; `GET /api/gen/<name>` serves the produced file.",
         auth="public", limits=_limits("image")),
     Application(
         id="sigils", label="SyMoNeuRaL Sigils", kind="application", parent=None,
-        runtime="symoneural-image-engine", page="/sigils.html",
+        runtime="symoneural-diffuse", page="/sigils.html",
         prefixes=("/api/sigils",),
         summary="Sticker and sigil packs rendered from an image or from audio. Its own "
                 "surface rather than a mode of Image, because it takes the card under its "
@@ -297,7 +326,13 @@ APPLICATIONS: tuple[Application, ...] = (
         operator_only=("/api/rack/power/{unit_id}",)),
     Application(
         id="voice", label="SyMoNeuRaL Voice", kind="application", parent=None,
-        runtime="symoneural-llm", page=None, prefixes=("/api/voice",),
+        # `symoneural-listen`, not `symoneural-llm`. Corrected 2026-09-08: this said the
+        # language engine, and `voice/asr.py:64` builds a path to
+        # `symoneural-listen/build/bin/symoneural-listen` -- its own docstring
+        # describes the whisper CPU build. Nothing failed; the registry simply named
+        # the wrong runtime, which is the kind of error only reading one against the
+        # other finds.
+        runtime="symoneural-listen", page=None, prefixes=("/api/voice",),
         summary="Speech in and speech out. It has routes and no page yet, so it is "
                 "deliberately not a rack row — a row pointing at a 404 is worse than no "
                 "row. It is documented here because the routes are real and mounted.",
