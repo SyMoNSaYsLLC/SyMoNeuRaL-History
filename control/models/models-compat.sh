@@ -5,7 +5,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_models_common.sh"
 say "── runtime / engine compatibility ─────────────────────────"
 for e in symoneural-llm symoneural-diffuse symoneural-ui; do
-  printf '  %-22s %s\n' "$e" "$([ -d "$ROOT/engines/$e" ] && echo present || echo '<absent>')"
+  printf '  %-22s %s\n' "$e" "$([ -d "$ROOT/$e" ] && echo present || echo '<absent>')"
 done
 printf '  %-22s %s\n' "nvcc" "$(nvcc --version 2>/dev/null | grep -oE 'release [0-9.]+' || echo UNKNOWN)"
 printf '  %-22s %s\n' "driver" "$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || echo UNKNOWN)"

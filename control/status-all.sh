@@ -27,7 +27,7 @@ command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=memory.used,memory.to
 
 echo; say "── engines on disk ─────────────────────────────────────────"
 for e in symoneural-llm symoneural-diffuse symoneural-ui; do
-  printf '  %-26s %s\n' "$e" "$([ -d "$ROOT/engines/$e" ] && echo present || echo '<missing>')"
+  printf '  %-26s %s\n' "$e" "$([ -d "$ROOT/$e" ] && echo present || echo '<missing>')"
 done
 
 echo; say "── disk ────────────────────────────────────────────────────"

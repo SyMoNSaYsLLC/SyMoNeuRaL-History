@@ -119,7 +119,7 @@ def engine_argv() -> dict:
     """
     out = subprocess.run(
         ["pgrep", "-af", "symoneural-llm"], capture_output=True, text=True).stdout
-    binary = str(ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
+    binary = str(ROOT / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
     for line in out.splitlines():
         pid, _, args = line.partition(" ")
         # `pgrep -af` matches on the whole command line, so this tool's own shell

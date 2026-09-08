@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENGINE = ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
+ENGINE = ROOT / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
 CHAT = ROOT / "backend" / "models" / "llm" / "symon-1.0-7b-q4_k_m.gguf"
 DRAFT = ROOT / "backend" / "models" / "llm" / "symon-1.0-draft-0.5b-q4_k_m.gguf"
 ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"

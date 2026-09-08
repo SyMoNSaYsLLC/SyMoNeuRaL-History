@@ -681,7 +681,7 @@ def llama_resident() -> bool:
     """Is the language engine loaded right now? The eviction measurement needs a
     before and an after, and `pgrep` answers it without asking a surface under
     test to describe itself."""
-    binary = str(ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
+    binary = str(ROOT / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
     out = subprocess.run(["pgrep", "-af", "symoneural-llm"],
                          capture_output=True, text=True).stdout
     return any(line.partition(" ")[2].split()[:1] == [binary]

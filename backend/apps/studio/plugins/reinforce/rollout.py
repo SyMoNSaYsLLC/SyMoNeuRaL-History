@@ -75,7 +75,7 @@ from .registry import ROOT
 
 # Our LLM engine. Detected only so this module can state, accurately, that it exists and is
 # still not used for rollouts. Nothing here executes it.
-LLM_ENGINE = ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
+LLM_ENGINE = ROOT / "symoneural-llm" / "build" / "bin" / "symoneural-llm"
 
 BACKENDS = {
     "transformers": {

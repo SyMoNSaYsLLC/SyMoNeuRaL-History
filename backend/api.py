@@ -237,10 +237,10 @@ def _engine_path(env_var: str, default: pathlib.Path) -> pathlib.Path:
 
 LLM_ENGINE = _engine_path(
     "SYMONEURAL_LLM_ENGINE",
-    ROOT / "engines" / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
+    ROOT / "symoneural-llm" / "build" / "bin" / "symoneural-llm")
 DIFFUSE_ENGINE = _engine_path(
     "SYMONEURAL_DIFFUSE_ENGINE",
-    ROOT / "engines" / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse")
+    ROOT / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse")
 MODELS = HERE / "models"  # weights are a backend concern; backend/models/
 SITE = ROOT / "site"          # the website: static files Caddy serves and deploy.sh publishes
 # Renders are API output, not site content. They used to be written into site/, which meant

@@ -111,7 +111,7 @@ ENVFILE = pathlib.Path(os.environ.get("SYMONEURAL_MINER_ENV") or (HERE / "miner.
 # own mining benchmark binary -- and it named a third-party product rather than ours. The
 # engine is now `SyMoNeuRaL Miner`, built from the vendored kawpowminer source under our own
 # name, and a signpost that points somewhere gitignored is not a signpost.
-KAWPOW_BINARY = (ROOT / "engines" / "symoneural-miner" / "build" / "kawpowminer"
+KAWPOW_BINARY = (ROOT / "symoneural-miner" / "build" / "kawpowminer"
                  / "symoneural-miner")
 
 # The keys the file is allowed to set. An env file is an instruction to change this

@@ -61,7 +61,7 @@ assert (ROOT / "backend" / "api.py").is_file(), f"repo root not found at {ROOT}"
 # test only because the segments are separate string literals, so the banned spelling never
 # appears as text. Neither of those was a decision anyone made.
 WHISPER_CLI = Path(os.environ.get("SYMONEURAL_WHISPER_CLI")
-                   or ROOT / "engines" / "symoneural-listen" / "build" / "bin"
+                   or ROOT / "symoneural-listen" / "build" / "bin"
                    / "symoneural-listen")
 MODEL = Path(os.environ.get("SYMONEURAL_WHISPER_MODEL")
              or ROOT / "backend" / "models" / "whisper" / "symoneural-listen-base-en.bin")
