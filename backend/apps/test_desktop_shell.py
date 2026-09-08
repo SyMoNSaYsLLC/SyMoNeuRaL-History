@@ -30,6 +30,9 @@ from __future__ import annotations
 import io
 import os
 import re
+import shutil
+import subprocess
+import signal
 import time
 import tokenize
 import unittest
@@ -86,7 +89,92 @@ def why_not_a_window() -> str:
 NO_WINDOW = why_not_a_window()
 
 
+
+def _offscreen_display():
+    """Start a throwaway X server and return (popen, display), or (None, None).
+
+    This test is deliberately un-stubbed -- a real `Vte.Terminal`, a real `spawn_async`, the
+    real `bin/symoneural-code` -- and that is worth keeping. What is not worth keeping is
+    where the window lands. On 2026-09-08 the owner watched a window titled "SyMoNeuRaL Code"
+    appear on his desktop every time the suite ran, and then watched KWin raise
+    `kwin_killer_helper` against it when the client inside was slow to answer. From the
+    outside that is indistinguishable from software launching itself unbidden on his machine.
+
+    Xvfb is installed here, so the window goes onto a display nobody is looking at. The test
+    keeps every assertion and every real component; only the pixels move. If Xvfb is absent
+    this returns (None, None) and the test falls back to whatever DISPLAY it was given, which
+    is the previous behaviour rather than a skip -- a missing virtual display is a reason to
+    be visible, not a reason to stop checking.
+    """
+    if not shutil.which("Xvfb"):
+        return None, None
+    for n in range(99, 110):                      # :0 is the person's; start well clear of it
+        if os.path.exists(f"/tmp/.X11-unix/X{n}"):
+            continue
+        disp = f":{n}"
+        proc = subprocess.Popen(
+            ["Xvfb", disp, "-screen", "0", "1024x768x24", "-nolisten", "tcp"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break                             # died; try the next number
+            if os.path.exists(f"/tmp/.X11-unix/X{n}"):
+                return proc, disp
+            time.sleep(0.1)
+        proc.terminate()
+    return None, None
+
+
+def _reap(win) -> None:
+    """Destroy the window AND make sure its child is dead.
+
+    `shell.py:231` documents the intended mechanism -- *"let the child get its SIGHUP from
+    the pty closing"* -- and that is right for a window a person closes. It is not sufficient
+    for a test, and the difference showed up on the owner's desktop rather than in the suite:
+    KWin kept raising `kwin_killer_helper -windowname "SyMoNeuRaL Code"`, its force-quit
+    dialog for a window that has stopped answering pings. Measured from an htop capture on
+    2026-09-08, three of those helpers at once against one hung client.
+
+    The path there: `setUpClass` waits up to 30 s for the client banner, and when the client
+    is slow or wedged the deadline fires, `Gtk.main_quit()` returns, `win.destroy()` disposes
+    the widgets -- and the child is still running, still holding the pty. An orphan holding a
+    pty behind a destroyed window is exactly what KWin reports as not responding. The suite
+    passed either way, which is why this survived: the test's own assertions had already been
+    read before teardown.
+
+    So the test reaps what the test spawned, rather than delegating it to a signal that only
+    arrives on the tidy path. SIGTERM first because the client has an exit path worth taking,
+    SIGKILL after a short grace because a wedged client is the case this exists for.
+    """
+    pid = getattr(win, "pid", None)
+    try:
+        win.destroy()
+    except Exception:
+        pass
+    if not pid:
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            return                      # already gone; nothing to chase
+        except PermissionError:
+            return
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            try:
+                if os.waitpid(pid, os.WNOHANG) != (0, 0):
+                    return
+            except ChildProcessError:
+                return                  # VTE reaped it, which shell.py says it does
+            except OSError:
+                return
+            time.sleep(0.05)
+
+
 @unittest.skipIf(NO_WINDOW, NO_WINDOW)
+
 class WindowSmokeTests(unittest.TestCase):
     """One real window, one real child, read back through the terminal widget."""
 
@@ -94,9 +182,19 @@ class WindowSmokeTests(unittest.TestCase):
     pid = None
     label = ""
 
+    _xvfb = None
+    _display_was = None
+
     @classmethod
     def setUpClass(cls):
         import importlib.util
+
+        # Point at a throwaway display BEFORE gi/Gtk is touched -- Gtk connects on first use
+        # and will not follow a DISPLAY changed afterwards.
+        cls._xvfb, disp = _offscreen_display()
+        if disp:
+            cls._display_was = os.environ.get("DISPLAY")
+            os.environ["DISPLAY"] = disp
 
         import gi
         gi.require_version("Gtk", "3.0")
@@ -159,7 +257,20 @@ class WindowSmokeTests(unittest.TestCase):
         cls.screen = screen_now()
         cls.pid = getattr(win, "pid", None)
         cls.label = win.status.get_text()
-        win.destroy()
+        _reap(win)
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._xvfb is not None:
+            cls._xvfb.terminate()
+            try:
+                cls._xvfb.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cls._xvfb.kill()
+        if cls._display_was is None:
+            os.environ.pop("DISPLAY", None)
+        else:
+            os.environ["DISPLAY"] = cls._display_was
 
     def test_the_child_is_spawned_and_the_client_greets_from_inside_the_window(self):
         """Spawn first, because everything else is downstream of it. This is also the assertion
@@ -242,7 +353,7 @@ class ExitBehaviourTests(unittest.TestCase):
 
     def tearDown(self):
         if getattr(self, "win", None) is not None:
-            self.win.destroy()
+            _reap(self.win)
 
     def test_a_clean_exit_closes_the_window(self):
         closed = []
