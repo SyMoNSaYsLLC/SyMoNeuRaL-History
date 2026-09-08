@@ -131,14 +131,14 @@ class NamedExceptionsStillMatchRealRoutes(unittest.TestCase):
         # sweep would stop testing the header it just started checking -- and would
         # report a clean pass for having asked a narrower question.
         src = (ROOT / "backend" / "api.py").read_text()
-        import re
-        m = re.search(r'forwarded = any\(h in request\.headers\s*'
-                      r'for h in \(([^)]*)\)\)', src)
-        self.assertIsNotNone(
-            m, "the forwarded-header list is no longer a literal tuple in "
-               "_require_local; this guard cannot see what to send")
-        checked = {h.strip().strip('"\'').lower() for h in m.group(1).split(",")
-                   if h.strip()}
+        # Read the CONSTANT, not the function body. This regexed a literal tuple inline in
+        # `_require_local`, and broke the moment the list was lifted out to
+        # `api._PROXY_HEADERS` -- reporting "no longer a literal tuple" rather than anything
+        # about coverage. A guard that inspects source shape breaks when the shape improves;
+        # importing the value cannot.
+        import api
+        checked = {h.lower() for h in api._PROXY_HEADERS}
+        self.assertTrue(checked, "api._PROXY_HEADERS is empty, so nothing is checked")
         sent = {k.lower() for h in probe_apps.SPOOF_HEADERS for k in h}
         self.assertTrue(checked <= sent,
                         f"_require_local checks {sorted(checked - sent)} which the "

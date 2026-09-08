@@ -25,7 +25,21 @@ import re
 import sys
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+def _find_root(start: pathlib.Path) -> pathlib.Path:
+    """Walk up for the marker; never count parents. See symoneural-audit/README.md.
+
+    Written this way after `bin/symoneural-audit` reported this very file. Two new test
+    files opened with `parents[2]` and pushed the ratchet from 81 to 83 -- in the same
+    session that built the ratchet and wrote the README recommending this function. Habit
+    is stronger than intent, which is the argument for the check existing at all.
+    """
+    for cand in (start, *start.parents):
+        if (cand / "backend" / "api.py").is_file():
+            return cand
+    raise RuntimeError(f"no repo root above {start}")
+
+
+ROOT = _find_root(pathlib.Path(__file__).resolve())
 sys.path.insert(0, str(ROOT / "backend"))
 
 from apps import ratelimits                                          # noqa: E402

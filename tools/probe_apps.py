@@ -140,6 +140,9 @@ SPOOF_HEADERS = (
     # Caddy sets this on everything it proxies, beside the two it does check.
     {"X-Forwarded-Proto": "https"},
     {"Via": "1.1 caddy"},
+    # Added when `_require_local` grew to seven headers: a header the guard checks and the
+    # probe never sends is a gate nobody is testing.
+    {"X-Forwarded-Port": "443"},
 )
 
 #: Query strings tried, in order, when a probe needs a request that VALIDATES.
@@ -406,6 +409,16 @@ def expectation(app, route) -> tuple[str, str]:
         return "local", "loopback only; this probe is on-box, so it should pass"
     if "session cookie" in auth or "operator" in auth:
         return "refuse", "session-authenticated"
+    if "token" in auth:
+        # Added 2026-09-08 for the same reason the `off by default` branch below exists,
+        # and caught by the same test. `project` declared *"public read, write on the same
+        # surface"* while answering 401 on every route; when the declaration was corrected
+        # to name the token, this function had no branch for the word and the surface fell
+        # through to `public` -- a credential-gated app probed as though nothing guarded it.
+        # `test_a_protected_surface_is_never_classified_public` failed immediately, which is
+        # the second time that test has caught exactly the wording drift its comment
+        # predicts.
+        return "refuse", "token-gated on every route"
     if "off by default" in auth or "switch" in auth:
         # `studio` declares *"off by default; both switches must be set before it
         # reports anything but offline, because it can write to the ..."*. That is
