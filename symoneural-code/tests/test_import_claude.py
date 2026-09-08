@@ -218,17 +218,25 @@ class DryRunAndIdempotence(Bed):
         self.assertFalse((self.priv / "sessions").exists())
 
     def test_apply_then_rerun_adds_nothing_new(self):
+        """Rewritten. This test previously asserted the DEFECT.
+
+        It required `len(before) + 1 == len(after)` -- that a rerun creates a sibling --
+        which described what the importer did rather than what it should do, and so passed
+        while apply was not idempotent. The name said "adds nothing new" and the assertion
+        said "adds exactly one". Now it asserts the name.
+        """
         self._seed()
         first = self.run_it(dry=False)
         before = sorted(p.name for p in (self.priv / "memory").iterdir())
         second = self.run_it(dry=False)
         after = sorted(p.name for p in (self.priv / "memory").iterdir())
-        self.assertEqual(first.counts().get("MIGRATED"),
-                         second.counts().get("MIGRATED"),
-                         "the same rows must be reported on a rerun")
-        self.assertEqual(len(before) + 1, len(after),
-                         "a rerun records a collision sibling rather than overwriting")
-        self.assertTrue(second.collisions)
+        self.assertEqual(before, after, "a rerun must add nothing")
+        self.assertGreater(first.counts().get("MIGRATED", 0), 0)
+        self.assertEqual(0, second.counts().get("MIGRATED", 0),
+                         "nothing is migrated a second time")
+        self.assertGreater(second.counts().get("ALREADY_NATIVE", 0), 0)
+        self.assertFalse(second.collisions,
+                         "identical content is not a collision")
 
     def test_permissions_on_private_state(self):
         self._seed()
