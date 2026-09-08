@@ -1,4 +1,29 @@
-# SyMoNeuRaL — working agreements
+# SyMoNeuRaL — project authority and working agreements
+
+**This is the canonical, provider-neutral operating contract for this repository.**
+Migrated from `.claude/CLAUDE.md` on 2026-09-08 as part of retiring the provider-specific
+authority path. The rules are unchanged; what changed is that they no longer live in a
+directory named after one vendor's tool, and no longer read as instructions to that tool.
+
+Any coding agent or person working in this repository follows this file. Where the text
+below still says "the agent", read it as whoever is doing the work.
+
+| Question | File |
+|---|---|
+| What are the rules? | **this file** |
+| What is the current verified state? | `ProjectStatus.md` |
+| What is the state, what is left, what will bite me? | `docs/HANDOFF.md` |
+| Every folder and what it is for | `README.md` |
+| What may leave this box? | `docs/ops/EXPORTS.md` |
+| Why is the code like this? | `git log` |
+
+There is one canonical current-state source (`ProjectStatus.md`) and one canonical handoff
+source (`docs/HANDOFF.md`). Do not create a third.
+
+---
+
+## Original working agreements, migrated verbatim below
+
 
 Repo for symoneural.com: the public site, the live API behind it, the CUDA engine, and
 the engineering manual the site's numbers come from.
@@ -25,7 +50,7 @@ inference, training, mining, and CPU orchestration remain distinct workloads gov
 the existing resource controls.
 
 Use the existing **request → intake → numbered task → execution response → next task**
-records. PROJECT-TASKS.md is the sole work list; .claude/HANDOVER.md records the next
+records. PROJECT-TASKS.md is the sole work list; docs/HANDOFF.md records the next
 executor and handoff links. Keep owner: coder and name the particular executor in task
 notes and the handoff. The later owner rule still applies: unblocked authorized work
 promotes without an additional Ready click.
@@ -246,14 +271,14 @@ README that says so.
 | Question | File |
 |---|---|
 | What are the rules? | **this file** |
-| What is the state, what is left to do, what will bite me? | **`.claude/HANDOVER.md`** |
+| What is the state, what is left to do, what will bite me? | **`docs/HANDOFF.md`** |
 | Build, deploy, GPU, environments, honesty, trade secret, serving, branding? | **`docs/ENGINEERING.md`** |
 | Suite counts, the ladder, how to run the tests? | **`docs/ops/MEASUREMENTS.md`** |
 | What may leave this box? | **`docs/ops/EXPORTS.md`** |
 | What does the hardware actually do? | `docs/symoneural-manual.md`, and `docs/` |
 | Why is the code like this? | **`git log`** — every commit states its reason |
 
-Do not create a second state document. Update `.claude/HANDOVER.md`.
+Do not create a second state document. Update `docs/HANDOFF.md`.
 
 **`demo/` no longer exists.** It was flattened into the repo root: `demo/api.py` is `api.py`,
 `demo/playground.sh` is `scripts/symoneural.sh`. Any path with `demo/` in it is from before that and

@@ -99,8 +99,15 @@ SERVER_MENTION = re.compile(r"'symoneural-llm'|\"bin/symoneural-llm\"")
 ADD_PARSER = re.compile(r'add_parser\(\s*"([a-z_-]+)"')
 STUDIO_PARSER = re.compile(r'\bstudio\(\s*"([a-z]+)"')
 
+#: `import-claude` is the fourteenth, added 2026-09-08. It migrates the owner's own
+#: material out of the retired provider's state directory into first-party SyMoNeuRaL
+#: state: memories, commands, skills, agents, MCP definitions, deny rules and plain
+#: role/content turns. It writes nothing without `--apply`, refuses credentials, path
+#: escapes and silent overwrites, and is idempotent. Behaviour is described by
+#: symoneural-code/tests/test_import_claude.py, 42 tests.
 KNOWN_SUBCOMMANDS = {"status", "residency", "upgrade", "chat", "image", "ravencalc",
-                     "agent", "tools", "tool", "state", "repl", "mcp", "_stop-chat"}
+                     "agent", "tools", "tool", "state", "repl", "mcp", "_stop-chat",
+                     "import-claude"}
 
 _MISSING = object()
 
@@ -2238,13 +2245,13 @@ class StructuralRuleTests(unittest.TestCase):
         self.assertIn("sys.stdin.isatty()", code)
         self.assertNotIn("_tty()", code)
 
-    def test_declared_subcommands_are_exactly_the_known_thirteen(self):
-        """Pinned in both directions, like the enable-surfaces seven: a fourteenth
-        subcommand must arrive with tests (this fails until it is added here), and one
-        quietly vanishing is a removal someone has to mean.
+    def test_declared_subcommands_are_exactly_the_known_fourteen(self):
+        """Pinned in both directions: a new subcommand must arrive with tests (this fails
+        until it is added here), and one quietly vanishing is a removal someone has to mean.
 
-        `repl` is the thirteenth and it did exactly what this test is for: it went red on
-        the addition and stayed red until the behaviour was described here.
+        `repl` was the thirteenth and did exactly what this test is for. `import-claude` is
+        the fourteenth and did it again on 2026-09-08 -- it went red on the addition and
+        stayed red until the behaviour was described beside KNOWN_SUBCOMMANDS.
         """
         declared = set(ADD_PARSER.findall(SRC)) | set(STUDIO_PARSER.findall(SRC))
         self.assertEqual(declared, KNOWN_SUBCOMMANDS)
@@ -2260,7 +2267,7 @@ class StructuralRuleTests(unittest.TestCase):
                          "GOVERNOR_ARGV no longer matches the two `with` invocations")
         self.assertEqual(len([l for l in SRC.splitlines() if SERVER_MENTION.search(l)]), 2,
                          "the LLM-server mention count moved; re-audit the contexts")
-        self.assertEqual(len(ADD_PARSER.findall(SRC)), 8,
+        self.assertEqual(len(ADD_PARSER.findall(SRC)), 9,
                          "direct add_parser() count moved; update KNOWN_SUBCOMMANDS "
                          "and the dispatch TABLE together")
         self.assertEqual(len(STUDIO_PARSER.findall(SRC)), 5,

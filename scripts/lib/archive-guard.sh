@@ -43,6 +43,16 @@
 # matter, so the scan looks for the assignment shape of the keys this repo actually defines.
 # Key NAMES appear below; no value is ever read into a variable, printed, or logged.
 
+# `.claude/` is retained in the table below after the 2026-09-08 neutralisation. The
+# authority moved to docs/authority/ and docs/HANDOFF.md and the path was untracked -- but
+# it is still PHYSICALLY present, holding settings and a pasted transcript, until the
+# owner's retirement purge. A rule protecting a path that still exists is not stale, and
+# deleting it because the tracking changed would let that directory into a tarball.
+#
+# The note is HERE and not beside the entry because the table is a backslash-continued
+# argument list: a `#` inside it comments out the continuation and silently empties the
+# path list. Doing exactly that broke 21 of this guard's own tests, which is the only
+# reason it was caught.
 # The protected paths, relative to the archive root. Extended-regex, anchored at the root.
 # Keep the reason beside the pattern -- an exclusion whose reason is not written down is an
 # exclusion the next person deletes.

@@ -298,3 +298,11 @@ web/symoneural-web/build/symoneural-web
 # tree built from somebody else's release tarball -- so a clone carries them. That is the
 # whole distinction: the five are rebuilt by tools/fork_engines.sh and would be 11 GB of
 # committed objects; these two are what we wrote.
+
+# ---- Retired provider-specific authority paths, 2026-09-08 -------------------------
+# The rules moved to docs/authority/PROJECT-AUTHORITY.md, the handoff to docs/HANDOFF.md,
+# and the deny rules to docs/authority/TOOL-POLICY.json, which a test enforces. These
+# paths are untracked rather than deleted: the physical copies are still needed for the
+# owner's retirement backup, and ignoring them means that later physical purge cannot
+# dirty a finished repository.
+/.claude/
