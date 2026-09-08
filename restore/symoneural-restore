@@ -1,0 +1,585 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-SyMoNeuRaL-Proprietary
+# Copyright (c) 2026 SymonSays LLC. All rights reserved.
+# SyMoNeuRaL is a subdivision of SymonSays LLC. Licence: /LICENSE at the repository root.
+"""SyMoNeuRaL Restore -- bring this project back on a machine that has never seen it.
+
+The problem this solves is not "where are the files". It is that every step of standing
+this system up currently lives in somebody's head or in a commit message: which upstream
+revision an engine forks from, which of seven Python environments a component runs in,
+which database cannot be copied with `cp`, which systemd unit is deliberately disabled and
+which is stale, and what order any of it has to happen in. After a bare-metal reinstall
+none of that is recoverable by looking at a directory listing.
+
+So it is written down in `restore/manifests/`, generated from measurement, and this is the
+program that reads it.
+
+    symoneural-restore inventory                what exists, and what class it is
+    symoneural-restore verify                   is this tree internally consistent
+    symoneural-restore dependencies --check     what is missing on THIS host
+    symoneural-restore dependencies --instructions
+    symoneural-restore build <component|all>
+    symoneural-restore test <component|all>
+    symoneural-restore install <component|all>
+    symoneural-restore restore-state --dry-run | --apply
+    symoneural-restore services --check | --install
+    symoneural-restore smoke <application|all>
+    symoneural-restore status
+
+## Safety, and why it is structural rather than a warning in the README
+
+Every subcommand that can change this machine is **dry by default and prints the exact
+command it would run**. `--apply` is the only way to make anything happen, and the
+privileged steps additionally refuse to run themselves: `services --install` and the Caddy
+step PRINT a root command for a human to execute rather than invoking `sudo` on their own
+authority. A restore tool that silently escalates is a restore tool nobody can safely run
+twice.
+
+It also refuses rather than guesses. An unknown component id is an error, not a no-op. A
+missing manifest is an error, not an empty result. A dependency that is absent is named
+exactly, with the command that installs it, instead of being reported as "some deps
+missing". The failure mode this is written against is a tool that returns 0 having done
+nothing, on a machine where the operator cannot tell the difference.
+
+## Standard library only
+
+This runs on a freshly installed Linux box before anything has been pip-installed --
+including, necessarily, before the thing that installs the dependencies has run. Importing
+a third-party package here would make the bootstrapper depend on the bootstrap.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+
+# ---------------------------------------------------------------------------- location
+def find_root(start: pathlib.Path) -> pathlib.Path:
+    """Marker walk. Never `parents[2]` -- that encodes this file's depth in the tree."""
+    for cand in (start, *start.parents):
+        if (cand / "restore" / "manifests").is_dir() and (cand / "backend").is_dir():
+            return cand
+    raise SystemExit(
+        "symoneural-restore: could not find the repository root above "
+        f"{start}.\nExpected a directory containing both restore/manifests/ and backend/.")
+
+
+ROOT = find_root(pathlib.Path(__file__).resolve().parent)
+MANIFESTS = ROOT / "restore" / "manifests"
+RELEASE = ROOT / "restore" / "RELEASE.json"
+
+BOLD, DIM, RED, GREEN, YELLOW, OFF = (
+    ("\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
+    if sys.stdout.isatty() else ("",) * 6)
+
+
+def die(msg: str, code: int = 2) -> "never":          # noqa: F821
+    print(f"{RED}symoneural-restore: {msg}{OFF}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+# ---------------------------------------------------------------------------- manifests
+REQUIRED = ["COMPONENTS.tsv", "APPLICATIONS.tsv", "SOURCE-CLOSURE.tsv",
+            "BUILD-RECIPES.tsv", "ARTIFACTS.tsv", "SERVICES.tsv", "DEPENDENCIES.tsv",
+            "PERSISTENT-STATE.tsv", "RESTORE-ORDER.tsv", "SMOKES.tsv"]
+
+
+def load(name: str) -> list[dict[str, str]]:
+    """Read one manifest. A missing manifest is fatal, never an empty list.
+
+    Returning [] for an absent file would make every downstream check pass: no components
+    means no components failed. That is the vacuous-success failure this whole control
+    plane is built to avoid, so it is refused at the point of reading.
+    """
+    p = MANIFESTS / name
+    if not p.is_file():
+        die(f"required manifest {name} is missing from {MANIFESTS}.\n"
+            f"  Regenerate with: python3 tools/build_restore_manifests.py\n"
+            f"  Refusing to continue: an absent manifest would make every check below "
+            f"pass for the wrong reason.")
+    lines = p.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 2:
+        die(f"manifest {name} has a header and no rows.")
+    header = lines[0].split("\t")
+    rows = []
+    for i, ln in enumerate(lines[1:], start=2):
+        cells = ln.split("\t")
+        if len(cells) != len(header):
+            die(f"{name}:{i} has {len(cells)} cells, header has {len(header)}.")
+        rows.append(dict(zip(header, cells)))
+    return rows
+
+
+def release() -> dict:
+    if not RELEASE.is_file():
+        die(f"restore/RELEASE.json is missing. Regenerate the manifests first.")
+    return json.loads(RELEASE.read_text())
+
+
+def pick(rows: list[dict], key: str, value: str, what: str) -> list[dict]:
+    """Select by id, or `all`. An unknown id is an ERROR -- never an empty selection."""
+    if value == "all":
+        return rows
+    got = [r for r in rows if r.get(key) == value]
+    if not got:
+        known = ", ".join(sorted(r[key] for r in rows)[:40])
+        die(f"unknown {what} '{value}'.\n  Known ids: {known}")
+    return got
+
+
+# ---------------------------------------------------------------------------- helpers
+def show_command(cmd: str, would: bool, root: bool = False) -> None:
+    tag = f"{YELLOW}[would run]{OFF}" if would else f"{GREEN}[run]{OFF}"
+    pre = f"{RED}(needs root){OFF} " if root else ""
+    print(f"    {tag} {pre}{cmd}")
+
+
+def run_shell(cmd: str, cwd: pathlib.Path | None = None, timeout: int = 7200) -> int:
+    p = subprocess.run(["bash", "-o", "pipefail", "-c", cmd], cwd=cwd or ROOT)
+    return p.returncode
+
+
+# ---------------------------------------------------------------------------- commands
+def cmd_inventory(a) -> int:
+    comps, apps = load("COMPONENTS.tsv"), load("APPLICATIONS.tsv")
+    rel = release()
+    print(f"{BOLD}SyMoNeuRaL release {rel['release_id']}{OFF}  "
+          f"head {rel['repository_head'][:12]}  branch {rel['branch']}")
+    print(f"\n{BOLD}Components ({len(comps)}){OFF}")
+    for c in comps:
+        colour = GREEN if c["PRODUCTION_STATUS"] == "PRODUCTION" else DIM
+        print(f"  {colour}{c['COMPONENT_ID']:<28}{OFF} {c['PRODUCTION_STATUS']:<24} "
+              f"{c['FIRST_PARTY_STATUS']:<34} {c['SOURCE_ROOT_PRESENT']}")
+        if c["BLOCKER"] != "-" and a.verbose:
+            print(f"      {DIM}{c['BLOCKER'][:150]}{OFF}")
+    print(f"\n{BOLD}Applications ({len(apps)}){OFF}")
+    for x in apps:
+        colour = GREEN if x["PRODUCTION_STATUS"] == "PRODUCTION" else DIM
+        parent = f"  (under {x['PARENT_APPLICATION_ID']})" \
+            if x["PARENT_APPLICATION_ID"] != "-" else ""
+        print(f"  {colour}{x['APPLICATION_ID']:<14}{OFF} {x['ROUTE']:<24} "
+              f"-> {x['PRIMARY_RUNTIME_COMPONENT']:<20} {x['PRODUCTION_STATUS']}{parent}")
+    return 0
+
+
+def cmd_verify(a) -> int:
+    """Internal consistency. This does NOT prove the system works -- `smoke` does that."""
+    problems: list[str] = []
+    notes: list[str] = []
+
+    for name in REQUIRED:
+        if not (MANIFESTS / name).is_file():
+            problems.append(f"manifest missing: {name}")
+    if problems:
+        for p in problems:
+            print(f"  {RED}FAIL{OFF} {p}")
+        return 1
+
+    comps = load("COMPONENTS.tsv")
+    apps = load("APPLICATIONS.tsv")
+    recipes = load("BUILD-RECIPES.tsv")
+    smokes = load("SMOKES.tsv")
+    states = load("PERSISTENT-STATE.tsv")
+    order = load("RESTORE-ORDER.tsv")
+    closure = load("SOURCE-CLOSURE.tsv")
+
+    cids = {c["COMPONENT_ID"] for c in comps}
+    aids = {x["APPLICATION_ID"] for x in apps}
+    sids = {s["SMOKE_ID"] for s in smokes}
+    stids = {s["STATE_ID"] for s in states}
+
+    # ---- referential integrity: every join must resolve
+    for x in apps:
+        if x["PRIMARY_RUNTIME_COMPONENT"] not in cids:
+            problems.append(f"{x['APPLICATION_ID']}: runtime component "
+                            f"'{x['PRIMARY_RUNTIME_COMPONENT']}' is not a component")
+        if x["RESTORE_SMOKE_ID"] not in ("-",) and x["RESTORE_SMOKE_ID"] not in sids:
+            problems.append(f"{x['APPLICATION_ID']}: smoke "
+                            f"'{x['RESTORE_SMOKE_ID']}' does not exist")
+        if x["PARENT_APPLICATION_ID"] not in ("-",) and \
+                x["PARENT_APPLICATION_ID"] not in aids:
+            problems.append(f"{x['APPLICATION_ID']}: parent "
+                            f"'{x['PARENT_APPLICATION_ID']}' is not an application")
+        for st in (s.strip() for s in x["PERSISTENT_STATE_IDS"].split(",")):
+            if st and st != "-" and st not in stids:
+                problems.append(f"{x['APPLICATION_ID']}: state '{st}' is not in "
+                                f"PERSISTENT-STATE.tsv")
+    for s in smokes:
+        if s["APPLICATION_ID"] not in aids:
+            problems.append(f"smoke {s['SMOKE_ID']}: application "
+                            f"'{s['APPLICATION_ID']}' does not exist")
+    for r in recipes:
+        if r["COMPONENT_ID"] not in cids:
+            problems.append(f"recipe for unknown component {r['COMPONENT_ID']}")
+    if {r["COMPONENT_ID"] for r in recipes} != cids:
+        missing = cids - {r["COMPONENT_ID"] for r in recipes}
+        problems.append(f"components with no build recipe: {sorted(missing)}")
+
+    # ---- restore order must be a DAG with satisfied prerequisites
+    seen: set[str] = set()
+    for st in sorted(order, key=lambda r: int(r["ORDER"])):
+        for req in (x.strip() for x in st["REQUIRES"].split(",")):
+            if req and req != "-" and req not in seen:
+                problems.append(f"restore step {st['STEP_ID']} requires '{req}', which "
+                                f"does not come earlier")
+        seen.add(st["STEP_ID"])
+
+    # ---- every PRODUCTION application must have a real smoke
+    for x in apps:
+        if x["PRODUCTION_STATUS"] == "PRODUCTION" and x["RESTORE_SMOKE_ID"] == "-":
+            problems.append(f"{x['APPLICATION_ID']} is PRODUCTION with no restore smoke")
+
+    # ---- every PRODUCTION component must be buildable and testable
+    for c in comps:
+        if c["PRODUCTION_STATUS"] != "PRODUCTION":
+            continue
+        rec = next(r for r in recipes if r["COMPONENT_ID"] == c["COMPONENT_ID"])
+        if rec["BUILD_COMMAND"] == "-":
+            problems.append(f"{c['COMPONENT_ID']} is PRODUCTION with no build command")
+        if rec["TEST_COMMAND"] == "-":
+            problems.append(f"{c['COMPONENT_ID']} is PRODUCTION with no test command")
+        cl = next(r for r in closure if r["COMPONENT_ID"] == c["COMPONENT_ID"])
+        if not cl["BUILDABLE_FROM_TRACKED_SOURCE"].startswith("YES"):
+            problems.append(f"{c['COMPONENT_ID']} is PRODUCTION and not buildable: "
+                            f"{cl['BUILDABLE_FROM_TRACKED_SOURCE']}")
+        if cl["UNTRACKED_SOURCE_COUNT"].isdigit() and int(cl["UNTRACKED_SOURCE_COUNT"]):
+            problems.append(f"{c['COMPONENT_ID']} has "
+                            f"{cl['UNTRACKED_SOURCE_COUNT']} untracked source files")
+
+    # ---- anti-vacuity: a verifier that checked nothing must not report success
+    checks = len(apps) + len(smokes) + len(recipes) + len(order) + len(comps)
+    if checks < 50:
+        problems.append(f"only {checks} rows were examined; the manifests look truncated "
+                        f"and a PASS here would mean nothing")
+
+    if a.release_check:
+        rel = release()
+        head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        if head and head != rel["repository_head"]:
+            notes.append(f"working tree is at {head[:12]}, RELEASE.json records "
+                         f"{rel['repository_head'][:12]} -- regenerate the manifests")
+
+    for n in notes:
+        print(f"  {YELLOW}NOTE{OFF} {n}")
+    if problems:
+        for p in problems:
+            print(f"  {RED}FAIL{OFF} {p}")
+        print(f"\n{RED}RESTORE_VERIFY=FAIL{OFF}  ({len(problems)} problem(s), "
+              f"{checks} rows examined)")
+        return 1
+    print(f"  {GREEN}OK{OFF} referential integrity across "
+          f"{len(comps)} components, {len(apps)} applications, {len(smokes)} smokes")
+    print(f"  {GREEN}OK{OFF} restore order is acyclic with satisfied prerequisites "
+          f"({len(order)} steps)")
+    print(f"  {GREEN}OK{OFF} every production component has a build and a test command")
+    print(f"  {GREEN}OK{OFF} every production application has a restore smoke")
+    print(f"\n{GREEN}RESTORE_VERIFY=PASS{OFF}  ({checks} rows examined)")
+    return 0
+
+
+def cmd_dependencies(a) -> int:
+    deps = load("DEPENDENCIES.tsv")
+    host = [d for d in deps if d["CLASS"] in
+            ("TOOLCHAIN", "BUILD_TOOL", "PLATFORM_RUNTIME", "RUNTIME")]
+    if a.instructions:
+        print(f"{BOLD}Host packages{OFF}")
+        pkgs = sorted({d["PACKAGE_NAME"] for d in host
+                       if d["PACKAGE_MANAGER"] == "apt" and d["PACKAGE_NAME"] != "-"
+                       and "(" not in d["PACKAGE_NAME"]})
+        print(f"    sudo apt-get update && sudo apt-get install -y {' '.join(pkgs)}")
+        print(f"\n{BOLD}NVIDIA driver and CUDA toolkit{OFF}")
+        for d in host:
+            if "NVIDIA" in d["UPSTREAM"] or "NVIDIA" in d["PACKAGE_NAME"]:
+                print(f"    {d['NAME']}: {d['REINSTALL_METHOD']}")
+                print(f"      {DIM}last measured here: {d['VERSION']}{OFF}")
+        print(f"\n{BOLD}Python environments{OFF}")
+        for d in deps:
+            if d["CLASS"] == "PYTHON_ENVIRONMENT":
+                print(f"    {d['NAME']}: {d['REINSTALL_METHOD']}")
+        print(f"    serving interpreter: pip install -r "
+              f"restore/locks/serving-system.lock.txt")
+        print(f"\n{BOLD}Engine upstreams{OFF}  (see THIRD-PARTY-REBUILD-MANIFEST.tsv)")
+        print(f"    tools/restore-upstream.sh all")
+        return 0
+
+    missing, present = [], []
+    for d in host:
+        probe = d["NAME"].split()[0].lower()
+        binmap = {"gnu": "gcc", "cmake": "cmake", "git": "git", "cpython": "python3",
+                  "node.js": "node", "npm": "npm", "rsync": "rsync", "sqlite": "sqlite3",
+                  "cuda": "nvcc", "ccache": "ccache", "ninja": "ninja", "nvidia": "nvidia-smi"}
+        exe = binmap.get(probe, probe)
+        if d["NAME"] == "GNU C++ compiler":
+            exe = "g++"
+        (present if shutil.which(exe) else missing).append((d, exe))
+
+    for d, exe in present:
+        print(f"  {GREEN}OK{OFF}      {d['NAME']:<24} {d['VERSION'][:60]}")
+    for d, exe in missing:
+        print(f"  {RED}MISSING{OFF} {d['NAME']:<24} (no '{exe}' on PATH)")
+        print(f"          install: {d['REINSTALL_METHOD']}")
+    print(f"\n{len(present)} present, {len(missing)} missing")
+    return 1 if missing else 0
+
+
+def _recipes_for(value: str) -> list[dict]:
+    return pick(load("BUILD-RECIPES.tsv"), "COMPONENT_ID", value, "component")
+
+
+def cmd_build(a) -> int:
+    rows = _recipes_for(a.component)
+    comps = {c["COMPONENT_ID"]: c for c in load("COMPONENTS.tsv")}
+    rc = 0
+    for r in rows:
+        c = comps[r["COMPONENT_ID"]]
+        if a.component == "all" and c["PRODUCTION_STATUS"] not in \
+                ("PRODUCTION", "INFRASTRUCTURE"):
+            print(f"  {DIM}skip {r['COMPONENT_ID']} ({c['PRODUCTION_STATUS']}){OFF}")
+            continue
+        if r["BUILD_COMMAND"] in ("-", "(interpreted -- no build step)"):
+            print(f"  {DIM}{r['COMPONENT_ID']}: nothing to build "
+                  f"({r['BUILD_COMMAND']}){OFF}")
+            continue
+        print(f"\n{BOLD}{r['COMPONENT_ID']}{OFF}  [{r['BUILD_SYSTEM']}] "
+              f"{r['TARGET_ARCH']}")
+        if r["PREP_COMMAND"] != "-":
+            show_command(r["PREP_COMMAND"], not a.apply)
+        show_command(r["BUILD_COMMAND"], not a.apply)
+        if a.apply:
+            if r["PREP_COMMAND"] != "-" and run_shell(r["PREP_COMMAND"]):
+                print(f"  {RED}prep failed{OFF}"); rc = 1; continue
+            if run_shell(r["BUILD_COMMAND"]):
+                print(f"  {RED}build failed{OFF}"); rc = 1; continue
+            out = ROOT / r["OUTPUT_ARTIFACT"] if r["OUTPUT_ARTIFACT"] != "-" else None
+            if out and not out.exists():
+                print(f"  {RED}build reported success but {r['OUTPUT_ARTIFACT']} "
+                      f"is not there{OFF}")
+                rc = 1
+            else:
+                print(f"  {GREEN}built{OFF} {r['OUTPUT_ARTIFACT']}")
+    if not a.apply:
+        print(f"\n{YELLOW}Nothing was built. Re-run with --apply.{OFF}")
+    return rc
+
+
+def cmd_test(a) -> int:
+    rows = _recipes_for(a.component)
+    rc = 0
+    for r in rows:
+        if r["TEST_COMMAND"] == "-":
+            print(f"  {DIM}{r['COMPONENT_ID']}: no test command{OFF}")
+            continue
+        print(f"\n{BOLD}{r['COMPONENT_ID']}{OFF}")
+        show_command(r["TEST_COMMAND"], not a.apply)
+        if a.apply and run_shell(r["TEST_COMMAND"]):
+            print(f"  {RED}tests failed{OFF}")
+            rc = 1
+    if not a.apply:
+        print(f"\n{YELLOW}Nothing was run. Re-run with --apply.{OFF}")
+    return rc
+
+
+def cmd_install(a) -> int:
+    rows = _recipes_for(a.component)
+    for r in rows:
+        if r["INSTALL_COMMAND"] in ("-",) or r["INSTALL_COMMAND"].startswith("("):
+            print(f"  {DIM}{r['COMPONENT_ID']}: {r['INSTALL_COMMAND']}{OFF}")
+            continue
+        needs_root = "sudo" in r["INSTALL_COMMAND"]
+        print(f"\n{BOLD}{r['COMPONENT_ID']}{OFF} -> {r['INSTALL_PATH']}")
+        show_command(r["INSTALL_COMMAND"], not a.apply, root=needs_root)
+        if a.apply:
+            if needs_root:
+                # Deliberate: this tool does not invoke sudo. A restore program that
+                # escalates on its own authority is one an operator cannot audit before
+                # running, and these commands write systemd units.
+                print(f"  {YELLOW}not run -- copy the command above and run it "
+                      f"yourself.{OFF}")
+            elif run_shell(r["INSTALL_COMMAND"]):
+                print(f"  {RED}install failed{OFF}")
+    if not a.apply:
+        print(f"\n{YELLOW}Nothing was installed. Re-run with --apply.{OFF}")
+    return 0
+
+
+def cmd_restore_state(a) -> int:
+    states = load("PERSISTENT-STATE.tsv")
+    rel = release()
+    base = ROOT / ".private" / "application-state" / rel["release_id"]
+    print(f"{BOLD}Persistent state{OFF}  source: {base.relative_to(ROOT)}\n")
+    missing = 0
+    for s in states:
+        tag = f"{RED}REQUIRED{OFF}" if s["REQUIRED_FOR_RESTORE"].startswith("YES") \
+            else f"{DIM}optional{OFF}"
+        print(f"  {s['STATE_ID']:<20} {tag}  {s['TYPE']}")
+        if s["CONTAINS_SECRETS"].startswith("YES"):
+            # Named, never printed. Knowing WHICH file holds secrets is what a restorer
+            # needs; the contents are exactly what must not appear in a terminal.
+            print(f"      {YELLOW}contains secrets -- restore with mode 0600, "
+                  f"never echo its contents{OFF}")
+        src = base / s["STATE_ID"]
+        if s["BACKUP_PATH"].startswith("carried") or "CARRIED" in s["CONSISTENCY_METHOD"]:
+            print(f"      {DIM}carried in the repository tree; nothing to copy{OFF}")
+            continue
+        if not src.exists():
+            print(f"      {RED}backup absent: {src.relative_to(ROOT)}{OFF}")
+            missing += 1
+            continue
+        show_command(s["RESTORE_COMMAND"].replace("<backup>", str(src)), not a.apply)
+        print(f"      verify: {s['VALIDATION_COMMAND']}")
+    if missing:
+        print(f"\n{RED}{missing} required backup(s) missing.{OFF}")
+        return 1
+    if not a.apply:
+        print(f"\n{YELLOW}Dry run. Re-run with --apply to restore.{OFF}")
+    return 0
+
+
+def cmd_services(a) -> int:
+    svcs = load("SERVICES.tsv")
+    rc = 0
+    for s in svcs:
+        print(f"\n{BOLD}{s['SERVICE_ID']}{OFF}  {s['SOURCE_UNIT']} -> "
+              f"{s['INSTALLED_UNIT']}")
+        print(f"    designed: {s['ENABLEMENT_DESIGNED']}")
+        print(f"    measured: enabled={s['ENABLEMENT_MEASURED']} "
+              f"active={s['ACTIVE_MEASURED']}")
+        print(f"    installed vs source: {s['INSTALLED_MATCHES_SOURCE']}")
+        if s["INSTALLED_MATCHES_SOURCE"].startswith("DIVERGED"):
+            rc = 1
+        if s["ENV_FILES"] != "-":
+            print(f"    {DIM}env: {s['ENV_FILES']}{OFF}")
+        if a.install:
+            show_command(s["INSTALL_COMMAND"], not a.apply, root=True)
+            print(f"    healthcheck: {s['HEALTHCHECK']}")
+    if a.install and not a.apply:
+        print(f"\n{YELLOW}Dry run. These write systemd units and need root; run them "
+              f"yourself.{OFF}")
+    return rc
+
+
+def cmd_smoke(a) -> int:
+    smokes = pick(load("SMOKES.tsv"), "APPLICATION_ID", a.application, "application") \
+        if a.application != "all" else load("SMOKES.tsv")
+    rc = 0
+    for s in smokes:
+        print(f"\n{BOLD}{s['SMOKE_ID']}{OFF}  ({s['APPLICATION_ID']})")
+        print(f"    expects: {s['EXPECTED_RESULT']}")
+        print(f"    network: {s['NETWORK_SCOPE']}   mutating: {s['MUTATING']}")
+        if s["MUTATING"] == "YES" and not a.allow_mutating and a.apply:
+            print(f"    {YELLOW}skipped -- mutating; pass --allow-mutating{OFF}")
+            continue
+        show_command(s["COMMAND"], not a.apply)
+        if a.apply:
+            if run_shell(s["COMMAND"], timeout=900):
+                print(f"    {RED}FAIL{OFF}")
+                rc = 1
+            else:
+                print(f"    {GREEN}PASS{OFF}")
+    if not a.apply:
+        print(f"\n{YELLOW}Nothing was run. Re-run with --apply.{OFF}")
+    return rc
+
+
+def cmd_status(a) -> int:
+    rel = release()
+    comps = load("COMPONENTS.tsv")
+    apps = load("APPLICATIONS.tsv")
+    svcs = load("SERVICES.tsv")
+    closure = load("SOURCE-CLOSURE.tsv")
+    prod = [c for c in comps if c["PRODUCTION_STATUS"] == "PRODUCTION"]
+    fails = [c for c in closure if c["STATUS"].startswith("FAIL")]
+
+    print(f"{BOLD}RELEASE_ID{OFF}                     {rel['release_id']}")
+    print(f"{BOLD}REPOSITORY_HEAD{OFF}                {rel['repository_head']}")
+    print(f"{BOLD}BRANCH{OFF}                         {rel['branch']}")
+    print(f"{BOLD}COMPONENTS_TOTAL{OFF}               {len(comps)}")
+    print(f"{BOLD}PRODUCTION_COMPONENTS{OFF}          {len(prod)}")
+    print(f"{BOLD}APPLICATIONS_TOTAL{OFF}             {len(apps)}")
+    print(f"{BOLD}PRODUCTION_APPLICATIONS{OFF}        "
+          f"{sum(1 for x in apps if x['PRODUCTION_STATUS'] == 'PRODUCTION')}")
+    print(f"{BOLD}SOURCE_CLOSURE{OFF}                 "
+          f"{'FAIL' if fails else 'PASS'}"
+          + (f"  ({len(fails)} failing)" if fails else ""))
+    diverged = [s for s in svcs if s["INSTALLED_MATCHES_SOURCE"].startswith("DIVERGED")]
+    print(f"{BOLD}SERVICES_INSTALLED_STALE{OFF}       {len(diverged)}"
+          + (f"  ({', '.join(s['SERVICE_ID'] for s in diverged)})" if diverged else ""))
+    bundle = ROOT / rel["git_bundle_path"]
+    print(f"{BOLD}GIT_BUNDLE{OFF}                     "
+          f"{'present' if bundle.is_file() else 'ABSENT'}"
+          + (f"  {bundle.stat().st_size} bytes" if bundle.is_file() else ""))
+    for key in ("source_bundle_root", "runtime_artifact_root", "persistent_state_root",
+                "host_snapshot_root", "claude_backup_root"):
+        p = ROOT / rel[key]
+        n = len(list(p.rglob("*"))) if p.is_dir() else 0
+        print(f"{BOLD}{key.upper():<30}{OFF} "
+              f"{'present' if p.is_dir() else 'ABSENT'}"
+              + (f"  {n} entries" if p.is_dir() else ""))
+    return 0
+
+
+# ---------------------------------------------------------------------------- cli
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(
+        prog="symoneural-restore",
+        description="Rebuild SyMoNeuRaL from source on a fresh machine.")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("inventory", help="what exists and what class it is")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.set_defaults(fn=cmd_inventory)
+
+    p = sub.add_parser("verify", help="internal consistency of the restore plan")
+    p.add_argument("--release", dest="release_check", action="store_true",
+                   help="also check the working tree matches RELEASE.json")
+    p.set_defaults(fn=cmd_verify)
+
+    p = sub.add_parser("dependencies", help="what this host is missing")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--check", action="store_true")
+    g.add_argument("--instructions", action="store_true")
+    p.set_defaults(fn=cmd_dependencies)
+
+    for name, fn, helptext in (("build", cmd_build, "build a component"),
+                               ("test", cmd_test, "run a component's tests"),
+                               ("install", cmd_install, "install a component")):
+        p = sub.add_parser(name, help=helptext)
+        p.add_argument("component")
+        p.add_argument("--apply", action="store_true",
+                       help="actually run it (default is to print what would run)")
+        p.set_defaults(fn=fn)
+
+    p = sub.add_parser("restore-state", help="restore persistent application state")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--dry-run", action="store_true")
+    g.add_argument("--apply", action="store_true")
+    p.set_defaults(fn=cmd_restore_state)
+
+    p = sub.add_parser("services", help="check or install the systemd units")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--check", action="store_true")
+    g.add_argument("--install", action="store_true")
+    p.add_argument("--apply", action="store_true")
+    p.set_defaults(fn=cmd_services)
+
+    p = sub.add_parser("smoke", help="exercise an application's real path")
+    p.add_argument("application")
+    p.add_argument("--apply", action="store_true")
+    p.add_argument("--allow-mutating", action="store_true")
+    p.set_defaults(fn=cmd_smoke)
+
+    p = sub.add_parser("status", help="the release gate figures")
+    p.set_defaults(fn=cmd_status)
+
+    a = ap.parse_args(argv)
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

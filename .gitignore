@@ -310,3 +310,18 @@ web/symoneural-web/build/symoneural-web
 # owner's retirement backup, and ignoring them means that later physical purge cannot
 # dirty a finished repository.
 /.claude/
+
+# ---------------------------------------------------------------------------
+# Private recovery state — bare-metal reset, 2026-09-08.
+#
+# `.private/` holds the things Git cannot restore: consistent copies of live
+# application databases, the installed host configuration, secret runtime
+# config, the Claude retirement backups, generated source bundles and verified
+# build artefacts. It is recovery state, NOT source. Git remains the source
+# authority; this tree exists so a fresh Linux install can be brought back to
+# a running system, and it travels only inside the owner's verified archive.
+#
+# It is ignored before it is populated, deliberately: the reverse order puts
+# secrets and multi-gigabyte databases in front of `git add -A`, and this repo
+# has already had two mode-600 ledgers staged by exactly that accident.
+/.private/

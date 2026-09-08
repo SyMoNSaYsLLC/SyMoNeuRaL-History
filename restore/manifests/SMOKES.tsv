@@ -1,0 +1,15 @@
+SMOKE_ID	APPLICATION_ID	PREREQUISITES	COMMAND	EXPECTED_RESULT	NETWORK_SCOPE	MUTATING	SAFE_AFTER_FRESH_RESTORE
+smoke-chat	chat	symoneural-api running; symoneural-llm built	curl -fsS -m 120 -X POST http://127.0.0.1:8800/api/chat -H 'Content-Type: application/json' -d '{"message":"reply with the single word ok"}'	a streamed non-empty completion from the local model	loopback	NO	YES
+smoke-image	image	symoneural-api running; symoneural-diffuse built	curl -fsS -m 600 -X POST http://127.0.0.1:8800/api/image -H 'Content-Type: application/json' -d '{"prompt":"a grey square","width":512,"height":512}'	JSON carrying a url that resolves to a PNG on disk	loopback	YES (writes one PNG to backend/output)	YES
+smoke-sigils	sigils	symoneural-api running	curl -fsS -m 300 -X POST http://127.0.0.1:8800/api/sigils/render -H 'Content-Type: application/json' -d '{"seed":1}'	a rendered sigil, not a 404	loopback	YES	YES
+smoke-remix	remix	symoneural-api running	cd backend/apps/remix && python3 -m pytest -q	the remix sub-project suite passes	none	NO	YES
+smoke-ravencalc	ravencalc	symoneural-api running	curl -fsS http://127.0.0.1:8800/api/ravencalc/estimate?hashrate=1000000	a numeric estimate, computed	loopback	NO	YES
+smoke-project	project	symoneural-api running; project-data restored	curl -fsS http://127.0.0.1:8800/api/project/list	the restored project list	loopback	NO	YES
+smoke-coder	coder	symoneural-api running; authority plane up	curl -fsS http://127.0.0.1:8800/api/coder/status	status JSON; a mutation without a task grant must be REFUSED	loopback	NO	YES
+smoke-studio	studio	symoneural-api running	curl -fsS http://127.0.0.1:8800/api/studio/status	status JSON with the plugin list including reinforce and exp	loopback	NO	YES
+smoke-reinforce	reinforce	training-adapters restored	cd backend && python3 -m pytest apps/studio/plugins/reinforce -q	the reinforce plugin suite passes	none	NO	YES
+smoke-exp	exp	symoneural-api running	curl -fsS http://127.0.0.1:8800/api/exp/status	status JSON	loopback	NO	YES
+smoke-live	live	symoneural-api running	curl -fsS http://127.0.0.1:8800/api/live/status	status JSON; NVENC cost is unmeasured and the row says so	loopback	NO	YES
+smoke-streamer	streamer	symoneural-api running	curl -fsS http://127.0.0.1:8800/api/streamer/status	status JSON	loopback	NO	YES
+smoke-dispatchos	dispatchos	symoneural-api running	curl -fsS http://127.0.0.1:8800/api/dispatchos/status	status JSON	loopback	NO	YES
+smoke-miner	miner	none -- the miner is DISABLED	python3 symoneural-miner-core/bin/symoneural-miner-smoke --no-write	13/13 checks against the LOOPBACK fixture. No public pool, no real wallet, no share submitted to any network, no hashrate claimed.	loopback fixture only	NO	YES

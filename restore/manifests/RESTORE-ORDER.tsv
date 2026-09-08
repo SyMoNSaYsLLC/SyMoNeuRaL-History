@@ -1,0 +1,13 @@
+ORDER	STEP_ID	ACTION	REQUIRES	COMMAND	VERIFY_COMMAND	MUTATES_SYSTEM	REQUIRES_ROOT	FAILURE_POLICY
+10	host-prereqs	Install host packages and toolchain	-	restore/symoneural-restore dependencies --instructions	restore/symoneural-restore dependencies --check	YES	YES	STOP -- nothing below can succeed
+20	git-repo	Restore the repository from the bundle	host-prereqs	git clone .private/git-backup/Symoneural-all.bundle Symoneural	git -C Symoneural fsck --full && git -C Symoneural rev-parse HEAD	NO	NO	STOP
+30	private-state	Restore private recovery state	git-repo	restore/symoneural-restore restore-state --apply	restore/symoneural-restore restore-state --dry-run	YES	NO	STOP
+40	upstreams	Reacquire the pinned engine upstreams	git-repo	tools/restore-upstream.sh all	tools/restore-upstream.sh --check	NO	NO	CONTINUE -- record which engines cannot be built
+50	build-native	Build the native engines	upstreams	restore/symoneural-restore build all	restore/symoneural-restore verify	NO	NO	CONTINUE -- a failed engine disables its applications, not the rack
+60	test	Run the test suites	build-native	restore/symoneural-restore test all	cd backend && python3 -m pytest -q	NO	NO	STOP on a failure in the backend suite
+70	install-cli	Install the CLI entry points	test	scripts/install-cli.sh	command -v symoneural-cli symoneural-code symoneural-api	YES	NO	CONTINUE
+80	services	Install the systemd units	install-cli	restore/symoneural-restore services --install	restore/symoneural-restore services --check	YES	YES	STOP
+90	caddy	Install the Caddy configuration and certificates	services	sudo install -m0644 ops/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy	curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1/	YES	YES	STOP. Certificate state is COPIED and chowned into /var/lib/caddy, never moved.
+100	start	Start the services in dependency order	caddy	sudo systemctl start symoneural-api && sudo systemctl start symoneural-web	curl -fsS http://127.0.0.1:8800/api/status	YES	YES	STOP
+110	smoke	Run every application smoke	start	restore/symoneural-restore smoke all	restore/symoneural-restore status	YES (image writes one PNG)	NO	REPORT -- do not roll back automatically
+120	accept	Compare the restored release against RELEASE.json	smoke	restore/symoneural-restore verify --release	restore/symoneural-restore status	NO	NO	REPORT

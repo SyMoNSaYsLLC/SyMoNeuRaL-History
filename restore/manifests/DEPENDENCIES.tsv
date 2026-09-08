@@ -1,0 +1,216 @@
+DEPENDENCY_ID	NAME	VERSION	LICENSE	CLASS	PACKAGE_MANAGER	PACKAGE_NAME	UPSTREAM	CHECKSUM	USED_BY	BUILD_OR_RUNTIME	REQUIRED	REINSTALL_METHOD	OFFLINE_COPY_PRESENT	SOURCE_TREE_REQUIRED
+dep-gcc	GNU C compiler	14.2.0	see distribution	TOOLCHAIN	apt	gcc	Debian	-	symoneural-llm,symoneural-diffuse,symoneural-listen,symoneural-miner	RUNTIME	YES	sudo apt-get install -y gcc	NO	NO
+dep-gxx	GNU C++ compiler	14.2.0	see distribution	TOOLCHAIN	apt	g++	Debian	-	symoneural-llm,symoneural-diffuse,symoneural-listen,symoneural-miner	RUNTIME	YES	sudo apt-get install -y g++	NO	NO
+dep-cmake	CMake	cmake version 3.31.6	see distribution	BUILD_TOOL	apt	cmake	Debian	-	symoneural-llm,symoneural-diffuse,symoneural-listen,symoneural-miner	BUILD	YES	sudo apt-get install -y cmake	NO	NO
+dep-git	Git	git version 2.47.3	see distribution	BUILD_TOOL	apt	git	Debian	-	all	BUILD	YES	sudo apt-get install -y git	NO	NO
+dep-python	CPython	Python 3.13.5	see distribution	PLATFORM_RUNTIME	apt	python3	Debian	-	all	RUNTIME	YES	sudo apt-get install -y python3	NO	NO
+dep-node	Node.js	v24.19.0	see distribution	BUILD_TOOL	apt	nodejs	Debian	-	frontend,tests	BUILD	YES	sudo apt-get install -y nodejs	NO	NO
+dep-npm	npm	11.17.0	see distribution	BUILD_TOOL	apt	npm	Debian	-	frontend,tests	BUILD	YES	sudo apt-get install -y npm	NO	NO
+dep-rsync	rsync	rsync version 3.4.1 protocol version 32	see distribution	BUILD_TOOL	apt	rsync	Debian	-	tools/fork_engines.sh, restore-state	BUILD	YES	sudo apt-get install -y rsync	NO	NO
+dep-sqlite	SQLite CLI	3.46.1 2024-08-13 09:16:08 c9c2ab54ba1f5f46360f1b4f35d849cd3f080e6fc2b6c60e91b16c63f69aalt1 (64-bit)	see distribution	RUNTIME	apt	sqlite3	Debian	-	accounts-db consistent backup and integrity_check	RUNTIME	YES	sudo apt-get install -y sqlite3	NO	NO
+dep-nvcc	CUDA toolkit	Cuda compilation tools, release 13.3, V13.3.73	see distribution	PLATFORM_RUNTIME	apt	cuda-toolkit (NVIDIA repository)	NVIDIA	-	symoneural-llm,symoneural-diffuse,symoneural-listen,symoneural-miner	RUNTIME	YES	sudo apt-get install -y cuda-toolkit (NVIDIA repository)	NO	NO
+dep-ccache	ccache	ccache version 4.11.2	see distribution	BUILD_TOOL	apt	ccache	Debian	-	tools/fork_engines.sh (optional; makes an unchanged rebuild cheap)	BUILD	YES	sudo apt-get install -y ccache	NO	NO
+dep-ninja	Ninja	1.13.0.git.kitware.jobserver-pipe-1	see distribution	BUILD_TOOL	apt	ninja-build	Debian	-	optional cmake generator	BUILD	YES	sudo apt-get install -y ninja-build	NO	NO
+dep-nvidia-driver	NVIDIA driver	NVIDIA GeForce RTX 5070 Ti, 610.57.04, 16303 MiB	proprietary	PLATFORM_RUNTIME	vendor installer	nvidia-driver	NVIDIA	-	all GPU components	RUNTIME	YES	Install the driver matching the CUDA toolkit above from NVIDIA. Not redistributable; not carried in the backup.	NO	NO
+py-serving-acme	acme	4.0.0	Apache License 2.0	PYTHON_PACKAGE	pip/apt	acme	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-aiofiles	aiofiles	24.1.0	Apache-2.0	PYTHON_PACKAGE	pip/apt	aiofiles	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-annotated-types	annotated-types	0.7.0	MIT License	PYTHON_PACKAGE	pip/apt	annotated-types	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-anyio	anyio	4.8.0	MIT	PYTHON_PACKAGE	pip/apt	anyio	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-argcomplete	argcomplete	3.6.2	Apache Software License	PYTHON_PACKAGE	pip/apt	argcomplete	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-astroid	astroid	3.3.8	LGPL-2.1-or-later	PYTHON_PACKAGE	pip/apt	astroid	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-attrs	attrs	25.3.0	MIT	PYTHON_PACKAGE	pip/apt	attrs	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-autocommand	autocommand	2.2.2	GNU Lesser General Public License v3 (LGPLv3)	PYTHON_PACKAGE	pip/apt	autocommand	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-babel	babel	2.17.0	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	babel	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-bcrypt	bcrypt	4.2.0	Apache-2.0	PYTHON_PACKAGE	pip/apt	bcrypt	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-beautifulsoup4	beautifulsoup4	4.13.4	MIT License	PYTHON_PACKAGE	pip/apt	beautifulsoup4	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-binwalk	binwalk	2.4.3	UNDECLARED	PYTHON_PACKAGE	pip/apt	binwalk	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-bottleneck	Bottleneck	1.4.2	Simplified BSD	PYTHON_PACKAGE	pip/apt	Bottleneck	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-brlapi	Brlapi	0.8.6	LGPL 2.1	PYTHON_PACKAGE	pip/apt	Brlapi	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-brotli	Brotli	1.1.0	MIT	PYTHON_PACKAGE	pip/apt	Brotli	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-build	build	1.2.2	MIT License	PYTHON_PACKAGE	pip/apt	build	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-capstone	capstone	5.0.7	BSD License	PYTHON_PACKAGE	pip/apt	capstone	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-certbot	certbot	4.0.0	Apache License 2.0	PYTHON_PACKAGE	pip/apt	certbot	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-certbot-apache	certbot-apache	4.0.0	Apache License 2.0	PYTHON_PACKAGE	pip/apt	certbot-apache	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-certifi	certifi	2025.1.31	MPL-2.0	PYTHON_PACKAGE	pip/apt	certifi	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-chardet	chardet	5.2.0	LGPL	PYTHON_PACKAGE	pip/apt	chardet	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-charset-normalizer	charset-normalizer	3.4.2	MIT	PYTHON_PACKAGE	pip/apt	charset-normalizer	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-click	click	8.1.8	BSD License	PYTHON_PACKAGE	pip/apt	click	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-configargparse	ConfigArgParse	1.7	MIT	PYTHON_PACKAGE	pip/apt	ConfigArgParse	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-configobj	configobj	5.0.9	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	configobj	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-contourpy	contourpy	1.3.1	BSD 3-Clause License	PYTHON_PACKAGE	pip/apt	contourpy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-crit	crit	4.1.1	GPLv2	PYTHON_PACKAGE	pip/apt	crit	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-cryptography	cryptography	43.0.0	Apache-2.0 OR BSD-3-Clause	PYTHON_PACKAGE	pip/apt	cryptography	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-cssselect	cssselect	1.3.0	BSD	PYTHON_PACKAGE	pip/apt	cssselect	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-cupshelpers	cupshelpers	1.0	UNDECLARED	PYTHON_PACKAGE	pip/apt	cupshelpers	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-cycler	cycler	0.12.1	Copyright (c) 2015, matplotlib project	PYTHON_PACKAGE	pip/apt	cycler	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-cython	Cython	3.0.11	Apache-2.0	PYTHON_PACKAGE	pip/apt	Cython	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-dbus-python	dbus-python	1.4.0	Expat (MIT/X11)	PYTHON_PACKAGE	pip/apt	dbus-python	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-decorator	decorator	5.2.1	BSD-2-Clause	PYTHON_PACKAGE	pip/apt	decorator	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-defusedxml	defusedxml	0.7.1	PSFL	PYTHON_PACKAGE	pip/apt	defusedxml	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-dill	dill	0.4.0	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	dill	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-distro	distro	1.9.0	Apache License, Version 2.0	PYTHON_PACKAGE	pip/apt	distro	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-dnspython	dnspython	2.7.0	ISC	PYTHON_PACKAGE	pip/apt	dnspython	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-email_validator	email_validator	2.2.0	Unlicense	PYTHON_PACKAGE	pip/apt	email_validator	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-et_xmlfile	et_xmlfile	2.0.0	MIT	PYTHON_PACKAGE	pip/apt	et_xmlfile	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-extras	extras	1.0.0	MIT License	PYTHON_PACKAGE	pip/apt	extras	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-fail2ban	fail2ban	1.1.0	GPL	PYTHON_PACKAGE	pip/apt	fail2ban	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-fastapi	fastapi	0.115.11	MIT License	PYTHON_PACKAGE	pip/apt	fastapi	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-fonttools	fonttools	4.57.0	MIT	PYTHON_PACKAGE	pip/apt	fonttools	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-fs	fs	2.4.16	MIT	PYTHON_PACKAGE	pip/apt	fs	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-fuse-python	fuse-python	1.0.9	LGPL	PYTHON_PACKAGE	pip/apt	fuse-python	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-galternatives	galternatives	1.0.10	GPL2+	PYTHON_PACKAGE	pip/apt	galternatives	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-git-filter-repo	git-filter-repo	2.47.0	MIT	PYTHON_PACKAGE	pip/apt	git-filter-repo	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-gitdb	gitdb	4.0.12	BSD License	PYTHON_PACKAGE	pip/apt	gitdb	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-gitpython	GitPython	3.1.44	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	GitPython	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-gyp-next	gyp-next	0.16.2	Copyright (c) 2020 Node.js contributors. All rights reserved	PYTHON_PACKAGE	pip/apt	gyp-next	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-h11	h11	0.14.0	MIT	PYTHON_PACKAGE	pip/apt	h11	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-h2	h2	4.2.0	The MIT License (MIT)	PYTHON_PACKAGE	pip/apt	h2	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-hpack	hpack	4.0.0	MIT License	PYTHON_PACKAGE	pip/apt	hpack	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-html5lib-modern	html5lib-modern	1.2	Copyright (c) 2006-2013 James Graham and other contributors	PYTHON_PACKAGE	pip/apt	html5lib-modern	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-httpcore	httpcore	1.0.7	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	httpcore	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-httpx	httpx	0.28.1	BSD License	PYTHON_PACKAGE	pip/apt	httpx	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-hyperframe	hyperframe	6.0.0	MIT License	PYTHON_PACKAGE	pip/apt	hyperframe	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-idna	idna	3.10	BSD License	PYTHON_PACKAGE	pip/apt	idna	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-inflect	inflect	7.3.1	MIT License	PYTHON_PACKAGE	pip/apt	inflect	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-iniconfig	iniconfig	1.1.1	MIT License	PYTHON_PACKAGE	pip/apt	iniconfig	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-installer	installer	0.7.0	MIT License	PYTHON_PACKAGE	pip/apt	installer	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-invoke	invoke	2.2.0	BSD	PYTHON_PACKAGE	pip/apt	invoke	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-iotop	iotop	0.6	GPL	PYTHON_PACKAGE	pip/apt	iotop	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-isort	isort	6.0.1	MIT License	PYTHON_PACKAGE	pip/apt	isort	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-itsdangerous	itsdangerous	2.2.0	BSD License	PYTHON_PACKAGE	pip/apt	itsdangerous	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-jaraco.context	jaraco.context	6.0.1	MIT License	PYTHON_PACKAGE	pip/apt	jaraco.context	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-jaraco.functools	jaraco.functools	4.1.0	MIT License	PYTHON_PACKAGE	pip/apt	jaraco.functools	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-jaraco.text	jaraco.text	4.0.0	MIT License	PYTHON_PACKAGE	pip/apt	jaraco.text	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-jinja2	Jinja2	3.1.6	BSD License	PYTHON_PACKAGE	pip/apt	Jinja2	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-joblib	joblib	1.4.2	BSD 3-Clause	PYTHON_PACKAGE	pip/apt	joblib	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-josepy	josepy	2.0.0	Apache-2.0	PYTHON_PACKAGE	pip/apt	josepy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-kiwisolver	kiwisolver	1.4.7	=========================	PYTHON_PACKAGE	pip/apt	kiwisolver	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-legacy-cgi	legacy-cgi	2.6.3	PSF-2.0	PYTHON_PACKAGE	pip/apt	legacy-cgi	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-libvirt-python	libvirt-python	11.3.0	GNU Lesser General Public License v2 or later (LGPLv2+)	PYTHON_PACKAGE	pip/apt	libvirt-python	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-linkify-it-py	linkify-it-py	2.0.3	MIT	PYTHON_PACKAGE	pip/apt	linkify-it-py	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-llvmlite	llvmlite	0.44.0	BSD	PYTHON_PACKAGE	pip/apt	llvmlite	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-logilab-common	logilab-common	2.1.0	LGPL	PYTHON_PACKAGE	pip/apt	logilab-common	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-louis	louis	3.33.0	LGPLv2.1+	PYTHON_PACKAGE	pip/apt	louis	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-lxml	lxml	5.4.0	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	lxml	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-lz4	lz4	4.4.0+dfsg	BSD License	PYTHON_PACKAGE	pip/apt	lz4	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-markdown-it-py	markdown-it-py	3.0.0	MIT License	PYTHON_PACKAGE	pip/apt	markdown-it-py	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-markupsafe	MarkupSafe	2.1.5	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	MarkupSafe	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-matplotlib	matplotlib	3.10.1+dfsg1	License agreement for matplotlib versions 1.3.0 and later	PYTHON_PACKAGE	pip/apt	matplotlib	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-mccabe	mccabe	0.7.0	Expat license	PYTHON_PACKAGE	pip/apt	mccabe	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-mdurl	mdurl	0.1.2	MIT License	PYTHON_PACKAGE	pip/apt	mdurl	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-more-itertools	more-itertools	10.7.0	MIT License	PYTHON_PACKAGE	pip/apt	more-itertools	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-mpmath	mpmath	1.3.0	BSD	PYTHON_PACKAGE	pip/apt	mpmath	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-mpv	mpv	1.0.7	GPLv2+ or LGPLv2.1+	PYTHON_PACKAGE	pip/apt	mpv	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-mutagen	mutagen	1.47.0	GPL-2.0-or-later	PYTHON_PACKAGE	pip/apt	mutagen	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-mypy-extensions	mypy-extensions	1.0.0	MIT License	PYTHON_PACKAGE	pip/apt	mypy-extensions	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-nala	nala	0.16.0	GPL-3.0-or-later	PYTHON_PACKAGE	pip/apt	nala	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-numba	numba	0.61.2	BSD	PYTHON_PACKAGE	pip/apt	numba	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-numexpr	numexpr	2.10.2	MIT License	PYTHON_PACKAGE	pip/apt	numexpr	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-numpy	numpy	2.2.4	Copyright (c) 2005-2024, NumPy Developers.	PYTHON_PACKAGE	pip/apt	numpy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-odfpy	odfpy	1.4.2	Apache Software License	PYTHON_PACKAGE	pip/apt	odfpy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-oematch	oematch	0.1.0	MIT	PYTHON_PACKAGE	pip/apt	oematch	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-olefile	olefile	0.47	BSD	PYTHON_PACKAGE	pip/apt	olefile	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-openpyxl	openpyxl	3.1.5	MIT	PYTHON_PACKAGE	pip/apt	openpyxl	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-packaging	packaging	25.0	Apache Software License	PYTHON_PACKAGE	pip/apt	packaging	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pandas	pandas	2.2.3+dfsg	BSD 3-Clause License	PYTHON_PACKAGE	pip/apt	pandas	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-paramiko	paramiko	3.5.1	LGPL	PYTHON_PACKAGE	pip/apt	paramiko	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-parsedatetime	parsedatetime	2.6	Apache License 2.0	PYTHON_PACKAGE	pip/apt	parsedatetime	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pexpect	pexpect	4.9.0	ISC license	PYTHON_PACKAGE	pip/apt	pexpect	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pillow	pillow	11.1.0	MIT-CMU	PYTHON_PACKAGE	pip/apt	pillow	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pip	pip	25.1.1	MIT	PYTHON_PACKAGE	pip/apt	pip	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pipx	pipx	1.7.1	MIT License	PYTHON_PACKAGE	pip/apt	pipx	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-platformdirs	platformdirs	4.3.7	MIT License	PYTHON_PACKAGE	pip/apt	platformdirs	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pluggy	pluggy	1.5.0	MIT	PYTHON_PACKAGE	pip/apt	pluggy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pooch	pooch	1.8.2	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	pooch	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-prompt_toolkit	prompt_toolkit	3.0.51	BSD License	PYTHON_PACKAGE	pip/apt	prompt_toolkit	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-protobuf	protobuf	4.21.12	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	protobuf	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-psutil	psutil	7.0.0	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	psutil	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-ptyprocess	ptyprocess	0.7.0	ISC License (ISCL)	PYTHON_PACKAGE	pip/apt	ptyprocess	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-py-cpuinfo	py-cpuinfo	9.0.0	MIT	PYTHON_PACKAGE	pip/apt	py-cpuinfo	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyasyncore	pyasyncore	1.0.2	Python Software Foundation License Version 2	PYTHON_PACKAGE	pip/apt	pyasyncore	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pycairo	pycairo	1.27.0	LGPL-2.1-only OR MPL-1.1	PYTHON_PACKAGE	pip/apt	pycairo	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pycriu	pycriu	4.1.1	GPLv2	PYTHON_PACKAGE	pip/apt	pycriu	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pycryptodomex	pycryptodomex	3.20.0	BSD, Public Domain	PYTHON_PACKAGE	pip/apt	pycryptodomex	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pycups	pycups	2.0.4	GPLv2+	PYTHON_PACKAGE	pip/apt	pycups	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pydantic	pydantic	2.10.6	MIT License	PYTHON_PACKAGE	pip/apt	pydantic	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pydantic_core	pydantic_core	2.27.2	MIT	PYTHON_PACKAGE	pip/apt	pydantic_core	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pygments	Pygments	2.18.0	BSD-2-Clause	PYTHON_PACKAGE	pip/apt	Pygments	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pygobject	PyGObject	3.50.0	GNU LGPL	PYTHON_PACKAGE	pip/apt	PyGObject	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyicu	PyICU	2.14	MIT	PYTHON_PACKAGE	pip/apt	PyICU	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyinotify	pyinotify	0.9.6	MIT License	PYTHON_PACKAGE	pip/apt	pyinotify	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pykerberos	pykerberos	1.1.14	ASL 2.0	PYTHON_PACKAGE	pip/apt	pykerberos	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pylibacl	pylibacl	0.7.2	LGPL	PYTHON_PACKAGE	pip/apt	pylibacl	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pylint	pylint	3.3.4	GPL-2.0-or-later	PYTHON_PACKAGE	pip/apt	pylint	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pynacl	PyNaCl	1.5.0	Apache License 2.0	PYTHON_PACKAGE	pip/apt	PyNaCl	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyopengl	PyOpenGL	3.1.9	BSD License	PYTHON_PACKAGE	pip/apt	PyOpenGL	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyopenssl	pyOpenSSL	25.0.0	Apache License, Version 2.0	PYTHON_PACKAGE	pip/apt	pyOpenSSL	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyparsing	pyparsing	3.1.2	MIT License	PYTHON_PACKAGE	pip/apt	pyparsing	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyproject_hooks	pyproject_hooks	1.2.0	MIT License	PYTHON_PACKAGE	pip/apt	pyproject_hooks	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyqt5	PyQt5	5.15.11	GPL v3	PYTHON_PACKAGE	pip/apt	PyQt5	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyqt5_sip	PyQt5_sip	12.17.0	BSD-2-Clause	PYTHON_PACKAGE	pip/apt	PyQt5_sip	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyqt6	PyQt6	6.9.0	GPL v3	PYTHON_PACKAGE	pip/apt	PyQt6	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyqt6_sip	PyQt6_sip	13.10.0	BSD-2-Clause	PYTHON_PACKAGE	pip/apt	PyQt6_sip	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyqtgraph	pyqtgraph	0.13.7	MIT	PYTHON_PACKAGE	pip/apt	pyqtgraph	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyrfc3339	pyRFC3339	2.0.1	MIT	PYTHON_PACKAGE	pip/apt	pyRFC3339	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pysmbc	pysmbc	1.0.25.1	GPLv2+	PYTHON_PACKAGE	pip/apt	pysmbc	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pytest	pytest	8.3.5	MIT	PYTHON_PACKAGE	pip/apt	pytest	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-apt	python-apt	3.0.0	GNU GPL	PYTHON_PACKAGE	pip/apt	python-apt	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-augeas	python-augeas	1.2.0	UNDECLARED	PYTHON_PACKAGE	pip/apt	python-augeas	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-dateutil	python-dateutil	2.9.0	Dual License	PYTHON_PACKAGE	pip/apt	python-dateutil	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-debian	python-debian	1.0.1	GPL-2.0-or-later	PYTHON_PACKAGE	pip/apt	python-debian	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-dotenv	python-dotenv	1.0.1	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	python-dotenv	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-multipart	python-multipart	0.0.20	Apache Software License	PYTHON_PACKAGE	pip/apt	python-multipart	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-python-subunit	python-subunit	1.4.2	Apache-2.0 or BSD	PYTHON_PACKAGE	pip/apt	python-subunit	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pytz	pytz	2025.2	MIT	PYTHON_PACKAGE	pip/apt	pytz	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyxattr	pyxattr	0.8.1	LGPL	PYTHON_PACKAGE	pip/apt	pyxattr	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyxdg	pyxdg	0.28	GNU Lesser General Public License v2 (LGPLv2)	PYTHON_PACKAGE	pip/apt	pyxdg	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-pyyaml	PyYAML	6.0.2	MIT	PYTHON_PACKAGE	pip/apt	PyYAML	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-repo	repo	2	Apache Software License	PYTHON_PACKAGE	pip/apt	repo	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-requests	requests	2.32.3	Apache-2.0	PYTHON_PACKAGE	pip/apt	requests	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-rich	rich	13.9.4	MIT	PYTHON_PACKAGE	pip/apt	rich	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-scikit-learn	scikit-learn	1.4.2	new BSD	PYTHON_PACKAGE	pip/apt	scikit-learn	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-scipy	scipy	1.15.3	Copyright (c) 2001-2002 Enthought, Inc. 2003-2024, SciPy Dev	PYTHON_PACKAGE	pip/apt	scipy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-sentry-sdk	sentry-sdk	2.18.0	MIT	PYTHON_PACKAGE	pip/apt	sentry-sdk	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-setproctitle	setproctitle	1.3.6	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	setproctitle	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-setuptools	setuptools	78.1.1	UNDECLARED	PYTHON_PACKAGE	pip/apt	setuptools	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-shellingham	shellingham	1.5.4	ISC License	PYTHON_PACKAGE	pip/apt	shellingham	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-smmap	smmap	6.0.0	BSD	PYTHON_PACKAGE	pip/apt	smmap	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-sniffio	sniffio	1.3.1	MIT OR Apache-2.0	PYTHON_PACKAGE	pip/apt	sniffio	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-socksio	socksio	1.0.0	MIT License	PYTHON_PACKAGE	pip/apt	socksio	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-soupsieve	soupsieve	2.7	MIT License	PYTHON_PACKAGE	pip/apt	soupsieve	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-starlette	starlette	0.46.1	BSD License	PYTHON_PACKAGE	pip/apt	starlette	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-sympy	sympy	1.13.3	BSD	PYTHON_PACKAGE	pip/apt	sympy	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-systemd-python	systemd-python	235	LGPLv2+	PYTHON_PACKAGE	pip/apt	systemd-python	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-tables	tables	3.10.2	BSD 3-Clause License	PYTHON_PACKAGE	pip/apt	tables	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-testtools	testtools	2.7.2	MIT License	PYTHON_PACKAGE	pip/apt	testtools	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-threadpoolctl	threadpoolctl	3.1.0	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	threadpoolctl	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-tomli	tomli	2.2.1	MIT License	PYTHON_PACKAGE	pip/apt	tomli	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-tomlkit	tomlkit	0.13.2	MIT	PYTHON_PACKAGE	pip/apt	tomlkit	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-tornado	tornado	6.4.2	Apache-2.0	PYTHON_PACKAGE	pip/apt	tornado	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-tqdm	tqdm	4.67.1	MPL-2.0 AND MIT	PYTHON_PACKAGE	pip/apt	tqdm	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-trash-cli	trash-cli	0.24.5.26	GPL v2	PYTHON_PACKAGE	pip/apt	trash-cli	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-typeguard	typeguard	4.4.2	MIT	PYTHON_PACKAGE	pip/apt	typeguard	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-typer	typer	0.15.2	MIT License	PYTHON_PACKAGE	pip/apt	typer	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-typing_extensions	typing_extensions	4.13.2	PSF-2.0	PYTHON_PACKAGE	pip/apt	typing_extensions	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-uc-micro-py	uc-micro-py	1.0.3	MIT	PYTHON_PACKAGE	pip/apt	uc-micro-py	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-ufolib2	ufoLib2	0.17.1	Apache 2.0	PYTHON_PACKAGE	pip/apt	ufoLib2	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-unicodedata2	unicodedata2	15.1.0	Apache License 2.0	PYTHON_PACKAGE	pip/apt	unicodedata2	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-urllib3	urllib3	2.3.0	MIT License	PYTHON_PACKAGE	pip/apt	urllib3	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-userpath	userpath	1.9.2	MIT License	PYTHON_PACKAGE	pip/apt	userpath	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-uvicorn	uvicorn	0.32.0	BSD License	PYTHON_PACKAGE	pip/apt	uvicorn	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-uvloop	uvloop	0.21.0	MIT License	PYTHON_PACKAGE	pip/apt	uvloop	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-wcwidth	wcwidth	0.2.13	MIT	PYTHON_PACKAGE	pip/apt	wcwidth	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-webencodings	webencodings	0.5.1	BSD	PYTHON_PACKAGE	pip/apt	webencodings	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-websockets	websockets	15.0.1	BSD-3-Clause	PYTHON_PACKAGE	pip/apt	websockets	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-wheel	wheel	0.46.1	MIT	PYTHON_PACKAGE	pip/apt	wheel	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-wsproto	wsproto	1.2.0	MIT License	PYTHON_PACKAGE	pip/apt	wsproto	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-xdg	xdg	5	UNDECLARED	PYTHON_PACKAGE	pip/apt	xdg	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-yt-dlp	yt-dlp	2025.4.30	This is free and unencumbered software released into the pub	PYTHON_PACKAGE	pip/apt	yt-dlp	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-zipp	zipp	3.21.0	MIT License	PYTHON_PACKAGE	pip/apt	zipp	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+py-serving-zopfli	zopfli	0.2.3.post1	ASL	PYTHON_PACKAGE	pip/apt	zopfli	PyPI	-	symoneural-api	RUNTIME	YES	pip install -r restore/locks/serving-system.lock.txt	NO	NO
+pyenv-asicminer	asicminer virtualenv	31 pinned distributions	per-package; see the lock	PYTHON_ENVIRONMENT	pip	-	PyPI	-	asicminer	RUNTIME	YES	python3 -m venv <path>/.venv && <path>/.venv/bin/pip install -r restore/locks/asicminer.lock.txt	NO	NO
+pyenv-bento	bento virtualenv	69 pinned distributions	per-package; see the lock	PYTHON_ENVIRONMENT	pip	-	PyPI	-	bento	RUNTIME	YES	python3 -m venv <path>/.venv && <path>/.venv/bin/pip install -r restore/locks/bento.lock.txt	NO	NO
+pyenv-sigils	sigils virtualenv	30 pinned distributions	per-package; see the lock	PYTHON_ENVIRONMENT	pip	-	PyPI	-	sigils	RUNTIME	YES	python3 -m venv <path>/.venv && <path>/.venv/bin/pip install -r restore/locks/sigils.lock.txt	NO	NO
+pyenv-studio	studio virtualenv	69 pinned distributions	per-package; see the lock	PYTHON_ENVIRONMENT	pip	-	PyPI	-	studio	RUNTIME	YES	python3 -m venv <path>/.venv && <path>/.venv/bin/pip install -r restore/locks/studio.lock.txt	NO	NO
+pyenv-symoneural-ui	symoneural-ui virtualenv	120 pinned distributions	per-package; see the lock	PYTHON_ENVIRONMENT	pip	-	PyPI	-	symoneural-ui	RUNTIME	NO (component DISABLED)	python3 -m venv <path>/.venv && <path>/.venv/bin/pip install -r restore/locks/symoneural-ui.lock.txt	NO	NO
+pyenv-training	training virtualenv	79 pinned distributions	per-package; see the lock	PYTHON_ENVIRONMENT	pip	-	PyPI	-	training	RUNTIME	YES	python3 -m venv <path>/.venv && <path>/.venv/bin/pip install -r restore/locks/training.lock.txt	NO	NO

@@ -1,0 +1,16 @@
+APPLICATION_ID	DISPLAY_NAME	PARENT_APPLICATION_ID	UI_SOURCE	UI_SOURCE_PRESENT	ROUTE	API_ROUTES	PRIMARY_RUNTIME_COMPONENT	SECONDARY_COMPONENTS	ENGINE_DEPENDENCIES	PERSISTENT_STATE_IDS	AUTH_REQUIREMENT	PRODUCTION_STATUS	RESTORE_SMOKE_ID
+chat	SyMoNeuRaL Chat	-	site/chat.html	FILE	/chat.html	/api/chat	symoneural-api	-	symoneural-llm	accounts-db	none (public read)	PRODUCTION	smoke-chat
+image	SyMoNeuRaL Image	-	site/image.html	FILE	/image.html	/api/image	symoneural-api	-	symoneural-diffuse	image-output	none (public read)	PRODUCTION	smoke-image
+sigils	SyMoNeuRaL Sigils	-	site/sigils.html	FILE	/sigils.html	/api/sigils/*	symoneural-api	backend/apps/sigils	symoneural-diffuse	-	none (public read)	PRODUCTION	smoke-sigils
+remix	SyMoNeuRaL Remix	-	site/remix.html	FILE	/remix.html	/api/remix/*	symoneural-api	backend/apps/remix	symoneural-diffuse	-	none (public read)	PRODUCTION	smoke-remix
+ravencalc	SyMoNeuRaL RavenCalc	-	site/ravencalc.html	FILE	/ravencalc.html	/api/ravencalc/*	symoneural-api	backend/apps/ravencalc	-	-	none (public read)	PRODUCTION	smoke-ravencalc
+project	SyMoNeuRaL Project	-	site/project.html	FILE	/project.html	/api/project/*	symoneural-api	backend/apps/project	-	project-db	none (public read)	PRODUCTION	smoke-project
+coder	SyMoNeuRaL Coder	-	site/livestack/coder	ABSENT	/livestack/coder	/api/coder/*	symoneural-api	backend/apps/coder,backend/apps/authority	-	-	mutation-authority task grant; config-gated	PRODUCTION	smoke-coder
+studio	SyMoNeuRaL Studio	-	backend/apps/studio	DIR	/studio	/api/studio/*	symoneural-api	backend/apps/studio,backend/apps/authority	symoneural-llm	-	enabled() + token_ok() admission, then task authority	PRODUCTION	smoke-studio
+reinforce	SyMoNeuRaL Reinforce	studio	site/reinforce.html	FILE	/reinforce.html	/api/train/*	symoneural-api	backend/apps/studio/plugins/reinforce	symoneural-llm	training-adapters	none (public read)	PRODUCTION	smoke-reinforce
+exp	SyMoNeuRaL Exp	studio	site/exp.html	FILE	/exp	/api/exp/*	symoneural-api	backend/apps/studio/plugins/exp	-	-	none (public read)	PRODUCTION	smoke-exp
+live	SyMoNeuRaL Live	-	backend/apps/live	DIR	/livestack/live	/api/live/*	symoneural-api	backend/apps/live	-	-	none (public read)	PRODUCTION	smoke-live
+streamer	SyMoNeuRaL Streamer	-	site/streamer.html	FILE	/streamer.html	/api/streamer/*	symoneural-api	backend/apps/streamer	-	-	none (public read)	PRODUCTION	smoke-streamer
+dispatchos	SyMoNeuRaL DispatchOS	-	backend/apps/dispatchos	DIR	/demo/dispatchos	/api/dispatchos/*	symoneural-api	backend/apps/dispatchos	-	-	none (public read)	PRODUCTION	smoke-dispatchos
+miner	SyMoNeuRaL Miner	-	site/miner.html	FILE	/miner.html	/api/miner/*	symoneural-api	backend/apps/cryptominer,backend/apps/asicminer	symoneural-miner (GPL, disabled)	-	none (public read)	DISABLED	smoke-miner
+gateway	SyMoNeuRaL Gateway	miner	site/gateway.html	FILE	/gateway.html	/api/gateway/*	symoneural-gateway	backend/apps/gateway	-	-	none (public read)	DISABLED	-
