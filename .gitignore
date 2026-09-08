@@ -263,3 +263,29 @@ web/symoneural-web/build/symoneural-web
 # 618 GB after. Tracking archive/ would double 273 GB into .git objects and would put
 # model weights into history permanently, which docs/ops/EXPORTS.md rule 2 forbids.
 /archive
+
+# ---- The five first-party runtimes, promoted to top level 2026-09-08 ----------------
+# Owner instruction: each runtime gets its own folder at the repo root --
+# symoneural-llm/, symoneural-diffuse/, symoneural-listen/, symoneural-miner/,
+# symoneural-ui/ -- rather than living under engines/.
+#
+# Ignored, not tracked, and that was the explicit decision. These are DERIVED trees: 11 GB
+# of C++ and CUDA objects produced by tools/fork_engines.sh from vendored upstream source.
+# Rule /engines/ above already said "do not track a derived copy of an untracked source"
+# and the reasoning does not change because the directory moved up a level. What is tracked
+# is the recipe that rebuilds them and the notices that say what they are.
+#
+# The moment these appeared at the root they became five untracked directories that the
+# next `git add -A` would have swept into a commit. That is the accident this rule exists
+# to prevent, and it is why the rule landed in the same session as the move rather than
+# after it.
+#
+# engines/ still exists and now holds five compatibility symlinks pointing here, so the
+# running api.py -- which resolves engine paths at spawn time and has not been restarted --
+# keeps working. The shims come out once every path reference is updated and the API has
+# been restarted deliberately.
+/symoneural-llm/
+/symoneural-diffuse/
+/symoneural-listen/
+/symoneural-miner/
+/symoneural-ui/
