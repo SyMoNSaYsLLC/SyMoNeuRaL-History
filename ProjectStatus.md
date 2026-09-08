@@ -2,12 +2,19 @@
 
 ## Checkpoint
 
-Canonical current verified project-state authority, reconciled **2026-09-04 EDT** after the
-runtime first-party migration run.
+Canonical current verified project-state authority, reconciled **2026-09-08 EDT** after the
+home-directory consolidation, the runtime restructure and the application verification.
 Canonical repository: `/home/google/Symoneural`; branch: `main`.
-Accepted HEAD: **`aa1bdff2`** (this section reconciled 2026-09-04 ~15:5x EDT).
-Staged / stash counts: **0 / 0**.
-Backend suite at this SHA: **2281 passed, 0 failed, 55 skipped**, measured, not carried forward.
+Accepted HEAD: **`e6000070`** (this section reconciled 2026-09-08, measured at that SHA).
+Staged / stash counts: **0 / 0**. Tracked modifications: **0**.
+Backend suite at this SHA: **2340 passed, 0 failed, 59 skipped**, measured, not carried forward.
+
+The previous entry stood at `aa1bdff2` while the tree advanced **42 commits**, which is the
+third instance of the pattern this section warns about below. The `6da52783` tripwire passed
+throughout, correctly: it asserts the pinned SHA is an *ancestor* of HEAD, which stayed true.
+Ancestry is not currency, and the check cannot be made to mean currency without failing on
+every normal commit. What closes this instance is that the reconciliation is now part of the
+completion sequence rather than something remembered.
 
 **THIS FILE HAS NOW GONE STALE THE SAME WAY TWICE, AND THE PATTERN IS THE FINDING.** The entry
 below records `5427f2a5` standing while the tree advanced fifteen commits. That was re-pinned to
@@ -101,6 +108,64 @@ and its 24 test files are untouched; removal was not performed, and the two prem
 it -- that it parented a shell, and that it carried the miner runtime -- were both measured false.
 
 ## Current state
+
+### 2026-09-08 — consolidation, restructure, and the first declared-versus-enforced sweep
+
+**Layout.** Twenty-six loose directories under `/home/google` were reviewed and brought under
+the repo. Three destinations, one rule each: `docs/` for first-party writing (tracked),
+`external/` for third-party read-only material (was `references/`; 149 GB, gitignored),
+`archive/` for bulk (285 GB, gitignored). `archives/` became `releases/` because one letter
+of difference from `archive/` is a hazard. Every move was a same-filesystem rename and cost
+no disk: 618 GB used before, 618 GB after. Both detached build worktrees were relocated with
+`git worktree move`, so their metadata survived.
+
+**Nine runtime folders**, and the split is recorded rather than implied. Four are ours and
+tracked — `symoneural-api`, `symoneural-code`, `symoneural-audit`, and
+`symoneural-adaptive-fabric` which is PLANNED / NOT_IMPLEMENTED and says so in its first
+line. Five are derived from vendored upstream source, gitignored, rebuilt by
+`tools/fork_engines.sh`. `engines/` and `bin/` hold compatibility symlinks; they are
+temporary and removable once `symoneural-api` is restarted.
+
+**Licence position, per engine, enforced in code.** `fork_engines.sh` now stamps the
+SyMoNeuRaL licence over a permissive upstream with the upstream notice preserved, and
+**refuses** on a copyleft one. Measured: `llm`, `diffuse`, `listen` stamped;
+`miner` (kawpowminer) and `ui` (ComfyUI) refused, both GPL-3.0. A licence is a grant from
+the copyright holders, so editing `LICENSE` would remove a notice the project must keep
+rather than change the grant. **`cpp-kawpow` 1.1.0 is Apache-2.0** and carries its own
+progpow test vectors, so a first-party miner is buildable over it: the GPL is in the
+kawpowminer *shell*, not in the algorithm.
+
+**Application verification — 22 declared surfaces read against the running box.** 19 wired
+and answering, 3 offline by configuration and naming their own remedy. Six
+declared-versus-enforced defects found and **all six fixed**: `project`'s docs page said
+public and enforced 401; published rate limits were not enforced at all and three of four
+hourly figures disagreed with the table beside them; `_require_local` checked three proxy
+headers and missed `Forwarded`, `Via`, `X-Forwarded-Proto`; the rack reported `train` ready
+while it answered 503; `POST /api/rack/power/{unit_id}` leaked a 422 before its gate; nine
+`/local/*` routes had no owner because the totality test looked only at `/api/*`.
+
+**Two registry errors, found by reading it against the source.** `voice` declared the
+language engine for a speech-recognition surface that executes `symoneural-listen`; `image`
+and `sigils` declared `symoneural-image-engine`, an *alias* of `symoneural-diffuse`, while
+the component ID itself was absent from the registry's own allowlist — so the validator
+would have refused the real name and did accept the nickname. `RUNTIMES` is now split into
+`PROCESS_RUNTIMES` and `LOGICAL_RUNTIMES`, because mixing them with nothing to tell them
+apart is what let both survive.
+
+**`COMPONENT-MAP.tsv`: 14 rows → 17.** `symoneural-listen` and `symoneural-miner` were both
+built and running and absent from it; `symoneural-audit` is new. Every `SOURCE_ROOT` was
+stale after the promotion, and one pointed at a Desktop path this session had itself broken.
+
+**Move-fragile path resolution is now counted.** `symoneural-audit` reports **81** files
+computing a repo root by counting parents with no marker assertion, plus 5 hardcoded
+checkout paths and 21 stale directory names. `test_path_fragility.py` pins 81 as a ratchet:
+it may fall, never rise. Not repaired — counted, which is the difference between fixing the
+one we tripped over and knowing how many are left.
+
+**Measured at this checkpoint:** suite 2340 passed / 0 failed / 59 skipped;
+`symoneural-api` and `symoneural-web` active and enabled, site 302; `symoneural-gateway`
+inactive and disabled with its source intact.
+
 
 The September 3 repository baseline is **VERIFIED** after owner reconciliation of the Claude display
 setting and Codex Desktop's imported AGENTS pointer. Image and text-generated Sigils were restored and
@@ -383,6 +448,28 @@ demo entitlements, Studio runtime integration, and applicable release/custody ch
 not be inferred from HTTP 200 page shells, files on disk, model renaming, screenshots, or service PIDs alone.
 
 ## Open blockers
+
+**2026-09-08.**
+
+- **`symoneural-api` has not been restarted**, so `backend/api.py` is running pre-restructure
+  paths in memory and the `engines/` and `bin/` compatibility symlinks cannot be deleted yet.
+  Needs root. Until then those shims are load-bearing rather than transitional.
+- **Caddy derename step 2** — `User=caddy`, `WorkingDirectory=/var/lib/caddy`.
+  `/var/lib/caddy/.local/share/caddy/certificates` holds **live Let's Encrypt production**
+  state with a certificate valid to 2026-11-15. It must be **copied and chowned, never
+  moved**; a move loses it and the next start re-issues, spending rate limit on a public
+  site. Step 1 (config path) is done and live.
+- **Two engines cannot be made first-party** by any edit: `symoneural-miner` and
+  `symoneural-ui` are GPL-3.0. The routes forward are a first-party miner over Apache-2.0
+  `cpp-kawpow`, and a render surface over the already-MIT `symoneural-diffuse`.
+- **81 files resolve a repo root by counting parents** with no marker assertion. Ratcheted,
+  not repaired.
+- **`Downloads/` is unswept** — 34 GB, 408 entries, and it holds personal material, so it
+  needs a classified pass rather than a move.
+- **Two directories are root-owned** and could not be relocated: the cutover-rollback set
+  (which holds a live credential file and is better left in place) and `AI_PURGE_PSEUDOFS`
+  (a byte-identical duplicate of diagnostics already adopted).
+
 
 Codex's answer-only boundary and R-188 isolation block full multi-coder exposure/acceptance.
 Studio and Miner have separate runtime/configuration gaps: **Studio's is a vendored runtime**
