@@ -36,7 +36,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/references/contrib"
-DST="$ROOT/engines"
+DST="$ROOT"                     # the five runtimes live at the repo root as of 2026-09-08
 JOBS="$(nproc)"
 
 # ---- ELF hardening, applied to every engine ------------------------------------------------
@@ -407,7 +407,7 @@ fork_diffuse() {
     # hand in the fork, because the rsync above re-syncs the tree on every run and would
     # wipe a manual edit. Asserted, not hoped: if an upstream refresh moves this string the
     # build stops rather than quietly shipping the old name again.
-    local banner='engines/symoneural-diffuse/examples/common/common.cpp'
+    local banner='symoneural-diffuse/examples/common/common.cpp'
     banner="$dst/examples/common/common.cpp"
     if grep -q '"stable-diffusion.cpp version "' "$banner"; then
         sed -i 's/"stable-diffusion.cpp version "/"SyMoNeuRaL Diffuse version "/' "$banner"

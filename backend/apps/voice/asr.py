@@ -2,7 +2,7 @@
 
 Everything in here is CPU work and none of it touches `scripts/gpu-governor.sh`. That is not
 a preference, it is what the build on this box is:
-`engines/symoneural-listen/build/CMakeCache.txt` carries `GGML_CUDA:BOOL=OFF`, set by
+`symoneural-listen/build/CMakeCache.txt` carries `GGML_CUDA:BOOL=OFF`, set by
 `tools/fork_engines.sh listen` and argued there. The evidence path named here until
 2026-09-04 was under `contrib/`, which no longer exists -- a claim whose source cannot be
 opened is the thing this file's own §2.2 warning is about.

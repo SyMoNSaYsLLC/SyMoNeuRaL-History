@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Audit every runtime engine: artefact identity, announced identity, real work.
 
-Five engines live under `engines/`. `ProjectStatus.md` records that three are
+Five engines live in their own top-level directories -- `symoneural-llm/`,
+`symoneural-diffuse/`, `symoneural-listen/`, `symoneural-miner/`, `symoneural-ui/`
+-- promoted out of `engines/` on 2026-09-08. `ProjectStatus.md` records that three are
 first-party and one is not, and — this is the gap this tool exists to close —
 that `symoneural-diffuse` has *"artefacts; identity not audited"*. Identity was
 audited once, by hand, on one engine: `aa1bdff2` found the language server
@@ -216,7 +218,7 @@ def audit_identity(spec: dict, do_sha: bool) -> dict:
         out["note"] = spec.get("note", "")
         return out
 
-    path = ROOT / "engines" / spec["id"] / "build" / spec.get("bindir", "bin") / spec["binary"]
+    path = ROOT / spec["id"] / "build" / spec.get("bindir", "bin") / spec["binary"]
     out["built"] = path.is_file()
     if not out["built"]:
         out["note"] = f"declared binary absent at {path.relative_to(ROOT)}"
@@ -295,9 +297,9 @@ def measure_listen(repeats: int) -> dict:
     of speech transcribed per second of compute. CPU-only, so this measurement does
     not contend with anything on the card and does not need the governor.
     """
-    binary = ROOT / "engines" / "symoneural-listen" / "build" / "bin" / "symoneural-listen"
+    binary = ROOT / "symoneural-listen" / "build" / "bin" / "symoneural-listen"
     weight = ROOT / "backend" / "models" / "whisper" / "symoneural-listen-base-en.bin"
-    sample = ROOT / "engines" / "symoneural-listen" / "samples" / "jfk.wav"
+    sample = ROOT / "symoneural-listen" / "samples" / "jfk.wav"
     if not all(p.exists() for p in (binary, weight, sample)):
         return {"skipped": "binary, weight or sample absent",
                 "missing": [str(p.relative_to(ROOT)) for p in (binary, weight, sample)

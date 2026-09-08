@@ -174,7 +174,7 @@ class EngineAuditCoversEveryEngine(unittest.TestCase):
     def test_every_engine_directory_is_declared(self):
         # The silent failure for this tool: a sixth engine appears under engines/
         # and the audit reports "5 of 5 built" without ever looking at it.
-        on_disk = {p.name for p in (ROOT / "engines").iterdir() if p.is_dir()}
+        on_disk = {p.name for p in ROOT.iterdir() if p.is_dir() and p.name.startswith("symoneural-")}
         declared = {e["id"] for e in probe_engines.ENGINES}
         self.assertEqual(set(), on_disk - declared,
                          f"engines/ contains {sorted(on_disk - declared)} which "

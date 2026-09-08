@@ -45,7 +45,7 @@ DIFFUSE = "bin/symoneural-diffuse"
 RETIRED = ("llama-server", "sd-cli", "llama.cpp", "stable-diffusion.cpp",
            "ComfyUI/main.py")
 #: `ComfyUI/main.py` joined that list on 2026-08-21. The render UI is now
-#: `engines/symoneural-ui`, produced by `tools/fork_render_ui.sh` from the vendored tree, and
+#: `symoneural-ui`, produced by `tools/fork_render_ui.sh` from the vendored tree, and
 #: the directory that pattern named is not on disk under any spelling -- so the `comfy)`
 #: fallback would have matched nothing while reporting success, which is this file's subject.
 
@@ -154,7 +154,15 @@ class TheGovernorTracksTheManifestedEngine(unittest.TestCase):
         self.assertNotRegex(CODE, r"\b[0-9a-f]{64}\b",
                             "gpu-governor.sh contains what looks like a sha256; artifact "
                             "identity belongs in ops/manifests/, read via artifact.sh")
-        engine_paths = set(re.findall(r"engines/symoneural-llm[A-Za-z0-9._/-]*", CODE))
+        # Anchored on `$ROOT/` so this counts DIRECTORY spellings, which is what a second
+        # identity source would look like. It must not also match the `bin/symoneural-llm`
+        # pkill patterns -- those are the binary tail, and the test above already checks
+        # them against the manifest. The anchor used to be `engines/`; the 2026-09-08
+        # promotion of the runtimes to the repo root moved it, and a blanket path rewrite
+        # briefly dropped the anchor altogether, which made this assertion count two
+        # unrelated things and fail. A rename that edits an assertion changes what is
+        # being checked, which is worse than breaking a path.
+        engine_paths = set(re.findall(r"\$ROOT/symoneural-llm[A-Za-z0-9._/-]*", CODE))
         self.assertLessEqual(len(engine_paths), 1,
                              f"the governor names the LLM engine by {len(engine_paths)} "
                              f"different paths: {sorted(engine_paths)}. One is the pattern; "

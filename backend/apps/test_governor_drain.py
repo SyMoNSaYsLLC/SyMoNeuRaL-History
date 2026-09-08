@@ -52,11 +52,11 @@ exit 0
 # Garrett's own ComfyUI holding a CUDA context with nothing in it. The second is the 222 MiB
 # that took the site down, and it is a *foreign* process -- not one of our surfaces, not
 # evictable, and not something the governor may ignore either.
-WARM_CHAT = "/home/google/Symoneural/engines/symoneural-llm/build/bin/symoneural-llm, 8340"
+WARM_CHAT = "/home/google/Symoneural/symoneural-llm/build/bin/symoneural-llm, 8340"
 IDLE_COMFY = "/home/google/Symoneural/references/ComfyUI (1) (1)/ComfyUI/.venv/bin/python3, 222"
 # ComfyUI resident with its weights unloaded -- what `POST /free` leaves behind, and the
 # state `apps/studio/comfy.py` waits for after every render.
-FREED_COMFY = "/home/google/Symoneural/engines/symoneural-ui/main.py, 666"
+FREED_COMFY = "/home/google/Symoneural/symoneural-ui/main.py, 666"
 
 
 class FakeCard(unittest.TestCase):
@@ -192,14 +192,14 @@ class ScopedDrainTests(FakeCard):
 
     def test_our_process_let_go_while_another_tenant_is_warm(self):
         rc, err = self.drain(compute=WARM_CHAT, used=9772,
-                             pat="engines/symoneural-ui/main.py")
+                             pat="symoneural-ui/main.py")
         self.assertEqual(rc, 0, f"scoped drain waited on somebody else's memory:\n{err}")
         self.assertIn("settled at 0 MiB", err)
-        self.assertIn("engines/symoneural-ui/main.py", err)
+        self.assertIn("symoneural-ui/main.py", err)
 
     def test_our_process_has_not_let_go(self):
-        rc, err = self.drain(compute="/x/engines/symoneural-ui/main.py, 11800\n" + WARM_CHAT,
-                            used=13600, pat="engines/symoneural-ui/main.py")
+        rc, err = self.drain(compute="/x/symoneural-ui/main.py, 11800\n" + WARM_CHAT,
+                            used=13600, pat="symoneural-ui/main.py")
         self.assertEqual(rc, 1)
         self.assertIn("11800 MiB", err)
 

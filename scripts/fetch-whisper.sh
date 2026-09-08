@@ -48,7 +48,7 @@ ROOT="$(cd "$HERE/.." && pwd)"
 #
 # The two canonical tools now own the two halves, and both are tracked:
 #
-#     tools/fork_engines.sh listen     builds engines/symoneural-listen, under our names
+#     tools/fork_engines.sh listen     builds symoneural-listen, under our names
 #     scripts/fetch-models.sh          fetches the weight under its house name
 #
 # This wrapper runs them in that order so an old command line still does the right thing.
@@ -57,8 +57,8 @@ set -euo pipefail
 echo "fetch-whisper.sh is superseded; running the two tools that replaced it."
 echo
 
-if [ -x "$ROOT/engines/symoneural-listen/build/bin/symoneural-listen" ]; then
-  echo "==> engine already built at engines/symoneural-listen"
+if [ -x "$ROOT/symoneural-listen/build/bin/symoneural-listen" ]; then
+  echo "==> engine already built at symoneural-listen"
 else
   echo "==> building the engine"
   "$ROOT/tools/fork_engines.sh" listen
@@ -78,6 +78,6 @@ fi
 
 echo
 echo "done. Verify with a real transcription rather than a file listing:"
-echo "  engines/symoneural-listen/build/bin/symoneural-listen \\"
+echo "  symoneural-listen/build/bin/symoneural-listen \\"
 echo "    -m $WEIGHT \\"
-echo "    -f engines/symoneural-listen/samples/jfk.wav -nt"
+echo "    -f symoneural-listen/samples/jfk.wav -nt"

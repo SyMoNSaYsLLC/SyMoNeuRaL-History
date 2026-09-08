@@ -192,7 +192,7 @@ drain() {
 # These are anchored at $ROOT and the `pkill` patterns below are not, deliberately. The two
 # are asking different questions. `pkill` is aimed at a process we are about to stop and a
 # tail match is the safer, more forgiving end of that; the probe is answering "is OUR
-# surface resident", and a bare `engines/symoneural-ui/main.py` would answer yes to any
+# surface resident", and a bare `symoneural-ui/main.py` would answer yes to any
 # other checkout of this repo on the same box. Anchoring can only ever produce a false
 # *negative* -- we conclude nothing is running when something is -- and that failure lands
 # on `drain`, which reads the card itself and refuses the handoff. A false positive has no
@@ -201,8 +201,8 @@ drain() {
 # api.py:1151 and :2397 both spawn their engine by absolute path (LLM_ENGINE, DIFFUSE_ENGINE
 # are ROOT-relative Paths) and symoneural-ui.sh does the same, so the anchored form is what
 # is actually in the process table -- measured here 2026-08-21:
-#   /home/google/Symoneural/engines/symoneural-ui/.venv/bin/python \
-#       /home/google/Symoneural/engines/symoneural-ui/main.py --listen 127.0.0.1 --port 8188
+#   /home/google/Symoneural/symoneural-ui/.venv/bin/python \
+#       /home/google/Symoneural/symoneural-ui/main.py --listen 127.0.0.1 --port 8188
 #
 # ## The chat pattern is the manifested runtime, and it is a literal ON PURPOSE
 #
@@ -223,11 +223,11 @@ drain() {
 # beyond this one, and no hash at all.
 surface_pattern() {
   case "${1:-}" in
-    chat)  echo "$ROOT/engines/symoneural-llm/" ;;
-    image|sigil) echo "$ROOT/engines/symoneural-diffuse/" ;;
-    comfy) echo "$ROOT/engines/symoneural-ui/main.py" ;;
+    chat)  echo "$ROOT/symoneural-llm/" ;;
+    image|sigil) echo "$ROOT/symoneural-diffuse/" ;;
+    comfy) echo "$ROOT/symoneural-ui/main.py" ;;
     train) echo '[t]rain_lora.py' ;;
-    *)     echo "$ROOT/engines/symoneural-llm/|$ROOT/engines/symoneural-diffuse/" ;;
+    *)     echo "$ROOT/symoneural-llm/|$ROOT/symoneural-diffuse/" ;;
   esac
 }
 
@@ -292,7 +292,7 @@ evict() {
       # Never a bare pkill first: symoneural-ui.sh POSTs /free and waits for the drain, and
       # the process exiting is not the memory coming back.
       comfy) "$HERE/scripts/symoneural-ui.sh" stop >/dev/null 2>&1 \
-               || pkill -f 'engines/symoneural-ui/main.py' 2>/dev/null || true ;;
+               || pkill -f 'symoneural-ui/main.py' 2>/dev/null || true ;;
       miner) python3 -c 'import sys; sys.path.insert(0, "'"$ROOT"'/backend/apps"); import cryptominer; cryptominer.stop()' \
                >/dev/null 2>&1 \
                || pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null || true ;;

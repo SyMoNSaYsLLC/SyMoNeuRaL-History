@@ -3,7 +3,7 @@
 Nothing here is a template copied from a tutorial. Every class name, every input name and
 every filename below was read out of the installed node set on this box:
 
-    engines/symoneural-ui/.venv/bin/python  ->  folder_paths + custom_nodes/ComfyUI-GGUF
+    symoneural-ui/.venv/bin/python  ->  folder_paths + custom_nodes/ComfyUI-GGUF
     UnetLoaderGGUF      required: unet_name                  -> MODEL
     DualCLIPLoaderGGUF  required: clip_name1, clip_name2, type -> CLIP
     VAELoader           required: vae_name                   -> VAE

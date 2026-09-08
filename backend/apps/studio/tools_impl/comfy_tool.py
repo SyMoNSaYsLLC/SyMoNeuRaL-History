@@ -102,7 +102,7 @@ async def execute(prompt_graph: dict, *, timeout_s: int = 900,
     if not up.get("up"):
         return {"ok": False, "error": "comfyui_down", "url": client.url, "detail": (
             "ComfyUI is not answering. Start it with `scripts/symoneural-ui.sh start` (it runs "
-            "under engines/symoneural-ui/.venv on 127.0.0.1:8188). It is not a system service and is not "
+            "under symoneural-ui/.venv on 127.0.0.1:8188). It is not a system service and is not "
             "expected to be up between jobs."), "probe": up}
 
     try:

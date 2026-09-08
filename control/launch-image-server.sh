@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The image surface. Like chat, the API owns the engine (`engines/symoneural-diffuse`) and
+# The image surface. Like chat, the API owns the engine (`symoneural-diffuse`) and
 # runs it under the governor -- starting "the image server" means having the API up.
 # Generating evicts chat from the card; that is by design, one GPU job at a time.
 #

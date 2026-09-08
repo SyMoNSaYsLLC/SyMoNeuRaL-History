@@ -93,8 +93,8 @@ else
   # A missing or malformed manifest is a tooling problem, not a statement about this machine's
   # ability to serve, so it is a note. The path check below still happens.
   note "ops/manifests/llm-engine.json unreadable — falling back to a presence check"
-  for e in engines/symoneural-llm/build/bin/symoneural-llm \
-           engines/symoneural-llm/build/bin/symoneural-llm-cli; do
+  for e in symoneural-llm/build/bin/symoneural-llm \
+           symoneural-llm/build/bin/symoneural-llm-cli; do
     [ -x "$e" ] && engine_links_ok "$e" "$e" && pass "$e (unverified: no manifest)" \
                 || bad "$e not present"
   done
@@ -102,7 +102,7 @@ fi
 
 # The diffuse engine has no manifest yet. Saying so is the point: an unverified artifact that
 # reports the same "ok" as a verified one teaches you to read the two as equivalent.
-DIFFUSE=engines/symoneural-diffuse/build/bin/symoneural-diffuse
+DIFFUSE=symoneural-diffuse/build/bin/symoneural-diffuse
 if [ -x "$DIFFUSE" ]; then
   engine_links_ok "$DIFFUSE" "$DIFFUSE" && note "$DIFFUSE present but UNVERIFIED — no manifest in ops/manifests/"
 else

@@ -83,7 +83,7 @@ TERMINAL = frozenset({"execution_success", "execution_error", "execution_interru
 # path ComfyUI actually runs from, passed to `gpu-governor.sh drain <substring>`, so the
 # question is "has OUR server let go" and not "is the whole card empty" -- chat is often
 # legitimately warm at ~8.1 GiB and the second question would answer no about a healthy box.
-COMFY_PROC = "engines/symoneural-ui/main.py"
+COMFY_PROC = "symoneural-ui/main.py"
 
 
 def base_url() -> str:

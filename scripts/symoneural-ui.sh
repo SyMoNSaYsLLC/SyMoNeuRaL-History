@@ -6,7 +6,7 @@
 #   symoneural-ui.sh status    up/down, pid, port, and what the card looks like
 #   symoneural-ui.sh log       recent server output
 #
-# The server is `engines/symoneural-ui`, produced by `tools/fork_render_ui.sh` from the
+# The server is `symoneural-ui`, produced by `tools/fork_render_ui.sh` from the
 # vendored upstream tree in `references/`. It is a derived tree and gitignored, exactly like
 # the two engines beside it: the tracked artefact is the script that makes it. If it is not
 # on disk, `tools/fork_render_ui.sh` puts it there -- do not go looking for it in
@@ -33,7 +33,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
-COMFY="$ROOT/engines/symoneural-ui"
+COMFY="$ROOT/symoneural-ui"
 VENV="$COMFY/.venv/bin/python"
 RUN="$ROOT/run"; mkdir -p "$RUN"
 PIDFILE="$RUN/symoneural-ui.pid"
@@ -58,7 +58,7 @@ case "${1:-status}" in
     [ -x "$VENV" ] || { echo "no server at $COMFY -- run tools/fork_render_ui.sh" >&2; exit 1; }
     # Relink our custom node before every start. engines/ is gitignored in full, so the
     # source of truth for `symoneural_gguf` lives in the repo and this is what puts it where
-    # the server looks. Delete engines/symoneural-ui and re-fork it and the node comes back
+    # the server looks. Delete symoneural-ui and re-fork it and the node comes back
     # on the next start rather than having to be remembered.
     # A loop over the directory rather than a named pack: `symoneural_cleanroom` was added
     # second and a hardcoded name would have left it unlinked, which fails as "the node is

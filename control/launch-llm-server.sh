@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The chat/LLM surface. It is NOT a separate daemon you start: the API owns the engine and
-# spawns `engines/symoneural-llm` on demand, under the GPU governor.
+# spawns `symoneural-llm` on demand, under the GPU governor.
 #
 #   launch-llm-server.sh status    what the card and the chat surface are doing
 #   launch-llm-server.sh warm      send one tiny request so the weights become resident

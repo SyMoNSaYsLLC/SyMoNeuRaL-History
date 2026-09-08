@@ -91,7 +91,7 @@ _AG_SECRET_KEYS='SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|SPOTIFY_REDIRECT_URI|SY
 # Pruning is never silent. Every entry that exists under the root is printed on the summary
 # line as "not scanned", because a scan that quietly skipped 115 GiB reads as "clean".
 # `engines` is here and `ComfyUI` is not, and that swap is the whole of a 2026-08-21 fix.
-# The render UI was a clone at the repo root called `ComfyUI/`; it is now `engines/symoneural-ui`,
+# The render UI was a clone at the repo root called `ComfyUI/`; it is now `symoneural-ui`,
 # beside the two forked C++ engines, all three produced by scripts in `tools/` and all three
 # gitignored under `/engines/`. An entry here that matches no directory prunes nothing and says
 # nothing about it -- the summary line only names entries that exist -- so the scan silently

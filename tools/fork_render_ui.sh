@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Produce the SyMoNeuRaL render UI (`engines/symoneural-ui`) from the vendored upstream
+# Produce the SyMoNeuRaL render UI (`symoneural-ui`) from the vendored upstream
 # ComfyUI tree in `references/`.
 #
 #     tools/fork_render_ui.sh              # copy, fix up, verify
@@ -84,7 +84,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # into it, while naming the tree as an input is what this whole script is. Same spelling
 # `tools/fork_engines.sh` uses for `references/contrib`.
 SRC="$ROOT/references/ComfyUI"
-DST="$ROOT/engines/symoneural-ui"
+DST="$ROOT/symoneural-ui"
 NODE_SRC="$ROOT/backend/apps/studio/custom_nodes/symoneural_gguf"
 
 VERIFY_ONLY=0
@@ -99,7 +99,7 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   [ -f "$SRC/main.py" ] || die "$SRC has no main.py; that is not the tree this expects"
 
   mkdir -p "$(dirname "$DST")"
-  say "copying $(du -sh --exclude=.git "$SRC" 2>/dev/null | cut -f1) from references/ -> engines/symoneural-ui"
+  say "copying $(du -sh --exclude=.git "$SRC" 2>/dev/null | cut -f1) from references/ -> symoneural-ui"
   # --delete makes this idempotent: a second run converges rather than accumulating. That
   # also means any hand edit inside $DST is wiped, which is why every fixup below is a step
   # in this script and not something done once at a shell prompt.
@@ -277,4 +277,4 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 say ""
-say "engines/symoneural-ui is ready. Start it with: scripts/symoneural-ui.sh start"
+say "symoneural-ui is ready. Start it with: scripts/symoneural-ui.sh start"

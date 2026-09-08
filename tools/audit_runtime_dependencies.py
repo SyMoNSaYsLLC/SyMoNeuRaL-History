@@ -47,10 +47,10 @@ LOCKS = (
 )
 
 RUNTIME_HOMES = (
-    "engines/symoneural-llm",
-    "engines/symoneural-diffuse",
-    "engines/symoneural-ui",
-    "engines/symoneural-listen",
+    "symoneural-llm",
+    "symoneural-diffuse",
+    "symoneural-ui",
+    "symoneural-listen",
 )
 
 IMPORT_AREAS = {

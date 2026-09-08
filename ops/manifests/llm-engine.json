@@ -18,14 +18,14 @@
     "MANIFEST.txt. This JSON is the half that lives in Git and points at it."
   ],
   "artifact_role": "inference-engine-runtime-tree",
-  "relative_path": "engines/symoneural-llm/build/bin",
-  "canonical_absolute_path": "/home/google/Symoneural/engines/symoneural-llm/build/bin",
+  "relative_path": "symoneural-llm/build/bin",
+  "canonical_absolute_path": "/home/google/Symoneural/symoneural-llm/build/bin",
   "path_is_directory": true,
   "entry_count": 25,
   "total_size_bytes": 89213713,
   "server": {
     "name": "symoneural-llm",
-    "relative_path": "engines/symoneural-llm/build/bin/symoneural-llm",
+    "relative_path": "symoneural-llm/build/bin/symoneural-llm",
     "size_bytes": 17952,
     "sha256": "619b918f3f0ac3629c1270320460893627fb8c78d0d4cb22f08e827380d0f35a",
     "build_id": "22570837ba0a18e8a7e0dcca832f40401da5c805",
@@ -39,12 +39,12 @@
   },
   "cli": {
     "name": "symoneural-llm-cli",
-    "relative_path": "engines/symoneural-llm/build/bin/symoneural-llm-cli",
+    "relative_path": "symoneural-llm/build/bin/symoneural-llm-cli",
     "size_bytes": 1339456,
     "sha256": "4216a62be146264b62d229af4008147f4c3a78c546cce5de05f69c84eafeac8e",
     "build_id": "cbfad125b865cb652482d42770a3c4760c9c3099",
     "rpath": "",
-    "runpath": "/home/google/Symoneural/engines/symoneural-llm/build/bin:",
+    "runpath": "/home/google/Symoneural/symoneural-llm/build/bin:",
     "generation": "2026-08-20 -- RETAINED, not promoted",
     "same_build_as_server": false,
     "skew_note": "bounded accepted skew; see docs/ops/SERVING-PATH.md. No matching CLI could be built."
@@ -56,7 +56,7 @@
     "bundle_sha256": "54a124a7c6b968b1f9f0938edcc6f218fdd83da9f646dba0b333e5b09d3a7afa",
     "bundle_manifest": "archives/symoneural-llm-engine-619b918f.MANIFEST.txt",
     "bundle_is_deterministic": true,
-    "restore": "tar -C engines/symoneural-llm/build -xzf archives/symoneural-llm-engine-619b918f.tar.gz",
+    "restore": "tar -C symoneural-llm/build -xzf archives/symoneural-llm-engine-619b918f.tar.gz",
     "verify_after_restore": "ops/verify-runtime.sh --artifacts",
     "not_custody": "the Handshake 1A rollback tree is audit evidence and is NOT a release store",
     "distribution": {
@@ -94,7 +94,7 @@
       "immutable": "one asset per tag; a corrected artifact gets a NEW tag naming its new hash and never replaces an existing one",
       "verified_by_independent_download": "2026-08-29"
     },
-    "extract_into": "engines/symoneural-llm/build",
+    "extract_into": "symoneural-llm/build",
     "restore_note": "`restore` below is the LOCAL convenience form and assumes archives/ is already populated. A rebuilt machine has no archives/ -- it fetches the bundle to wherever it likes -- so tooling must use `extract_into` with the path it actually downloaded to. Found by reconstructing from a fresh clone: the recorded command worked only on a machine that already had the artifact, which is the one machine that does not need it."
   },
   "source_reproducible": false,

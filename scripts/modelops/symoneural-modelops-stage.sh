@@ -47,7 +47,7 @@ STAGING_REL="backend/models/staging"
 # port could be answered by -- or could answer for -- the running Qwen server, and then the
 # smoke proves nothing about the candidate. A separate port is the cheap half of isolation.
 SMOKE_PORT="${SYMONEURAL_SMOKE_PORT:-8099}"
-ENGINE="engines/symoneural-llm/build/bin/symoneural-llm"
+ENGINE="symoneural-llm/build/bin/symoneural-llm"
 
 # ---------------------------------------------------------------------------- guardrail 1
 # Run from the repo root or not at all. Every path below is relative, and a script like this

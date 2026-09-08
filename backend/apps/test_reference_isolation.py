@@ -14,7 +14,7 @@ enforcement is that somebody remembers it is not a rule, it is a hope.
 **Why this test exists at all.** On 2026-09-08 an htop capture filtered on `symoneural` showed
 about thirty lines of a language runtime and read, reasonably, as third-party code executing
 on the box. It was not: one process, thread-expanded, and the process was
-`engines/symoneural-llm`, first-party, loopback-bound. But *nothing could answer the question*
+`symoneural-llm`, first-party, loopback-bound. But *nothing could answer the question*
 without hand-inspecting `/proc`, and "I checked and it's fine" is precisely the assurance this
 repo has learned not to accept. So the answer is a check that fails.
 
