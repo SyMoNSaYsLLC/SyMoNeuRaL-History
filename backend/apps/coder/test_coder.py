@@ -339,7 +339,7 @@ class TestDenylist(Base):
         """The cap must bind DURING the walk, not after it.
 
         The default workspace is the repo root, and `rglob("*")` there descends into
-        backend/models/ (40 GB), references/ (8.5 GB), contrib/ and three venvs. Draining
+        backend/models/ (40 GB), external/ (8.5 GB), contrib/ and three venvs. Draining
         the generator into `sorted()` and then trimming to the cap returns the same answer
         and does all the work first, which is the "guard that protects nothing" shape.
 

@@ -7,10 +7,10 @@
 #   symoneural-ui.sh log       recent server output
 #
 # The server is `symoneural-ui`, produced by `tools/fork_render_ui.sh` from the
-# vendored upstream tree in `references/`. It is a derived tree and gitignored, exactly like
+# vendored upstream tree in `external/`. It is a derived tree and gitignored, exactly like
 # the two engines beside it: the tracked artefact is the script that makes it. If it is not
 # on disk, `tools/fork_render_ui.sh` puts it there -- do not go looking for it in
-# `references/`, which is read by people and never by code.
+# `external/`, which is read by people and never by code.
 #
 # Loopback only, deliberately. The public surface is FastAPI's -- the Studio page reaches
 # this server through `/studio/comfy/*`, which is proxied by `backend/apps/studio`.

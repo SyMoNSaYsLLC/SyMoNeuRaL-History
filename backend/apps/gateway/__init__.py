@@ -1,6 +1,6 @@
 """SyMoNeuRaL Gateway -- stablecoin licensing and validation, on TRON.
 
-From the proof of concept at `references/Projects_Crypto/TRX_POC (1).pdf`: SyMoN SaYs LLC,
+From the proof of concept at `external/Projects_Crypto/TRX_POC (1).pdf`: SyMoN SaYs LLC,
 a Global Stablecoin Licensing & Validation Gateway. A visitor pays a micro-licensing fee in
 USDT (TRC-20) for a custom Debian/Ubuntu workspace compilation; a local TronWeb daemon
 validates the environment configuration and, once the payment confirms, unlocks the compiled

@@ -584,7 +584,7 @@ def list_dir(path: str = ".", *, token: str | None, peer: str | None,
     try:
         # The cap is applied DURING the walk, not after it. `sorted(walker)` would drain
         # the whole generator first, which on the default workspace -- the repo root --
-        # means rglob descending into backend/models/ (40 GB), references/ (8.5 GB),
+        # means rglob descending into backend/models/ (40 GB), external/ (8.5 GB),
         # contrib/ and three venvs before the cap is consulted even once. A limit checked
         # after the expensive part is the shape HANDOVER §3.0d catalogues: it reads as a
         # guard and protects nothing. Collect up to the cap, then sort the survivors.

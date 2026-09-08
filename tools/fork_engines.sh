@@ -4,14 +4,14 @@
 # under our own names.
 #
 # WHY THIS SCRIPT EXISTS. The two engines behind the chat and image surfaces were being
-# run straight out of references/, which is a reference-only tree: nothing in it may be
+# run straight out of external/, which is a reference-only tree: nothing in it may be
 # imported, built or linked by the shipped product, and nothing ships under a third-party
-# name. api.py pointed at references/contrib/.../llama-server and .../sd-cli, so both
-# rules were broken at once and, once references/ moved, chat and image went offline.
+# name. api.py pointed at external/contrib/.../llama-server and .../sd-cli, so both
+# rules were broken at once and, once external/ moved, chat and image went offline.
 #
 # This script takes the vendored upstream source as INPUT -- the way you would treat a
 # release tarball -- and produces our engine as OUTPUT under engines/. After it runs, the
-# running product has no path into references/ at all: the binaries live in engines/, and
+# running product has no path into external/ at all: the binaries live in engines/, and
 # their RUNPATH is $ORIGIN, so every library they load is one we built and named.
 #
 # HOW THE RENAMING WORKS, and why it is not a sed sweep over 874 MB of C++. CMake's
@@ -35,7 +35,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/references/contrib"
+SRC="$ROOT/external/contrib"
 DST="$ROOT"                     # the five runtimes live at the repo root as of 2026-09-08
 JOBS="$(nproc)"
 
@@ -72,12 +72,12 @@ JOBS="$(nproc)"
 SYMONEURAL_HARDEN_C="-fstack-protector-strong"
 SYMONEURAL_HARDEN_LD="-Wl,-z,relro -Wl,-z,now"
 
-# The ASR upstream is not under references/contrib with the other two -- it was vendored
+# The ASR upstream is not under external/contrib with the other two -- it was vendored
 # into a differently-named parent. Searched rather than hard-coded to one spelling, because
 # the whole reason this engine did not exist for so long is that its source was assumed to
 # be somewhere it was not. First hit that actually looks like the tree wins; if none does,
 # fork_listen says where it looked instead of failing with an empty path.
-# Generalised to all three engines, not just this one. `references/contrib` no longer holds
+# Generalised to all three engines, not just this one. `external/contrib` no longer holds
 # llama.cpp or stable-diffusion.cpp either -- it holds a miner build script and cuda-samples
 # -- so `fork_engines.sh llm` and `diffuse` could not rebuild the two engines this box
 # actually serves from, and nothing noticed: the binaries were already built and sitting in
@@ -90,7 +90,7 @@ SYMONEURAL_HARDEN_LD="-Wl,-z,relro -Wl,-z,now"
 upstream_src() {
     local name="$1" c
     for c in "$SRC/$name" \
-             "$ROOT/references/referencestochatgpt/$name"; do
+             "$ROOT/external/referencestochatgpt/$name"; do
         [ -f "$c/CMakeLists.txt" ] && [ -d "$c/src" ] && { printf '%s' "$c"; return 0; }
     done
     return 1
@@ -244,7 +244,7 @@ NOTICE
 fork_llm() {
     local src dst="$DST/symoneural-llm"
     src="$(upstream_src llama.cpp)" || {
-        echo "no llama.cpp upstream found under references/ -- looked beside the other" >&2
+        echo "no llama.cpp upstream found under external/ -- looked beside the other" >&2
         echo "  engines and under the vendored tree that actually holds it." >&2; return 1; }
 
     log "syncing llm source -> $dst"
@@ -390,7 +390,7 @@ CMAKE
 fork_diffuse() {
     local src dst="$DST/symoneural-diffuse"
     src="$(upstream_src stable-diffusion.cpp)" || {
-        echo "no stable-diffusion.cpp upstream found under references/ -- looked beside the" >&2
+        echo "no stable-diffusion.cpp upstream found under external/ -- looked beside the" >&2
         echo "  other engines and under the vendored tree that actually holds it." >&2; return 1; }
 
     log "syncing diffuse source -> $dst"
@@ -493,7 +493,7 @@ CMAKE
 fork_listen() {
     local src dst="$DST/symoneural-listen"
     if ! src="$(upstream_src whisper.cpp)"; then
-        echo "no whisper upstream found under references/ -- looked beside the other two" >&2
+        echo "no whisper upstream found under external/ -- looked beside the other two" >&2
         echo "  engines and under the vendored tree that actually holds it." >&2
         return 1
     fi
@@ -593,7 +593,7 @@ CMAKE
 #
 # WHY THE DEPENDENCIES ARE COPIED RATHER THAN POINTED AT. The vendored tree carries a prebuilt
 # `kawpow-deps` prefix -- boost 1.83, jsoncpp, and cpp-kawpow's libethash, all STATIC. Pointing
-# CMAKE_PREFIX_PATH straight at it under `references/` would work and would leave this engine
+# CMAKE_PREFIX_PATH straight at it under `external/` would work and would leave this engine
 # unable to build without a read-only tree it is not supposed to depend on. They are static, so
 # they are linked in and nothing is loaded from there at runtime either way; copying makes that
 # true at BUILD time as well, which is what "first-party" has to mean if it means anything.
@@ -605,13 +605,13 @@ CMAKE
 # person actually reads are renamed below.
 fork_miner() {
     local src dst="$DST/symoneural-miner" deps
-    src="$ROOT/references/referencestochatgpt/kawpowminer"
-    deps="$ROOT/references/referencestochatgpt/kawpow-deps"
+    src="$ROOT/external/referencestochatgpt/kawpowminer"
+    deps="$ROOT/external/referencestochatgpt/kawpow-deps"
     [ -f "$src/CMakeLists.txt" ] || {
         echo "no kawpowminer upstream at ${src#"$ROOT"/}" >&2; return 1; }
     [ -d "$deps/lib" ] || {
         echo "no prebuilt dependency prefix at ${deps#"$ROOT"/} -- boost/jsoncpp/ethash" >&2
-        echo "  are built by references/contrib/build-kawpowminer.sh and are expected to" >&2
+        echo "  are built by external/contrib/build-kawpowminer.sh and are expected to" >&2
         echo "  already exist; building them here would add ~40 minutes and a network fetch." >&2
         return 1; }
 

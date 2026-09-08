@@ -217,7 +217,7 @@ class TheGates(unittest.TestCase):
 # Two reasons, and the first is correctness rather than speed. `.claude/worktrees/` holds
 # checked-out git worktrees of other branches -- 160 files carrying the pre-rename header --
 # and a walk from the root reports every one of them, which is 160 findings about code that is
-# not on this branch and cannot be fixed from it. `references/` is Garrett's workshop of
+# not on this branch and cannot be fixed from it. `external/` is Garrett's workshop of
 # upstream sources and is out of audit scope by standing instruction. `contrib/` is vendored
 # third-party source (llama.cpp among others) that this repo does not author.
 #
@@ -244,7 +244,7 @@ TRIPWIRE_EXEMPT = {
 
 
 PRUNED_DIRS = {".venv", "node_modules", "contrib", "__pycache__", ".git", "site-packages",
-               # `backend/vendor` -- the SDKs #103 copied out of references/. Third-party
+               # `backend/vendor` -- the SDKs #103 copied out of external/. Third-party
                # source we did not write and cannot rename, and the docstring below already
                # argues the principle: prune vendored trees, do not exempt their files one
                # at a time.

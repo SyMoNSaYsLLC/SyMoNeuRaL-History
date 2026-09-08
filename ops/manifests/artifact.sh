@@ -253,7 +253,7 @@ artifact_fetch() {
 # artifact_restore <bundle-file> -- extract a fetched bundle into the tree the manifest names.
 #
 # This exists because `custody.restore` could not be used by the machine it was written for.
-# It reads `tar -C engines/... -xzf archives/<bundle>`, and a rebuilt host has no `archives/`:
+# It reads `tar -C engines/... -xzf releases/<bundle>`, and a rebuilt host has no `releases/`:
 # it fetches to wherever it fetched to. So the recorded command only worked where the artifact
 # was already present -- the one case needing no restore at all. Caught by reconstructing from
 # a fresh clone, which is the only test that could have caught it; every earlier check ran on

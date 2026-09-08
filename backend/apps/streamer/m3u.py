@@ -10,7 +10,7 @@ URIs. That is what the upstream pump needs when the source it was given turns ou
 They share a file extension and almost nothing else, and one parser trying to serve both is how
 you end up presenting a video segment to a visitor as a TV channel. Kept separate on purpose.
 
-No sample playlist from `references/` is used, quoted, or shipped anywhere in this module or its
+No sample playlist from `external/` is used, quoted, or shipped anywhere in this module or its
 tests -- those files embed real provider credentials in their URLs. The test fixtures are
 synthetic and were written here.
 """

@@ -68,7 +68,7 @@ assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found a
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 #: Our diffusion engine, built by `tools/fork_engines.sh`. It was pointed into
-#: `references/` -- a tree this project may not build or link -- which is what took
+#: `external/` -- a tree this project may not build or link -- which is what took
 #: the sigil surface offline with every weight file present.
 DIFFUSE_ENGINE = ROOT / "engines" / "symoneural-diffuse" / "build" / "bin" / "symoneural-diffuse"
 MODELS = ROOT / "backend" / "models" / "image"

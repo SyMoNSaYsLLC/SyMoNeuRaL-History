@@ -191,8 +191,8 @@ from apps import appdocs  # noqa: E402  -- the per-application documentation reg
 # copy of the route list -- the failure `apps/route_matrix.py` was written about.
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
-# The two GPU engines, and they are ours. They pointed into `references/` until 2026-08-20,
-# which broke two standing rules at once -- nothing under `references/` is imported, built or
+# The two GPU engines, and they are ours. They pointed into `external/` until 2026-08-20,
+# which broke two standing rules at once -- nothing under `external/` is imported, built or
 # linked, and nothing here ships under a third-party name -- and it took chat and image
 # offline the moment that tree moved. `tools/fork_engines.sh` builds both from our own tree
 # and renames every shipped artefact; the constants below carry our names because a constant

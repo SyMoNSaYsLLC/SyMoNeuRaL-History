@@ -50,7 +50,7 @@ holds no credential and does not import this module, so it keeps working regardl
 
 obs-websocket 5.x, opcodes as published by the project: 0 Hello, 1 Identify, 2 Identified,
 5 Event, 6 Request, 7 RequestResponse. There is no copy of that specification in
-`references/`, so the shapes below are the wire's and are validated rather than assumed: an
+`external/`, so the shapes below are the wire's and are validated rather than assumed: an
 unexpected Hello is reported as `detail` instead of being pattern-matched past. If OBS changes
 its handshake this says so in words on the page.
 """

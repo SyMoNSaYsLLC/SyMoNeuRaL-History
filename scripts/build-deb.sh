@@ -15,7 +15,7 @@
 # WHAT IS IN IT: tracked production files, minus protected and non-production exclusions.
 # Tracked-ness is the first rule because
 # `.gitignore` already encodes "build output, weights and secrets do not travel" -- the
-# 104 GiB of `backend/models/`, every `.venv`, `contrib/`, `engines/`, `references/`, `run/`.
+# 104 GiB of `backend/models/`, every `.venv`, `contrib/`, `engines/`, `external/`, `run/`.
 # Using `git ls-files` rather than `find` means those cannot be re-included by accident.
 set -euo pipefail
 

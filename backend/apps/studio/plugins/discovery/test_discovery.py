@@ -128,7 +128,7 @@ class CredentialContainmentTests(unittest.TestCase):
 
         A real token pasted into any tracked `*.example` is a leak whether or not a `.deb` is
         ever built, so the rule belongs on the tracked tree. It runs over `git ls-files` output
-        for that reason — `find` would also walk `references/`, `.venv`s and 104 GiB of
+        for that reason — `find` would also walk `external/`, `.venv`s and 104 GiB of
         `backend/models/`, none of which is publishable and all of which is out of scope.
 
         The failure message names the file and the key and **never the value**: a test whose
@@ -137,7 +137,7 @@ class CredentialContainmentTests(unittest.TestCase):
         examples = [p for p in _git("ls-files").split()
                     if (p.endswith(".example") or p.endswith(".env.example"))
                     # `backend/vendor/` is third-party source #103 copied out of
-                    # `references/` under a read licence. Upstream's own templates are not
+                    # `external/` under a read licence. Upstream's own templates are not
                     # ours to edit, and editing one would be worse than leaving it: the whole
                     # value of a vendored tree is that it matches the upstream commit recorded
                     # in `backend/vendor/PROVENANCE.md`, and a locally-blanked line makes that

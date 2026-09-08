@@ -290,7 +290,7 @@ class TestFirmwareInventory(unittest.TestCase):
             self.assertNotIn("notes.txt", got)
 
     def test_an_empty_package_is_listed_with_its_real_size(self):
-        # There is a 0-byte zip in references/. Listing it is fine; the size is what tells
+        # There is a 0-byte zip in external/. Listing it is fine; the size is what tells
         # the truth about it, so the size must be a real stat and never omitted.
         with tempfile.TemporaryDirectory() as t:
             d = pathlib.Path(t)

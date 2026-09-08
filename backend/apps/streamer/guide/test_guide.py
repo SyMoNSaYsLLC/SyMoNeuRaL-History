@@ -3,7 +3,7 @@
 
     python3 backend/apps/streamer/guide/test_guide.py
 
-Every fixture in this file is synthetic and was written here. No playlist from `references/`
+Every fixture in this file is synthetic and was written here. No playlist from `external/`
 is read, quoted or shipped -- those files carry real provider credentials in their URLs, which
 is the same rule `backend/apps/streamer/m3u.py` states for itself. The fixtures carry no `url`
 field at all, and one test asserts that nothing this module returns ever contains one.

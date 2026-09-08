@@ -524,7 +524,7 @@ q("negative",
 
 q("negative",
   "Why was VLC rejected for in-browser playback?",
-  "Licensing. references/IPTV/vlc-master/ is GPLv2 and its only web path is "
+  "Licensing. external/IPTV/vlc-master/ is GPLv2 and its only web path is "
   "extras/package/wasm-emscripten -- an hours-long build producing a GPL WASM blob that would "
   "then be part of what we distribute in site/, making the site itself GPL-encumbered. hls.js "
   "does the same job in a 384 KB light build under Apache-2.0, verified by reading its LICENSE "
@@ -637,7 +637,7 @@ q("negative",
   "devicetree do not match QEMU's zynq machine. S17 Pro, S17+ and T17 do boot to a shell.")
 
 q("negative",
-  "Which firmware packages in references/ are unusable and why?",
+  "Which firmware packages in external/ are unusable and why?",
   "The five .bin files under Projects_Crypto/Antminer/Whatsminer/ are failed downloads: one "
   "is a 138-byte nginx 404 page, two are 0 bytes and two are HTML documents -- fwcheck "
   "rejects the 138-byte one with magic 0x6d74683c, ASCII \"<htm\". And the S19j SD package "
@@ -677,15 +677,15 @@ q("negative",
 
 q("negative",
   "Is there an axolotl, unsloth or LLaMA-Factory checkout on this box?",
-  "No. references/ contains no axolotl, no unsloth, no LLaMA-Factory, no text-generation-webui "
+  "No. external/ contains no axolotl, no unsloth, no LLaMA-Factory, no text-generation-webui "
   "and no LM Studio capture -- searched by name to depth 3 across every tree. If somebody "
   "believes one is here, it is not.")
 
 q("negative",
   "The owner said the IPTV reference was \"the one with mediatek\". Is it?",
-  "No -- references/IPTV/mediatek_builds/ is empty. He guessed, and verifying it saved "
+  "No -- external/IPTV/mediatek_builds/ is empty. He guessed, and verifying it saved "
   "building against nothing. The useful base was "
-  "references/IPTV/IPTV/iptv_gateway_server.py, and the Xtream Codes protocol reference was "
+  "external/IPTV/IPTV/iptv_gateway_server.py, and the Xtream Codes protocol reference was "
   "the JS client beside it. Ask for the reference when a description is ambiguous, and then "
   "check it yourself.")
 
@@ -703,7 +703,7 @@ q("negative",
   "Where is the Braiins OS source?",
   "Not on GitHub. braiins/braiins-os, braiins/braiins-os-plus, bitmaintech/meta-bitmain and "
   "bitmaintech/openwrt all 404, and the braiins org holds old Puppet modules. Only "
-  "bos-plus-api is live. references/braiins-os-feeds-master/ is packaging recipes, not miner "
+  "bos-plus-api is live. external/braiins-os-feeds-master/ is packaging recipes, not miner "
   "source -- every Makefile is OpenWrt and the sources point at git@gitlab.bo, their internal "
   "host.")
 
@@ -1363,7 +1363,7 @@ q("topography",
   "agent asked to \"publish the manual\" must not confuse the two.")
 
 q("topography",
-  "What is in references/ and is it ours?",
+  "What is in external/ and is it ours?",
   "Third-party material we only read, roughly 8.5 GB, gitignored wholesale. The owner drops "
   "large reference trees into the repo root while you are working, so check git status before "
   "git add -A -- a 296-file vendored tree has already been committed by accident once and had "
@@ -1372,7 +1372,7 @@ q("topography",
 q("topography",
   "What is in contrib/?",
   "Third-party source we build and run: llama.cpp, stable-diffusion.cpp and cuda-samples. "
-  "Gitignored and large. That is distinct from references/, which we only read.")
+  "Gitignored and large. That is distinct from external/, which we only read.")
 
 q("topography",
   "What is tracked in git and what is not?",

@@ -1,6 +1,6 @@
 """Tuning sessions: one upstream stream, one ffmpeg, a bounded number of both.
 
-## What this fixes in `references/IPTV/IPTV/iptv_gateway_server.py`
+## What this fixes in `external/IPTV/IPTV/iptv_gateway_server.py`
 
 That file is the right idea and three things in it cannot ship on a public box.
 

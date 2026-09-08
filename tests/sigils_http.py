@@ -44,7 +44,7 @@ API = BASE + "/api/sigils"
 
 #: Speech needs a sample with real words in it. This read whisper.cpp's bundled sample,
 #: which arrived as a side effect of building that project and now lives under
-#: `references/` -- where task #74 says nothing may read from. One fixture path now, ours,
+#: `external/` -- where task #74 says nothing may read from. One fixture path now, ours,
 #: shared with `tests/stickers.mjs` and `apps/voice/test_voice.py`. Absent by default:
 #: see `tests/fixtures/README.md` for what is needed and why a tone will not do.
 #: Missing means SKIP AND SAY SO -- never a silent pass.

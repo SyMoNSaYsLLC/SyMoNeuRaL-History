@@ -64,7 +64,7 @@ PROTECTED = {
     ROOT / "training" / "build_dataset.py",
 }
 
-SKIP_PARTS = {".git", ".venv", "node_modules", "__pycache__", "vendor", "references", "tests"}
+SKIP_PARTS = {".git", ".venv", "node_modules", "__pycache__", "vendor", "external", "tests"}
 FIRST_PARTY = {"apps", "backend", "tools", "training", "tests", "yocto"}
 
 
@@ -178,7 +178,7 @@ def collect() -> dict[str, object]:
             for name in ("requirements.txt", "pyproject.toml", "uv.lock", "poetry.lock")),
         "imports": {name: imports_for(roots) for name, roots in IMPORT_AREAS.items()},
         "runtime_homes": {rel: (ROOT / rel).exists() for rel in RUNTIME_HOMES},
-        "reference_inputs_present": (ROOT / "references").exists(),
+        "reference_inputs_present": (ROOT / "external").exists(),
         "asr_path_references": asr_path_references(),
     }
 
@@ -198,7 +198,7 @@ def render_text(report: dict[str, object]) -> str:
     lines.append("runtime homes:")
     for path, present in report["runtime_homes"].items():
         lines.append(f"  {'present' if present else 'absent':7} {path}")
-    lines.append(f"  {'present' if report['reference_inputs_present'] else 'absent':7} references/ build inputs")
+    lines.append(f"  {'present' if report['reference_inputs_present'] else 'absent':7} external/ build inputs")
     lines.append("")
     for area, imports in report["imports"].items():
         lines.append(f"non-stdlib import names in {area} ({len(imports)}):")

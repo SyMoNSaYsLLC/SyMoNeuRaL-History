@@ -1,19 +1,19 @@
-"""`references/` is read by people, never by code. This is that rule stated as a test.
+"""`external/` is read by people, never by code. This is that rule stated as a test.
 
 Garrett's instruction is verbatim: *"we cannot use code in references its for reference only
 we must rebrand if we want to use it"*, and task #74's acceptance test is *"nothing under
-`references/` is imported, built or linked"*. A rule written in a document is a rule until
+`external/` is imported, built or linked"*. A rule written in a document is a rule until
 somebody forgets it; the reason this is a test is that the repo had already broken it in
 eleven places without anybody noticing.
 
-**What went wrong, and why grepping for `references/` is not the check.** Nine suites
+**What went wrong, and why grepping for `external/` is not the check.** Nine suites
 imported Playwright from `contrib/llama.cpp/tools/ui/node_modules/playwright` and three more
-call sites read `contrib/whisper.cpp/samples/jfk.wav`. Both paths moved under `references/`
+call sites read `contrib/whisper.cpp/samples/jfk.wav`. Both paths moved under `external/`
 in the restructure, so every one of them was *already broken* -- eight browser suites could
 not start at all, and four published figures with commit SHAs beside them had quietly become
-unreproducible. The tempting fix was to add the `references/` prefix, which would have made
+unreproducible. The tempting fix was to add the `external/` prefix, which would have made
 them run and broken the rule. So the check below looks for **both** spellings: a bare
-`contrib/` path (stale, and a repointing waiting to happen) and a `references/` one (the
+`contrib/` path (stale, and a repointing waiting to happen) and a `external/` one (the
 rule, broken outright).
 
 Kept deliberately narrow. It reads source text and asserts on paths, so it cannot tell a
@@ -30,13 +30,13 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-#: Where code lives. `references/` itself is excluded -- it is allowed to refer to itself.
+#: Where code lives. `external/` itself is excluded -- it is allowed to refer to itself.
 SEARCH_DIRS = ("tests", "backend", "tools", "scripts", "engines", "ops")
 SUFFIXES = (".py", ".mjs", ".js", ".sh", ".cmake", ".txt", ".json")
 
 #: Skipped wholesale: installed trees and generated output are not ours to police here.
 SKIP_PARTS = {"node_modules", ".venv", "build", "__pycache__", "dist", ".git",
-              # `backend/vendor` -- the SDKs #103 copied out of `references/` under a read
+              # `backend/vendor` -- the SDKs #103 copied out of `external/` under a read
               # licence. Third-party source, and this rule is about OUR code reaching into a
               # read-only tree: a vendored file naming `contrib/llama.cpp/` would be neither
               # a violation we caused nor one we could fix, and it would fire on a `git pull`
@@ -56,7 +56,7 @@ ALLOWED = {
     "tests/browser.mjs": "explains the path it replaced",
     "tests/fixtures/README.md": "explains the fixture it replaced",
     # Exempted with the reason stated, not by weakening the pattern above. This script reads
-    # Bitmain's own firmware archives out of `references/Projects_Crypto/` -- vendor blobs
+    # Bitmain's own firmware archives out of `external/Projects_Crypto/` -- vendor blobs
     # that are the *subject* of the emulation, not a library it links, and the one thing in
     # the tree that genuinely cannot be recreated, the same argument that exempts NVIDIA's
     # sources. It is still the wrong home for an input a script reads at runtime, so where
@@ -71,12 +71,12 @@ ALLOWED = {
     # does not match. That is a punctuation accident, not a decision, and it would have broken
     # the moment an upstream source sat one directory deeper -- which is exactly what happened
     # when the ASR engine's source turned out to live under a differently-named parent.
-    "tools/fork_engines.sh": "takes references/ as build input, writes engines/ as output",
+    "tools/fork_engines.sh": "takes external/ as build input, writes engines/ as output",
 }
 
 #: A path into a third-party working tree, in either spelling. `\b` on the left so that
-#: `our-contrib/` and `symoneural_references/` do not match.
-BAD = re.compile(r"""\b(?:references/[A-Za-z0-9._-]+/|contrib/(?:llama\.cpp|whisper\.cpp|cuda-samples|stable-diffusion\.cpp)/)""")
+#: `our-contrib/` and `symoneural_external/` do not match.
+BAD = re.compile(r"""\b(?:external/[A-Za-z0-9._-]+/|contrib/(?:llama\.cpp|whisper\.cpp|cuda-samples|stable-diffusion\.cpp)/)""")
 
 
 def _candidates() -> list[pathlib.Path]:
@@ -119,15 +119,15 @@ class ReferencesAreNotOnAnyCodePath(unittest.TestCase):
                 offenders.append(f"{rel}:{n}: {stripped[:110]}")
         self.assertEqual(
             offenders, [],
-            "code names a path under references/ (or the pre-restructure contrib/ spelling "
+            "code names a path under external/ (or the pre-restructure contrib/ spelling "
             "of one). Both are wrong and for different reasons: the bare contrib/ form no "
-            "longer exists, and adding the references/ prefix to make it resolve breaks the "
-            "rule that nothing under references/ is imported, built or linked. Put what you "
+            "longer exists, and adding the external/ prefix to make it resolve breaks the "
+            "rule that nothing under external/ is imported, built or linked. Put what you "
             "need in our own tree.\n  " + "\n  ".join(offenders))
 
     def test_the_check_can_actually_fail(self):
         # A pattern that matches nothing passes this suite forever. Prove it bites.
-        self.assertTrue(BAD.search("from '../references/playwright/index.mjs'"))
+        self.assertTrue(BAD.search("from '../external/playwright/index.mjs'"))
         self.assertTrue(BAD.search("join(REPO, 'contrib/llama.cpp/tools/ui/node_modules')"))
         self.assertIsNone(BAD.search("our-contrib/thing/x"))
         self.assertIsNone(BAD.search("backend/apps/studio/plugins/reinforce"))

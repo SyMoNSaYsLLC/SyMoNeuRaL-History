@@ -53,7 +53,7 @@ exit 0
 # that took the site down, and it is a *foreign* process -- not one of our surfaces, not
 # evictable, and not something the governor may ignore either.
 WARM_CHAT = "/home/google/Symoneural/symoneural-llm/build/bin/symoneural-llm, 8340"
-IDLE_COMFY = "/home/google/Symoneural/references/ComfyUI (1) (1)/ComfyUI/.venv/bin/python3, 222"
+IDLE_COMFY = "/home/google/Symoneural/external/ComfyUI (1) (1)/ComfyUI/.venv/bin/python3, 222"
 # ComfyUI resident with its weights unloaded -- what `POST /free` leaves behind, and the
 # state `apps/studio/comfy.py` waits for after every render.
 FREED_COMFY = "/home/google/Symoneural/symoneural-ui/main.py, 666"

@@ -1,4 +1,4 @@
-"""`references/` is read-only material. Nothing in it may execute. Enforce that.
+"""`external/` is read-only material. Nothing in it may execute. Enforce that.
 
 The standing owner rule, quoted verbatim in `tools/index_references.py`:
 
@@ -7,7 +7,7 @@ The standing owner rule, quoted verbatim in `tools/index_references.py`:
 
 That rule has been written down since 2026-08 and enforced by nobody. The consolidation on
 2026-09-08 moved 46 upstream OSS trees, TensorRT-LLM, ComfyUI-Installs, bentoml,
-ninjatraining, Toolchains, Platforms and the vendor agent material into `references/`, which
+ninjatraining, Toolchains, Platforms and the vendor agent material into `external/`, which
 makes the surface it governs much larger than the day it was written -- and a rule whose only
 enforcement is that somebody remembers it is not a rule, it is a hope.
 
@@ -20,11 +20,11 @@ repo has learned not to accept. So the answer is a check that fails.
 
 Two rules, because there are two ways in:
 
-  * **Static** -- no tracked source may hand a path under `references/` to anything that
+  * **Static** -- no tracked source may hand a path under `external/` to anything that
     executes. This catches the case where a convenient upstream binary gets wired in and
     nobody notices until it is load-bearing.
   * **Runtime** -- no live process may have its executable or working directory under
-    `references/` or `archive/`. This catches the case where somebody ran it by hand.
+    `external/` or `archive/`. This catches the case where somebody ran it by hand.
 
 The runtime rule reads `/proc`, so it measures this box as it is now rather than what any
 document claims. That is deliberate: the failure this repo keeps repeating is trusting a
@@ -40,16 +40,16 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-# Directories whose contents must never execute. `archive/` joins `references/` because the
+# Directories whose contents must never execute. `archive/` joins `external/` because the
 # consolidation put session transcripts, build evidence and weight staging there: nothing in
 # it is ours to run either, and a build tree that starts serving is the September 1 failure.
-NO_EXEC_DIRS = ("references", "archive")
+NO_EXEC_DIRS = ("external", "archive")
 
 # Suffixes worth reading. Kept narrow on purpose -- this walks tracked files only, so it is
 # bounded by the index rather than by the disk.
 SUFFIXES = (".py", ".sh", ".bash", ".service", ".yaml", ".yml", ".toml", ".json", ".mk")
 
-# A path under references/ or archive/ handed to something that runs it. The verbs are the
+# A path under external/ or archive/ handed to something that runs it. The verbs are the
 # ones this repo actually uses: subprocess, os.exec*, systemd ExecStart, and shell invocation
 # by absolute path.
 #
@@ -57,7 +57,7 @@ SUFFIXES = (".py", ".sh", ".bash", ".service", ".yaml", ".yml", ".toml", ".json"
 # drafts of this pattern failed on prose instead of code:
 #
 #   backend/api.py:194            a comment recording that this was fixed on 2026-08-20
-#   apps/coder/test_coder.py:342  a docstring listing disk usage: "references/ (8.5 GB)"
+#   apps/coder/test_coder.py:342  a docstring listing disk usage: "external/ (8.5 GB)"
 #
 # Neither executes anything. Whole-line comments are stripped before matching, but a
 # docstring is not a comment to the tokeniser, so prose survives that pass -- and an
@@ -94,7 +94,7 @@ CALLS_EXEC = re.compile(
 # the handoff that explains it. Documentation about a rule is not a breach of it.
 EXEMPT = (
     "backend/apps/test_reference_isolation.py",
-    "tools/index_references.py",          # indexes references/ by reading frontmatter only
+    "tools/index_references.py",          # indexes external/ by reading frontmatter only
     "docs/",
     ".claude/",
 )
@@ -106,7 +106,7 @@ COMMENT = re.compile(r"^\s*(#|//|--|\*|/\*|>)")
 def _code_only(text: str) -> str:
     """Drop whole-line comments before matching.
 
-    `backend/api.py` explains at line 194 that the GPU engines *"pointed into references/
+    `backend/api.py` explains at line 194 that the GPU engines *"pointed into external/
     until 2026-08-20, which broke two standing rules at once"* -- a comment recording that
     the violation was fixed. The first version of this test read that as the violation and
     failed on the file that documents the rule. Prose about a breach is not a breach, and a
@@ -121,7 +121,7 @@ def _code_only(text: str) -> str:
 def _tracked_sources():
     """Tracked files with an interesting suffix, as repo-relative paths.
 
-    `git ls-files` rather than a walk: `references/` and `archive/` are ignored and hold
+    `git ls-files` rather than a walk: `external/` and `archive/` are ignored and hold
     hundreds of gigabytes, and a walk would read them to prove nothing reads them.
     """
     out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
@@ -135,7 +135,7 @@ def _tracked_sources():
 
 
 class ReferenceMaterialDoesNotExecute(unittest.TestCase):
-    """No tracked source wires a path under references/ or archive/ into an exec."""
+    """No tracked source wires a path under external/ or archive/ into an exec."""
 
     def test_no_tracked_source_executes_reference_material(self):
         offenders = {}
@@ -152,7 +152,7 @@ class ReferenceMaterialDoesNotExecute(unittest.TestCase):
                 offenders[rel] = hits
         self.assertEqual(
             offenders, {},
-            "these hand a path under references/ or archive/ to something that runs it. "
+            "these hand a path under external/ or archive/ to something that runs it. "
             "The standing rule is that reference material is read-only: rebrand it into "
             "engines/ via tools/fork_engines.sh, or adopt it via "
             "`tools/index_references.py adopt`, but do not execute it where it lies")

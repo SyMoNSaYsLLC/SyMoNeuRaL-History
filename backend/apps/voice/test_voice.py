@@ -304,7 +304,7 @@ class EngineTests(unittest.TestCase):
     Fixtures are cut here rather than committed: a committed derivative would be a binary
     blob in git whose provenance the next reader could not check. The source clip is
     `tests/fixtures/speech.wav` (or `$SYMONEURAL_SPEECH_FIXTURE`), which is deliberately
-    absent -- this read whisper.cpp's bundled sample until that moved under `references/`,
+    absent -- this read whisper.cpp's bundled sample until that moved under `external/`,
     which nothing may read from. `tests/fixtures/README.md` says what is needed.
     """
 

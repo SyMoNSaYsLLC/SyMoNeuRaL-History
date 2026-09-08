@@ -115,10 +115,10 @@ cmd_status() {
       c_no "xtool" "$(command -v xtool) EXISTS BUT DOES NOT RUN -- this is a different"
       printf '                 tool of the same name (a dub package needing libxadi.so),\n'
       printf '                 not xtool-org/xtool. Build the real one from\n'
-      printf '                 references/xtool and put it earlier on PATH.\n'
+      printf '                 external/xtool and put it earlier on PATH.\n'
     fi
   else
-    c_no "xtool" "not on PATH; clone is at references/xtool"
+    c_no "xtool" "not on PATH; clone is at external/xtool"
   fi
 
   c_head "apple: talking TO a device (no Apple account needed)"
@@ -186,7 +186,7 @@ no Darwin SDK under ~/.swiftpm/swift-sdks/darwin.artifactbundle.
 
 Build one from an Xcode .xip you download under your own Apple ID:
 
-    swift build -c release --package-path references/xtool   # the real xtool
+    swift build -c release --package-path external/xtool   # the real xtool
     xtool setup                                              # walks the .xip extraction
 
 Nothing in this repository ships Apple's SDK. The Xcode licence permits use, not

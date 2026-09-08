@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Produce the SyMoNeuRaL render UI (`symoneural-ui`) from the vendored upstream
-# ComfyUI tree in `references/`.
+# ComfyUI tree in `external/`.
 #
 #     tools/fork_render_ui.sh              # copy, fix up, verify
 #     tools/fork_render_ui.sh --verify     # verify an existing tree, copy nothing
@@ -9,7 +9,7 @@
 #
 # `scripts/symoneural-ui.sh` looked for the tree at `$ROOT/ComfyUI`, and `.gitignore` had a
 # fifteen-line note explaining that Garrett had dropped an upstream clone there. It is not
-# there any more -- the 2026-08 restructure swept it into `references/ComfyUI`, and the venv
+# there any more -- the 2026-08 restructure swept it into `external/ComfyUI`, and the venv
 # it carries still records where it was born:
 #
 #     the `pyvenv.cfg` inside the vendored tree's own .venv still reads:
@@ -19,13 +19,13 @@
 # 127.0.0.1:8188", the launcher exited with "no venv", and every explanation on disk pointed
 # at a directory that no longer existed.
 #
-# `references/` is read by people, never by code -- Garrett: "we cannot use code in
+# `external/` is read by people, never by code -- Garrett: "we cannot use code in
 # references its for reference only we must rebrand if we want to use it", and
 # `backend/apps/test_references_boundary.py` makes that executable. The fix is therefore the
 # one `tools/fork_engines.sh` already established for llama.cpp and stable-diffusion.cpp:
 # treat the vendored tree as INPUT, the way you would treat a release tarball, and produce
 # ours as OUTPUT under a name of our own. After this runs, the serving path has no route
-# into `references/` at all.
+# into `external/` at all.
 #
 # ## The venv is COPIED, not rebuilt -- say so rather than imply otherwise
 #
@@ -80,10 +80,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [ -f "$ROOT/backend/api.py" ] || { echo "repo root not found at $ROOT (expected backend/api.py)" >&2; exit 1; }
 
 # No trailing slash after the directory name, deliberately. `test_references_boundary.py`'s
-# pattern is `references/<name>/` -- a path that indexes INTO a reference tree is a code path
+# pattern is `external/<name>/` -- a path that indexes INTO a reference tree is a code path
 # into it, while naming the tree as an input is what this whole script is. Same spelling
-# `tools/fork_engines.sh` uses for `references/contrib`.
-SRC="$ROOT/references/ComfyUI"
+# `tools/fork_engines.sh` uses for `external/contrib`.
+SRC="$ROOT/external/ComfyUI"
 DST="$ROOT/symoneural-ui"
 NODE_SRC="$ROOT/backend/apps/studio/custom_nodes/symoneural_gguf"
 
@@ -99,7 +99,7 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   [ -f "$SRC/main.py" ] || die "$SRC has no main.py; that is not the tree this expects"
 
   mkdir -p "$(dirname "$DST")"
-  say "copying $(du -sh --exclude=.git "$SRC" 2>/dev/null | cut -f1) from references/ -> symoneural-ui"
+  say "copying $(du -sh --exclude=.git "$SRC" 2>/dev/null | cut -f1) from external/ -> symoneural-ui"
   # --delete makes this idempotent: a second run converges rather than accumulating. That
   # also means any hand edit inside $DST is wiped, which is why every fixup below is a step
   # in this script and not something done once at a shell prompt.
@@ -267,9 +267,9 @@ check "no upstream weight name left in our yaml" \
 TORCH="$("$PY" -c 'import torch;print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_capability())' 2>&1 || true)"
 check "torch imports with CUDA -- $TORCH"   "printf '%s' '$TORCH' | grep -q 'True'"
 
-# It must NOT reach back into references/ for anything. This is the rule the whole fork is
+# It must NOT reach back into external/ for anything. This is the rule the whole fork is
 # for, checked on the output rather than trusted.
-check "no path into references/ in the tree's own python" \
+check "no path into external/ in the tree's own python" \
       "! grep -rlI --include='*.py' --exclude-dir=.venv --exclude-dir=tests --exclude-dir=tests-unit "$(basename "$(dirname "$SRC")")/$(basename "$SRC")/" '$DST'"
 
 if [ "$fail" -ne 0 ]; then

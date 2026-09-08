@@ -58,7 +58,7 @@ ROOT="$(dirname "$HERE")"
 PKG="${1:-}"
 [ -n "$PKG" ] && [ -f "$PKG" ] || {
   echo "usage: $0 <firmware.tar.gz> [--shell] [--serve]" >&2
-  echo "  e.g. $0 references/Projects_Crypto/Antminer-S17Pro-user-OM-201912250947-sig_5073.tar.gz --shell --serve" >&2
+  echo "  e.g. $0 external/Projects_Crypto/Antminer-S17Pro-user-OM-201912250947-sig_5073.tar.gz --shell --serve" >&2
   exit 1
 }
 shift
@@ -138,13 +138,13 @@ ROOTKIND="$(cat "$WORK/rootkind" 2>/dev/null || echo ramdisk)"
 #
 # The SD-card recovery packages DO ship one, and it boots this kernel fine. So: use --dtb if
 # given, else one from the unpacked package, else scavenge one out of any SD zip sitting in
-# references/. All three are just a Zynq-7000 devicetree.
+# external/. All three are just a Zynq-7000 devicetree.
 DTB="${DTB_ARG:-}"
 if [ -z "$DTB" ]; then
   DTB="$(find "$WORK/x" -name '*.dtb' -print -quit 2>/dev/null || true)"
 fi
 if [ -z "$DTB" ] && [ ! -f "$WORK/zynq.dtb" ]; then
-  for z in "$ROOT"/references/Projects_Crypto/*sd2nand*.zip; do
+  for z in "$ROOT"/external/Projects_Crypto/*sd2nand*.zip; do
     [ -f "$z" ] || continue
     if unzip -o -j -q "$z" 'devicetree.dtb' -d "$WORK" 2>/dev/null && [ -s "$WORK/devicetree.dtb" ]; then
       mv "$WORK/devicetree.dtb" "$WORK/zynq.dtb"
@@ -156,7 +156,7 @@ fi
 [ -z "$DTB" ] && [ -f "$WORK/zynq.dtb" ] && DTB="$WORK/zynq.dtb"
 [ -n "$DTB" ] && [ -f "$DTB" ] || {
   echo "no devicetree. Pass one with --dtb <file>: any Zynq-7000 dtb works, and the" >&2
-  echo "sd2nand recovery zips in references/Projects_Crypto/ contain devicetree.dtb." >&2
+  echo "sd2nand recovery zips in external/Projects_Crypto/ contain devicetree.dtb." >&2
   exit 1
 }
 echo "  devicetree $DTB"

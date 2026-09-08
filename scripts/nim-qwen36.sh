@@ -93,7 +93,7 @@ case "${NIM_MODEL:-qwen36}" in
     #   3. It is not ours to redistribute. NIM is part of NVIDIA AI Enterprise, governed by the
     #      NVIDIA Software License Agreement plus the Product Specific Terms for AI Products,
     #      and the weights by the AI Foundation Models Community License. Same class of
-    #      constraint as Apple's SDK in references/: licensed to use, not to bundle. No .deb,
+    #      constraint as Apple's SDK in external/: licensed to use, not to bundle. No .deb,
     #      no meta-symoneural-* recipe, and no Symoneural_backups archive may carry this image.
     #
     # What could work is the path the 27B already took: a Q2-class GGUF served by

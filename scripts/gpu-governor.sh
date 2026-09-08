@@ -78,7 +78,7 @@ LOG="${SYMONEURAL_GOVERNOR_LOG:-$RUN/governor.log}"
 #             under this would call a correctly-freed render engine an un-drained
 #             tenant, which is the old bug in a new unit.
 #   375 MiB   OBS's NVENC session while streaming (backend/apps/live/SMOKE.md).
-#   222 MiB   Garrett's own ComfyUI out of references/, holding a context and nothing else.
+#   222 MiB   Garrett's own ComfyUI out of external/, holding a context and nothing else.
 #
 # 1024 MiB clears the largest single one with room, clears the two likeliest pairs, and is an
 # order of magnitude below the smallest real tenant (~5 GB, chat). It does NOT clear all three
@@ -150,7 +150,7 @@ break_if_stale() {
 #
 #   drain              is the card clear of compute -- the eviction handoff, where the
 #                      incoming tenant is about to allocate 5-13 GB and a foreign context
-#                      (Garrett's desktop ComfyUI, anything out of references/) would OOM
+#                      (Garrett's desktop ComfyUI, anything out of external/) would OOM
 #                      it. Nothing is ignored, because nothing here is safe to ignore.
 #   drain <substring>  has this process let go -- what `symoneural-ui.sh stop` asks after
 #                      SIGTERM. Aggregate is the wrong reading there: with chat legitimately

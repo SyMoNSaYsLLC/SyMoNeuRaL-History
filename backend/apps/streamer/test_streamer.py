@@ -13,7 +13,7 @@ Three things are actually being defended here and the rest is parsing:
    the session's public document -- is searched for it.
 3. **The DoS caps** on concurrent sessions and on path names.
 
-No playlist from `references/` is read, quoted or shipped. Every fixture below was written by
+No playlist from `external/` is read, quoted or shipped. Every fixture below was written by
 hand for this file; the provider playlists in that directory embed real credentials in their
 URLs and must never enter this repo's source.
 """

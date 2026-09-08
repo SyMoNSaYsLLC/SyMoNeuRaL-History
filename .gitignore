@@ -59,13 +59,16 @@ __MACOSX/
 # Vendored design reference for the image page restyle
 
 # ---- Third-party engines we build and ship (contrib) vs read-only material ----
-# contrib/ holds source we compile and run; references/ holds material we only read.
+# contrib/ holds source we compile and run; external/ holds material we only read.
 /contrib
 
-# ---- Reference material, all third-party, consolidated under one directory ----
+# ---- external/: reference material, all third-party, consolidated under one directory ----
+# Renamed from references/ on 2026-09-08 at the owner's instruction. Same contract:
+# read-only, nothing in it may be imported, built, linked or executed. Enforced by
+# backend/apps/test_reference_isolation.py, not just written down here.
 # Everything here is somebody else's code or a saved document kept for reference.
 # ~8.5 GB, none of it ours, none of it tracked.
-/references
+/external
 
 # ---- Browser "Save page as" captures ----
 # site/ is a staging directory that deploy.sh publishes wholesale. An 11.6 MB .mhtml and
@@ -126,7 +129,7 @@ ops/middleware/*.wasm
 
 # ---- the render UI ----
 # Garrett dropped an upstream clone at the repo root and this rule excluded it by name. It is
-# not there any more: the 2026-08 restructure swept it into references/, and on 2026-08-21
+# not there any more: the 2026-08 restructure swept it into external/, and on 2026-08-21
 # `tools/fork_render_ui.sh` forked it to `engines/symoneural-ui` -- which the `/engines/` rule
 # further down already covers, so THIS pattern now excludes nothing and is kept only for the
 # paragraph below. Do not "tidy" the name back to something that matches: a rule matching a
@@ -187,7 +190,7 @@ INTAKE.md
 GARRETT-REQUESTS.md
 
 # Built engines. engines/ is produced by tools/fork_engines.sh from the vendored upstream
-# source in references/ (itself untracked), so it is a derived tree: 874 MB of C++ plus a
+# source in external/ (itself untracked), so it is a derived tree: 874 MB of C++ plus a
 # ~1.1 GB build. The tracked artefact is the script, which is the provenance -- re-run it
 # and you get the same engines. Do not track a derived copy of an untracked source.
 /engines/
@@ -213,7 +216,7 @@ yocto/oematch_*.buildinfo
 yocto/oematch_*.changes
 
 # Adopted reference projects, staged for rebranding by `tools/index_references.py adopt`.
-# The provenance record is tracked; the copied tree is not -- `references/` is the
+# The provenance record is tracked; the copied tree is not -- `external/` is the
 # original and re-adopting is one command, so committing a second copy of somebody
 # else's tree buys nothing and quietly puts it under our history.
 # git will not re-include a file whose parent directory is excluded, so the directory
@@ -233,7 +236,7 @@ incoming/*/*
 # it describes, so committing it changes the tree, which changes the next commit, which is a
 # document that is wrong the moment it is right. The durable record of a stage is the git
 # tag; the tarball and its manifest are local artefacts of a moment.
-archives/
+releases/
 
 # ---- symoneural-web build output ----
 # The BINARY is not committed; `ops/build-symoneural-web.sh`, main.go, go.mod and go.sum are,
@@ -247,7 +250,7 @@ web/symoneural-web/build/symoneural-web
 # under this repo so there is one tree to back up instead of a scattered home directory.
 # They split three ways, and only the third is tracked:
 #
-#   references/   somebody else's code and saved documents, read-only. Already ignored
+#   external/     somebody else's code and saved documents, read-only. Already ignored
 #                 above. The consolidation added oss/ (46 upstream trees), TensorRT-LLM,
 #                 ComfyUI-Installs, ComfyUI-Shared, bentoml, ninjatraining, Toolchains,
 #                 Platforms and the vendor agent material.

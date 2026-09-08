@@ -1,6 +1,6 @@
 """Xtream Codes panel client. Protocol only -- no credential outlives the request.
 
-The endpoint shapes were read off `references/IPTV/xtremecodes/services/XtreamClient.js`, which
+The endpoint shapes were read off `external/IPTV/xtremecodes/services/XtreamClient.js`, which
 is JavaScript from a different project and was used as a protocol document, not as source. Two
 deliberate divergences from what that reference does:
 

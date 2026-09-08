@@ -231,7 +231,7 @@ def check_sd(pkg: pathlib.Path) -> dict:
     documentation and is actually a `sha256sum` manifest, which makes it checkable.
 
     Worth checking every time, because an SD image is what you reach for when a rig is
-    *already* bricked. The S19j package in references/ fails five of its own nine hashes.
+    *already* bricked. The S19j package in external/ fails five of its own nine hashes.
     """
     import zipfile
     out = {"package": pkg.name, "kind": "sd-card", "files": [], "manifest": None,

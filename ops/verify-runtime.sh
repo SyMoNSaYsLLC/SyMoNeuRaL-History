@@ -333,9 +333,9 @@ if findmnt -rno TARGET,SOURCE 2>/dev/null | grep -E "$CANON|/yocto" | grep -q "$
 else
     pass "no mount over $CANON"
 fi
-if find "$CANON" -maxdepth 6 -xdev -type l -lname '/yocto*' -not -path '*/references/*' 2>/dev/null | grep -q .; then
+if find "$CANON" -maxdepth 6 -xdev -type l -lname '/yocto*' -not -path '*/external/*' 2>/dev/null | grep -q .; then
     fail "a symlink under the canonical tree points into /yocto" \
-         "$(find "$CANON" -maxdepth 6 -xdev -type l -lname '/yocto*' -not -path '*/references/*' 2>/dev/null | head -3 | tr '\n' ' ')"
+         "$(find "$CANON" -maxdepth 6 -xdev -type l -lname '/yocto*' -not -path '*/external/*' 2>/dev/null | head -3 | tr '\n' ' ')"
 else
     pass "no symlink under $CANON points into /yocto"
 fi

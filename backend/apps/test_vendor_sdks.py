@@ -1,6 +1,6 @@
-"""`backend/vendor/` — the SDKs #103 copied out of `references/`, and the licence that let them.
+"""`backend/vendor/` — the SDKs #103 copied out of `external/`, and the licence that let them.
 
-`references/` is `/references` in `.gitignore`: 295 git repos, 109 GB, none of it version
+`external/` is `/references` in `.gitignore`: 295 git repos, 109 GB, none of it version
 controlled by us. Garrett asked for the SDKs to live *"in a git location in /backend"*, and
 the only thing that decides whether a given tree may make that trip is its licence.
 
@@ -78,7 +78,7 @@ class VendoredSdkTests(unittest.TestCase):
     # ---- the licence, re-read from the copy rather than taken from the manifest --------
 
     def test_every_vendored_tree_carries_a_grant_we_can_still_read(self):
-        """Read off the VENDORED copy, not off `references/` and not off the manifest.
+        """Read off the VENDORED copy, not off `external/` and not off the manifest.
 
         The copy is the artefact that now lives in this repository, so it is the one whose
         licence has to hold up. If `PRUNE` ever swallowed a LICENSE file on the way in, this
