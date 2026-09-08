@@ -191,6 +191,28 @@ class WindowSmokeTests(unittest.TestCase):
 
         # Point at a throwaway display BEFORE gi/Gtk is touched -- Gtk connects on first use
         # and will not follow a DISPLAY changed afterwards.
+        # OPT-IN, NOT OPT-OUT. This is the third attempt at stopping this test putting a
+        # window on the owner's desktop, and the first two each relied on something
+        # working: first on the child taking SIGHUP when the pty closed, then on Xvfb
+        # starting. Xvfb is installed and `_offscreen_display()` returns a display when
+        # called directly, and a window still appeared during a suite run -- so the
+        # mechanism is not understood, and continuing to reason about it while windows keep
+        # opening on somebody's screen is the wrong trade.
+        #
+        # The default is now that this class does not run. A window check that has to be
+        # asked for costs coverage on one test. A window appearing unbidden on the owner's
+        # machine costs his confidence in what this repo does when he is not watching,
+        # which is worth more than the check.
+        #
+        #     SYMONEURAL_TEST_WINDOW=1 python3 -m pytest apps/test_desktop_shell.py
+        #
+        # With it set, the window still goes to a throwaway display when Xvfb will start.
+        if os.environ.get("SYMONEURAL_TEST_WINDOW") != "1":
+            raise unittest.SkipTest(
+                "SYMONEURAL_TEST_WINDOW is not 1. This test opens a real window and runs "
+                "the real client inside it, so it does not run by default -- set that "
+                "variable to run it deliberately")
+
         cls._xvfb, disp = _offscreen_display()
         if disp:
             cls._display_was = os.environ.get("DISPLAY")
