@@ -935,6 +935,62 @@ OPERATIONS.extend([
 ])
 
 
+
+# =========================================================================================
+# section 3.2 -- the SECOND, larger `offload` bucket, inside Symoneural/
+# =========================================================================================
+#
+# MEASURED: 75.5 GiB across three subdirectories -- archive/, external/ and yocto/. This is
+# where the retired shell pipelines deposited everything, and section 3.2 is explicit:
+# "offload must not remain a final category. Its contents must be merged into their real
+# destinations."
+#
+# The external/ subtree holds 13 per-collection tarballs, and one of them matters for
+# section 4: external_referencestochatgpt.tar.gz.tar (12.83 GiB) is named there as "a
+# TEMPORARY migration safety container, not automatically permanent authority", to be
+# deleted once the organised collections prove equivalent coverage. It is MOVED here rather
+# than deleted, because that coverage proof depends on external/referencestochatgpt being
+# fully filed under Symoneural/Upstream-Source first -- which has not happened yet.
+# Deleting a safety container before the thing it is a safety net for exists is the whole
+# mistake it guards against.
+
+def _classify_offload_external(name: str, is_dir: bool) -> str:
+    n = name.lower()
+    if "comfyui" in n:
+        return "Development-Reference/AI-Research/ComfyUI-archives"
+    if "tensorrt" in n:
+        return "Development-Reference/NVIDIA-CUDA/offload-archives"
+    if "openai" in n or "anthropic" in n:
+        return "Development-Reference/AI-Research/offload-archives"
+    if "projects_crypto" in n:
+        return "Projects/Crypto/offload-archives"
+    if "iptv" in n:
+        return "Projects/Archived/IPTV-and-TV"
+    return "Symoneural/Reference/offload-external-20260909"
+
+
+OPERATIONS.extend([
+    dict(id="drive-symoneural-offload-external", kind="drive_children",
+         src="Symoneural/offload/external",
+         classify=_classify_offload_external,
+         why="Section 3.2: offload is not a final category. 13 per-collection tarballs "
+             "routed by domain. external_referencestochatgpt.tar.gz.tar is moved, not "
+             "deleted: section 4 only permits removing that migration container once the "
+             "organised Upstream-Source collections prove equivalent coverage, and they do "
+             "not exist yet."),
+    dict(id="drive-symoneural-offload-archive", kind="drive_children",
+         src="Symoneural/offload/archive",
+         classify=lambda n, d: "Symoneural/History/Build-History/offload-archive-20260909",
+         why="Section 3.2: the archive/ leg of the offload bucket -- historical build "
+             "material, filed under Build-History where the rest of it already lives."),
+    dict(id="drive-symoneural-offload-yocto", kind="drive_children",
+         src="Symoneural/offload/yocto",
+         classify=lambda n, d: "Build-Outputs/Yocto/Historical/offload-20260909",
+         why="Section 3.2/6.2: the yocto leg of the offload bucket -- completed build "
+             "output, filed under Build-Outputs/Yocto/Historical."),
+])
+
+
 # =========================================================================================
 # State
 # =========================================================================================
