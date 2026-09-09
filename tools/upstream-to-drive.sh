@@ -1,4 +1,31 @@
 #!/usr/bin/env bash
+
+# ============================================================================
+# RETIRED 2026-09-09 -- superseded by tools/storage_reorg.py
+#
+# This script is kept for its recorded reasoning and its route tables, but it
+# MUST NOT RUN. Its architecture is the one the storage spec section 0 rejected:
+# killing it orphaned its rclone child (twice; one orphan held 16.8 GB of RSS
+# re-uploading a tar a second pipeline was also uploading), and editing it while
+# bash was still reading it by byte offset made it execute garbage.
+#
+# Running it now would create a SECOND storage mutation owner alongside
+# tools/storage_reorg.py, which is exactly what
+# ACTIVE_STORAGE_MUTATION_OWNERS=1 forbids -- and two uploaders racing on the
+# same source is how a verified destination gets retired against the wrong
+# bytes.
+#
+# Use instead:
+#   python3 tools/storage_reorg.py plan | run | resume | status | verify
+# ============================================================================
+if [ "${I_UNDERSTAND_THIS_IS_RETIRED:-}" != "YES" ]; then
+    echo "REFUSING: $(basename "$0") was retired 2026-09-09." >&2
+    echo "  Superseded by tools/storage_reorg.py (checkpointed, resumable)." >&2
+    echo "  Running this would create a second storage mutation owner." >&2
+    echo "  See the banner at the top of this file for why." >&2
+    exit 90
+fi
+
 # SPDX-License-Identifier: LicenseRef-SyMoNeuRaL-Proprietary
 # Copyright (c) 2026 SymonSays LLC. All rights reserved.
 # SyMoNeuRaL is a subdivision of SymonSays LLC. Licence: /LICENSE at the repository root.

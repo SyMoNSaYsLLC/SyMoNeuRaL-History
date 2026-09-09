@@ -1,4 +1,31 @@
 #!/usr/bin/env bash
+
+# ============================================================================
+# RETIRED 2026-09-09 -- superseded by tools/storage_reorg.py
+#
+# This script is kept for its recorded reasoning and its route tables, but it
+# MUST NOT RUN. Its architecture is the one the storage spec section 0 rejected:
+# killing it orphaned its rclone child (twice; one orphan held 16.8 GB of RSS
+# re-uploading a tar a second pipeline was also uploading), and editing it while
+# bash was still reading it by byte offset made it execute garbage.
+#
+# Running it now would create a SECOND storage mutation owner alongside
+# tools/storage_reorg.py, which is exactly what
+# ACTIVE_STORAGE_MUTATION_OWNERS=1 forbids -- and two uploaders racing on the
+# same source is how a verified destination gets retired against the wrong
+# bytes.
+#
+# Use instead:
+#   python3 tools/storage_reorg.py plan | run | resume | status | verify
+# ============================================================================
+if [ "${I_UNDERSTAND_THIS_IS_RETIRED:-}" != "YES" ]; then
+    echo "REFUSING: $(basename "$0") was retired 2026-09-09." >&2
+    echo "  Superseded by tools/storage_reorg.py (checkpointed, resumable)." >&2
+    echo "  Running this would create a second storage mutation owner." >&2
+    echo "  See the banner at the top of this file for why." >&2
+    exit 90
+fi
+
 # SPDX-License-Identifier: LicenseRef-SyMoNeuRaL-Proprietary
 # Copyright (c) 2026 SymonSays LLC. All rights reserved.
 # SyMoNeuRaL is a subdivision of SymonSays LLC. Licence: /LICENSE at the repository root.
@@ -155,14 +182,31 @@ HOME_SUBTREES=(
     "/home/google/Videos"
 )
 
+# CORRECTED 2026-09-09 after reading the actual trees rather than the directory names.
+#
+# /yocto/Antminer_firmware was queued for MOVE and is now KEPT. Measured: it contains
+# conf/bblayers.conf, conf/local.conf, scripts/ and sources/meta-antminer -- it is an
+# OpenEmbedded build environment and layer, not an archive of firmware blobs. Its NAME
+# says firmware; its CONTENT says build material, and the content is what matters. Moving
+# it would have taken a working build environment off the build machine.
+#
+# cgminer and cgminer-master both MOVE, for a measured reason rather than by default:
+# meta-cryptocurrency/recipes-miners/cgminer/*.bb fetch from upstream --
+# SRC_URI = "git://github.com/{vthoang,dmaxl,ckolivas}/cgminer.git" -- so NEITHER local
+# tree is a build source. They are reference snapshots. They are also NOT duplicates of
+# each other: cgminer is 22 MB / 286 files with git history at 93db9b54e3, cgminer-master
+# is 8 MB / 258 files with no git at all. Two different things, so both are preserved
+# rather than one being discarded as a copy of the other.
+#
+# /yocto/dispatchos is added: it holds only release .tar.gz/.zip/.MANIFEST.txt sets, which
+# is completed output, not build-system input.
 YOCTO_SUBTREES=(
     "/yocto/artifacts"
     "/yocto/sendtodrive"
     "/yocto/Archives"
-    "/yocto/Antminer_firmware"
+    "/yocto/dispatchos"
     "/yocto/cgminer"
     "/yocto/cgminer-master"
-    "/yocto/p2pool"
 )
 
 ledger_state() { awk -F'\t' -v s="$1" '$1==s{print $2}' "$LEDGER" | tail -1; }
