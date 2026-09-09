@@ -148,11 +148,26 @@ def collect() -> dict:
     nondot = [p.name for p in tops if not p.name.startswith(".")]
     d["HOME_TOP_LEVEL_ITEMS"] = len(tops)
     d["HOME_NONDOT_ITEMS"] = sorted(nondot)
+    # Classified-and-retained. Each is either a live working directory or a cache the
+    # spec decided to keep (go/pkg: "keep because Go expects it and disk pressure is
+    # acceptable").
     KNOWN_OK = {"Symoneural", "Desktop", "go", "Documents", "Pictures", "Music",
                 "Videos", "deleteme"}
-    d["HOME_UNCLASSIFIED"] = sorted(set(nondot) - KNOWN_OK)
+    # Classified-and-HELD, which is not the same as unclassified. Section 9.6: "Do not move
+    # Claude retirement helper/control files before their post-exit purpose is complete."
+    # Counting a deliberate hold as unclassified would make HOME_MINIMAL unreachable while
+    # the spec simultaneously requires the hold -- a gate that can never pass measures
+    # nothing.
+    CLAUDE_HELD = sorted(n for n in nondot if n.startswith("claude-"))
+    # Queued for relocation by an operation in the ledger; pending, not unclassified.
+    queued = {"experiments", "ia.Wallpapers", "Platforms.tar.gz"}
+    d["HOME_HELD_FOR_CLAUDE_EXIT"] = CLAUDE_HELD
+    d["HOME_QUEUED_FOR_RELOCATION"] = sorted(queued & set(nondot))
+    d["HOME_UNCLASSIFIED"] = sorted(
+        set(nondot) - KNOWN_OK - set(CLAUDE_HELD) - queued)
     d["HOME_RANDOM_ARCHIVES"] = sorted(
-        n for n in nondot if n.endswith((".tar.gz", ".zip", ".tar", ".tgz", ".zst")))
+        n for n in nondot
+        if n.endswith((".tar.gz", ".zip", ".tar", ".tgz", ".zst")) and n not in queued)
 
     # ---- symoneural -------------------------------------------------------------------
     d["SYMONEURAL_TOTAL"] = du(ROOT)
@@ -263,8 +278,13 @@ def gates(d: dict) -> dict:
         return isinstance(v, int) and v == 0
 
     g = {}
+    # HOME_MINIMAL requires the queue to have DRAINED as well as nothing being
+    # unclassified. Otherwise "it is queued" would be a loophole that lets the gate pass
+    # while the work is still outstanding -- which is exactly what the instruction not to
+    # report `queued` as completion forbids.
     g["HOME_MINIMAL"] = "YES" if (not d.get("HOME_UNCLASSIFIED")
-                                  and not d.get("HOME_RANDOM_ARCHIVES")) else "NO"
+                                  and not d.get("HOME_RANDOM_ARCHIVES")
+                                  and not d.get("HOME_QUEUED_FOR_RELOCATION")) else "NO"
     g["SYMONEURAL_RUNTIME_PROJECT_ONLY"] = "YES" if (
         ok(d.get("EXTERNAL_LOCAL_REFERENCE_BYTES"))
         and ok(d.get("HISTORICAL_ARCHIVE_BYTES"))
@@ -322,7 +342,8 @@ def main(argv):
                           "LEDGER_STATES", "BYTES_RETIRED_LOCALLY", "RESUME_TESTS",
                           "DEST_VERIFIED_RESUME_PROVEN", "MANIFEST_CONTENT_HASHES"]),
         ("HOME", ["HOME_USED", "HOME_TOP_LEVEL_ITEMS", "HOME_NONDOT_ITEMS",
-                  "HOME_UNCLASSIFIED", "HOME_RANDOM_ARCHIVES"]),
+                  "HOME_UNCLASSIFIED", "HOME_RANDOM_ARCHIVES",
+                  "HOME_QUEUED_FOR_RELOCATION", "HOME_HELD_FOR_CLAUDE_EXIT"]),
         ("SYMONEURAL", ["SYMONEURAL_TOTAL", "EXTERNAL_LOCAL_REFERENCE_BYTES",
                         "HISTORICAL_ARCHIVE_BYTES", "REGENERABLE_CACHE_BYTES",
                         "RUNTIME_REQUIRED_DEPENDENCY_BYTES", "LOCAL_RUNTIME_MODEL_BYTES",
