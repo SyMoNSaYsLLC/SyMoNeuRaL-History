@@ -472,6 +472,79 @@ DRIVE_MOVES: list[tuple[str, str, str]] = [
 ]
 
 
+
+# =========================================================================================
+# section 6.1 / 6.3 -- the remaining /yocto entries, each resolved by measurement
+# =========================================================================================
+#
+# MEASURED FACTS THAT DECIDED THESE, none of them inferred from a directory name:
+#
+# * `/yocto` is ITSELF a git repository -- 11 commits, 254 tracked files, branch main,
+#   NO REMOTE and NO BUNDLE. That made it an unprotected sole copy of first-party build
+#   authority, which is why `mv-yocto-git-bundle` exists and runs before anything that
+#   retires a tracked file.
+# * Zero bitbake `EXTERNALSRC` / `SRC_URI` / `FILESEXTRAPATHS` references point at src,
+#   blackwell, matrix-run, controlboard, metrics, artifacts, sendtodrive, Archives or
+#   dispatchos. None of them is a build input.
+#   An earlier scan appeared to find references for `src` and `metrics`; those were false
+#   positives, matching the bare words inside unrelated upstream patches (nginx referring
+#   to `src/`, Go CVE patches mentioning "metrics"). Only absolute `/yocto/<name>`
+#   references count, and there are none outside HANDOFF.md prose.
+#
+# KEPT, against the spec's own initial reading, because measurement contradicted it:
+#
+# * `metrics/` (116K) -- section 6.3 calls it "readouts, not build source". It is neither:
+#   15 first-party `readout` SCRIPTS plus a README stating "Nothing here invents a metric:
+#   every field rendered comes from the Status model in backend/api.py". It is operator
+#   tooling and it is tracked in /yocto's git. Kept.
+# * `controlboard/` (964K) -- the counterpart: 119 authored `launch` entry points, each
+#   saying "Edit freely; this is the entry point, not a wrapper", plus `_dispatch` and a
+#   README. 121 tracked files. Generated once, then authored. Kept.
+
+OPERATIONS.extend([
+    dict(id="mv-yocto-git-bundle", kind="move_out",
+         src=".private/storage-reorg/yocto-git", keep_source=True,
+         dest="Symoneural/Restore-Recovery/Yocto-Git",
+         why="/yocto is a git repository with 11 commits and 254 tracked files, no remote "
+             "and no bundle -- an unprotected sole copy of first-party build authority "
+             "(121 controlboard files, 15 metrics readouts, matrix-run's driver.sh and "
+             "finalize.sh, blackwell, src, dispatchos). This uploads a verified "
+             "`git bundle --all` plus the recorded pre-existing dirty state. The local "
+             "copy is KEPT: it is a backup, so retiring it would defeat its purpose."),
+    dict(id="mv-yocto-src", kind="move_out", src="/yocto/src",
+         dest="Build-Outputs/Symoneural/Source-Archives",
+         why="Section 6.1 keeps src/ only for archives used by active recipes or build "
+             "scripts. MEASURED: three archives (fwupd-main.zip, Symoneural_OE.tar.gz, "
+             "SyMon_MinerGPUWorker_PROD_20260102-1818.tar.gz) and zero recipe references "
+             "to any of them. They are completed output, and they are tracked in /yocto's "
+             "git so the history retains them after the working copy retires."),
+    dict(id="mv-yocto-blackwell", kind="move_out", src="/yocto/blackwell",
+         dest="Development-Reference/NVIDIA-CUDA/blackwell-cutlass-samples",
+         why="Section 6.1: keep only if used by an active build or benchmark workflow, "
+             "otherwise Drive development reference. MEASURED: six CUTLASS Blackwell "
+             "GEMM sample .cu files (nvfp4/mxfp8 kernels), zero references from any "
+             "recipe, script or config. Reference material."),
+    dict(id="mv-yocto-matrix-run-logs", kind="move_files", src="/yocto/matrix-run",
+         patterns=["*.log", "prev-*/*", "prev-*/**/*"],
+         dest="Build-Outputs/Yocto/Manifests-and-Metrics/matrix-run-logs",
+         why="Section 6.1: 'keep active driver/finalize scripts; move old historical logs "
+             "to Drive'. MEASURED: 29 .log files plus a prev-2026-08-26-0905 directory, "
+             "against exactly two scripts -- driver.sh and finalize.sh -- which are live "
+             "build control and are DELIBERATELY RETAINED. A whole-tree move would have "
+             "taken them too."),
+    dict(id="mv-yocto-root-readouts", kind="move_files", src="/yocto",
+         patterns=["workersrunning.txt", "embedded-host-evidence.txt"],
+         dest="Build-Outputs/Yocto/Manifests-and-Metrics/root-readouts-20260909",
+         why="Section 6.3 asks these be classified as current operational state or "
+             "historical evidence. Both are dated 2026-08-25/26 and nothing reads them: "
+             "historical evidence, so preserved on Drive rather than deleted."),
+    dict(id="drop-yocto-wget-log", kind="drop", src="/yocto/wget-log",
+         why="Section 6.3: a stale wget transfer log from 2026-08-26 recording one "
+             "download's progress. It is not evidence of anything and nothing reads it. "
+             "4K, untracked in /yocto's git. Removed rather than archived."),
+])
+
+
 # =========================================================================================
 # State
 # =========================================================================================
@@ -908,7 +981,8 @@ def do_move_out(op: dict, st: dict, apply: bool) -> None:
               f"[{cur}]")
         return
     print(f"  {op['id']}")
-    _pack_upload_retire(op["id"], src, op["dest"], op["why"], st)
+    _pack_upload_retire(op["id"], src, op["dest"], op["why"], st,
+                        retire=not op.get("keep_source"))
 
 
 def do_move_leaves(op: dict, st: dict, apply: bool) -> None:
@@ -1018,6 +1092,87 @@ def do_extract_upload(op: dict, st: dict, apply: bool) -> None:
               f"coverage proof")
 
 
+
+def do_move_files(op: dict, st: dict, apply: bool) -> None:
+    """Move only the files matching `patterns` out of a tree, keeping everything else.
+
+    Needed because section 6.1 splits `/yocto/matrix-run` rather than moving it: "keep
+    active driver/finalize scripts; move old historical logs to Drive". A whole-tree move
+    would take driver.sh and finalize.sh with the logs, and those two are live build
+    control. Matching files are staged into one archive under their original relative
+    paths, verified, and only then removed individually -- the retained files are never
+    touched.
+    """
+    src = local_path(op["src"])
+    op_id = op["id"]
+    if state_of(st, op_id) == "COMPLETE":
+        print(f"  {op_id}: COMPLETE already")
+        return
+    if not src.is_dir():
+        if apply:
+            record(st, op_id, state="COMPLETE", detail="source absent")
+        else:
+            print(f"  {op_id:<34} absent")
+        return
+
+    hits: list[pathlib.Path] = []
+    for pat in op["patterns"]:
+        hits.extend(q for q in src.rglob(pat) if q.is_file() and not q.is_symlink())
+    hits = sorted(set(hits))
+    keep = [q for q in src.rglob("*")
+            if q.is_file() and not q.is_symlink() and q not in set(hits)]
+    total = sum(q.stat().st_size for q in hits)
+
+    if not apply:
+        print(f"  {op_id:<34} would move {len(hits)} file(s) {human(total)} -> "
+              f"{op['dest']}/  (keeping {len(keep)})")
+        for q in keep[:6]:
+            print(f"        KEEP {q.relative_to(src)}")
+        return
+    if not hits:
+        record(st, op_id, state="COMPLETE", detail="no matching files remain")
+        print(f"  {op_id}: nothing left to move")
+        return
+
+    # Stage a tree of just the matching files so the existing verified primitive can carry
+    # it. Hardlinks where possible: no second copy of the bytes on disk.
+    work = STAGE / "subset" / op_id
+    if work.exists():
+        shutil.rmtree(work, ignore_errors=True)
+    for q in hits:
+        d = work / q.relative_to(src)
+        d.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(q, d)
+        except OSError:
+            shutil.copy2(q, d)
+    print(f"  {op_id}: staged {len(hits)} file(s), {human(total)}; keeping {len(keep)}")
+
+    ok = _pack_upload_retire(op_id, work, op["dest"], op["why"], st, retire=True)
+    shutil.rmtree(STAGE / "subset", ignore_errors=True)
+    if not ok:
+        print(f"  {op_id}: not verified -- ORIGINALS UNTOUCHED")
+        return
+    removed = 0
+    for q in hits:
+        try:
+            q.unlink()
+            removed += 1
+        except OSError:
+            pass
+    # Prune directories emptied by the removal, never the tree root.
+    for d in sorted((x for x in src.rglob("*") if x.is_dir()),
+                    key=lambda x: len(x.parts), reverse=True):
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+    record(st, op_id, state="COMPLETE",
+           detail=f"moved {removed} file(s) {human(total)}, kept {len(keep)}",
+           raw_bytes=total)
+    print(f"  {op_id}: COMPLETE -- moved {removed}, kept {len(keep)}, freed {human(total)}")
+
+
 def do_drive_moves(st: dict, apply: bool) -> None:
     for srcname, destpath, sect in DRIVE_MOVES:
         op_id = f"drivemv-{srcname.replace(' ', '_').replace('/', '_')}"
@@ -1052,7 +1207,8 @@ def do_drive_moves(st: dict, apply: bool) -> None:
 # Commands
 # =========================================================================================
 KINDS = {"drop": do_drop, "drop_glob": do_drop_glob, "move_out": do_move_out,
-         "move_leaves": do_move_leaves, "extract_upload": do_extract_upload}
+         "move_leaves": do_move_leaves, "extract_upload": do_extract_upload,
+         "move_files": do_move_files}
 FREE_KINDS = ("drop", "drop_glob")
 
 
