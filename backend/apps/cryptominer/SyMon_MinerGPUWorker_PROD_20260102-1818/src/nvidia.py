@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 
 def read_gpu_quick(nvidia_smi: str, gpu_index: int) -> Dict[str, Any]:
-    \"\"\"Best-effort GPU telemetry using nvidia-smi (no NVML dependency).\"\"\"
+    """Best-effort GPU telemetry using nvidia-smi (no NVML dependency)."""
     cmd = [
         nvidia_smi,
         "--query-gpu=name,temperature.gpu,power.draw,utilization.gpu,memory.used,memory.total",
