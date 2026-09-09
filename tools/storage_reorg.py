@@ -991,6 +991,22 @@ OPERATIONS.extend([
 ])
 
 
+
+OPERATIONS.append(dict(
+    id="backfill-sendtodrive-manifests", kind="backfill_zip_manifests",
+    zip="/yocto/Archives/sendtodrive.zip", member_prefix="sendtodrive/",
+    ledger_prefix="mv-yocto-sendtodrive::",
+    why="The manifest rule requires content identity -- TYPE, RELPATH, SIZE_BYTES, SHA256, "
+        "MODE, LINK_TARGET -- and forbids returning to path+size-only manifests. 21 "
+        "sendtodrive collections were uploaded by an orchestrator process that started at "
+        "05:50:13, before that code landed, so their manifests are RELPATH+SIZE_BYTES "
+        "only. Their local sources are retired, but every file was MEASURED present in "
+        "sendtodrive.zip, which is still on disk precisely because the coverage gate "
+        "refuses to retire it early. Only manifests are re-uploaded; the archives are "
+        "untouched, and the superseded size-only manifest is removed so two manifests "
+        "cannot disagree."))
+
+
 # =========================================================================================
 # State
 # =========================================================================================
@@ -1620,6 +1636,135 @@ def do_move_files(op: dict, st: dict, apply: bool) -> None:
 
 
 
+
+def do_backfill_zip_manifests(op: dict, st: dict, apply: bool) -> None:
+    """Rebuild SHA256 CONTENT manifests for collections already uploaded with size-only ones.
+
+    WHY THIS OPERATION EXISTS. The owner's manifest rule is explicit: manifests must carry
+    actual content identity -- TYPE, RELPATH, SIZE_BYTES, SHA256, MODE, LINK_TARGET -- and
+    "Do not return to path+size-only manifests." Twenty-one sendtodrive collections were
+    uploaded before that requirement landed, by an orchestrator process that had already
+    loaded the older code, so their sibling manifests are `RELPATH  SIZE_BYTES` only.
+
+    Their local sources are retired, so the manifests cannot be regenerated from disk. They
+    CAN be regenerated from `/yocto/Archives/sendtodrive.zip`, which was measured to
+    contain every one of those files and is deliberately still present -- retiring it
+    before the collections it backs were fully verified is exactly the mistake the coverage
+    gate guards against. This is the second time that decision has paid for itself.
+
+    Size is not identity: two files of equal length are routinely different, so a size-only
+    manifest can neither support dedupe nor prove an archived collection is what it claims.
+
+    Nothing is re-uploaded except the manifests themselves -- the archives are untouched.
+    """
+    op_id = op["id"]
+    zp = pathlib.Path(op["zip"])
+    if state_of(st, op_id) == "COMPLETE":
+        print(f"  {op_id}: COMPLETE already")
+        return
+    if not zp.is_file():
+        # Not a failure: if the zip is gone the collections were verified some other way.
+        record(st, op_id, state="FAILED",
+               detail=f"{zp} absent; cannot rebuild content manifests from it")
+        print(f"  {op_id}: recovery zip absent -- size-only manifests remain, reported")
+        return
+
+    # Which collections went where, read from the ledger rather than assumed.
+    targets: list[tuple[str, str]] = []
+    for oid, o in sorted(st["ops"].items()):
+        if o.get("state") != "COMPLETE" or not o.get("dest"):
+            continue
+        if not oid.startswith(op["ledger_prefix"]):
+            continue
+        leaf = oid.split("::", 1)[-1]
+        targets.append((leaf, str(pathlib.PurePosixPath(o["dest"]).parent)))
+
+    if not apply:
+        print(f"  {op_id}: would rebuild SHA256 manifests for {len(targets)} collection(s) "
+              f"from {zp.name}")
+        for leaf, dest in targets[:6]:
+            print(f"        {leaf:<26} -> {dest}/{leaf}.CONTENTS.tsv")
+        return
+
+    print(f"  {op_id}: rebuilding SHA256 manifests for {len(targets)} collection(s)")
+    record(st, op_id, state="PACKING", detail=f"{len(targets)} collections", why=op["why"])
+
+    prefix = op["member_prefix"]
+    with zipfile.ZipFile(zp) as z:
+        infos = z.infolist()
+        by_leaf: dict[str, list[zipfile.ZipInfo]] = {}
+        for i in infos:
+            n = i.filename
+            if not n.startswith(prefix):
+                continue
+            rest = n[len(prefix):]
+            if not rest:
+                continue
+            leaf = rest.split("/", 1)[0]
+            by_leaf.setdefault(leaf, []).append(i)
+
+        ok = failed = 0
+        for leaf, dest_dir in targets:
+            child = f"{op_id}::{leaf}"
+            if state_of(st, child) == "COMPLETE":
+                ok += 1
+                continue
+            members = by_leaf.get(leaf, [])
+            if not members:
+                record(st, child, state="FAILED", detail="no members under this leaf in zip")
+                failed += 1
+                continue
+            out = STAGE / f"{leaf}.CONTENTS.tsv"
+            STAGE.mkdir(parents=True, exist_ok=True)
+            base = f"{prefix}{leaf}"
+            rows = 0
+            with out.open("w") as fh:
+                fh.write("TYPE\tRELPATH\tSIZE_BYTES\tSHA256\tMODE\tLINK_TARGET\n")
+                for i in sorted(members, key=lambda x: x.filename):
+                    rel = i.filename[len(base):].lstrip("/") or pathlib.PurePath(leaf).name
+                    mode = (i.external_attr >> 16) & 0o7777
+                    ftype = (i.external_attr >> 16) & 0o170000
+                    if i.is_dir():
+                        fh.write(f"DIR\t{rel}\t0\t\t{mode:04o}\t\n")
+                    elif ftype == 0o120000:
+                        # A symlink's stored bytes ARE its target. Record it; never follow
+                        # it, and never hash the target's content as if it were this file.
+                        with z.open(i) as fhz:
+                            tgt = fhz.read().decode("utf-8", "replace")
+                        fh.write(f"SYMLINK\t{rel}\t{i.file_size}\t\t{mode:04o}\t{tgt}\n")
+                    else:
+                        h = hashlib.sha256()
+                        with z.open(i) as fhz:
+                            for chunk in iter(lambda: fhz.read(1 << 20), b""):
+                                h.update(chunk)
+                        fh.write(f"FILE\t{rel}\t{i.file_size}\t{h.hexdigest()}\t"
+                                 f"{mode:04o}\t\n")
+                    rows += 1
+            os.chmod(out, 0o600)
+            lm = md5_of(out)
+            up = sh(["rclone", "copy", str(out), f"{REMOTE}{dest_dir}/"] + RCLONE)
+            rm = remote_md5(f"{dest_dir}/{out.name}") if up.returncode == 0 else None
+            if rm != lm:
+                record(st, child, state="FAILED",
+                       detail=f"manifest upload/verify failed (remote={rm})")
+                failed += 1
+                out.unlink(missing_ok=True)
+                continue
+            # Retire the superseded size-only manifest so two manifests cannot disagree.
+            sh(["rclone", "deletefile", f"{REMOTE}{dest_dir}/{leaf}.manifest.tsv"],
+               timeout=600)
+            record(st, child, state="COMPLETE",
+                   detail=f"{rows} rows, sha256, md5 {rm}", dest=f"{dest_dir}/{out.name}",
+                   remote_md5=rm)
+            print(f"      {leaf}: {rows} rows with SHA256 -> {dest_dir}/{out.name}")
+            out.unlink(missing_ok=True)
+            ok += 1
+
+    record(st, op_id, state="COMPLETE" if not failed else "PARTIAL",
+           detail=f"{ok} rebuilt, {failed} failed")
+    print(f"  {op_id}: {ok} rebuilt, {failed} failed")
+
+
 def do_drive_children(op: dict, st: dict, apply: bool) -> None:
     """Classify the children of a Drive folder and distribute them server-side.
 
@@ -1755,7 +1900,8 @@ def do_drive_moves(st: dict, apply: bool) -> None:
 # =========================================================================================
 KINDS = {"drop": do_drop, "drop_glob": do_drop_glob, "move_out": do_move_out,
          "move_leaves": do_move_leaves, "extract_upload": do_extract_upload,
-         "move_files": do_move_files, "drive_children": do_drive_children}
+         "move_files": do_move_files, "drive_children": do_drive_children,
+         "backfill_zip_manifests": do_backfill_zip_manifests}
 FREE_KINDS = ("drop", "drop_glob")
 
 
