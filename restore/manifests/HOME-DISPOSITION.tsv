@@ -47,7 +47,7 @@ go	UNRELATED	regenerable	YES	1495373478	775	1.6 GB Go module and toolchain cache
 test	UNRELATED	not carried	no	0	NOT_PRESENT	Scratch file.
 thinclient_drives	SYSTEM	not carried	no	0	NOT_PRESENT	Thin-client mount point.
 lockdown-20260831T152822Z.log	HISTORY_EVIDENCE	archive/from-home/logs/	no	0	NOT_PRESENT	Lockdown run logs, 2026-08-31. Eight files, small, kept together as one record.
-.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5532304224	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
+.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5532321332	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
 .symoneural-full	DUPLICATE	not carried	YES	22957084	700	26 MB. A stale copy of the CLI whose launcher had DIVERGED from its source and nothing noticed -- which is why scripts/install-cli.sh installs symlinks, not copies.
 .config/systemd/user	PROJECT_AUTHORITY	.private/host-snapshot/rootfs/home/google/.config/systemd/user	YES	5830	775	The user-scope symoneural units. Captured in the host snapshot.
 deleteme	UNCLASSIFIED	-	YES	0	775	ON DISK WITH NO DISPOSITION. Add a row to restore/lib/home.py. An unclassified item is destroyed by the reset without anyone having decided that.
