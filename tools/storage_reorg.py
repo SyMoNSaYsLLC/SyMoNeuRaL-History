@@ -545,6 +545,66 @@ OPERATIONS.extend([
 ])
 
 
+
+# =========================================================================================
+# archive/buildv2 -- a lopsided split, not a wholesale removal
+# =========================================================================================
+#
+# MEASURED: buildv2 is 5.0G and 4.99G of it is `.local` (4.8G / 64,572 files) plus `vendor`
+# (197M). The first-party build authority the spec says to keep is about 23M. Nothing in
+# the repository reads either directory: the only references to `buildv2/.local` or
+# `buildv2/vendor` anywhere in the tree are two prose mentions in
+# docs/handoffs/TOTAL-SYMONEURAL-HISTORY*.md. No code, no recipe, no script.
+#
+# Full identity, licence and reacquire method for every offloaded collection is recorded in
+# docs/reference/BUILDV2-OFFLOAD-RECORD.md, as the buildv2 section requires.
+#
+# `vendor/checksums/` and `.local/project-native/` are UNROUTED on purpose:
+#   * checksums/ (24K) is four .sha256 files naming every offloaded wheel and archive by
+#     exact version and hash. It IS the reacquisition authority -- offloading it would
+#     destroy the ability to verify what comes back. Keeping 24K to release 4.99G with
+#     verification intact is the entire trade.
+#   * project-native/ (5.8M) is dependency analysis, inventory and test baselines for the
+#     retained native-project. Evidence about a kept thing is kept.
+
+BUILDV2_LOCAL_ROUTES: dict[str, str] = {
+    # Apple SDK / Xcode / OSXCross. NOT redistributable under Apple's terms, which is a
+    # further reason it is held as a private archive and reacquired from Apple rather than
+    # treated as project material.
+    "apple":   "Development-Reference/Apple/OSXCross-and-SDK/buildv2-20260909",
+    "jvm":     "Development-Reference/Toolchains/JVM/buildv2-20260909",
+    "ai-sdk":  "Development-Reference/AI-Research/buildv2-ai-sdk-20260909",
+    "cuda":    "Development-Reference/NVIDIA-CUDA/buildv2-cuda-20260909",
+    # `project-native` deliberately absent -- see above.
+}
+
+BUILDV2_VENDOR_ROUTES: dict[str, str] = {
+    "jvm":     "Development-Reference/Toolchains/JVM/buildv2-vendor-20260909",
+    "python":  "Development-Reference/SDKs/buildv2-vendor-python-20260909",
+    "rust":    "Development-Reference/Toolchains/buildv2-vendor-20260909",
+    "go":      "Development-Reference/Toolchains/buildv2-vendor-20260909",
+    # `checksums` deliberately absent -- it is the reacquisition authority.
+}
+
+OPERATIONS.extend([
+    dict(id="mv-buildv2-local", kind="move_leaves", src="archive/buildv2/.local",
+         routes=BUILDV2_LOCAL_ROUTES,
+         why="4.8G of reacquirable third-party build inputs -- Apple SDK/Xcode/OSXCross "
+             "(4.4G), JVM (151M), AI SDK wheels (289M), CUDA (1.1M). Identity, licence "
+             "and reacquire method recorded in docs/reference/BUILDV2-OFFLOAD-RECORD.md. "
+             "project-native (5.8M) stays: it is evidence about the retained "
+             "native-project.",
+         evidence="docs/reference/BUILDV2-OFFLOAD-RECORD.md"),
+    dict(id="mv-buildv2-vendor", kind="move_leaves", src="archive/buildv2/vendor",
+         routes=BUILDV2_VENDOR_ROUTES,
+         why="197M of vendored third-party source: gradle-9.5.1-bin.zip (134M, sha256 "
+             "bafc141b619ad6350fd975fc903156dd5c151998cc8b058e8c1044ab5f7b031f) and "
+             "Python wheels for antigravity/openai/anthropic (63M), every one already "
+             "recorded by version and hash in vendor/checksums/. checksums/ itself STAYS.",
+         evidence="docs/reference/BUILDV2-OFFLOAD-RECORD.md"),
+])
+
+
 # =========================================================================================
 # State
 # =========================================================================================
