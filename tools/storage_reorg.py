@@ -1025,6 +1025,32 @@ OPERATIONS.append(dict(
     evidence="docs/reference/VENDOR-CLASSIFICATION.md"))
 
 
+
+OPERATIONS.extend([
+    dict(id="drop-partial-applesdk", kind="drop", src="/yocto/sendtodrive/AppleSDK",
+         why="RETIRED ONLY NOW THAT THE PROOF EXISTS, which is the order the instruction "
+             "requires: retire the partial copy after the complete collection's "
+             "destination verifies. The complete AppleSDK -- 137,971 files, 47,409,731,694 "
+             "bytes raw -- is on Drive at Development-Reference/Apple/SDKs/"
+             "AppleSDK-20260820/AppleSDK.tar.zst with local md5 == remote md5 == "
+             "a3d29e6ceeff29d1e6f7684f3316231e, verified 2026-09-09T08:05:25. This local "
+             "copy is a STRICT SUBSET of it: 132,656 files, every one CRC32-matched to the "
+             "same zip the complete version was extracted from. Nothing unique is lost, "
+             "and it is not uploaded again because a superset of it already verified."),
+    dict(id="publish-artifact-manifests", kind="publish_manifests",
+         **{"from": ".private/storage-reorg/contents"},
+         ledger_prefix="mv-yocto-artifacts::",
+         why="Publish the SHA256 content manifests captured locally before the artifact "
+             "sources were retired. The uploading process predates the content-manifest "
+             "code and writes size-only manifests, and killing it to load newer code is "
+             "forbidden and would cost the transfer. Capturing locally -- reading only, no "
+             "Drive mutation, no second owner -- preserved TYPE/RELPATH/SIZE_BYTES/SHA256/"
+             "MODE/LINK_TARGET for all 105,851 files including 53,585 symlinks recorded by "
+             "target rather than followed. Runs repeatedly: a leaf whose archive has not "
+             "uploaded yet is PENDING, not failed."),
+])
+
+
 # =========================================================================================
 # State
 # =========================================================================================
@@ -1783,6 +1809,87 @@ def do_backfill_zip_manifests(op: dict, st: dict, apply: bool) -> None:
     print(f"  {op_id}: {ok} rebuilt, {failed} failed")
 
 
+
+def do_publish_manifests(op: dict, st: dict, apply: bool) -> None:
+    """Upload pre-captured SHA256 content manifests, replacing size-only ones on Drive.
+
+    WHY THESE WERE CAPTURED OUT OF BAND. The orchestrator process that uploaded
+    /yocto/artifacts started at 05:50:13, before the content-manifest code existed, and
+    Python binds a module's functions at import -- so it writes `RELPATH  SIZE_BYTES` and
+    then retires the source. For 191 GB across 105,851 files that would have been
+    unrecoverable without re-downloading everything.
+
+    Killing the owner to load newer code was not an option: the instruction forbids killing
+    a running owner to install tooling, and an interrupted upload costs the whole transfer
+    again. So the SHA256 data was captured LOCALLY while the sources still existed -- pure
+    reading, no rclone, no Drive mutation, no second mutation owner -- into
+    .private/storage-reorg/contents/. This operation publishes it.
+
+    The capture won its race: all six leaves were hashed before the first source retired.
+    """
+    op_id = op["id"]
+    src_dir = ROOT / op["from"]
+    if state_of(st, op_id) == "COMPLETE":
+        print(f"  {op_id}: COMPLETE already")
+        return
+    captured = sorted(src_dir.glob("*.CONTENTS.tsv")) if src_dir.is_dir() else []
+    if not captured:
+        if apply:
+            record(st, op_id, state="FAILED", detail=f"no captured manifests in {src_dir}")
+        else:
+            print(f"  {op_id:<34} no captured manifests")
+        return
+
+    # Destinations come from the ledger, so a manifest cannot be filed beside the wrong
+    # archive.
+    dests: dict[str, str] = {}
+    for oid, o in st["ops"].items():
+        if o.get("state") != "COMPLETE" or not o.get("dest"):
+            continue
+        if not oid.startswith(op["ledger_prefix"]):
+            continue
+        dests[oid.split("::", 1)[-1]] = str(pathlib.PurePosixPath(o["dest"]).parent)
+
+    if not apply:
+        print(f"  {op_id}: would publish {len(captured)} manifest(s); "
+              f"{len(dests)} destination(s) known from the ledger")
+        for f in captured:
+            leaf = f.name[:-len(".CONTENTS.tsv")]
+            print(f"        {leaf:<18} -> {dests.get(leaf, '<destination not yet in ledger>')}")
+        return
+
+    ok = pend = failed = 0
+    for f in captured:
+        leaf = f.name[:-len(".CONTENTS.tsv")]
+        child = f"{op_id}::{leaf}"
+        if state_of(st, child) == "COMPLETE":
+            ok += 1
+            continue
+        dest_dir = dests.get(leaf)
+        if not dest_dir:
+            # Its archive has not uploaded yet. Not an error -- try again next cycle.
+            pend += 1
+            continue
+        lm = md5_of(f)
+        up = sh(["rclone", "copy", str(f), f"{REMOTE}{dest_dir}/"] + RCLONE)
+        rm = remote_md5(f"{dest_dir}/{f.name}") if up.returncode == 0 else None
+        if rm != lm:
+            record(st, child, state="FAILED", detail=f"manifest verify failed remote={rm}")
+            failed += 1
+            continue
+        sh(["rclone", "deletefile", f"{REMOTE}{dest_dir}/{leaf}.manifest.tsv"], timeout=600)
+        record(st, child, state="COMPLETE", detail=f"published, md5 {rm}",
+               dest=f"{dest_dir}/{f.name}", remote_md5=rm)
+        print(f"      {leaf}: SHA256 manifest published -> {dest_dir}/{f.name}")
+        ok += 1
+
+    state = "COMPLETE" if (pend == 0 and failed == 0) else "PARTIAL"
+    record(st, op_id, state=state,
+           detail=f"{ok} published, {pend} awaiting their archive, {failed} failed",
+           why=op["why"])
+    print(f"  {op_id}: {ok} published, {pend} awaiting their archive, {failed} failed")
+
+
 def do_drive_children(op: dict, st: dict, apply: bool) -> None:
     """Classify the children of a Drive folder and distribute them server-side.
 
@@ -1919,7 +2026,8 @@ def do_drive_moves(st: dict, apply: bool) -> None:
 KINDS = {"drop": do_drop, "drop_glob": do_drop_glob, "move_out": do_move_out,
          "move_leaves": do_move_leaves, "extract_upload": do_extract_upload,
          "move_files": do_move_files, "drive_children": do_drive_children,
-         "backfill_zip_manifests": do_backfill_zip_manifests}
+         "backfill_zip_manifests": do_backfill_zip_manifests,
+         "publish_manifests": do_publish_manifests}
 FREE_KINDS = ("drop", "drop_glob")
 
 
