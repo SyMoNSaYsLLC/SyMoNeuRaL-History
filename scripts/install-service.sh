@@ -1,11 +1,54 @@
 #!/usr/bin/env bash
+# DEPRECATED, 2026-09-09. Use `sudo ops/install-runtime.sh` instead.
+#
 # Install the SyMoNeuRaL API as a system service.
 #
 #     sudo ./scripts/install-service.sh    (from the repo root)
 #
 # After this the API starts on boot, restarts on crash, and is managed with systemctl
 # rather than a shell script. It replaces symoneural.sh for anything production (that script stays for manual control).
+#
+# ## Why this refuses to run -- see ops/INSTALLERS.md for the full adjudication
+#
+# Commissioning found FOUR installers whose unit headers disagreed about which one owns them.
+# This is the oldest and it is superseded in full: it renders the same
+# ops/symoneural-api.service with the same sed substitution and installs it to the same path,
+# but with no --dry-run, no backup, no rollback, and no check that the placeholder was
+# actually substituted. `ops/install-runtime.sh` does all four and refuses rather than
+# installing something wrong.
+#
+# It is not deleted, because deleting tracked content was not commissioning's call. It is
+# stopped instead, because the standard being applied is that a second installer which still
+# works is worse than one that is gone -- somebody follows the wrong header and gets a unit
+# installed without a backup they could roll back to.
+#
+# Override only if there is a reason nobody has thought of:
+#     sudo ./scripts/install-service.sh --i-know-this-is-deprecated
 set -euo pipefail
+
+if [ "${1:-}" != "--i-know-this-is-deprecated" ]; then
+  cat >&2 <<'DEPRECATED'
+REFUSING: scripts/install-service.sh is deprecated (2026-09-09).
+
+Use the authoritative installer, which dry-runs, backs up, verifies the placeholder was
+substituted, and rolls back on failure:
+
+    sudo ops/install-runtime.sh --dry-run     # see what it would do
+    sudo ops/install-runtime.sh
+
+Note before you run it: install-runtime.sh also installs symoneural-deploy.service, which
+has never been installed on this box. See ops/INSTALLERS.md.
+
+For the unit repair commissioning identified specifically (StartLimit* sitting in [Service],
+where systemd ignores it), use:
+
+    sudo ops/commission-apply.sh --apply
+
+To run this deprecated script anyway:
+    sudo ./scripts/install-service.sh --i-know-this-is-deprecated
+DEPRECATED
+  exit 1
+fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DEMO="$(dirname "$HERE")"
@@ -72,6 +115,13 @@ cat <<'EOF'
 managing it from here:
   systemctl status symoneural-api      what it is doing
   systemctl restart symoneural-api     after changing api.py
-  systemctl stop symoneural-api        take inference offline (static site unaffected)
+  systemctl stop symoneural-api        take inference offline UNTIL THE NEXT BOOT ONLY
   journalctl -u symoneural-api -f      follow the log
+
+a stop is not a hold, and this line used to imply it was: the unit is `enabled`, so a
+plain `stop` evaporates at the next boot and the API comes back on its own. Commissioning
+watched exactly that happen on 2026-09-09 -- a deliberate hold was in force, the box
+rebooted, and the service started itself. For a hold that survives a reboot see
+ops/SERVICE-HOLD.md; the short version is `systemctl disable --now`, or `mask` if it must
+not be startable even by hand.
 EOF
