@@ -107,6 +107,35 @@ SUBTREES=(
 # largest object on this disk and needs its own decision from the owner, because a 248 GB
 # tar cannot be staged in the 204 GB currently free. See --plan.
 
+# ---------------------------------------------------------------------------------------
+# THE /yocto TARGET SET -- the owner's policy, 2026-09-08:
+#
+#   "/yocto should only contain build material, thats where we build. Once its built it
+#    either gets put in symoneural to run or gets put in /mnt/gdrive to use later if
+#    needed"
+#
+# So build INPUTS and the build tree stay; build OUTPUTS and historical material leave.
+# Measured: 75.9 GiB stays, 280.7 GiB moves, /yocto goes 65% -> ~15% full.
+#
+# KEPT on /yocto and deliberately not listed here:
+#   downloads sstate-cache build-symoneural matrix-run bitbake openembedded-core
+#   meta-openembedded meta-symoneural meta-symoneural-bsp meta-cryptocurrency src
+#   controlboard dispatchos blackwell build-audit
+#
+# artifacts/ FIRST and alone in its urgency: it is the ONLY surviving copy of the 248 GB
+# that was de-duplicated out of /home earlier today. Its upload is verified against the
+# remote MD5 before a single byte is removed, exactly like every other subtree -- but if
+# any entry in this whole tool deserves a second look before deletion, it is that one.
+YOCTO_SUBTREES=(
+    "/yocto/artifacts"
+    "/yocto/sendtodrive"
+    "/yocto/Archives"
+    "/yocto/Antminer_firmware"
+    "/yocto/cgminer"
+    "/yocto/cgminer-master"
+    "/yocto/p2pool"
+)
+
 ledger_state() { awk -F'\t' -v s="$1" '$1==s{print $2}' "$LEDGER" | tail -1; }
 
 ledger_write() { # subtree state local_md5 remote_md5 bytes
@@ -141,7 +170,14 @@ do_plan() {
 
 do_one() {
     local s="$1"
-    local src="$ROOT/$s"
+    # Absolute targets (the /yocto set) live outside the repository; relative ones are
+    # repo-relative. Deriving `src` from the shape of the path keeps ONE implementation of
+    # the verified move rather than a second copy that can drift from this one.
+    local src base_dir
+    case "$s" in
+        /*) src="$s";        base_dir="/" ;;
+        *)  src="$ROOT/$s";  base_dir="$ROOT" ;;
+    esac
     [ -e "$src" ] || { say "SKIP   $s (absent)"; return 0; }
     local st; st=$(ledger_state "$s")
     if [ "$st" = "VERIFIED" ] || [ "$st" = "REMOVED" ]; then say "SKIP   $s (already $st)"; return 0; fi
@@ -149,27 +185,58 @@ do_one() {
     local base tar dest
     base="$(safe_name "$s")"
     tar="$STAGE/$base.tar"
-    dest="$REMOTE/$(dirname "$s")"
+    local relpath="${s#/}"
+    dest="$REMOTE/$(dirname "$relpath")"
 
     # An already-compressed payload gains nothing from gzip and costs an hour of CPU.
     case "$s" in
         *.tar.gz|*.zip|*.part-*) tar="$STAGE/$base.tar" ;;
     esac
 
-    say "PACK   $s"
+    # COMPRESS, because the bottleneck is bandwidth and the CPU is idle.
+    #
+    # Measured on this box 2026-09-08: upload to Drive runs at 5.1 MB/s while 20 cores sit
+    # at 10% and 80 GB of RAM is free. A 400 MB sample of external/oss compressed 5.17x
+    # with `zstd -3 -T0` at 400 MB/s, so compression is effectively free and multiplies the
+    # scarce resource: 5.1 MB/s of wire becomes ~26 MB/s of content.
+    #
+    # An earlier version skipped compression reasoning "these are already compressed". That
+    # was true of the .tar.gz and .zip entries and WRONG about the source trees, which are
+    # the bulk of the bytes. The test is now per-subtree rather than a blanket rule.
+    case "$s" in
+        *.tar.gz|*.zip|*.part-*|*.tgz|*.xz|*.zst) COMPRESS=0 ;;
+        *) COMPRESS=1 ;;
+    esac
+    if [ "$COMPRESS" = 1 ] && command -v zstd >/dev/null; then
+        tar="$STAGE/$base.tar.zst"
+    fi
+
+    say "PACK   $s ($([ "$COMPRESS" = 1 ] && echo 'zstd -3 -T0' || echo 'store'))"
     rm -f "$tar"
-    if ! tar -cf "$tar" -C "$ROOT" "$s" 2>>"$LOG"; then
+    if [ "$COMPRESS" = 1 ] && command -v zstd >/dev/null; then
+        if ! tar -cf - -C "$base_dir" "$relpath" 2>>"$LOG" | zstd -3 -T0 -q -o "$tar" 2>>"$LOG"; then
+            say "FAIL   $s: tar|zstd failed"; ledger_write "$s" TAR_FAILED - - 0; return 1
+        fi
+    elif ! tar -cf "$tar" -C "$base_dir" "$relpath" 2>>"$LOG"; then
         say "FAIL   $s: tar failed"; ledger_write "$s" TAR_FAILED - - 0; return 1
     fi
     chmod 600 "$tar"
-    local bytes lmd5
+    local bytes lmd5 raw
     bytes=$(stat -c%s "$tar")
+    raw=$(du -sb "$src" | cut -f1)
     lmd5=$(md5sum "$tar" | cut -d' ' -f1)
-    say "       $(numfmt --to=iec "$bytes")  md5 $lmd5"
+    say "       $(numfmt --to=iec "$raw") -> $(numfmt --to=iec "$bytes") md5 $lmd5"
 
     say "UPLOAD $s"
-    if ! rclone copy "$tar" "$dest/" --checksum --transfers 4 --stats 5m \
-            --stats-one-line --retries 5 >>"$LOG" 2>&1; then
+    # Tuned for this box, measured: 20 cores, 94 GB RAM, 65 GB available, load ~2.
+    # The defaults (--transfers 4, 8 MB chunks) leave almost all of that idle. A 256 MB
+    # chunk size costs transfers*chunk of RAM -- 16 x 256 MB = 4 GB, which is nothing
+    # against 65 GB free -- and is the single biggest lever on Drive upload speed for
+    # multi-gigabyte objects.
+    if ! rclone copy "$tar" "$dest/" --checksum \
+            --transfers 16 --checkers 32 --drive-chunk-size 256M \
+            --drive-upload-cutoff 256M --buffer-size 128M \
+            --stats 2m --stats-one-line --retries 5 >>"$LOG" 2>&1; then
         say "FAIL   $s: upload failed"; ledger_write "$s" UPLOAD_FAILED "$lmd5" - "$bytes"
         rm -f "$tar"; return 1
     fi
@@ -200,10 +267,31 @@ do_one() {
 case "${1:---plan}" in
     --plan)   do_plan ;;
     --status) column -t -s$'\t' "$LEDGER" ;;
+    --one)
+        # Move exactly one named subtree. Added so the absolute-path branch could be
+        # PROVEN on a 4.6 MB target before 192 GB was committed to it -- and it stays,
+        # because retrying a single failed subtree from the ledger should not require
+        # running the whole queue.
+        [ -n "${2:-}" ] || { echo "usage: $0 --one <path>" >&2; exit 2; }
+        say "=== single: $2"
+        do_one "$2"
+        ;;
+    --yocto-plan)
+        for s in "${YOCTO_SUBTREES[@]}"; do
+            [ -e "$s" ] || { printf '%-40s ABSENT\n' "$s"; continue; }
+            printf '%-40s %10s %10s %s\n' "$s" \
+                "$(numfmt --to=iec "$(du -sb "$s" | cut -f1)")" \
+                "$(find "$s" -type f | wc -l)" "$(ledger_state "$s" || echo PENDING)"
+        done ;;
+    --yocto)
+        say "=== yocto offload start; /yocto $(df -h /yocto | tail -1 | awk '{print $5}') full"
+        for s in "${YOCTO_SUBTREES[@]}"; do do_one "$s"; done
+        say "=== yocto offload end;   /yocto $(df -h /yocto | tail -1 | awk '{print $5}') full"
+        ;;
     --run)
         say "=== offload start; free before: $(df -h /home | tail -1 | awk '{print $4}')"
         for s in "${SUBTREES[@]}"; do do_one "$s"; done
         say "=== offload end;   free after:  $(df -h /home | tail -1 | awk '{print $4}')"
         ;;
-    *) echo "usage: $0 [--plan|--run|--status]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--plan|--run|--status|--yocto-plan|--yocto]" >&2; exit 2 ;;
 esac
