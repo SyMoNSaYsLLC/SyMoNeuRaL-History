@@ -55,7 +55,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 # contrib/ all hang off the root, not off here. This calculation has been wrong four
 # times in this repo and it fails silently, because the wrong parent usually exists.
 ROOT = HERE.parent
-assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found at {ROOT}"
+# The message names the file, not a conclusion about the root. Commissioning moved
+# gpu-governor.sh aside to see what an operator would read, and got "repo root not found at
+# /home/google/Symoneural" -- which is the one thing that was NOT wrong. The check is
+# unchanged; only the diagnosis it offers is, because a loud error pointing at the wrong
+# cause costs more than a quiet one.
+assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), (
+    f"{ROOT / 'scripts' / 'gpu-governor.sh'} is not a file. Either that script is missing, "
+    f"or ROOT is wrong (computed {ROOT} from {HERE}). On a complete checkout the first is "
+    "far likelier; the API cannot start either way."
+)
 # ROOT, emphatically not HERE. gpu-governor.sh takes its mkdir lock in <root>/run,
 # so pointing this at backend/run would give the API and the governor two different
 # lock directories -- both would acquire, both would load weights, and ~12 GB of

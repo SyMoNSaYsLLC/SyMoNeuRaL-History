@@ -43,7 +43,12 @@ import os
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found at {ROOT}"
+assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), (
+    f"{ROOT / 'scripts' / 'gpu-governor.sh'} is not a file. Either that script is "
+    f"missing, or ROOT is wrong (computed {ROOT}). Same wording as api.py:58 and the "
+    "same reason: commissioning moved the script aside and the old message blamed the "
+    "root, which was the one thing that was correct."
+)
 
 VENV_PY = ROOT / "backend" / "apps" / "sigils" / ".venv" / "bin" / "python"
 WORKER = pathlib.Path(__file__).resolve().parent / "cutout_worker.py"

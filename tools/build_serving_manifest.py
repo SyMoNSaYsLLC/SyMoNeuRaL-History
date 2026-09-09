@@ -32,6 +32,11 @@ import sys
 from pathlib import Path
 
 
+def pathlib_resolve(p: str) -> Path:
+    """Resolve a command path, following symlinks, for dpkg attribution."""
+    return Path(p).resolve()
+
+
 def _repo_root() -> Path:
     """Find the root by its marker, not by counting parents."""
     here = Path(__file__).resolve()
@@ -158,6 +163,29 @@ def main() -> int:
         add("")
         add(f"Mixed provenance — NOT owned by dpkg: {', '.join('`' + n + '`' for n in non_dpkg)}."
             " `apt` upgrades will not respect these, which is how this breaks silently later.")
+    add("")
+    add("### One more, invisible to the measurement above")
+    add("")
+    add("`uvicorn` never appears in `sys.modules` after importing `api`, because `uvicorn.run`")
+    add("is inside `if __name__ == \"__main__\":` at `api.py:4137` -- yet `ExecStart` runs the")
+    add("file as a script, so it is required to serve. A check that only measured imports would")
+    add("miss it entirely.")
+    add("")
+    _uv_mod = sh([sys.executable, "-c", "import uvicorn;print(uvicorn.__file__)"])
+    _uv_pkg, _uv_ver = dpkg_owner(_uv_mod) if _uv_mod else ("", "")
+    _uv_cli = sh(["bash", "-lc", "command -v uvicorn"])
+    _cli_pkg = dpkg_owner(str(pathlib_resolve(_uv_cli)))[0] if _uv_cli else ""
+    add("| what | path | OS package |")
+    add("|---|---|---|")
+    add(f"| the `uvicorn` module (used) | `{_uv_mod}` | "
+        f"{'`' + _uv_pkg + '`' + ' ' + _uv_ver if _uv_pkg else '**not dpkg-owned**'} |")
+    if _uv_cli:
+        add(f"| the `uvicorn` CLI script (NOT used) | `{_uv_cli}` | "
+            f"{'`' + _cli_pkg + '`' if _cli_pkg else '**not dpkg-owned** -- a user-local pip install'} |")
+    add("")
+    add("The CLI wrapper being unpackaged is harmless *because nothing in the serving path")
+    add("invokes it*: the unit runs `python3 backend/api.py`. It is recorded so that a future")
+    add("reader who reaches for `uvicorn api:app` knows the wrapper is not managed by apt.")
     add("")
     add("Reinstall with:")
     add("")

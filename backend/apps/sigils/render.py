@@ -64,7 +64,12 @@ import time
 # This calculation has been wrong four times in this repo and it fails silently, because
 # the wrong parent usually exists. Assert on something that only the real root has.
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), f"repo root not found at {ROOT}"
+assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), (
+    f"{ROOT / 'scripts' / 'gpu-governor.sh'} is not a file. Either that script is "
+    f"missing, or ROOT is wrong (computed {ROOT}). Same wording as api.py:58 and the "
+    "same reason: commissioning moved the script aside and the old message blamed the "
+    "root, which was the one thing that was correct."
+)
 
 GOVERNOR = ROOT / "scripts" / "gpu-governor.sh"
 #: Our diffusion engine, built by `tools/fork_engines.sh`. It was pointed into
