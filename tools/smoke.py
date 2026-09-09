@@ -23,18 +23,30 @@ listed again at the end so nobody can miss them.
 ## Two ports, and why both are checked
 
   * `127.0.0.1:8800` is the API itself.
-  * `https://symoneural.com` (resolved to this box) is the path a visitor takes: the web
-    server, the published document root, and the reverse proxy in front of the API.
+  * `https://symoneural.com` **resolved to 127.0.0.1** -- the web server, the published
+    document root, and the reverse proxy in front of the API.
 
 **Checking only the first is how a broken site passes its own tests.** As of 2026-09-09 the
 public `/api/*` returns 502 while `:8800` returns 200, because the Caddyfile routes `/api/*`
-through a gateway on :8000 that is disabled by design. That is a real outage of every
-documented surface, and this script is red until it is decided -- see PHASE5 §0 and RUNBOOK.md.
+through a gateway on :8000 that is disabled by design. It worked until 2026-09-04 15:50,
+when that gateway stopped. This script is red until the routing is decided -- see PHASE5 §0a
+and RUNBOOK.md.
+
+## The limit of the second port, which matters more than it looks
+
+`--resolve symoneural.com:443:127.0.0.1` is still a **loopback** connection; it merely
+carries the right hostname so SNI and the site block work. It tells you what this proxy does
+with a request. **It cannot tell you whether anyone can reach this box**, and commissioning
+mistook the one for the other and published "unreachable from the public internet" on the
+strength of it. This box has a single private interface; everything public rides a NAT
+forward invisible from here. `check_external_traffic()` reads the access log, which is the
+closest this script can get, and it is a record of the past rather than a test.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import re
 import shutil
@@ -400,19 +412,75 @@ def check_public_site() -> None:
 
 
 def check_public_api() -> None:
-    """The path a visitor takes. Currently the one thing that is genuinely broken."""
+    """The proxy's own view of /api/*. NOT a reachability test -- see the SKIP below.
+
+    `curl --resolve symoneural.com:443:127.0.0.1` connects to loopback wearing the public
+    hostname as SNI. It answers "what does this Caddy do with such a request", which is a
+    real and useful question. It does NOT answer "can a visitor reach us", and commissioning
+    conflated the two on 2026-09-09 and published "unreachable from the public internet"
+    off the back of it. `check_external_traffic()` is the nearest thing this box has.
+    """
     if not shutil.which("curl"):
-        record("public /api/status reaches the API", SKIP, "curl is not installed")
+        record("proxy routes /api/status to the API", SKIP, "curl is not installed")
         return
     code, _, _ = curl(f"{PUBLIC}/api/status")
     if code == 200:
-        record("public /api/status reaches the API", PASS)
+        record("proxy routes /api/status to the API", PASS)
     else:
-        record("public /api/status reaches the API", FAIL,
-               f"got {code}. The Caddyfile routes /api/* to 127.0.0.1:8000 "
-               "(symoneural-gateway), which is disabled -- so every documented surface is "
-               "unreachable from outside this box while working fine on :8800. "
+        record("proxy routes /api/status to the API", FAIL,
+               f"got {code} (from loopback via SNI, not from off-box). The Caddyfile routes "
+               "/api/* to 127.0.0.1:8000 (symoneural-gateway), which is disabled -- so every "
+               "documented surface 502s through the proxy while working fine on :8800. It "
+               "worked until 2026-09-04 15:50, when the gateway stopped. "
                "See RUNBOOK.md 'The public API returns 502'.")
+
+
+# Beyond this, an on-box smoke test is blind: the box has one private interface and
+# everything public depends on a NAT forward it cannot see. The access log is the only
+# evidence here of what the outside world actually reaches, so it is worth one check.
+STALE_TRAFFIC_DAYS = 2
+ACCESS_LOG = Path("/var/log/caddy/symoneural.log")
+
+
+def check_external_traffic() -> None:
+    """Has anyone outside reached the proxy lately?
+
+    A SKIP, never a FAIL, and deliberately so: a quiet day is not a defect and this test
+    cannot tell "nobody visited" from "nothing can get here". What it can do is refuse to
+    let a five-day silence go unmentioned while every other check reports green -- which is
+    exactly what happened on 2026-09-09, when the access log had recorded nothing external
+    since 09-04 and no test looked.
+    """
+    label = f"external traffic seen in the last {STALE_TRAFFIC_DAYS} day(s)"
+    if not ACCESS_LOG.is_file():
+        record(label, SKIP, f"{ACCESS_LOG} absent -- is `log` still in the Caddyfile?")
+        return
+    try:
+        sys.path.insert(0, str(ROOT / "tools"))
+        from access_log_audit import audit                     # noqa: PLC0415
+        last = audit(ACCESS_LOG)["external"]["last_request_any_path"]
+    except Exception as exc:
+        record(label, SKIP, f"could not read the access log: {exc}")
+        return
+    if not last:
+        record(label, SKIP, "the log records no external request at all, ever")
+        return
+    stamp = last[0]
+    try:
+        age = (datetime.datetime.now(datetime.UTC)
+               - datetime.datetime.fromisoformat(stamp)).days
+    except ValueError:
+        record(label, SKIP, f"unparseable timestamp {stamp!r}")
+        return
+    if age <= STALE_TRAFFIC_DAYS:
+        record(label, PASS, f"last external request {stamp} ({age}d ago): {last[3]}")
+    else:
+        record(label, SKIP,
+               f"NOTHING EXTERNAL FOR {age} DAYS -- last was {stamp} from {last[1]} "
+               f"({last[3]}). The proxy is up and answering loopback, so either nobody "
+               "visited or nothing can reach this box. NOT TESTABLE FROM HERE: load "
+               "https://symoneural.com on a phone with Wi-Fi off, and check "
+               "`dig +short symoneural.com`. See RUNBOOK.md section 7.")
 
 
 def check_gpu_released() -> None:
@@ -475,6 +543,7 @@ def main(argv: list[str]) -> int:
     check_rate_limit()
     check_public_site()
     check_public_api()
+    check_external_traffic()
     check_gpu_released()
     elapsed = time.monotonic() - t0
 

@@ -15,10 +15,17 @@ below still says "the agent", read it as whoever is doing the work.
 | What is the state, what is left, what will bite me? | `docs/HANDOFF.md` |
 | Every folder and what it is for | `README.md` |
 | What may leave this box? | `docs/ops/EXPORTS.md` |
+| How do I install, start, verify or roll back the API? | `RUNBOOK.md` |
 | Why is the code like this? | `git log` |
 
 There is one canonical current-state source (`ProjectStatus.md`) and one canonical handoff
 source (`docs/HANDOFF.md`). Do not create a third.
+
+`RUNBOOK.md` (added 2026-09-09 by the commissioning pass) is **operational procedure, not
+state and not rules** — the commands in order, and what their output looks like. It is
+indexed here rather than left unlisted so it cannot quietly become a third authority: if you
+find yourself putting a rule or a current-state figure in it, that belongs in this file or
+`ProjectStatus.md` instead.
 
 ---
 

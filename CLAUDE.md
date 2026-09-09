@@ -19,6 +19,12 @@ pointer and nothing else — do not put rules here, or there will be two authori
 | Every folder and what it is for | `README.md` |
 | Tool policy: what is refused | `docs/authority/TOOL-POLICY.json` |
 | What may leave this box? | `docs/ops/EXPORTS.md` |
+| How do I install, start, verify or roll back the API? | `RUNBOOK.md` |
 | Why is the code like this? | `git log` |
 
 One canonical current-state source and one canonical handoff source. Do not create a third.
+
+`RUNBOOK.md` is neither of those two and is indexed here so it does not become a third by
+accident. It is **operational procedure only** — the commands, in order, with what their
+output looks like. It states no rules and no project state; where it names a current fact
+it dates it and says how it was measured. Written 2026-09-09 by the commissioning pass.

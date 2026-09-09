@@ -14,13 +14,17 @@ cd /home/google/Symoneural
 python3 tools/smoke.py --quick
 ```
 
-Twelve checks, about ten seconds. Non-zero exit means something is broken, and each failure
-names the cause. Drop `--quick` for the full run (adds a real image render and a GPU-lease
-concurrency proof, about 40 s).
+Seventeen checks, about five seconds. Non-zero exit means something is broken, and each
+failure names the cause. Drop `--quick` for the full run (adds a real image render and a
+GPU-lease concurrency proof, about 40 s).
 
-**As of 2026-09-09 this exits 1, with one failure**, and it is a real defect rather than a
-flaky test — see [The public API returns 502](#the-public-api-returns-502). Everything else
-passes.
+**As of 2026-09-09 this exits 1: 12 passed, 1 failed, 4 skipped.** The failure is a real
+defect, not a flaky test — see [The public API returns 502](#the-public-api-returns-502).
+
+**Read the skips.** They are printed again at the end for a reason, and one of them is not
+routine: *external traffic seen in the last 2 days* is skipped because there has been none
+for five, which may be a fault this box cannot detect. See §7. The other three are the two
+`--quick` omissions and a `gpu.driver` field the running service predates.
 
 Faster still, if you only want to know whether the API is alive:
 
@@ -47,8 +51,9 @@ internet -> :443 symoneural-web -> /var/www/symoneural        (static files)
                                 \-> :8800 API directly        (/docs, /openapi.json, sections)
 ```
 
-**The `:8000` hop is disabled**, which is why `/api/*` currently fails from outside. The API
-is fine; the route to it is not.
+**The `:8000` hop is disabled**, which is why `/api/*` currently 502s through the proxy. The
+API is fine; the route to it is not. It worked until 2026-09-04 15:50, when the gateway
+stopped — see §7, and `tools/access_log_audit.py` for how to check what real clients get.
 
 ## 2. Install
 
@@ -197,8 +202,21 @@ sudo ops/commission-collect.sh              # read-only; writes only to review/.
 disabled by design. Nothing is listening on `:8000`. The repo and installed Caddyfiles are
 byte-identical, so this is intended configuration, not drift.
 
-**Consequence.** Every documented surface — chat, image, ravencalc, remix, status — is
-unreachable from outside this box, while working perfectly on `:8800`.
+**Consequence.** Every documented surface — chat, image, ravencalc, remix, status — 502s
+through the proxy, while working perfectly on `:8800`.
+
+**When it broke.** 2026-09-04 15:50:18, when `symoneural-gateway` logged
+`symon-gateway stopped`. Before that it worked: 2451 successful external requests on those
+four families, 629 of them WebSocket chat upgrades, the last at 2026-09-04 01:15 UTC. Check
+it yourself — the proxy keeps the receipts:
+
+```bash
+python3 tools/access_log_audit.py        # reads /var/log/caddy/symoneural.log
+```
+
+Use that tool rather than `curl --resolve ... 127.0.0.1` to answer "can visitors reach us".
+`--resolve` to loopback tells you what this Caddy does with a request; only the access log
+tells you what anybody actually received. Commissioning got this wrong in exactly that way.
 
 **Fix — a decision, not a repair.** Either:
 
@@ -207,6 +225,25 @@ unreachable from outside this box, while working perfectly on `:8800`.
   contract, wallet and key material its own note says it lacks.
 
 Not done by commissioning, because it decides whether the gateway is part of the product.
+
+### Nothing external has reached this box since 2026-09-04
+
+Zero requests from any of the 361 external IPs in the access log, for five days, while
+`symoneural-web` was up and answering loopback requests. Scanners knock on public hosts
+continuously and these stopped, which is the part that makes it look like a fault rather
+than a quiet week.
+
+**Not testable from this box** — it has one interface, on the private address
+`192.168.0.163/24`, and everything public depends on a NAT forward invisible from inside.
+
+```bash
+dig +short symoneural.com          # does DNS still point here?
+python3 tools/access_log_audit.py  # "last external request of ANY kind" is the live answer
+```
+
+Then load `https://symoneural.com` on a phone **with Wi-Fi off**. If that times out, fix the
+forward before touching the 502 above — otherwise you repair a route to a door nobody can
+reach.
 
 ### The crash-loop protection is not in force
 
@@ -330,6 +367,13 @@ only the surfaces stop. There is no need to rush a bad fix.
 Honesty about the gaps, because the alternative is you trusting something that was never
 tested:
 
+- **Anything from off this box.** This is the important one, because commissioning got it
+  wrong before noticing. Every "public path" test here is `curl --resolve` to `127.0.0.1`,
+  which is a loopback request wearing the public hostname. It proves what Caddy does with
+  such a request and **nothing about whether a visitor can reach the box at all** — a
+  question that turns out to be live (§7). The nearest thing to real evidence is
+  `/var/log/caddy/symoneural.log` via `tools/access_log_audit.py`, and that is a record of
+  the past, not a test you can run. **Only a device on a different network settles it.**
 - **`systemctl start` / `stop` / `restart`, and a reboot.** All polkit-gated for the service
   user, so commissioning could not run them. The boot path *is* proven, by the boot that
   happened on 2026-09-09.
