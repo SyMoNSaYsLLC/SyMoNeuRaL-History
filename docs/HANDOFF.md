@@ -9,6 +9,88 @@ next person.
 language below is historical and is superseded by this line.
 
 
+## Current handoff — 2026-09-09, storage reorganisation IN FLIGHT
+
+**Next executor: any coding agent or person.** Read this before touching storage, `/yocto`,
+`/mnt/gdrive` or `archive/`. The 2026-09-08 entry below is still accurate about services and
+restore; this entry supersedes it only on storage.
+
+**There is a live, unattended migration running.** It moves roughly 295 GB to Google Drive
+against a measured ~5 MB/s ceiling, so it takes hours, and it is designed to survive your
+session ending.
+
+```bash
+python3 tools/storage_reorg.py status          # the ledger
+python3 tools/storage_reorg_supervisor.py --status
+python3 tools/storage_final_report.py          # every gate, measured, ~10 min
+tail -f .private/storage-reorg/latest.log
+```
+
+### What will bite you
+
+1. **EXACTLY ONE storage mutation owner may exist.** `tools/storage_reorg.py` is it, and
+   `tools/storage_reorg_supervisor.py` keeps one alive across restarts (it starts no
+   transfers itself). Before any storage action, check `--status`. **Do not start a second
+   owner and do not kill the running one** — an upload interrupted mid-flight costs the
+   whole transfer again unless the remote already happens to hold it.
+
+2. **The three old shell pipelines now refuse to run** (`exit 90` unless
+   `I_UNDERSTAND_THIS_IS_RETIRED=YES`). That is deliberate: running one creates a second
+   owner. Their banners record why the architecture was replaced — orphaned rclone
+   children, twice, and one edit-while-bash-was-reading-it.
+
+3. **A running Python process does not see edits to its own operation table.** Operations
+   added to `storage_reorg.py` while a run is in flight take effect only on the next
+   resume. This already cost something real: the owner that uploaded `/yocto/artifacts`
+   started at 05:50:13, before the content-manifest code existed, so it wrote size-only
+   manifests. The SHA256 data for all 105,851 files was captured locally *before* the
+   sources retired (`.private/storage-reorg/contents/`) and `publish-artifact-manifests`
+   publishes it. If you add operations, expect a one-cycle delay.
+
+4. **`/yocto` is itself a git repository** — 11 commits, 254 tracked files, no remote. It
+   was an unprotected sole copy of first-party build authority (121 `controlboard` files,
+   15 `metrics` readouts, `matrix-run`'s two live scripts). A verified bundle now exists at
+   `.private/storage-reorg/yocto-git/yocto-all.bundle` (HEAD `f43caf9f371b`). Its nine
+   dirty entries are all untracked directories; the state is recorded beside the bundle.
+
+5. **`/yocto/Archives/sendtodrive.zip` (36.9 GB) must not be deleted yet.** It is the
+   recovery source for content manifests of 21 already-uploaded collections, and it holds
+   the only *complete* AppleSDK — 38,310 files more than the disk copy had. Retire it only
+   when `ZIP_UNIQUE_UNMAPPED_BYTES=0` is actually measured.
+
+6. **`backend/vendor` is NOT dead reference source, despite measuring as reference-only.**
+   `backend/apps/test_vendor_sdks.py` (9 tests) is a licence-compliance control that reads
+   licence text out of the vendored copy *on disk* and compares it to `PROVENANCE.md`.
+   Deleting the tree reclaims 131M and destroys the on-disk half of that control. It is
+   preserved to Drive and kept locally; see `docs/reference/VENDOR-CLASSIFICATION.md`.
+
+7. **Two credential-bearing files were found at mode 0664** — `providerapikeys.txt` and
+   `credential_setup.py`. Both now sit at 0600 under `.private/secrets/`. **Rotation is
+   still outstanding and only the owner can do it**; see
+   `.private/secrets/ROTATION-REQUIRED.md`. Two in different trees is a pattern: the umask
+   here produces group/world-readable files unless something explicitly chmods them.
+
+8. **`external/`'s four Claude entries (~5.5 GiB) are held on purpose** and
+   `EXTERNAL_LOCAL_REFERENCE_BYTES` will not reach 0 while they remain. That is the correct
+   reported outcome, not unfinished work — the hard-stop rule and section 9.6 both keep
+   them until the post-exit finalizer no longer needs them.
+
+9. **Drive permits two folders with the same name at one path.** A rename reported COMPLETE
+   with 8 objects verified while a twin of that name still held 7 more at the root. If a
+   collection looks half-moved, look for a twin before concluding failure.
+
+### What is deliberately not done yet
+
+The post-transfer stages are gated on the transfers finishing, in this order: Drive dedupe
+(`tools/drive-dedupe.py`, after organization, per the spec), cross-root audit
+(`tools/cross_root_audit.py scan`), catalogue publication (`tools/drive_catalog.py build`
+then `upload`), then repository closure — final commit, manifests, tests, `git fsck`, one
+bundle regeneration, clone, restore-verify. **Do not regenerate the bundle before the
+tracked storage changes stop.**
+
+`symoneural-api` remains deliberately stopped. Do not start it to manufacture green smoke
+output; the verified 14/14 capture is preserved.
+
 ## Current handoff — 2026-09-08 (late), restore control plane + disk reckoning
 
 **Next executor: any coding agent or person.** The next task is **the coder training corpus**,
