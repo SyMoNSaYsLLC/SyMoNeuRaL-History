@@ -731,6 +731,210 @@ OPERATIONS.extend([
 # deleting it would cost a 1.6G re-download against a 5 MB/s link for no benefit.
 
 
+
+# =========================================================================================
+# sections 3.1 / 3.2 / 3.9 -- the Drive buckets that must not survive, and the loose root
+# =========================================================================================
+#
+# MEASURED at the Drive root: 260 entries -- 14 directories and 246 loose files totalling
+# only 0.25 GiB. The size is not the problem; the count is. Four directories are still
+# non-canonical, and one of them is enormous:
+#
+#   Projects_Organize   247.7 GiB across 234 children (200 .zip, 26 .gz, 2 .pkg, 1 .tar)
+#   offload             105 MiB across 2 subdirectories (a SECOND, larger `offload` lives
+#                       inside Symoneural/ and is handled separately)
+#   DONOTDELETE         137 KiB, 2 children
+#   Blockchain Proofs of Concept -- see the note on the twin, below
+#
+# Projects_Organize is full of duplicate-upload families: SyMoNeuRaL_Windows_Bootstrap has
+# fifteen variants (" 2".." 7" and " (1)"), symoneural_frontend eight, caddy_scaffold
+# eight, Source_PROD_20260102-* thirteen timestamps. Those are NOT resolved here on
+# purpose. Section 4 runs dedupe AFTER organization, by exact size + Drive MD5, and a
+# name-based guess about which of fifteen near-identical archives is redundant is precisely
+# the guess that deletes the wrong one. Organise first, then let the hashes decide.
+
+_PO_SRC = "Symoneural/History/Source-Snapshots/projects-organize-20260909"
+_PO_BUILD = "Symoneural/History/Build-History/projects-organize-20260909"
+_PO_PROJ = "Projects/Archived/projects-organize-20260909"
+_PO_NV = "Development-Reference/NVIDIA-CUDA/projects-organize"
+_PO_AI = "Development-Reference/AI-Research/projects-organize"
+_PO_DATA = "Development-Reference/Datasets/wordlists-and-tries"
+
+
+def _classify_projects_organize(name: str, is_dir: bool) -> str | None:
+    """Route one Projects_Organize child by what it is, not by where it happened to land."""
+    n = name.lower()
+
+    # Whole-machine backups. Large, unique, and not project material.
+    if n in ("energencybackup.zip", "backupvault.tar.gz", "windowsbackup.zip"):
+        return "Historical-Archive/Machine-Backups"
+
+    # Directories, each already semantically named.
+    if is_dir:
+        if "oecore" in n or "yoctoextract" in n:
+            return "Build-Outputs/Yocto/Historical/projects-organize"
+        if "emscripten" in n:
+            return "Build-Outputs/projects-organize-emscripten"
+        if "nsight" in n or "nvidia" in n:
+            return _PO_NV
+        return _PO_PROJ
+
+    # Gaming settings. Personal, and unmistakably not SyMoNeuRaL.
+    if n.startswith("bo7_") or n.startswith("cod_"):
+        return "Personal/Gaming-Settings"
+
+    # Language wordlists, tries and pickled generators -- reference datasets.
+    if n.endswith((".txt.gz", ".trie.gz", ".pkl.gz")):
+        return _PO_DATA
+
+    # IDE and tool installers, all version-pinned in their filenames.
+    if n.startswith(("pycharm-", "phpstorm-", "ripgrep-")) or "vcpkgheaders" in n:
+        return "Development-Reference/Toolchains/IDEs-and-Tools"
+
+    # NVIDIA reference packages.
+    if "nvidia" in n or "dlss" in n or "gpustatus" in n:
+        return _PO_NV
+
+    # Third-party upstream projects, distinguishable by the -main/-master suffix GitHub
+    # zipballs carry.
+    if n.endswith(("-main.zip", "-master.zip")) or n.startswith("datasketches-"):
+        return _PO_AI
+
+    # IPTV / TV.
+    if "iptv" in n or "tivimate" in n or "_tv_" in n:
+        return "Projects/Archived/IPTV-and-TV"
+
+    # Host and OS setup material.
+    if "plasma setup" in n or "image sd c" in n or "universal_os_hardware" in n:
+        return "Development-Reference/Linux-System/Host-Setup"
+    if n.startswith("tl-sg"):
+        return "Development-Reference/Networking"
+
+    # SyMoNeuRaL deploy / bootstrap / scaffold / fix tooling -- build history, not source.
+    if any(t in n for t in ("bootstrap", "scaffold", "deploy_helper", "docker_bundle",
+                            "clean_fix", "bb_fix", "motd", "busybox", "tinyinit",
+                            "oepkdiff", "gemmadisable", "gdrive-to-aistore",
+                            "claudeupdate")):
+        return _PO_BUILD
+
+    # Audit sweeps, dated.
+    if n.startswith("audit_files_"):
+        return "Symoneural/History/Storage-Audit/projects-organize-20260102"
+
+    # Everything else SyMoNeuRaL-named is a source or app snapshot.
+    if n.startswith(("symoneural", "symon", "symoneral", "allsymonapps", "apps-symon",
+                     "source_prod", "source_removed", "apirev", "multiservice")):
+        return _PO_SRC
+
+    # Named, non-SyMoNeuRaL, unclassified-by-pattern: archived project material rather
+    # than a new dumping ground.
+    return _PO_PROJ
+
+
+def _classify_drive_root_file(name: str, is_dir: bool) -> str | None:
+    """Route one loose Drive-root object. 246 of these, 0.25 GiB total."""
+    if is_dir:
+        return None                     # directories are handled by their own operations
+    n = name.lower()
+    ext = pathlib.PurePath(n).suffix
+
+    # Canonical catalogue files belong at the root and must never be moved.
+    if name in ("INDEX.md", "CATALOG.tsv", "MIGRATION-MAP.tsv", "DUPLICATES.tsv"):
+        return None
+
+    # Icons and vector brand assets.
+    if ext == ".svg":
+        return "Symoneural/Brand-Assets/loose-root-20260909"
+
+    # Images. Section 3.7: SyMoNeuRaL UI/history screenshots are distinguished from
+    # everything else, which goes to a loose-imports collection.
+    if ext in (".png", ".heic", ".jpg", ".jpeg", ".gif", ".webp"):
+        if any(t in n for t in ("symoneural", "symon", "livestack", "screenshot_2026",
+                                "ui", "terminal", "progress")):
+            return "Symoneural/History/Screenshots-and-UI-History/loose-root-20260909"
+        return "Media/Images/Loose-Imports"
+
+    # Web captures and search-result saves are reference, not history.
+    if ext in (".mhtml", ".html"):
+        return "Development-Reference/AI-Research/web-captures-20260909"
+
+    # Office documents. Personal unless SyMoNeuRaL-named.
+    if ext in (".docx", ".odt", ".doc", ".pdf"):
+        if "symoneural" in n or "symon" in n:
+            return "Symoneural/Documentation/Historical/loose-root-20260909"
+        return "Personal/Documents/loose-root-20260909"
+
+    # Release packages.
+    if ext in (".deb", ".rpm", ".pkg", ".appimage"):
+        return "Symoneural/Release-Artifacts/loose-root-20260909"
+
+    # Archives: recovery sets are restore material, the rest are source snapshots.
+    if ext in (".zip", ".gz", ".tgz", ".xz", ".zst", ".tar", ".7z"):
+        if any(t in n for t in ("recover", "backup", "restore")):
+            return "Symoneural/Restore-Recovery/loose-root-20260909"
+        return "Symoneural/History/Source-Snapshots/loose-root-20260909"
+
+    # Logs and diffs are evidence.
+    if ext in (".log", ".diff", ".patch"):
+        return "Symoneural/History/Task-and-Terminal-History/loose-root-20260909"
+
+    if ext in (".py", ".js", ".sh"):
+        return "Projects/Utilities/loose-root-20260909"
+
+    # Prompts, notes and histories.
+    if ext in (".md", ".txt"):
+        return "Symoneural/History/Task-and-Terminal-History/loose-root-20260909"
+
+    # Section 3.9's genuinely ambiguous singletons -- File_000, ensureithappens, laststeps,
+    # response, clauderesumehere and friends. They must not remain at root, and the spec
+    # names the destination for exactly this case: a CATALOGUED reviewed collection, not an
+    # eternal root singleton and not a bucket called misc.
+    return "Historical-Archive/Unclassified-Reviewed/2026-09-09"
+
+
+OPERATIONS.extend([
+    dict(id="drive-projects-organize", kind="drive_children", src="Projects_Organize",
+         classify=_classify_projects_organize,
+         why="Section 3.1: 'Projects_Organize is not allowed to survive as a final "
+             "bucket.' MEASURED 247.7 GiB across 234 children. Distributed server-side by "
+             "type -- whole-machine backups, SyMoNeuRaL source snapshots, build/deploy "
+             "tooling, NVIDIA reference, IDE installers, wordlist datasets, gaming "
+             "settings, IPTV, Yocto output. Its duplicate-upload families are left for "
+             "section 4's MD5 dedupe: guessing which of fifteen near-identical archives "
+             "is redundant from its name is how the wrong one gets deleted."),
+    dict(id="drive-root-offload", kind="drive_children", src="offload",
+         classify=lambda n, d: ("Symoneural/History/Home-Archive/offload-downloads"
+                                if n.lower() == "downloads" else
+                                "Symoneural/Reference/offload-references"),
+         why="Section 3.2: 'offload must not remain a final category.' The ROOT offload is "
+             "105 MiB in two subdirectories, Downloads and references. A second, larger "
+             "offload lives inside Symoneural/ and is handled by its own operation."),
+    dict(id="drive-donotdelete", kind="drive_children", src="DONOTDELETE",
+         classify=lambda n, d: "Symoneural/Restore-Recovery/DONOTDELETE-contents",
+         why="Section 3.2: 'DONOTDELETE must be opened/inventoried. Preserve any genuinely "
+             "required recovery material under Symoneural/Restore-Recovery; do not retain "
+             "a folder whose only semantics are an imperative name.' MEASURED: 137 KiB, "
+             "two children -- SyMoNeuRaL_Runtime_Engineering_Guide.zip and a NeverDelete "
+             "directory. The content is preserved; the imperative name is not."),
+    dict(id="drive-blockchain-twin", kind="drive_children",
+         src="Blockchain Proofs of Concept",
+         classify=lambda n, d: "Projects/Crypto/Research/Blockchain-Proofs-of-Concept",
+         why="Google Drive permits two folders with the SAME NAME at one path, and there "
+             "were two of these. The first moved and its operation is recorded COMPLETE "
+             "with 8 objects verified -- yet 7 objects still sit at the root under that "
+             "name, which is the twin. A top-level rename could not see it; distributing "
+             "children merges it into the same destination."),
+    dict(id="drive-root-loose", kind="drive_children", src="",
+         classify=_classify_drive_root_file,
+         why="Section 3.9: 246 loose root objects, 0.25 GiB. The count is the problem, not "
+             "the size. Routed by type; the genuinely ambiguous singletons the spec names "
+             "(File_000, ensureithappens, laststeps, response) go to a CATALOGUED "
+             "Historical-Archive/Unclassified-Reviewed/2026-09-09 rather than staying at "
+             "root forever or landing in a bucket called misc. Directories are skipped "
+             "here -- each has its own operation."),
+])
+
+
 # =========================================================================================
 # State
 # =========================================================================================
@@ -1359,6 +1563,107 @@ def do_move_files(op: dict, st: dict, apply: bool) -> None:
     print(f"  {op_id}: COMPLETE -- moved {removed}, kept {len(keep)}, freed {human(total)}")
 
 
+
+def do_drive_children(op: dict, st: dict, apply: bool) -> None:
+    """Classify the children of a Drive folder and distribute them server-side.
+
+    Needed because the spec forbids `Projects_Organize`, `offload` and `DONOTDELETE`
+    surviving as buckets, and the first is 247.7 GiB across 234 children. Re-uploading that
+    to reorganise it would take days against a 5 MB/s link; a server-side `moveto` inside
+    one Drive is metadata work and costs nothing, which is exactly what the spec means by
+    "Do NOT re-upload data already on Drive merely to rename/reorganize it."
+
+    Verification is aggregate per child: the destination must exist with the same byte count
+    and the source must be gone. A child whose classifier returns None is left in place and
+    reported, never swept into a default bucket.
+    """
+    src = op["src"]
+    op_id = op["id"]
+    classify = op["classify"]
+    r = sh(["rclone", "lsjson", f"{REMOTE}{src}"], timeout=3600)
+    if r.returncode != 0:
+        if apply:
+            record(st, op_id, state="COMPLETE", detail="source bucket absent")
+        else:
+            print(f"  {op_id:<34} bucket absent")
+        return
+    try:
+        kids = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        record(st, op_id, state="FAILED", detail="lsjson output unparseable")
+        return
+
+    plan: list[tuple[str, str, int, bool]] = []
+    unrouted: list[str] = []
+    for k in kids:
+        name = k.get("Name") or k.get("Path")
+        dest = classify(name, bool(k.get("IsDir")))
+        if not dest:
+            unrouted.append(name)
+            continue
+        plan.append((name, dest, int(k.get("Size") or 0), bool(k.get("IsDir"))))
+
+    if not apply:
+        print(f"  {op_id}  ({len(kids)} children, {len(plan)} routed, "
+              f"{len(unrouted)} unrouted)")
+        by: dict[str, int] = {}
+        for _, d, sz, _i in plan:
+            by[d] = by.get(d, 0) + sz
+        for d in sorted(by, key=lambda x: -by[x])[:14]:
+            print(f"        {human(by[d]):>9}  -> {d}")
+        for u in unrouted[:8]:
+            print(f"        UNROUTED: {u}")
+        return
+
+    print(f"  {op_id}: {len(plan)} of {len(kids)} children routed server-side")
+    done = failed = 0
+    for name, dest, sz, isdir in plan:
+        child_id = f"{op_id}::{name}"
+        if state_of(st, child_id) == "COMPLETE":
+            done += 1
+            continue
+        sp, dp = f"{src}/{name}", f"{dest}/{name}"
+        record(st, child_id, state="MOVING", detail=f"{sp} -> {dp}", raw_bytes=sz)
+        mv = sh(["rclone", "moveto", f"{REMOTE}{sp}", f"{REMOTE}{dp}",
+                 "--checksum"], timeout=21600)
+        if mv.returncode != 0:
+            record(st, child_id, state="FAILED", detail=mv.stderr.strip()[:160])
+            failed += 1
+            continue
+        # Confirm arrival and departure rather than trusting the exit status.
+        chk = sh(["rclone", "size", f"{REMOTE}{dp}", "--json"], timeout=3600)
+        gone = sh(["rclone", "lsjson", f"{REMOTE}{sp}", "--stat"], timeout=600)
+        ok = chk.returncode == 0 and gone.returncode != 0
+        if ok and sz and not isdir:
+            try:
+                ok = json.loads(chk.stdout).get("bytes") == sz
+            except json.JSONDecodeError:
+                ok = False
+        record(st, child_id, state="COMPLETE" if ok else "FAILED",
+               detail=f"{chk.stdout.strip()[:70]}" if ok else "post-move verify failed",
+               dest=dp, raw_bytes=sz)
+        done += 1 if ok else 0
+        failed += 0 if ok else 1
+
+    left = sh(["rclone", "lsjson", f"{REMOTE}{src}"], timeout=1800)
+    remaining = []
+    if left.returncode == 0:
+        try:
+            remaining = [x.get("Name") for x in json.loads(left.stdout)]
+        except json.JSONDecodeError:
+            pass
+    if not remaining:
+        sh(["rclone", "rmdir", f"{REMOTE}{src}"], timeout=900)
+        record(st, op_id, state="COMPLETE",
+               detail=f"distributed {done} children, bucket removed")
+        print(f"  {op_id}: COMPLETE -- {done} moved, bucket {src} removed")
+    else:
+        record(st, op_id, state="PARTIAL",
+               detail=f"{done} moved, {failed} failed, {len(remaining)} remain")
+        print(f"  {op_id}: PARTIAL -- {done} moved, {failed} failed, "
+              f"{len(remaining)} remain")
+
+
 def do_drive_moves(st: dict, apply: bool) -> None:
     for srcname, destpath, sect in DRIVE_MOVES:
         op_id = f"drivemv-{srcname.replace(' ', '_').replace('/', '_')}"
@@ -1394,7 +1699,7 @@ def do_drive_moves(st: dict, apply: bool) -> None:
 # =========================================================================================
 KINDS = {"drop": do_drop, "drop_glob": do_drop_glob, "move_out": do_move_out,
          "move_leaves": do_move_leaves, "extract_upload": do_extract_upload,
-         "move_files": do_move_files}
+         "move_files": do_move_files, "drive_children": do_drive_children}
 FREE_KINDS = ("drop", "drop_glob")
 
 
