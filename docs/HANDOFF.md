@@ -9,60 +9,61 @@ next person.
 language below is historical and is superseded by this line.
 
 
-## Current handoff — 2026-09-08, consolidation + restructure + application verification
+## Current handoff — 2026-09-08 (late), restore control plane + disk reckoning
 
-**Next executor: any coding agent or person.** (This line read "Claude" until 2026-09-08; the provider-specific form is retired.) The next task is the **first-party miner**: adopt Apache-2.0
-`cpp-kawpow` via `tools/index_references.py adopt`, stand up a CPU path that passes its own
-progpow test vectors, then the CUDA kernel for sm_120. This current entry supersedes the
-older executor pointers preserved below.
+**Next executor: any coding agent or person.** The next task is **the coder training corpus**,
+and it does not exist yet -- see item 5 below. This entry supersedes the older pointers
+preserved further down.
 
-**State at handoff (updated).** HEAD `eeaa9e14`, branch main, tree clean, 0 staged, 0 stashed. Suite
-**2367 passed / 0 failed / 59 skipped**, measured at this SHA. `engines/` is gone; the repository is
-proved independent of `.claude` by running the whole suite with that directory absent. `symoneural-api` and
-`symoneural-web` active and enabled, site 302. `symoneural-gateway` inactive and disabled,
-source intact. Full detail is in `ProjectStatus.md` under *Current state → 2026-09-08*;
-this entry says only what will bite the next executor.
+**State at handoff.** HEAD `2eb03803`, branch main, tree clean, 0 staged, 0 stashed. Suite
+**2400 passed / 0 failed / 56 skipped**, recorded in `run/SUITE-LAST.txt` and read from there
+rather than typed. `RESTORE_VERIFY=PASS` over 81 rows. `symoneural-web` active and enabled
+serving :80/:443; **`symoneural-api` is STOPPED** at the owner's request (enabled, so a reboot
+restores it); `symoneural-gateway` inactive and disabled, source intact. Full detail in
+`ProjectStatus.md` under *Current state → 2026-09-08 (late)*; this entry says only what will
+bite you.
 
 **What will bite you.**
 
-1. **`symoneural-api` is running pre-restructure paths in memory.** The five runtimes moved
-   out of `engines/` to the repo root, and `engines/`+`bin/` are compatibility symlinks. Nine
-   Python files including `backend/api.py` resolved engines through the old split path form
-   and were fixed, but pid 1507 has not been restarted, so **the shims are load-bearing
-   right now**. Restarting it needs root and drops the resident model. Delete the shims only
-   after that restart, and verify with a real request rather than a path listing.
+1. **11 of the 14 restore smokes need `symoneural-api` running.** It is stopped. Start it
+   (`sudo systemctl start symoneural-api`) before `restore/symoneural-restore smoke all`, or
+   read the canonical 14/14 capture at `.private/rehearsal/SMOKE-RUN-r20260908.txt`, taken
+   while it was up.
 
-2. **Do not move `/var/lib/caddy`.** It holds live Let's Encrypt *production* ACME state and
-   a certificate valid to 2026-11-15. Copy and chown; a move loses it and the next start
-   re-issues, spending rate limit on a public site. Caddy derename step 1 (config path →
-   `ops/Caddyfile`) is done and live; step 2 (`User=caddy`, the state dir) is not.
+2. **The installed `symoneural-api` and `symoneural-gateway` units are STALE against their
+   templates.** `StartLimitIntervalSec`/`StartLimitBurst` still sit in `[Service]`, where
+   systemd silently ignores them -- so the crash-loop protection their own comments describe
+   has never once applied. `SERVICES.tsv` records this as DIVERGED. Reinstalling alters a
+   production service and that authority was not granted; it is the owner's call.
 
-3. **`symoneural-web` is the public site.** Active/enabled is correct. There is no fallback:
-   vendor `caddy.service` is inactive AND disabled and the unit declares `Conflicts=`. A
-   service-map row reading *"defined but disabled"* nearly got it disabled this session.
+3. **`symoneural-web` has no fallback.** It owns :80 and :443 and `caddy.service` is
+   *disabled*. The restore plan must never `systemctl start caddy` -- `symoneural-web.service`
+   declares `Conflicts=caddy.service`, so starting the vendor unit makes systemd **stop the
+   production web server**. That defect was in RESTORE-ORDER step 90 and is fixed; do not
+   reintroduce it. The Caddyfile is configuration consumed by symoneural-web, not a unit.
 
-4. **Two engines are GPL-3.0** — `symoneural-miner` and `symoneural-ui`. `fork_engines.sh`
-   refuses to stamp the SyMoNeuRaL licence over them, deliberately. Do not "fix" that by
-   editing a LICENSE file.
+4. **`/yocto/artifacts` is the only surviving copy** of 248 GB de-duplicated out of `/home`.
+   Until it is verified on Drive, do not touch `/yocto`. `YOCTO_WIPE_READY=NO`.
 
-5. **81 files compute a repo root by counting parents.** `bin/symoneural-audit` finds them;
-   `test_path_fragility.py` ratchets the count. Adding one fails the suite. Resolve roots by
-   walking up for `backend/api.py`.
+5. **"Train the SyMoNeuRaL Coder" has no corpus.** `training/train_lora.py` is real and good,
+   but its own docstring says it turns a stock Qwen into the **admin/persona** model, and
+   `training/corpus.jsonl` is 327 identity examples. Running it trains the persona adapter
+   again beside the two that exist. A coder corpus is real work that has not been started;
+   do not report a persona run as coder training.
 
-6. **The window test is opt-in.** `SYMONEURAL_TEST_WINDOW=1` for
-   `apps/test_desktop_shell.py`. It opens a real GTK window and runs the real client; it
-   appeared repeatedly on the owner's desktop before being gated.
+6. **`symoneural-diffuse` links an ABSOLUTE CUDA path**, not `$ORIGIN` like the other
+   engines: `/usr/local/cuda-13.3/targets/x86_64-linux/lib`. Measured on both the production
+   and rebuilt artefacts, so it is by design. A restored machine without CUDA at that exact
+   path builds the image engine successfully and then fails to load it at run time -- which
+   surfaces only when a visitor asks for an image.
 
-**Where things are now.** `README.md` lists every top-level folder and what it is for.
-`external/` is the renamed `references/` and is read-only — nothing in it may be imported,
-built, linked or executed, enforced by `apps/test_reference_isolation.py`. `archive/` is
-bulk, `releases/` is release output.
+7. **`symoneural-web` needs Go >= 1.25.1.** This host bootstraps 1.24.4 and `GOTOOLCHAIN=auto`
+   silently fetches the newer toolchain as a module. With `GOTOOLCHAIN=local` the build
+   **fails**. Provision Go explicitly rather than relying on the auto-download.
 
-**Not done, named rather than dropped.** The `symoneural-api` restart and shim deletion;
-caddy derename step 2; the first-party miner; the render surface replacing ComfyUI; the 81
-ratcheted path files; `Downloads/`.
-
----
+8. **Rotate the provider credentials.** Seven keys sat at mode 0664 -- world-readable -- and
+   are now at `.private/secrets/` 0600. `GITHUB_TOKEN` and `HF_TOKEN` do not expire on their
+   own, and the machine they sat on is being decommissioned.
 
 ## Earlier handoffs
 

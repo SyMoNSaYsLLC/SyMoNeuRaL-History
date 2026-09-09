@@ -6,9 +6,26 @@ Canonical current verified project-state authority, reconciled **2026-09-08 EDT*
 home-directory consolidation, the runtime restructure, the application verification, the
 first-party miner core, the Claude-to-SyMoNeuRaL migration and the `.claude` neutralisation.
 Canonical repository: `/home/google/Symoneural`; branch: `main`.
-Accepted HEAD: **`eeaa9e14`** (this section reconciled 2026-09-08, measured at that SHA).
+Accepted HEAD: **`2eb03803`** (this section reconciled 2026-09-08 EDT, measured at that SHA).
 Staged / stash counts: **0 / 0**. Tracked modifications: **0**.
-Backend suite at this SHA: **2367 passed, 0 failed, 59 skipped**, measured, not carried forward.
+Backend suite: **2400 passed, 0 failed, 56 skipped**, measured at `7888afe7` and recorded in
+`run/SUITE-LAST.txt` rather than typed here. The figure is read from that file by
+`restore/lib/generate.py`, so a stale number cannot be carried forward by hand.
+
+**THIRD INSTANCE, AND IT WAS THIS SESSION.** The paragraphs below record this file going
+stale twice and conclude that the fix is making reconciliation "part of the completion
+sequence rather than something remembered." That did not hold: the entry stood at
+`eeaa9e14` while the tree advanced **16 commits** through the restore control plane, the
+measured rebuild chain, the model and home classification, the smoke hardening and the
+Symoneural-Performance recovery. Nobody remembered, again.
+
+What is different this time is not a promise. `restore/RELEASE.json` now carries three
+separate fields -- `manifest_generated_from_head`, `current_measured_head` and
+`final_archive_head` -- because a tracked document *cannot* contain the SHA of the commit
+that contains it, and pretending otherwise is what produces a number that is wrong by
+construction. `apps/test_restore_manifests.py` asserts the generated manifests match what
+the registry produces now, with the revision columns excluded. That test fails on drift; a
+paragraph does not.
 
 The previous entry stood at `aa1bdff2` while the tree advanced **42 commits**, which is the
 third instance of the pattern this section warns about below. The `6da52783` tripwire passed
@@ -109,6 +126,48 @@ and its 24 test files are untouched; removal was not performed, and the two prem
 it -- that it parented a shell, and that it carried the miner runtime -- were both measured false.
 
 ## Current state
+
+### 2026-09-08 (late) — restore control plane, measured rebuilds, and the disk reckoning
+
+`2eb03803`. What this session added, all measured:
+
+**A restore control plane that can rebuild this project on a bare machine.** `restore/` holds
+a hand-authored judgement registry, a measurement module that never guesses, twelve generated
+manifests and one entry point. `RESTORE_VERIFY=PASS` over 81 rows, 20 components, 15
+applications, 14 smokes, 12 ordered steps.
+
+**Five components clean-rebuilt from a bundle-only clone** with no `external/` present:
+`symoneural-listen` came out **byte-identical** to production; `symoneural-web` produced an
+**identical 157-module dependency graph**; `llm`, `diffuse` and `gateway` matched on size,
+architecture and dynamic dependencies. `REPRODUCIBLE_BYTES` is recorded honestly per
+component and no build was manipulated to force a matching hash.
+
+**Three component identities were wrong and are corrected.** `symoneural-web` is Go built by
+`ops/build-symoneural-web.sh`, not `site/` built by python generators -- that conflated the
+served assets with the server. `symoneural-gateway` is a Rust/Cargo binary, not the Python
+settlement modules sharing its directory. `site/` is now its own component.
+
+**149 GB of `external/` is omittable, proven rather than argued.** All five upstreams are
+clean clones of public remotes at pinned revisions, and a scan of all 3,149,423 files found
+**zero** first-party-licensed content. Reacquisition was performed end to end: a bundle-only
+clone fetched `whisper.cpp` from GitHub and rebuilt the engine byte-identically.
+
+**248 GB freed instantly.** `archive/workspace-archives/yocto/` was an exact duplicate of
+`/yocto/artifacts` + `/yocto/sendtodrive` -- full path+size manifests over all 459,033 files
+identical, 40/40 random hashes identical, different devices so real copies. `/home` went 81%
+-> 50%.
+
+**Defects found in this session's own work, all repaired:** a pipeline that made `$?` read
+the pager's exit rather than the compiler's; a generator measuring its own tree's size while
+`run/api.log` grew; four suite failures caused by new code; six restore smokes naming API
+routes that have never existed; a restore step that would have stopped the production web
+server via `Conflicts=caddy.service`; and a symlink to the live repository inside a directory
+queued for deletion.
+
+**Two things that would have been lost:** seven provider credentials sitting at mode 0664,
+now at `.private/secrets/` 0600 and needing rotation; and twelve uncommitted Yocto files
+including the `symoneural-qemu*` machine definitions.
+
 
 ### 2026-09-08 — consolidation, restructure, and the first declared-versus-enforced sweep
 
