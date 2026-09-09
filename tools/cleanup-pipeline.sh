@@ -10,6 +10,11 @@ say(){ printf '%s PIPELINE: %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$L"; }
 while pgrep -f 'offload-to-drive\.sh --(run|home|yocto)$' >/dev/null; do sleep 60; done
 say "external set done"
 
+# 1b. everything else in external/ that the hand-written list missed
+say "starting external remainder"
+tools/offload-to-drive.sh --external-rest >> "$L" 2>&1
+say "external remainder done -- /home now $(df -h /home | tail -1 | awk '{print $5}')"
+
 # 2. the rest of /home
 say "starting home set"
 tools/offload-to-drive.sh --home >> "$L" 2>&1

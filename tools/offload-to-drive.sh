@@ -296,6 +296,72 @@ do_one() {
 case "${1:---plan}" in
     --plan)   do_plan ;;
     --status) column -t -s$'\t' "$LEDGER" ;;
+    --external-rest)
+        # EVERYTHING left in external/ except the deferred upstreams, as ONE object.
+        #
+        # Why a catch-all instead of more list entries: the hand-enumerated SUBTREES list
+        # covered 13 of 82 directories and missed 69 of them -- 31.9 GiB including
+        # external/anthropics at 5.2 GiB. A queue somebody types will always drift from a
+        # directory that grows. This enumerates the disk instead, so nothing can be missed
+        # by omission.
+        #
+        # external/referencestochatgpt is excluded BY NAME: it holds the five pinned
+        # upstream checkouts. They are provably reacquirable -- the pins are verified and a
+        # bundle-only clone rebuilt whisper.cpp byte-identically from GitHub -- but keeping
+        # them until the owner's final archive is verified means a rebuild does not depend
+        # on GitHub being reachable on the day.
+        say "=== external remainder start"
+        REST="$STAGE/external_rest.tar.zst"
+        LIST="$STAGE/.external_rest.list"
+        : > "$LIST"
+        n=0
+        for e in "$ROOT"/external/*; do
+            [ -e "$e" ] || continue
+            b="$(basename "$e")"
+            [ "$b" = "referencestochatgpt" ] && continue
+            printf 'external/%s\n' "$b" >> "$LIST"
+            n=$((n+1))
+        done
+        if [ "$n" -eq 0 ]; then
+            say "external remainder: nothing left"
+        else
+            say "PACK   external remainder ($n entries, zstd -3 -T0)"
+            rm -f "$REST"
+            if tar -cf - -C "$ROOT" -T "$LIST" 2>>"$LOG" | zstd -3 -T0 -q -o "$REST" 2>>"$LOG"; then
+                chmod 600 "$REST"
+                lm=$(md5sum "$REST" | cut -d' ' -f1)
+                say "       $(numfmt --to=iec "$(stat -c%s "$REST")")  md5 $lm"
+                say "UPLOAD external remainder"
+                if rclone copy "$REST" "$REMOTE/external/" --checksum --transfers 16 \
+                        --checkers 32 --drive-chunk-size 256M --drive-upload-cutoff 256M \
+                        --buffer-size 128M --retries 5 --stats 2m --stats-one-line \
+                        >>"$LOG" 2>&1; then
+                    rm5=$(rclone hashsum md5 "$REMOTE/external/$(basename "$REST")" \
+                          2>/dev/null | awk '{print $1}')
+                    if [ -n "$rm5" ] && [ "$rm5" = "$lm" ]; then
+                        say "VERIFY external remainder  remote md5 matches"
+                        ledger_write "external/<remainder>" VERIFIED "$lm" "$rm5" \
+                            "$(stat -c%s "$REST")"
+                        rm -f "$REST"
+                        while IFS= read -r rel; do
+                            [ -n "$rel" ] && rm -rf -- "$ROOT/$rel"
+                        done < "$LIST"
+                        ledger_write "external/<remainder>" REMOVED "$lm" "$rm5" 0
+                        say "REMOVE external remainder ($n entries) -- /home now $(df -h /home | tail -1 | awk '{print $5}')"
+                    else
+                        say "FAIL   external remainder: remote md5 '${rm5:-none}' != '$lm' -- NOTHING DELETED"
+                        ledger_write "external/<remainder>" MD5_MISMATCH "$lm" "${rm5:-none}" 0
+                    fi
+                else
+                    say "FAIL   external remainder: upload failed -- NOTHING DELETED"
+                fi
+            else
+                say "FAIL   external remainder: tar|zstd failed"
+            fi
+            rm -f "$LIST"
+        fi
+        say "=== external remainder end"
+        ;;
     --one)
         # Move exactly one named subtree. Added so the absolute-path branch could be
         # PROVEN on a 4.6 MB target before 192 GB was committed to it -- and it stays,
