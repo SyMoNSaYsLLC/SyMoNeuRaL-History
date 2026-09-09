@@ -2028,7 +2028,14 @@ KINDS = {"drop": do_drop, "drop_glob": do_drop_glob, "move_out": do_move_out,
          "move_files": do_move_files, "drive_children": do_drive_children,
          "backfill_zip_manifests": do_backfill_zip_manifests,
          "publish_manifests": do_publish_manifests}
+#: Kinds that cost no upload bandwidth. `drive_children` belongs here even though it
+#: mutates Drive: a server-side `moveto` inside one Drive is metadata work, so distributing
+#: 247.7 GiB of Projects_Organize takes minutes and competes with the uploads for nothing
+#: but API calls. Leaving it in the bandwidth phase meant the most visible section 12 gates
+#: -- root entry count, `Projects_Organize`/`offload`/`DONOTDELETE` not surviving -- waited
+#: behind roughly eight hours of transfers for no reason.
 FREE_KINDS = ("drop", "drop_glob")
+API_BOUND_KINDS = ("drive_children",)
 
 
 def cmd_plan() -> int:
@@ -2041,9 +2048,12 @@ def cmd_plan() -> int:
             KINDS[op["kind"]](op, st, False)
     print("\nPHASE 2 -- FREE, server-side: Drive reorganisation\n")
     do_drive_moves(st, False)
+    for op in OPERATIONS:
+        if op["kind"] in API_BOUND_KINDS:
+            KINDS[op["kind"]](op, st, False)
     print("\nPHASE 3 -- BANDWIDTH-BOUND: local -> Drive, verified then retired\n")
     for op in OPERATIONS:
-        if op["kind"] not in FREE_KINDS:
+        if op["kind"] not in FREE_KINDS and op["kind"] not in API_BOUND_KINDS:
             KINDS[op["kind"]](op, st, False)
     return 0
 
@@ -2095,14 +2105,19 @@ def cmd_run() -> int:
         # bandwidth-bound (~5 MB/s of upload). They contend for almost nothing, and run
         # sequentially phase 2 simply delays the 15-hour pole for no reason. So phase 2
         # goes to a worker thread and phase 3 proceeds immediately in this one.
+        def _phase2() -> None:
+            do_drive_moves(st, True)
+            for o in OPERATIONS:
+                if o["kind"] in API_BOUND_KINDS:
+                    KINDS[o["kind"]](o, st, True)
+
         print("\nPHASE 2 -- Drive server-side reorganisation (background, API-bound)")
-        t = threading.Thread(target=do_drive_moves, args=(st, True),
-                             name="drive-moves", daemon=True)
+        t = threading.Thread(target=_phase2, name="drive-server-side", daemon=True)
         t.start()
 
         print("PHASE 3 -- local -> Drive (foreground, bandwidth-bound)\n")
         for op in OPERATIONS:
-            if op["kind"] not in FREE_KINDS:
+            if op["kind"] not in FREE_KINDS and op["kind"] not in API_BOUND_KINDS:
                 KINDS[op["kind"]](op, st, True)
 
         print("\n  phase 3 done; waiting on the phase 2 Drive walks to finish ...")
