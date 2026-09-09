@@ -36,7 +36,7 @@ symoneural-quarantine-generated.sh	HISTORY_EVIDENCE	archive/from-home/	YES	14764
 install-ulaa-browser.sh	UNRELATED	not carried	YES	975	664	Browser installer.
 Desktop	OWNER_PERSONAL	the owner decides	YES	304580585	755	292 MB. Swept for project material in the earlier consolidation; the remainder is the owner's. NOT swept by this session.
 Documents	OWNER_PERSONAL	the owner decides	YES	90420205	755	88 MB.
-Downloads	OWNER_PERSONAL	the owner decides	YES	35530260130	775	34 GB, 411 entries, personal material mixed with the task prompts. Deliberately left unswept: deciding what of somebody's Downloads matters is not this session's call. The task prompt files that matter are separately preserved above.
+Downloads	OWNER_PERSONAL	the owner decides	YES	35531444606	775	34 GB, 411 entries, personal material mixed with the task prompts. Deliberately left unswept: deciding what of somebody's Downloads matters is not this session's call. The task prompt files that matter are separately preserved above.
 Pictures	OWNER_PERSONAL	the owner decides	YES	1455414693	755	1.4 GB.
 Music	OWNER_PERSONAL	the owner decides	YES	70105	755	-
 Videos	OWNER_PERSONAL	the owner decides	YES	0	755	-
@@ -47,6 +47,6 @@ go	UNRELATED	regenerable	YES	1495373478	775	1.6 GB Go module and toolchain cache
 test	UNRELATED	not carried	YES	1	664	Scratch file.
 thinclient_drives	SYSTEM	not carried	YES	0	775	Thin-client mount point.
 lockdown-20260831T152822Z.log	HISTORY_EVIDENCE	archive/from-home/logs/	YES	292	644	Lockdown run logs, 2026-08-31. Eight files, small, kept together as one record.
-.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5531127460	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
+.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5531164667	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
 .symoneural-full	DUPLICATE	not carried	YES	22957084	700	26 MB. A stale copy of the CLI whose launcher had DIVERGED from its source and nothing noticed -- which is why scripts/install-cli.sh installs symlinks, not copies.
 .config/systemd/user	PROJECT_AUTHORITY	.private/host-snapshot/rootfs/home/google/.config/systemd/user	YES	5830	775	The user-scope symoneural units. Captured in the host snapshot.
