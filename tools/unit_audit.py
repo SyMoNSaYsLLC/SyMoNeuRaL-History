@@ -25,7 +25,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+
+def _repo_root() -> Path:
+    """Find the root by its marker, not by counting parents.
+
+    `backend/apps/test_path_fragility.py` enforces this and explains why: a `parents[N]`
+    root is silent when it is wrong, because the wrong parent usually exists too.
+    """
+    here = Path(__file__).resolve()
+    for cand in (here, *here.parents):
+        if (cand / "backend" / "api.py").is_file():
+            return cand
+    raise SystemExit(f"repo root not found above {here}: no backend/api.py marker")
+
+
+ROOT = _repo_root()
 OPS = ROOT / "ops"
 
 SYSTEM_DIRS = ("/etc/systemd/system", "/run/systemd/system", "/usr/lib/systemd/system")

@@ -32,15 +32,37 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
 
-# `backend/vendor/` is 15,297 files of vendored SDKs that nothing imports, and
-# `.claude/worktrees/` is a full duplicate of the tree that doubles every result with stale
-# copies. `references/` is inspiration, never a source. None of the three is the serving path.
+def _repo_root() -> Path:
+    """Find the root by its marker, not by counting parents.
+
+    `backend/apps/test_path_fragility.py` enforces this and explains why: a `parents[N]`
+    root is silent when it is wrong, because the wrong parent usually exists too. `api.py`'s
+    own header records having got that wrong four separate times.
+    """
+    here = Path(__file__).resolve()
+    for cand in (here, *here.parents):
+        if (cand / "backend" / "api.py").is_file():
+            return cand
+    raise SystemExit(f"repo root not found above {here}: no backend/api.py marker")
+
+
+ROOT = _repo_root()
+
+# `backend/vendor/` is 15,297 files of vendored SDKs that nothing imports; `references/` is
+# inspiration, never a source. Neither is the serving path. Every dot-directory is pruned as
+# a class rather than by name -- the agent worktree directories are full duplicates of the
+# tree that double every result with stale copies, and naming that one directly is what
+# `test_no_claude_dependency.py` forbids in first-party source.
 PRUNE_DIRS = {
-    ".git", ".claude", "node_modules", "__pycache__", "vendor", "references",
-    ".private", ".venv", "venv", "site-packages", "build", "dist",
+    "node_modules", "__pycache__", "vendor", "references",
+    "venv", "site-packages", "build", "dist",
 }
+
+
+def _pruned(name: str) -> bool:
+    return name in PRUNE_DIRS or name.startswith(".")
+
 
 # `backend/` is `sys.path[0]` at runtime because the unit runs `python3 backend/api.py`, and
 # api.py itself inserts these two. A name resolvable under any of them is first-party.
@@ -246,7 +268,7 @@ def is_test_path(rel: str) -> bool:
 def iter_py(base: Path) -> list[Path]:
     out: list[Path] = []
     for p in base.rglob("*.py"):
-        if any(part in PRUNE_DIRS for part in p.relative_to(base).parts[:-1]):
+        if any(_pruned(part) for part in p.relative_to(base).parts[:-1]):
             continue
         out.append(p)
     return sorted(out)
@@ -260,7 +282,7 @@ def first_party_names() -> set[str]:
         if not d.is_dir():
             continue
         for child in d.iterdir():
-            if child.name in PRUNE_DIRS:
+            if _pruned(child.name):
                 continue
             if child.is_dir() and (child / "__init__.py").exists():
                 names.add(child.name)
@@ -370,7 +392,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     print(f"scanned {len(files)} .py files under {args.base}/ "
-          f"(pruned: {', '.join(sorted(PRUNE_DIRS))})")
+          f"(pruned: dot-directories, {', '.join(sorted(PRUNE_DIRS))})")
     if unparsed:
         print(f"\n!! {len(unparsed)} file(s) did not parse:")
         for u in unparsed:
