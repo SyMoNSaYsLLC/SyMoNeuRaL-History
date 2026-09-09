@@ -79,6 +79,16 @@ tail -f .private/storage-reorg/latest.log
    with 8 objects verified while a twin of that name still held 7 more at the root. If a
    collection looks half-moved, look for a twin before concluding failure.
 
+10. **A repo-wide `grep` cannot see `review/`, and returns a clean result instead of an
+    error.** Some environments wrap `grep` in a gitignore-respecting matcher, and
+    `/review/` is gitignored (`.gitignore:173`). So `grep -rn '<pattern>' .` from the repo
+    root silently skips every review and evidence artefact — including all of
+    `review/commissioning-20260909/` — and reports no matches. Found 2026-09-09 while
+    verifying a correction: the whole-tree search said clean and the file itself had five
+    hits. Name the directory (`grep -rn '<pat>' review/`) or bypass the wrapper
+    (`command grep -rn '<pat>' .`). **Any audit of the form "were the claims in the
+    reports corrected" gets a free pass otherwise**, which is the worst kind of check.
+
 ### What is deliberately not done yet
 
 The post-transfer stages are gated on the transfers finishing, in this order: Drive dedupe
