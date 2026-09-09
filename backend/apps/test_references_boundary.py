@@ -72,6 +72,14 @@ ALLOWED = {
     # the moment an upstream source sat one directory deeper -- which is exactly what happened
     # when the ASR engine's source turned out to live under a differently-named parent.
     "tools/fork_engines.sh": "takes external/ as build input, writes engines/ as output",
+    # The external-source DETECTOR's own fixtures. Its
+    # test_the_detector_catches_split_form_construction asserts that a real dependency is
+    # recognised, and a fixture proving that has to LOOK like the thing being detected --
+    # so it contains the literal strings this rule forbids. Exempting it is not weakening
+    # the rule: without those fixtures the other detector passes vacuously, which is the
+    # failure both files exist to prevent. Named individually, so the next offender fails.
+    "backend/apps/test_no_external_source_dependency.py":
+        "fixtures that must look like the dependency they detect",
 }
 
 #: A path into a third-party working tree, in either spelling. `\b` on the left so that

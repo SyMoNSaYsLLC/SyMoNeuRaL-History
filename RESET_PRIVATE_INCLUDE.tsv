@@ -1,0 +1,24 @@
+PATH	REASON	SENSITIVITY	SOURCE_OF_TRUTH	PRESENT
+run/accounts/accounts.db	persistent state: accounts-db	SECRET	restore/lib/registry.py STATE_STORES	FILE
+run/dispatchos.db	persistent state: dispatchos-db	PRIVATE	restore/lib/registry.py STATE_STORES	FILE
+run/project/store.db	persistent state: project-db	PRIVATE	restore/lib/registry.py STATE_STORES	FILE
+run/symoneural-discovery.sqlite3	persistent state: discovery-index	PRIVATE	restore/lib/registry.py STATE_STORES	FILE
+run/config/api.env	persistent state: api-env	SECRET	restore/lib/registry.py STATE_STORES	FILE
+run/authority	persistent state: authority-state	PRIVATE	restore/lib/registry.py STATE_STORES	DIR
+GARRETT-REQUESTS.md	persistent state: ledgers	PRIVATE	restore/lib/registry.py STATE_STORES	FILE
+INTAKE.md	persistent state: ledgers	PRIVATE	restore/lib/registry.py STATE_STORES	FILE
+training/adapter	persistent state: training-adapters	PRIVATE	restore/lib/registry.py STATE_STORES	DIR
+training/corpus.jsonl	persistent state: training-corpus	PRIVATE	restore/lib/registry.py STATE_STORES	FILE
+backend/models	persistent state: models	PRIVATE	restore/lib/registry.py STATE_STORES	DIR
+backend/output	persistent state: image-output	PRIVATE	restore/lib/registry.py STATE_STORES	DIR
+.private/application-state	consistent database images and the env file	SECRET	restore/lib/generate.py explicit policy	DIR
+.private/secrets	provider credentials, migrated from a 0664 home file	SECRET	restore/lib/generate.py explicit policy	DIR
+.private/claude-backups	retirement backup and migration evidence	SECRET	restore/lib/generate.py explicit policy	DIR
+.private/host-snapshot	installed units and Caddy configuration	PRIVATE	restore/lib/generate.py explicit policy	DIR
+.private/git-backup	the full-history bundle	PRIVATE	restore/lib/generate.py explicit policy	DIR
+.private/source-bundles	first-party source redundancy	PRIVATE	restore/lib/generate.py explicit policy	DIR
+.private/runtime-artifacts	verified built binaries, fallback only	PRIVATE	restore/lib/generate.py explicit policy	DIR
+.private/upstream-patches	edits a revision pin cannot restore	PRIVATE	restore/lib/generate.py explicit policy	DIR
+.private/rehearsal	clean-rebuild and restore-rehearsal evidence	PRIVATE	restore/lib/generate.py explicit policy	DIR
+training/adapter-qwen36	unique trained output	PRIVATE	restore/lib/generate.py explicit policy	DIR
+training/build_dataset.py	the method that produces the corpus	PRIVATE	restore/lib/generate.py explicit policy	FILE

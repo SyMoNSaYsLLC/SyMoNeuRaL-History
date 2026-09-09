@@ -44,7 +44,9 @@
       "upstream_file": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
       "license": "Apache-2.0",
       "license_text": "licenses/Qwen2.5-14B-Instruct.LICENSE.txt",
-      "modified_by_us": false
+      "modified_by_us": false,
+      "sha256": "e47ad95dad6ff848b431053b375adb5d39321290ea2c638682577dafca87c008",
+      "sha256_measured": "2026-09-08, on this machine, after fetching through scripts/fetch-models.sh. The upstream published no hash in this manifest; this is OUR measurement of the bytes we received, recorded so a future refetch is checkable rather than merely plausible."
     },
     {
       "path": "llm/symon-1.0-draft-0.5b-q4_k_m.gguf",
@@ -64,7 +66,9 @@
       "upstream_file": "Qwen3.6-27B-UD-Q2_K_XL.gguf",
       "license": "Apache-2.0",
       "license_text": null,
-      "modified_by_us": false
+      "modified_by_us": false,
+      "sha256": "3db422cf36c7efacb027396a11df287c0fc469829bd7daf1867a3505a9e44af6",
+      "sha256_measured": "2026-09-08, on this machine, after fetching through scripts/fetch-models.sh. The upstream published no hash in this manifest; this is OUR measurement of the bytes we received, recorded so a future refetch is checkable rather than merely plausible."
     },
     {
       "path": "llm/symon-1.0-27b-vision-f16.gguf",
@@ -74,7 +78,9 @@
       "upstream_file": "mmproj-F16.gguf",
       "license": "Apache-2.0",
       "license_text": null,
-      "modified_by_us": false
+      "modified_by_us": false,
+      "sha256": "eacf610d1ee4bd5ed0197a0777dd8f4fceb8eefa27009067c7d496cb68fbde45",
+      "sha256_measured": "2026-09-08, on this machine, after fetching through scripts/fetch-models.sh. The upstream published no hash in this manifest; this is OUR measurement of the bytes we received, recorded so a future refetch is checkable rather than merely plausible."
     },
     {
       "path": "llm/symon-1.0-32b-q2_k_xl.gguf",
@@ -84,7 +90,9 @@
       "upstream_file": "Qwen3-32B-UD-Q2_K_XL.gguf",
       "license": "Apache-2.0",
       "license_text": null,
-      "modified_by_us": false
+      "modified_by_us": false,
+      "sha256": "b15da97c6f14ab076e858a3e493c708926bb9369212639bfd5f1383614616047",
+      "sha256_measured": "2026-09-08, on this machine, after fetching through scripts/fetch-models.sh. The upstream published no hash in this manifest; this is OUR measurement of the bytes we received, recorded so a future refetch is checkable rather than merely plausible."
     },
     {
       "path": "image/symoneural-image-unet-q4_k.gguf",

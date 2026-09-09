@@ -1047,7 +1047,7 @@ STATE_STORES: tuple[StateStore, ...] = (
     StateStore(
         "models", "chat,image", "symoneural-api",
         "backend/models", "model weights, 17 GB",
-        "NO", "classified per file -- see MODELS.tsv",
+        "NO", "classified per file -- see restore/manifests/MODELS.tsv",
         "backend/models",
         "restore/symoneural-restore restore-state --apply  # reacquires downloadables",
         "ls backend/models",

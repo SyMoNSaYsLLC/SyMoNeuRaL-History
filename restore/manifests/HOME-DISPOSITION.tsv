@@ -1,0 +1,52 @@
+ITEM	DISPOSITION	CANONICAL_LOCATION	PRESENT_ON_DISK	SIZE_BYTES	MODE	NOTE
+Symoneural	PROJECT_AUTHORITY	/home/google/Symoneural	YES	568610487386	775	The canonical root. Everything below either lives here already or is judged against whether it needs to.
+claude-preserve-list-20260908.txt	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	4436	600	Names every path the purge must not touch. Useless after the purge, essential before it.
+claude-purge-allowlist-20260908.txt	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	4994	600	13 literal paths, zero globs. The only list the purge is permitted to consult.
+claude-retirement-finalize-20260908-050000.sh	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	19608	700	The post-exit executor. Must be readable from outside the repository because it runs when this session is gone.
+symoneural-information-scan.py	PROJECT_AUTHORITY	archive/from-home/symoneural-information-scan.py	YES	52893	664	First-party scanning tool that never made it into the repository.
+claude-system-inventory-20260908-034644.txt	HISTORY_EVIDENCE	.private/claude-backups/20260908-035459/	YES	1487343	600	The pre-migration system inventory the owner asked for. Evidence of what was on the box before anything was moved.
+claudelastrun.md	HISTORY_EVIDENCE	archive/from-home/	YES	983577	664	Session record. Mode 664 -- tightened on copy.
+claudeterminalhistory.md	HISTORY_EVIDENCE	archive/from-home/	YES	514283	664	Terminal history the owner supplied as review material.
+sanitycheck.md	HISTORY_EVIDENCE	archive/from-home/	YES	37505	664	The owner's review of what these three tasks were meant to accomplish. It is the statement of intent the work is judged against, so it travels.
+autocontinuationprompt.md	HISTORY_EVIDENCE	archive/from-home/	YES	25496	664	Task instructions.
+patchprompt	HISTORY_EVIDENCE	archive/from-home/	YES	15350	664	Task instructions.
+someofthelineswerehiddeninpromptreadthis.md	HISTORY_EVIDENCE	archive/from-home/	YES	19942	664	Task instructions.
+productiondeployment.md	HISTORY_EVIDENCE	archive/from-home/	YES	16078	664	Deployment notes.
+security-reverify-2026-09-03.md	HISTORY_EVIDENCE	archive/from-home/	YES	39096	664	Security re-verification record.
+symoneural-packaging-recovery-audit-2026-09-03.md	HISTORY_EVIDENCE	archive/from-home/	YES	66413	664	Packaging audit.
+symoneural-production-qualification-2026-09-03.md	HISTORY_EVIDENCE	archive/from-home/	YES	44075	664	Production qualification record.
+status.md	HISTORY_EVIDENCE	archive/from-home/	YES	73949	664	Status snapshot.
+makecudasamples.docx	HISTORY_EVIDENCE	archive/from-home/	YES	59249	664	CUDA build notes.
+Source code and binaries.docx	HISTORY_EVIDENCE	archive/from-home/	YES	8088	664	Owner-authored notes on source and binary handling.
+Source code and binaries.pdf	HISTORY_EVIDENCE	archive/from-home/	YES	88113	664	PDF of the above.
+Source code for Model.docx	HISTORY_EVIDENCE	archive/from-home/	YES	8022	664	Owner-authored notes on model source.
+claudebackup.zip	CLAUDE_BACKUP	.private/claude-backups/legacy/	YES	5147542289	600	4.8 GB, mode 600. The EARLIER Claude backup, superseded by the verified 20260908-035459 checkpoint but NOT deleted -- the owner's instruction is explicit that a newer checkpoint existing is not a reason to destroy an older one. Kept as a second, independent copy.
+providerapikeys.txt	SECRET	.private/secrets/providerapikeys.txt	no	0	NOT_PRESENT	MIGRATED 2026-09-08. Was mode 0664 -- world-readable -- and held 7 live provider credentials. Copied at 0600, size and SHA-256 verified on both sides, then the original was unlinked. Values were never read or printed. ROTATE AFTER RESTORE.
+symoneural-cutover-rollback-20260826-154113	SUPERSEDED	not carried -- superseded by Git history	YES	67650254	555	The 2026-08-26 web cutover rollback tree. The cutover succeeded and symoneural-web has been serving since; the rollback material is reconstructible from Git. Mode 555 with root-owned files inside, which is a second reason not to drag it along.
+AI_PURGE_PSEUDOFS	SUPERSEDED	not carried	YES	22518	755	Root-owned pseudo-filesystem scratch from an earlier purge exercise.
+SyMoNeuRaL-Projects	SUPERSEDED	already consolidated into archive/	YES	2750311765	775	2.8 GB. Its unique content was swept into the repository in the earlier consolidation; what remains is the emptied original.
+experiments	SUPERSEDED	not carried	YES	2583293530	775	2.5 GB of superseded experiment trees.
+review	SUPERSEDED	review/ exists inside the repository	YES	0	775	Empty shell; the real review/ is tracked.
+Platforms.tar.gz	SUPERSEDED	not carried	YES	234786924	664	224 MB platform tarball; a copy is already under external/.
+browser-webapp-purge.sh	HISTORY_EVIDENCE	archive/from-home/	YES	4340	700	Owner-authored maintenance script.
+network-localize.sh	HISTORY_EVIDENCE	archive/from-home/	YES	5060	700	Owner-authored maintenance script.
+symon-full-lockdown.sh	HISTORY_EVIDENCE	archive/from-home/	YES	11070	700	Owner-authored lockdown tooling.
+symoneural-quarantine-generated.sh	HISTORY_EVIDENCE	archive/from-home/	YES	14764	775	Owner-authored quarantine tooling.
+install-ulaa-browser.sh	UNRELATED	not carried	YES	975	664	Browser installer.
+Desktop	OWNER_PERSONAL	the owner decides	YES	304580585	755	292 MB. Swept for project material in the earlier consolidation; the remainder is the owner's. NOT swept by this session.
+Documents	OWNER_PERSONAL	the owner decides	YES	90420205	755	88 MB.
+Downloads	OWNER_PERSONAL	the owner decides	YES	35530260130	775	34 GB, 411 entries, personal material mixed with the task prompts. Deliberately left unswept: deciding what of somebody's Downloads matters is not this session's call. The task prompt files that matter are separately preserved above.
+Pictures	OWNER_PERSONAL	the owner decides	YES	1455414693	755	1.4 GB.
+Music	OWNER_PERSONAL	the owner decides	YES	70105	755	-
+Videos	OWNER_PERSONAL	the owner decides	YES	0	755	-
+Public	OWNER_PERSONAL	the owner decides	YES	0	755	-
+Templates	OWNER_PERSONAL	the owner decides	YES	0	755	-
+ia.Wallpapers	OWNER_PERSONAL	the owner decides	YES	421403810	775	403 MB of wallpapers.
+go	UNRELATED	regenerable	YES	1495373478	775	1.6 GB Go module and toolchain cache. Rebuilt by `go mod download`; explicitly NOT carried, and restore/manifests records the Go >= 1.25.1 requirement instead.
+test	UNRELATED	not carried	YES	1	664	Scratch file.
+thinclient_drives	SYSTEM	not carried	YES	0	775	Thin-client mount point.
+lockdown-20260831T152822Z.log	HISTORY_EVIDENCE	archive/from-home/logs/	YES	292	644	Lockdown run logs, 2026-08-31. Eight files, small, kept together as one record.
+.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5530621658	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
+.symoneural-full	DUPLICATE	not carried	YES	22957084	700	26 MB. A stale copy of the CLI whose launcher had DIVERGED from its source and nothing noticed -- which is why scripts/install-cli.sh installs symlinks, not copies.
+.config/systemd/user	PROJECT_AUTHORITY	.private/host-snapshot/rootfs/home/google/.config/systemd/user	YES	5830	775	The user-scope symoneural units. Captured in the host snapshot.
+gptosspromptandsymoneuraldefaults.md	UNCLASSIFIED	-	YES	36570	664	ON DISK WITH NO DISPOSITION. Add a row to restore/lib/home.py. An unclassified item is destroyed by the reset without anyone having decided that.

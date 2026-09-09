@@ -24,11 +24,28 @@ import json
 import pathlib
 import sys
 
-HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+def _find_root(start: pathlib.Path) -> pathlib.Path:
+    """Marker walk, because `HERE.parent` is exactly what the ratchet forbids.
+
+    This module used `pathlib.Path(__file__).resolve().parent` and then `HERE.parent` to
+    put restore/ on sys.path -- which counts depth and breaks silently the day the file
+    moves. symoneural-audit flagged it as the 82nd silent depth-root finding and
+    apps/test_path_fragility.py went red on a baseline of 81. That check has now caught
+    its own author four separate times, which is the argument for keeping it.
+    """
+    for cand in (start, *start.parents):
+        if (cand / "backend" / "api.py").is_file():
+            return cand
+    raise SystemExit("restore/generate: no repository root found")
+
+
+_ROOT = _find_root(pathlib.Path(__file__).resolve())
+sys.path.insert(0, str(_ROOT / "restore"))
 
 from lib import deps as D             # noqa: E402
 from lib import measure as M          # noqa: E402
+from lib import home as HOME         # noqa: E402
+from lib import models as MOD        # noqa: E402
 from lib import registry as R         # noqa: E402
 
 ROOT = M.ROOT
@@ -357,21 +374,140 @@ def gen_first_party_closure() -> int:
     return len(rows)
 
 
+
+def source_closure_status() -> str:
+    """Read off SOURCE-CLOSURE.tsv rather than asserted, so it cannot drift from it."""
+    f = MANIFESTS / "SOURCE-CLOSURE.tsv"
+    if not f.is_file():
+        return "UNMEASURED (manifest not generated)"
+    lines = f.read_text().splitlines()
+    h = lines[0].split("\t")
+    i = h.index("STATUS")
+    fails = [ln for ln in lines[1:] if ln.split("\t")[i].startswith("FAIL")]
+    return "PASS" if not fails else f"FAIL ({len(fails)} component(s))"
+
+
+def first_party_closure_status() -> str:
+    f = ROOT / "FIRST-PARTY-CLOSURE.tsv"
+    if not f.is_file():
+        return "UNMEASURED"
+    lines = f.read_text().splitlines()
+    h = lines[0].split("\t")
+    i_omit, i_prod = h.index("EXTERNAL_SOURCE_CAN_BE_OMITTED"), h.index("PRODUCTION_STATUS")
+    bad = [ln for ln in lines[1:]
+           if ln.split("\t")[i_prod] == "PRODUCTION"
+           and not ln.split("\t")[i_omit].startswith("YES")]
+    return "PASS" if not bad else f"FAIL ({len(bad)} production component(s))"
+
+
+def test_status() -> str:
+    """The last recorded full-suite reading, or an explicit UNMEASURED.
+
+    Deliberately not a number typed here. This repository has published a test count that
+    was never true of the commit it sat beside, and the fix is to read it from the file the
+    suite writes rather than to carry it forward by hand.
+    """
+    f = ROOT / "run" / "SUITE-LAST.txt"
+    if not f.is_file():
+        return "UNMEASURED (run the suite and record it in run/SUITE-LAST.txt)"
+    return f.read_text().strip().splitlines()[0][:200]
+
+
+
+def gen_reset_private_include() -> int:
+    """RESET_PRIVATE_INCLUDE.tsv -- the sensitive paths the reset archive carries ON PURPOSE.
+
+    `scripts/lib/archive-guard.sh` refuses `training/corpus.jsonl`, `training/adapter*/`,
+    `.claude/` and any `.env` in an archive. It is right to, and it is NOT weakened here:
+    the guard protects ordinary export archives, and adding `allow .private/**` to it would
+    silently protect nothing the next time somebody builds a shareable tarball.
+
+    The reset backup is a different security context, and the guard already models it. Its
+    own header says so: `local-authorized` means "the artifact stays on the box and is
+    ALLOWED to contain the protected material (the owner's own backup of his own trade
+    secret is not a leak). The obligation is different, not absent: every hit must be named
+    in SECRETS-INSIDE.txt at the archive root."
+
+    This table IS that naming, produced from the registries rather than typed, so a new
+    secret-bearing store cannot be added without appearing here.
+    """
+    header = ["PATH", "REASON", "SENSITIVITY", "SOURCE_OF_TRUTH", "PRESENT"]
+    rows = []
+    for s in R.STATE_STORES:
+        sens = "SECRET" if s.contains_secrets.startswith("YES") else "PRIVATE"
+        for rel in (x.strip() for x in s.live_path.split(",")):
+            if not rel:
+                continue
+            rows.append([rel, f"persistent state: {s.state_id}", sens,
+                         "restore/lib/registry.py STATE_STORES", M.exists(rel)])
+    for rel, reason, sens in (
+        (".private/application-state", "consistent database images and the env file",
+         "SECRET"),
+        (".private/secrets", "provider credentials, migrated from a 0664 home file",
+         "SECRET"),
+        (".private/claude-backups", "retirement backup and migration evidence", "SECRET"),
+        (".private/host-snapshot", "installed units and Caddy configuration", "PRIVATE"),
+        (".private/git-backup", "the full-history bundle", "PRIVATE"),
+        (".private/source-bundles", "first-party source redundancy", "PRIVATE"),
+        (".private/runtime-artifacts", "verified built binaries, fallback only", "PRIVATE"),
+        (".private/upstream-patches", "edits a revision pin cannot restore", "PRIVATE"),
+        (".private/rehearsal", "clean-rebuild and restore-rehearsal evidence", "PRIVATE"),
+        ("training/adapter", "unique trained output; no download replaces it", "PRIVATE"),
+        ("training/adapter-qwen36", "unique trained output", "PRIVATE"),
+        ("training/corpus.jsonl", "the corpus; archive-guard calls it a trade secret",
+         "PRIVATE"),
+        ("training/build_dataset.py", "the method that produces the corpus", "PRIVATE"),
+        ("GARRETT-REQUESTS.md", "mode-600 owner ledger", "PRIVATE"),
+        ("INTAKE.md", "mode-600 owner ledger", "PRIVATE"),
+    ):
+        rows.append([rel, reason, sens, "restore/lib/generate.py explicit policy",
+                     M.exists(rel)])
+
+    seen, uniq = set(), []
+    for r in rows:
+        if r[0] in seen:
+            continue
+        seen.add(r[0]); uniq.append(r)
+    out = ROOT / "RESET_PRIVATE_INCLUDE.tsv"
+    out.write_text("\t".join(header) + "\n" +
+                   "".join("\t".join(_cell(x) for x in r) + "\n" for r in uniq),
+                   encoding="utf-8")
+    return len(uniq)
+
+
 def gen_release(release_id: str, extra: dict | None = None) -> pathlib.Path:
     prod = [c for c in R.COMPONENTS if c.production_status == R.PRODUCTION]
-    # `created_at` is the COMMIT date of repository_head, not the wall clock. A clock
+    # `created_at` is the COMMIT date of the generating head, not the wall clock. A clock
     # reading makes RELEASE.json differ on every regeneration, so `git status` is dirty
     # forever and a real change is invisible in the noise -- and it dates the act of
     # running a generator rather than the release it describes.
     committed = M.run(["git", "show", "-s", "--format=%cI", "HEAD"])
+
+    # THREE heads, not one, because a tracked document cannot contain the SHA of the
+    # commit that contains it. Labelling the generating revision `repository_head` invites
+    # a reader to treat a necessarily-older SHA as the current state -- the same trap that
+    # had BACKUP.json carrying the hash of the ZIP it was inside.
+    #
+    #   MANIFEST_GENERATED_FROM_HEAD  what the manifests were measured against. Baked in,
+    #                                 and always the PARENT of the commit carrying them.
+    #   CURRENT_MEASURED_HEAD         read live at generation time. Equal to the above
+    #                                 while the tree is clean and unchanged since.
+    #   FINAL_ARCHIVE_HEAD            the revision actually backed up. Cannot be known
+    #                                 here; the post-commit private archive manifest
+    #                                 records it. `null` means not yet archived, which is
+    #                                 a fact rather than a gap.
     doc = {
-        "schema_version": 1,
+        "schema_version": 2,
         "release_id": release_id,
         "created_at": committed if committed not in ("UNMEASURED", "") else None,
-        "generated_at_note": "created_at is the commit date of repository_head, so this "
-                             "document is a function of the commit and not of when the "
-                             "generator happened to run",
-        "repository_head": M.head(),
+        "manifest_generated_from_head": M.head(),
+        "current_measured_head": M.run(["git", "rev-parse", "HEAD"]),
+        "final_archive_head": None,
+        "head_semantics": "manifest_generated_from_head is the revision these manifests "
+                          "were measured against and is necessarily the parent of the "
+                          "commit that carries them; current_measured_head is read live; "
+                          "final_archive_head is written by the archive step and is null "
+                          "until the archive exists.",
         "branch": M.branch(),
         "repository_clean": M.is_clean(),
         "component_count": len(R.COMPONENTS),
@@ -385,6 +521,30 @@ def gen_release(release_id: str, extra: dict | None = None) -> pathlib.Path:
         "restore_entrypoint": "restore/symoneural-restore",
         "manifest_root": "restore/manifests",
         "git_bundle_path": ".private/git-backup/Symoneural-all.bundle",
+        # NOT the hash itself. The bundle is regenerated AFTER the commit that carries this
+        # file, so any value inlined here is stale the moment it is true. The sidecar is
+        # written beside the bundle by tools/build_recovery_root.py and is the authority.
+        "git_bundle_sha256_sidecar":
+            ".private/git-backup/Symoneural-all.bundle.sha256",
+        "source_closure_status": source_closure_status(),
+        "first_party_closure_status": first_party_closure_status(),
+        "test_status": test_status(),
+        "yocto_status": "NOT_MIGRATED -- /yocto is a separate 500 GB ext4 partition "
+                        "(/dev/nvme0n1p2) still mounted; unique first-party layer content "
+                        "lives in yocto/ in this repository",
+        "final_archive_expected": "/home/google/Symoneural-backup-<timestamp>.tar.gz",
+        "final_archive_contains_secrets": "YES",
+        "final_archive_encrypted": "NO",
+        "final_archive_confidentiality_note":
+            "The reset archive carries provider credentials, session databases, an env "
+            "file, the owner's mode-600 ledgers and the trade-secret corpus. It is NOT "
+            "encrypted. Mode 0600 is a filesystem permission and is NOT encryption: "
+            "anyone with root on the host, or with access to the cloud account it is "
+            "copied to, can read it. Its confidentiality rests entirely on filesystem and "
+            "cloud access controls. RESET_PRIVATE_INCLUDE.tsv names every sensitive path "
+            "carried on purpose; scripts/lib/archive-guard.sh is NOT weakened to permit "
+            "them -- its local-authorized mode already models this case and requires the "
+            "naming.",
         "runtime_artifact_root": f".private/runtime-artifacts/{release_id}",
         "source_bundle_root": f".private/source-bundles/{release_id}",
         "persistent_state_root": f".private/application-state/{release_id}",
@@ -425,6 +585,9 @@ def generate_all(release_id: str, extra: dict | None = None) -> dict[str, int]:
         "FIRST-PARTY-CLOSURE.tsv": gen_first_party_closure(),
         "DEPENDENCIES.tsv": D.gen_dependencies(write_tsv),
         "THIRD-PARTY-REBUILD-MANIFEST.tsv": D.gen_third_party_rebuild(_cell),
+        "MODELS.tsv": MOD.gen_models(write_tsv),
+        "HOME-DISPOSITION.tsv": HOME.gen_home_disposition(write_tsv),
+        "RESET_PRIVATE_INCLUDE.tsv": gen_reset_private_include(),
     }
     gen_release(release_id, extra)
     return counts

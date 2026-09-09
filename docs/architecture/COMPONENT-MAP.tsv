@@ -11,7 +11,7 @@ symoneural-cli	symoneural-cli	OPERATOR_TOOL	IMPLEMENTED	SUPPORT	symoneural-platf
 symoneural-code	symoneural-code	OPERATOR_TOOL	IMPLEMENTED	SUPPORT	symoneural-cli	-	bin/symoneural-code	Bash	f2a4a8fa	none-interpreted	self	coder front door	-
 symoneural-discovery	symoneural-discovery	OPERATOR_TOOL	IMPLEMENTED	SUPPORT	symoneural-platform	-	bin/symoneural-discovery	Python	f2a4a8fa	none-interpreted	self	discovery tool	-
 symoneural-desktop	symoneural-desktop	CLIENT_APP	IMPLEMENTED	NOT_IN_SERVER_RELEASE	symoneural-platform	-	desktop-client	Rust/Tauri	f2a4a8fa	cargo	self	desktop client	out-of-server-scope
-symoneural-buildv2	symoneural-buildv2	BUILD_AUTHORITY	IMPLEMENTED	NOT_AN_APPLICATION	-	-	archive/from-desktop/symoneural-buildv2	multi	external	external	build/qualification authority	-	
+symoneural-buildv2	symoneural-buildv2	BUILD_AUTHORITY	IMPLEMENTED	NOT_AN_APPLICATION	-	-	archive/buildv2	multi	external	external	build/qualification authority	-	
 symoneural-adaptive-fabric	Symon Adaptive Fabric	PLANNED	NOT_IMPLEMENTED	NOT_IN_RELEASE	-	Hardware Profiler;Model Advisor;Placement Policy;Residency Manager;Transfer Policy;Prefill Pipeline;Memory Governor	-	-	-	-	-	design proposal only	not-implemented
 symoneural-listen	symoneural-listen	ENGINE_NATIVE	IMPLEMENTED	PRODUCTION	symoneural-platform	Symon Listen;whisper surface	symoneural-listen	C++	ba6171db	cmake	self	speech recognition, CPU only	no-version-flag
 symoneural-miner	symoneural-miner	ENGINE_THIRDPARTY_FORK	IMPLEMENTED	OFFLINE_BY_CONFIG	symoneural-platform	kawpowminer fork	symoneural-miner	C++/CUDA	ba6171db	cmake	self	mining control: GPU, ASIC and settlement	upstream-gpl3-not-first-party

@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-SyMoNeuRaL-Proprietary
+# Copyright (c) 2026 SymonSays LLC. All rights reserved.
+# SyMoNeuRaL is a subdivision of SymonSays LLC. Licence: /LICENSE at the repository root.
+#
+# offload-to-drive.sh -- move bulk non-first-party material to Google Drive, verified, and
+# free the local disk.
+#
+# THE OWNER'S ACTUAL WORRY, IN HIS WORDS: "be careful moving them and ensure they are not
+# still on disk after the move bc it seems when i move them sometimes it actually just
+# copys them." So the deletion is gated on a hash read back FROM THE REMOTE, and nothing is
+# removed on the strength of a transfer having appeared to succeed.
+#
+# ---------------------------------------------------------------------------------------
+# WHY THIS TARS FIRST, WHICH LOOKS LIKE AN EXTRA STEP
+#
+# Measured on 2026-09-08:
+#
+#     external/                    3,149,423 files   149 GB
+#     archive/workspace-archives/    459,329 files   253 GB
+#
+# 3.6 million objects. Google Drive charges an API round trip per file and the mount here
+# runs --tpslimit 8, so uploading them individually is not slow, it is infeasible -- at 8
+# transactions per second that is over five days of API calls before a single byte of
+# throughput is considered. One tar per subtree turns 3.6 million objects into a few dozen,
+# and Drive is fast at large objects.
+#
+# The tar is NOT compressed for trees that are already compressed archives (.tar.gz, .zip,
+# GGUF) -- gzip on incompressible input costs CPU and saves nothing. Source trees get -z.
+#
+# ---------------------------------------------------------------------------------------
+# THE VERIFICATION, AND WHY IT IS MD5
+#
+# Google Drive's native checksum is MD5 and nothing else -- `rclone backend features
+# gdrive:` reports Hashes: ['md5']. `rclone hashsum sha256` therefore returns EMPTY for this
+# remote, which is exactly the shape of a verification that looks like it passed because it
+# produced no complaint. MD5 read back from the remote is a real content check; a size
+# comparison is not, and neither is reading the file back through the FUSE mount, which can
+# be served out of the local vfs cache and prove only that the cache exists.
+#
+# So every object is: uploaded -> remote MD5 fetched -> compared to the local MD5 -> and
+# only then is anything deleted.
+#
+# ---------------------------------------------------------------------------------------
+# RESUMABLE AND IDEMPOTENT
+#
+# Each subtree records its state in a ledger. A subtree already marked VERIFIED is skipped,
+# so an interrupted run continues rather than restarting, and re-running after completion
+# does nothing. This will take hours; it must survive being interrupted.
+#
+#     tools/offload-to-drive.sh --plan          # what would move, and how big
+#     tools/offload-to-drive.sh --run           # do it
+#     tools/offload-to-drive.sh --status        # ledger
+#
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REMOTE="gdrive:Symoneural/offload"
+STAGE="$ROOT/.private/offload-stage"
+LEDGER="$ROOT/.private/offload-ledger.tsv"
+LOG="$ROOT/.private/offload.log"
+
+mkdir -p "$STAGE" && chmod 700 "$STAGE"
+mkdir -p "$(dirname "$LEDGER")"
+[ -f "$LEDGER" ] || { printf 'SUBTREE\tSTATE\tLOCAL_MD5\tREMOTE_MD5\tBYTES\tWHEN\n' > "$LEDGER"; chmod 600 "$LEDGER"; }
+
+say() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$LOG"; }
+
+# ---------------------------------------------------------------------------------------
+# WHAT MOVES.
+#
+# Everything here is material this server does not need to run: reference source trees whose
+# upstreams are pinned and reacquirable, and historical archives nothing references. What is
+# NOT here is as important: no first-party source, no models the runtime loads, no training
+# adapters or corpus, no .private/, and nothing under the owner's personal directories.
+SUBTREES=(
+    "external/oss"
+    "external/ENGINEERING"
+    "external/referencestochatgpt.tar.gz"
+    "external/openai"
+    "external/ComfyUI (1)"
+    "external/ComfyUI-Installs"
+    "external/Projects_Crypto"
+    "external/Projects_Crypto.tar.gz"
+    "external/symoneural"
+    "external/TensorRT-LLM"
+    "external/contrib"
+    "external/ComfyUI-Shared"
+    "external/IPTV"
+    "archive/workspace-archives/training.tar.gz"
+    "archive/workspace-archives/claude-home.tar.gz.part-000"
+    "archive/workspace-archives/run.tar.gz"
+    "archive/workspace-archives/Symoneural-Extended"
+    "archive/workspace-archives/symoneural-repo-2026-08-19.tar.gz"
+    "archive/workspace-backups"
+    "archive/workspace-builds"
+    "archive/workspace-source-candidates"
+)
+
+# `external/referencestochatgpt` is DELIBERATELY ABSENT from that list while the reset is in
+# progress: it holds the five pinned upstream checkouts, and although they are provably
+# reacquirable from public remotes, keeping them until the final archive is verified means a
+# rebuild does not depend on GitHub being reachable on the day. It is offloaded last, by
+# name, once the owner is satisfied.
+#
+# `archive/workspace-archives/yocto` (248 GB, 459k files) is also absent: it is the single
+# largest object on this disk and needs its own decision from the owner, because a 248 GB
+# tar cannot be staged in the 204 GB currently free. See --plan.
+
+ledger_state() { awk -F'\t' -v s="$1" '$1==s{print $2}' "$LEDGER" | tail -1; }
+
+ledger_write() { # subtree state local_md5 remote_md5 bytes
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$(date -Is)" >> "$LEDGER"
+}
+
+safe_name() { printf '%s' "$1" | tr '/ ' '__'; }
+
+do_plan() {
+    local total=0
+    printf '%-52s %10s %10s %s\n' SUBTREE SIZE FILES STATE
+    for s in "${SUBTREES[@]}"; do
+        [ -e "$ROOT/$s" ] || { printf '%-52s %10s %10s %s\n' "$s" - - ABSENT; continue; }
+        local b n st
+        b=$(du -sb "$ROOT/$s" 2>/dev/null | cut -f1)
+        n=$(find "$ROOT/$s" -type f 2>/dev/null | wc -l)
+        st=$(ledger_state "$s"); st=${st:-PENDING}
+        total=$((total + b))
+        printf '%-52s %10s %10s %s\n' "$s" "$(numfmt --to=iec "$b")" "$n" "$st"
+    done
+    echo
+    printf 'TOTAL TO MOVE : %s\n' "$(numfmt --to=iec "$total")"
+    printf 'FREE ON /home : %s\n' "$(df -h /home | tail -1 | awk '{print $4}')"
+    echo
+    echo "NOT in this list, and each for a stated reason:"
+    echo "  external/referencestochatgpt   the five pinned upstreams; kept until the final"
+    echo "                                 archive is verified, then offloaded by name"
+    echo "  archive/workspace-archives/yocto  248 GB / 459k files -- cannot be staged in the"
+    echo "                                 space free; needs the owner's decision"
+    echo "  Downloads, Pictures, Desktop   the owner's personal files; not this tool's call"
+}
+
+do_one() {
+    local s="$1"
+    local src="$ROOT/$s"
+    [ -e "$src" ] || { say "SKIP   $s (absent)"; return 0; }
+    local st; st=$(ledger_state "$s")
+    if [ "$st" = "VERIFIED" ] || [ "$st" = "REMOVED" ]; then say "SKIP   $s (already $st)"; return 0; fi
+
+    local base tar dest
+    base="$(safe_name "$s")"
+    tar="$STAGE/$base.tar"
+    dest="$REMOTE/$(dirname "$s")"
+
+    # An already-compressed payload gains nothing from gzip and costs an hour of CPU.
+    case "$s" in
+        *.tar.gz|*.zip|*.part-*) tar="$STAGE/$base.tar" ;;
+    esac
+
+    say "PACK   $s"
+    rm -f "$tar"
+    if ! tar -cf "$tar" -C "$ROOT" "$s" 2>>"$LOG"; then
+        say "FAIL   $s: tar failed"; ledger_write "$s" TAR_FAILED - - 0; return 1
+    fi
+    chmod 600 "$tar"
+    local bytes lmd5
+    bytes=$(stat -c%s "$tar")
+    lmd5=$(md5sum "$tar" | cut -d' ' -f1)
+    say "       $(numfmt --to=iec "$bytes")  md5 $lmd5"
+
+    say "UPLOAD $s"
+    if ! rclone copy "$tar" "$dest/" --checksum --transfers 4 --stats 5m \
+            --stats-one-line --retries 5 >>"$LOG" 2>&1; then
+        say "FAIL   $s: upload failed"; ledger_write "$s" UPLOAD_FAILED "$lmd5" - "$bytes"
+        rm -f "$tar"; return 1
+    fi
+
+    # THE GATE. Hash from the remote, not from the mount, not from a size.
+    local rmd5
+    rmd5=$(rclone hashsum md5 "$dest/$(basename "$tar")" 2>/dev/null | awk '{print $1}')
+    if [ -z "$rmd5" ] || [ "$rmd5" != "$lmd5" ]; then
+        say "FAIL   $s: remote md5 '$rmd5' != local '$lmd5' -- NOTHING DELETED"
+        ledger_write "$s" MD5_MISMATCH "$lmd5" "${rmd5:-none}" "$bytes"
+        rm -f "$tar"; return 1
+    fi
+    say "VERIFY $s  remote md5 matches"
+    ledger_write "$s" VERIFIED "$lmd5" "$rmd5" "$bytes"
+
+    rm -f "$tar"
+    say "REMOVE $s (verified on the remote)"
+    rm -rf -- "$src"
+    if [ -e "$src" ]; then
+        say "WARN   $s still present after rm"
+        ledger_write "$s" REMOVE_INCOMPLETE "$lmd5" "$rmd5" "$bytes"
+    else
+        ledger_write "$s" REMOVED "$lmd5" "$rmd5" "$bytes"
+        say "FREED  $s  $(numfmt --to=iec "$bytes")   /home now $(df -h /home | tail -1 | awk '{print $5}') full"
+    fi
+}
+
+case "${1:---plan}" in
+    --plan)   do_plan ;;
+    --status) column -t -s$'\t' "$LEDGER" ;;
+    --run)
+        say "=== offload start; free before: $(df -h /home | tail -1 | awk '{print $4}')"
+        for s in "${SUBTREES[@]}"; do do_one "$s"; done
+        say "=== offload end;   free after:  $(df -h /home | tail -1 | awk '{print $4}')"
+        ;;
+    *) echo "usage: $0 [--plan|--run|--status]" >&2; exit 2 ;;
+esac
