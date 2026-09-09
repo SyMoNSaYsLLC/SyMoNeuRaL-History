@@ -311,6 +311,18 @@ class ClaimsContradictedByTheDiskFail(unittest.TestCase):
                 # exactly that, which is why the exemption is narrow -- blockquotes only.
                 if line.lstrip().startswith(">"):
                     continue
+                # Same principle, different punctuation: a line that RETRACTS the claim on
+                # the same line is not asserting it. The blockquote rule above covers a
+                # correction block; this covers a historical LEDGER, where the retraction
+                # is a table cell beside the claim rather than prose beneath it --
+                # docs/handoffs/GARRETT-MEMORY-REQUEST.md:146 reads
+                #     | vLLM is not installed | `SUPERSEDED`. Present in its venv; ... |
+                # which records that the claim was wrong. Flagging that would make the
+                # repository unable to write down its own corrected mistakes, which is the
+                # same failure the blockquote exemption exists to prevent.
+                if any(w in line.upper() for w in ("SUPERSEDED", "RETRACTED", "CORRECTED",
+                                                   "WAS WRONG", "NO LONGER TRUE")):
+                    continue
                 # "no service is running" / "candidate only" are TRUE and must stay allowed. So is
                 # "a running vLLM SERVICE is absent" -- the distinction this whole correction is
                 # about is package-absent (false) vs service-absent (true), and a check that
