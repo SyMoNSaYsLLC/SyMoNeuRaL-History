@@ -605,6 +605,132 @@ OPERATIONS.extend([
 ])
 
 
+
+# =========================================================================================
+# section 9 -- /home/google minimalisation
+# =========================================================================================
+#
+# Routes are DERIVED from the directory listing rather than retyped, because these
+# filenames include spaces, an em dash ("Live stack - SyMoNeuRaL.html" uses U+2014) and
+# mixed case. A hand-typed table would silently miss an entry whose name it got wrong, and
+# a missed entry looks identical to a deliberate exclusion.
+
+#: Held back deliberately. Two different reasons, and both matter:
+#:  * The storage prompts and the helper toolkit are the instructions being executed RIGHT
+#:    NOW. Relocating them mid-run would move the work order off the desk mid-job.
+#:  * `claudesetup` / `claudeworktocheck.txt` are Claude control material, and section 9.6
+#:    says keep those "until the post-exit finalizer no longer requires them. Do not move
+#:    early merely for cosmetic cleanup."
+HOME_KEEP = {
+    "fullprompt.md",
+    "CODER_STORAGE_CONTINUE_SIMPLIFIED.md",
+    "SYMONEURAL_TOTAL_STORAGE_REORGANIZATION_FROM_ACTUAL_TREES.md",
+    "symoneural-storage-helper-toolkit",
+    "symoneural-storage-helper-toolkit.tar.gz",
+    "symoneural-storage-helper-toolkit.tar.gz.sha256",
+    ".directory",
+    "claudesetup",
+    "claudeworktocheck.txt",
+}
+
+_AUDIT = "Symoneural/History/Storage-Audit/2026-09-09"
+_TASKS = "Symoneural/History/Task-and-Terminal-History/desktop-20260909"
+_UTIL = "Projects/Utilities/desktop-scripts"
+_APPLE = "Development-Reference/Apple/sdk-audit-20260909"
+
+
+def _classify_desktop(name: str) -> str | None:
+    """Route one Desktop entry, or None to leave it alone."""
+    if name in HOME_KEEP:
+        return None
+    n = name.lower()
+    if n.startswith("trees") or n == "fakedesktop" or n.startswith("run-these-commands"):
+        return _AUDIT
+    if "apple" in n or "darwinsdk" in n:
+        return _APPLE
+    if n.startswith("antigravity-sdk"):
+        return "Development-Reference/AI-Research/antigravity-sdk-python"
+    if n.endswith((".py", ".sh")) or "shortcuts" in n or "htop" in n:
+        return _UTIL
+    if n.startswith(("garrett_testing", "massivetaskflow")):
+        return _TASKS
+    if n.endswith((".md", ".txt")):
+        return _TASKS
+    return "Symoneural/History/Home-Archive/desktop-20260909"
+
+
+def _classify_documents(name: str) -> str | None:
+    if name in HOME_KEEP:
+        return None
+    n = name.lower()
+    if n.startswith("garrettpersonal"):
+        return "Personal/Documents/GarrettPersonalNoProject"
+    if n == "codex":
+        return "Symoneural/History/Agent-Sessions/Codex"
+    if "nsight" in n or "nvidia" in n:
+        return "Development-Reference/NVIDIA-CUDA/Nsight-Compute"
+    if n.endswith(".py"):
+        return "Projects/Utilities/document-agents"
+    if n.endswith((".html", ".tar.gz")):
+        return "Symoneural/History/Screenshots-and-UI-History/documents-20260909"
+    if n.endswith((".docx", ".pdf")) or "console-extraction" in n or n == "webscrape.md":
+        return "Symoneural/Documentation/Historical/documents-20260909"
+    if n.startswith("aipurge") or "reboot" in n:
+        return "Symoneural/History/Task-and-Terminal-History/documents-20260909"
+    if n == "references.txt":
+        return "Symoneural/Reference/documents-references"
+    if n.startswith(("slice3", "symoneural-vllm")):
+        return "Symoneural/History/Build-History/documents-20260909"
+    return "Symoneural/Documentation/Historical/documents-20260909"
+
+
+def _home_routes(base: str, fn) -> dict[str, str]:
+    d = pathlib.Path(base)
+    if not d.is_dir():
+        return {}
+    out = {}
+    for q in sorted(d.iterdir()):
+        r = fn(q.name)
+        if r:
+            out[q.name] = r
+    return out
+
+
+OPERATIONS.extend([
+    dict(id="mv-home-desktop", kind="move_leaves", src="/home/google/Desktop",
+         routes=_home_routes("/home/google/Desktop", _classify_desktop),
+         why="Section 9.1: classify Desktop into Drive and 'leave Desktop only with "
+             "genuinely current convenience files'. The storage prompts and the helper "
+             "toolkit are UNROUTED because they are the instructions currently being "
+             "executed, and claudesetup/claudeworktocheck.txt because section 9.6 holds "
+             "Claude control material until the post-exit finalizer is done."),
+    dict(id="mv-home-documents", kind="move_leaves", src="/home/google/Documents",
+         routes=_home_routes("/home/google/Documents", _classify_documents),
+         why="Section 9.2: project docs to Drive categories, personal documents to "
+             "Personal/Documents. credential_setup.py was ALREADY removed from this tree "
+             "separately: it was mode 664, and it now sits at 0600 under "
+             ".private/secrets/ with rotation flagged, because section 3.8 requires "
+             "credential material move by path only and treats past exposure as needing "
+             "remediation rather than tidying."),
+    dict(id="mv-home-pictures", kind="move_out", src="/home/google/Pictures",
+         dest="Media/Images/Screenshots",
+         why="Section 9.5: screenshots worth retaining."),
+    dict(id="drop-home-deleteme", kind="drop", src="/home/google/deleteme",
+         why="The owner created /home/google/deleteme as a drop box for verified-retired "
+             "material. MEASURED: 0 entries -- everything routed through it has already "
+             "been retired after verification, so the empty container goes too."),
+])
+
+# NOTE on /home/google/go (1.6G): section 9.4 says decide, and the decision is KEEP.
+# MEASURED: it contains only `pkg` (with pkg/mod present), NO `go/src`, and an empty
+# `go/bin` -- a pure Go module cache with no unique source in it. Section 9.4: "If pure
+# cache, do not upload it just to make Home look clean; either keep because Go expects it
+# and disk pressure is acceptable, or remove as regenerable after verifying build
+# lockfiles". /home is at 31% with 616G free, so there is no disk pressure, and the Go
+# toolchain expects the cache where it is. Uploading a cache is explicitly forbidden;
+# deleting it would cost a 1.6G re-download against a 5 MB/s link for no benefit.
+
+
 # =========================================================================================
 # State
 # =========================================================================================
