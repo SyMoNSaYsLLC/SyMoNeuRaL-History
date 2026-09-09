@@ -346,3 +346,232 @@ def test_drive_children_preserves_both_when_content_differs(tmp_path, monkeypatc
     assert moves, "a differing object must still be moved"
     assert "__from_" in moves[0] and "__src_" in moves[0], \
         "it must land under provenance-aware naming, not overwrite the destination"
+
+
+# =========================================================================================
+# Directory-to-directory Drive merges
+# =========================================================================================
+# `rclone moveto` onto an existing directory does not implement this project's merge
+# policy, so the tree is walked explicitly. These tests drive that walk against a fake
+# remote with real nesting, because the failure they guard against -- silently losing one
+# of two same-named subtrees -- is invisible in a single-level test.
+
+class FakeDrive:
+    """A minimal Drive: {path: {"dir":bool, "size":int, "md5":str}}."""
+
+    def __init__(self, entries: dict):
+        self.e = dict(entries)
+        self.moves: list[tuple[str, str]] = []
+        self.deletes: list[str] = []
+        self.rmdirs: list[str] = []
+
+    # -- helpers ------------------------------------------------------------------------
+    def _children(self, path: str):
+        pre = path + "/"
+        out = []
+        for p, meta in self.e.items():
+            if not p.startswith(pre):
+                continue
+            rest = p[len(pre):]
+            if "/" in rest:
+                continue
+            out.append({"Name": rest, "IsDir": meta["dir"], "Size": meta.get("size", 0),
+                        "Hashes": ({"md5": meta["md5"]} if meta.get("md5") else {})})
+        return out
+
+    def sh(self, args, timeout=0):
+        import json as _j
+        import subprocess
+        if args[0] != "rclone":
+            return subprocess.CompletedProcess(args, 0, "", "")
+        verb = args[1]
+        path = args[2].split(":", 1)[1] if ":" in args[2] else args[2]
+        if verb == "lsjson":
+            if "--stat" in args:
+                m = self.e.get(path)
+                if m is None:
+                    return subprocess.CompletedProcess(args, 1, "", "not found")
+                return subprocess.CompletedProcess(args, 0, _j.dumps(
+                    {"Name": path.rsplit("/", 1)[-1], "IsDir": m["dir"],
+                     "Size": m.get("size", 0),
+                     "Hashes": ({"md5": m["md5"]} if m.get("md5") else {})}), "")
+            if path not in self.e:
+                return subprocess.CompletedProcess(args, 1, "", "not found")
+            return subprocess.CompletedProcess(args, 0, _j.dumps(self._children(path)), "")
+        if verb == "moveto":
+            dst = args[3].split(":", 1)[1]
+            self.moves.append((path, dst))
+            sub = {p: v for p, v in self.e.items() if p == path or p.startswith(path + "/")}
+            for p, v in sub.items():
+                self.e.pop(p)
+                self.e[dst + p[len(path):]] = v
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if verb == "deletefile":
+            self.deletes.append(path)
+            self.e.pop(path, None)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if verb == "rmdir":
+            self.rmdirs.append(path)
+            self.e.pop(path, None)
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return subprocess.CompletedProcess(args, 0, '{"bytes":0,"count":0}', "")
+
+
+def _merge(tmp_path, monkeypatch, entries):
+    m = _load(tmp_path)
+    fd = FakeDrive(entries)
+    monkeypatch.setattr(m, "sh", fd.sh)
+    res = m._merge_dirs("Src", "Dest", {"ops": {}}, "op")
+    return m, fd, res
+
+
+def test_dirmerge_unique_descendant_is_server_side_moved(tmp_path, monkeypatch):
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/only-here.bin": {"dir": False, "size": 10, "md5": "a"},
+    })
+    assert res["moved"] == 1
+    assert ("Src/only-here.bin", "Dest/only-here.bin") in fd.moves
+    assert "Dest/only-here.bin" in fd.e
+
+
+def test_dirmerge_identical_file_keeps_one_survivor(tmp_path, monkeypatch):
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/same.bin": {"dir": False, "size": 10, "md5": "aaa"},
+        "Dest/same.bin": {"dir": False, "size": 10, "md5": "aaa"},
+    })
+    assert res["dupes"] == 1 and res["moved"] == 0
+    assert fd.deletes == ["Src/same.bin"], "the source copy is removed, not moved"
+    assert "Dest/same.bin" in fd.e, "the survivor must remain"
+
+
+def test_dirmerge_differing_file_preserves_both(tmp_path, monkeypatch):
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/x.bin": {"dir": False, "size": 10, "md5": "aaa"},
+        "Dest/x.bin": {"dir": False, "size": 99, "md5": "bbb"},
+    })
+    assert res["conflicts"] == 1 and not fd.deletes
+    assert "Dest/x.bin" in fd.e, "the destination copy must survive untouched"
+    kept = [p for p in fd.e if "__from_" in p]
+    assert kept and "__src_aaa" in kept[0], "the source copy lands under provenance naming"
+
+
+def test_dirmerge_unhashable_file_is_treated_as_differing_not_duplicate(
+        tmp_path, monkeypatch):
+    """No MD5 means no evidence. Deleting on absence of evidence is the wrong default."""
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/g.doc": {"dir": False, "size": 10, "md5": ""},
+        "Dest/g.doc": {"dir": False, "size": 10, "md5": ""},
+    })
+    assert res["dupes"] == 0, "an unhashable pair must never be called a duplicate"
+    assert res["conflicts"] == 1
+    assert not fd.deletes
+
+
+def test_dirmerge_recurses_into_nested_directory_collisions(tmp_path, monkeypatch):
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/a": {"dir": True}, "Dest/a": {"dir": True},
+        "Src/a/b": {"dir": True}, "Dest/a/b": {"dir": True},
+        "Src/a/b/deep-unique.bin": {"dir": False, "size": 4, "md5": "u"},
+        "Src/a/b/deep-same.bin": {"dir": False, "size": 4, "md5": "s"},
+        "Dest/a/b/deep-same.bin": {"dir": False, "size": 4, "md5": "s"},
+    })
+    assert res["recursed"] >= 2, "it must descend through both nested levels"
+    assert "Dest/a/b/deep-unique.bin" in fd.e, "a deep unique file must arrive"
+    assert fd.deletes == ["Src/a/b/deep-same.bin"], "the deep duplicate is de-duplicated"
+
+
+def test_dirmerge_directory_versus_file_name_clash_preserves_both(tmp_path, monkeypatch):
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/thing": {"dir": True},
+        "Src/thing/inner.bin": {"dir": False, "size": 1, "md5": "z"},
+        "Dest/thing": {"dir": False, "size": 5, "md5": "y"},
+    })
+    assert res["conflicts"] == 1, "a directory and a file are not versions of each other"
+    assert "Dest/thing" in fd.e and fd.e["Dest/thing"]["dir"] is False
+    preserved = [p for p in fd.e if "__from_" in p]
+    assert preserved, "the source directory must be preserved, not discarded"
+    # Assert the BRANCH, not just the outcome. Without the type-mismatch guard the code
+    # falls through to the both-files branch and happens to preserve it too, because a
+    # directory exposes no MD5 -- same result, different reasoning, and a test that cannot
+    # tell them apart is not testing the guard. The `dir` tag is produced only by the
+    # type-mismatch branch.
+    assert any("__src_dir" in p for p in preserved), (
+        "the preserved copy must be tagged by the directory-vs-file branch; a size tag "
+        "means the both-files branch handled it by accident")
+
+
+def test_drive_children_routes_a_directory_collision_into_the_recursive_merge(
+        tmp_path, monkeypatch):
+    """The routing itself needs a test.
+
+    Every other merge test calls _merge_dirs directly, so disabling the branch in
+    do_drive_children that reaches it left all of them green while a directory collision
+    fell back to a bare `moveto` -- the exact behaviour the merge policy forbids.
+    """
+    m = _load(tmp_path)
+    fd = FakeDrive({
+        "Bucket": {"dir": True}, "Dest": {"dir": True},
+        "Bucket/coll": {"dir": True}, "Dest/coll": {"dir": True},
+        "Bucket/coll/same.bin": {"dir": False, "size": 8, "md5": "q"},
+        "Dest/coll/same.bin": {"dir": False, "size": 8, "md5": "q"},
+        "Bucket/coll/new.bin": {"dir": False, "size": 8, "md5": "n"},
+    })
+    monkeypatch.setattr(m, "sh", fd.sh)
+    st = {"ops": {}}
+    m.do_drive_children({"id": "op", "src": "Bucket",
+                         "classify": lambda n, d: "Dest", "why": "w"}, st, apply=True)
+
+    assert ("Bucket/coll", "Dest/coll") not in fd.moves, (
+        "a directory whose destination exists must NOT be moved wholesale onto it")
+    assert "Dest/coll/new.bin" in fd.e, "the unique descendant must be merged in"
+    assert fd.deletes == ["Bucket/coll/same.bin"], (
+        "the identical descendant must be de-duplicated, keeping the destination survivor")
+    assert "recursive merge" in st["ops"]["op::coll"]["detail"]
+
+
+def test_dirmerge_removes_source_only_when_empty_and_destination_verifies(
+        tmp_path, monkeypatch):
+    m, fd, res = _merge(tmp_path, monkeypatch, {
+        "Src": {"dir": True}, "Dest": {"dir": True},
+        "Src/one.bin": {"dir": False, "size": 3, "md5": "m"},
+    })
+    assert "Src" in fd.rmdirs, "an emptied source container is removed"
+
+    # And when the destination cannot be confirmed, the source container survives.
+    m2 = _load(tmp_path / "second")
+    fd2 = FakeDrive({"Src": {"dir": True}, "Dest": {"dir": True},
+                     "Src/one.bin": {"dir": False, "size": 3, "md5": "m"}})
+    real = fd2.sh
+
+    def sh_hiding_dest(args, timeout=0):
+        import subprocess
+        if args[0] == "rclone" and args[1] == "lsjson" and args[2].endswith(":Dest") \
+                and "--stat" not in args:
+            return subprocess.CompletedProcess(args, 1, "", "vanished")
+        return real(args, timeout)
+
+    monkeypatch.setattr(m2, "sh", sh_hiding_dest)
+    r2 = m2._merge_dirs("Src", "Dest", {"ops": {}}, "op")
+    assert "Src" not in fd2.rmdirs, "source must survive when the destination cannot verify"
+    assert r2["failed"] >= 1
+
+
+def test_dirmerge_depth_limit_stops_runaway_recursion(tmp_path, monkeypatch):
+    m = _load(tmp_path)
+    entries = {"Src": {"dir": True}, "Dest": {"dir": True}}
+    sp, dp = "Src", "Dest"
+    for _ in range(m.MERGE_MAX_DEPTH + 5):
+        sp, dp = sp + "/d", dp + "/d"
+        entries[sp] = {"dir": True}
+        entries[dp] = {"dir": True}
+    fd = FakeDrive(entries)
+    monkeypatch.setattr(m, "sh", fd.sh)
+    res = m._merge_dirs("Src", "Dest", {"ops": {}}, "op")
+    assert res["recursed"] <= m.MERGE_MAX_DEPTH + 1
+    assert res["failed"] >= 1, "hitting the limit is reported, not silently ignored"

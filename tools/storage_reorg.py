@@ -89,6 +89,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -1947,6 +1948,125 @@ def do_publish_manifests(op: dict, st: dict, apply: bool) -> None:
 
 
 
+
+#: Depth limit for recursive Drive directory merges. Deep enough for any real collection
+#: here (the deepest observed is an Xcode SDK at ~14), shallow enough that a pathological
+#: or cyclic structure cannot spin forever against a rate-limited API.
+MERGE_MAX_DEPTH = 24
+
+
+def _rls(path: str) -> list[dict] | None:
+    """One level of a Drive path, with hashes. None means the path does not exist."""
+    r = sh(["rclone", "lsjson", f"{REMOTE}{path}", "--hash"], timeout=1800)
+    if r.returncode != 0:
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _md5_of_remote_entry(e: dict) -> str:
+    return ((e.get("Hashes") or {}).get("md5") or "")
+
+
+def _merge_dirs(src: str, dest: str, st: dict, op_id: str, depth: int = 0) -> dict:
+    """Recursively merge Drive directory `src` INTO existing Drive directory `dest`.
+
+    `rclone moveto` on a directory whose destination already exists does not implement the
+    merge policy this project needs, and relying on its semantics is exactly what the owner
+    asked not to do. So the tree is walked explicitly, one level at a time:
+
+        child missing at destination      -> server-side move
+        both directories                  -> RECURSE
+        both files, same size + same MD5  -> verified duplicate; keep the survivor,
+                                             delete the source copy
+        both files, content differs or a
+        hash is unavailable               -> preserve BOTH under
+                                             `__from_<src>/<name>.__src_<tag>`
+        type mismatch (dir vs file)       -> preserve both; a directory and a file sharing
+                                             a name are not versions of each other
+
+    "Hash unavailable" is treated as "differs" on purpose. Google Docs-native objects and
+    some uploads expose no MD5, and deleting one of two objects because neither could be
+    hashed would be deciding by absence of evidence.
+
+    The source directory is removed only after it is empty AND the destination verifies.
+    """
+    out = {"moved": 0, "dupes": 0, "conflicts": 0, "recursed": 0, "failed": 0}
+    if depth > MERGE_MAX_DEPTH:
+        print(f"        merge depth limit {MERGE_MAX_DEPTH} reached at {src}; "
+              f"leaving it in place rather than recursing further")
+        out["failed"] += 1
+        return out
+
+    kids = _rls(src)
+    if kids is None:
+        return out
+    dst_kids = _rls(dest) or []
+    by_name = {k.get("Name"): k for k in dst_kids}
+
+    for k in kids:
+        name = k.get("Name")
+        s_is_dir = bool(k.get("IsDir"))
+        sp, dp = f"{src}/{name}", f"{dest}/{name}"
+        d = by_name.get(name)
+
+        if d is None:                                   # unique -> plain server-side move
+            mv = sh(["rclone", "moveto", f"{REMOTE}{sp}", f"{REMOTE}{dp}", "--checksum"],
+                    timeout=21600)
+            if mv.returncode != 0:
+                out["failed"] += 1
+                print(f"        MOVE FAILED {sp}: {mv.stderr.strip()[:90]}")
+            else:
+                out["moved"] += 1
+            continue
+
+        d_is_dir = bool(d.get("IsDir"))
+
+        if s_is_dir and d_is_dir:                       # nested collision -> recurse
+            out["recursed"] += 1
+            sub = _merge_dirs(sp, dest=dp, st=st, op_id=op_id, depth=depth + 1)
+            for key in out:
+                out[key] += sub.get(key, 0)
+            continue
+
+        if s_is_dir != d_is_dir:
+            # A directory and a file sharing a name are not two versions of one thing.
+            tag = f"dir{depth}" if s_is_dir else str(k.get("Size") or 0)
+            alt = f"{dest}/__from_{_slug(src)}/{name}.__src_{tag}"
+            mv = sh(["rclone", "moveto", f"{REMOTE}{sp}", f"{REMOTE}{alt}"], timeout=21600)
+            out["conflicts" if mv.returncode == 0 else "failed"] += 1
+            continue
+
+        # both files
+        s_md5, d_md5 = _md5_of_remote_entry(k), _md5_of_remote_entry(d)
+        s_sz, d_sz = int(k.get("Size") or -1), int(d.get("Size") or -2)
+        if s_md5 and d_md5 and s_md5 == d_md5 and s_sz == d_sz:
+            rm = sh(["rclone", "deletefile", f"{REMOTE}{sp}"], timeout=900)
+            out["dupes" if rm.returncode == 0 else "failed"] += 1
+            continue
+        tag = (s_md5[:12] if s_md5 else str(s_sz))
+        alt = f"{dest}/__from_{_slug(src)}/{name}.__src_{tag}"
+        mv = sh(["rclone", "moveto", f"{REMOTE}{sp}", f"{REMOTE}{alt}"], timeout=21600)
+        out["conflicts" if mv.returncode == 0 else "failed"] += 1
+
+    # Retire the source container only when it is genuinely empty and the destination is
+    # actually there. "The move returned 0" is not the same as "the bytes arrived".
+    left = _rls(src)
+    if left is not None and not left:
+        if _rls(dest) is not None:
+            sh(["rclone", "rmdir", f"{REMOTE}{src}"], timeout=900)
+        else:
+            print(f"        NOT removing {src}: destination {dest} does not verify")
+            out["failed"] += 1
+    return out
+
+
+def _slug(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_") or "source"
+
+
 def do_zip_coverage(op: dict, st: dict, apply: bool) -> None:
     """Prove every useful ZIP collection has canonical Drive coverage, then retire the ZIP.
 
@@ -2118,6 +2238,23 @@ def do_drive_children(op: dict, st: dict, apply: bool) -> None:
         # the same object".
         occupied = sh(["rclone", "lsjson", f"{REMOTE}{dp}", "--stat", "--hash"],
                       timeout=600)
+        if occupied.returncode == 0 and isdir:
+            # DIRECTORY-DIRECTORY collision. rclone moveto onto an existing directory does
+            # not implement this project's merge policy, so the tree is walked explicitly
+            # and merged entry by entry, recursing into nested collisions.
+            print(f"      {name}: destination directory exists -- recursive merge")
+            res = _merge_dirs(sp, dp, st, child_id)
+            state = "COMPLETE" if res["failed"] == 0 else "PARTIAL"
+            record(st, child_id, state=state, dest=dp, raw_bytes=sz,
+                   detail=f"recursive merge: moved={res['moved']} "
+                          f"duplicates={res['dupes']} conflicts={res['conflicts']} "
+                          f"nested={res['recursed']} failed={res['failed']}")
+            print(f"      {name}: merged moved={res['moved']} dup={res['dupes']} "
+                  f"conflict={res['conflicts']} nested={res['recursed']} "
+                  f"failed={res['failed']}")
+            done += 1 if res["failed"] == 0 else 0
+            failed += 0 if res["failed"] == 0 else 1
+            continue
         if occupied.returncode == 0 and not isdir:
             try:
                 ex = json.loads(occupied.stdout) or {}
