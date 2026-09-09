@@ -1,0 +1,24 @@
+=== P1.6.5 H2D CE — WARM-UP (discarded) ===
+date: 2026-08-24T16:24:33-04:00
+command: nvbandwidth -t host_to_device_memcpy_ce --bufferSize 512 --testSamples 5
+nvbandwidth Version: v0.10.0
+Built from Git version: v0.10
+
+CUDA Runtime Version: 13.3 (13030)
+CUDA Driver Version (API): 13.3 (13030)
+Driver Version: 610.57.04
+
+symon
+Device 0: NVIDIA GeForce RTX 5070 Ti (00000000:01:00)
+
+Running host_to_device_memcpy_ce.
+memcpy CE CPU(row) -> GPU(column) bandwidth (GB/s)
+           0
+ 0      6.93
+
+SUM host_to_device_memcpy_ce 6.93
+COEFFICIENT_OF_VARIATION host_to_device_memcpy_ce 0.00
+
+NOTE: The reported results may not reflect the full capabilities of the platform.
+Performance can vary with software drivers, hardware clocks, and system topology.
+

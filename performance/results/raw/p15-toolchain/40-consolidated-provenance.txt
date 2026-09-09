@@ -1,0 +1,33 @@
+=== P1.5 CONSOLIDATED SOURCE PROVENANCE (rebuilt after manual pinned-checkout correction) ===
+date: 2026-08-24T16:04:34-04:00
+COMPONENT                DESCRIBE               COMMIT                                     DATE         DIRTY
+cuda-samples             v13.3                  b7c5481c556c3fe98db060207ecaa41a4b9a9abc   2026-05-27   0
+cutlass                  v4.7.0                 dcf215af68a2d08d305076c152a06f201728cd53   2026-08-06   0
+llama.cpp                b10612-3-gf280b2698    f280b26983ad0fdb705a0d9ebf0503e76f2899b0   2026-08-24   0
+Model-Optimizer          0.46.0                 43fd41a58d52c4e6e5dec1d1ff5989ecc737ae1a   2026-08-15   0
+nvbandwidth              v0.10                  82fc4e8c6afa0babb8687793678f615b3b8d793e   2026-07-21   0
+nvbench                  python-0.3.0-5-g66212  66212f1da71cc9afb2894a46fa8f234cbdd6c0d8   2026-08-12   0
+sglang                   v0.5.18                71de97b264b04dcd514cf904003028aefe9775c8   2026-08-20   0
+stable-diffusion.cpp     master-827-97d2990     97d2990807fe6d558e395f8764198d7c7e7b411c   2026-08-19   0
+TensorRT                 v11.1                  82d1dca801c8318a5605399d5240780d0679e4e1   2026-06-24   0
+TensorRT-LLM             v1.2.1                 376f7e1bd8ed543f75014309e3fd4b237e9b0e73   2026-04-16   0
+TensorRT-RTX             v1.6.1.120             058c78afdd026df518529e859605501e2a72a5ac   2026-07-28   0
+vllm                     v0.27.1                6e448d0ea9bf3d88d898b65449ca6dc2aec170ac   2026-08-11   0
+
+--- stable-diffusion.cpp submodules (recursively initialized) ---
+   c4bce3d6b3f236614cca21014f076083b7270ba8 examples/server/frontend (heads/master)
+   8e800cef2948046cc47f9db6090491c6128ca42c ggml (remotes/origin/int8_convrot)
+   5bf12267eea773a32fcf4949de52b0add158a8d5 thirdparty/libwebm (libwebm-1.0.0.32-6-g5bf1226)
+   0c9546f7efc61eac7f79ae115c3f99c91c21c443 thirdparty/libwebp (v1.6.0-158-g0c9546f7)
+
+--- TensorRT submodules ---
+   7c51a63a719180eb5160c874c111746f3fb46a6b parsers/onnx (7c51a63)
+   be2b5fde82d9c8874f3d19328bdfe3b6962dc67b parsers/onnx/third_party/onnx (be2b5fd)
+   c3cceac115c072fb63df1836ff46d8c60d9eb304 third_party/cub (c3cceac)
+   aea4a275e28329f648e046469c095eef74254bb2 third_party/protobuf (aea4a27)
+   5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8 third_party/protobuf/third_party/benchmark (5b7683f)
+   5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081 third_party/protobuf/third_party/googletest (5ec7f0c)
+
+--- ALL trees clean? ---
+  aggregate dirty across all trees: 0
+  NOTE: earlier dirty=3493/389 rows were --no-checkout empty working trees, NOT source modifications. Obsolete and superseded by this table.

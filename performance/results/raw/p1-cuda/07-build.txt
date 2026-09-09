@@ -1,0 +1,28 @@
+=== P1.3 BUILD — target samples only ===
+started: 2026-08-24T15:28:49-04:00
+--- building deviceQuery ---
+Building CXX object cpp/1_Utilities/deviceQuery/CMakeFiles/deviceQuery.dir/deviceQuery.cpp.o
+Linking CXX executable deviceQuery
+Built target deviceQuery
+  rc=0
+--- building alignedTypes ---
+[  0%] Linking CUDA device code CMakeFiles/alignedTypes.dir/cmake_device_link.o
+[100%] Linking CUDA executable alignedTypes
+[100%] Built target alignedTypes
+  rc=0
+--- building reduction ---
+[100%] Linking CUDA device code CMakeFiles/reduction.dir/cmake_device_link.o
+[100%] Linking CXX executable reduction
+[100%] Built target reduction
+  rc=0
+--- building reductionMultiBlockCG ---
+Linking CUDA device code CMakeFiles/reductionMultiBlockCG.dir/cmake_device_link.o
+Linking CUDA executable reductionMultiBlockCG
+Built target reductionMultiBlockCG
+  rc=0
+--- building transpose ---
+Linking CUDA device code CMakeFiles/transpose.dir/cmake_device_link.o
+Linking CUDA executable transpose
+Built target transpose
+  rc=0
+finished: 2026-08-24T15:30:02-04:00

@@ -1,0 +1,26 @@
+=== C++ vs PYTHON sample availability in v13.3 ===
+--- all deviceQuery ---
+./cpp/1_Utilities/deviceQuery
+./cpp/1_Utilities/deviceQueryDrv
+./python/1_GettingStarted/deviceQuery
+--- all reduction* ---
+./python/2_CoreConcepts/reductionMultiBlockCG
+./python/2_CoreConcepts/reduction
+./cpp/2_Concepts_and_Techniques/reductionMultiBlockCG
+./cpp/2_Concepts_and_Techniques/reduction
+--- cpp/6_Performance contents ---
+alignedTypes
+CMakeLists.txt
+cudaGraphsPerfScaling
+LargeKernelParameter
+README.md
+transpose
+UnifiedMemoryPerf
+--- bandwidthTest anywhere? ---
+--- python tree top level ---
+1_GettingStarted
+2_CoreConcepts
+3_FrameworkInterop
+4_DistributedComputing
+requirements.txt
+Utilities

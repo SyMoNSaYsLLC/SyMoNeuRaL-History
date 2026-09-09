@@ -1,0 +1,32 @@
+=== P1.6.3 BINARY PROVENANCE ===
+date: 2026-08-24T16:22:53-04:00
+--- nvbandwidth --version ---
+nvbandwidth Version: v0.10.0
+Built from Git version: v0.10
+
+--- binary ---
+  path:   build/nvbandwidth-v0.10.0/nvbandwidth
+  sha256: 030e47edf847da75dba0a284152c53801cf34a3f8c6882c242eb07ed321e09f3
+  size:   2167960 bytes
+--- source ---
+  origin: https://github.com/NVIDIA/nvbandwidth.git
+  tag:    v0.10.0 (describe: v0.10)
+  commit: 82fc4e8c6afa0babb8687793678f615b3b8d793e
+  dirty:  0
+--- CMakeCache ---
+  sha256: c0292b1e4e79bb6656ca5c4763a2523f074d3fe55108df9ea3238377eaf21174
+  CMAKE_BUILD_TYPE:STRING=Release
+  CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=120
+  CMAKE_CUDA_COMPILER:FILEPATH=/usr/local/cuda/bin/nvcc
+  CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++
+  CMAKE_HOME_DIRECTORY:INTERNAL=/home/google/SyMoNeuRaL-Projects/Symoneural-Performance/sources/nvbandwidth
+--- exact commands ---
+  configure: cmake -S sources/nvbandwidth -B build/nvbandwidth-v0.10.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=120
+  build:     cmake --build build/nvbandwidth-v0.10.0 -j 8
+--- toolchain ---
+  nvcc: Cuda compilation tools, release 13.3, V13.3.73
+  c++:  c++ (Debian 14.2.0-19) 14.2.0
+  cmake: cmake version 3.31.6
+--- linked CUDA libraries ---
+  	libnvidia-ml.so.1 => /lib/x86_64-linux-gnu/libnvidia-ml.so.1 (0x00007f651f400000)
+  	libcuda.so.1 => /lib/x86_64-linux-gnu/libcuda.so.1 (0x00007f6518800000)

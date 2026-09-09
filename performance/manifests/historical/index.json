@@ -1,0 +1,300 @@
+{
+  "schema": 1,
+  "pass": "P0 historical evidence recovery",
+  "recovered_on": "2026-08-24",
+  "method": "read-only forensic search of local filesystem; no engine installed, cloned, built, loaded or benchmarked",
+  "grades": {
+    "A": "direct measured evidence (tool output, machine-generated result)",
+    "B": "direct configuration evidence (build cache, package metadata, config file)",
+    "C": "documented historical claim, no machine result present",
+    "D": "inference from surrounding evidence",
+    "E": "not available"
+  },
+  "no_secrets": "no credential value appears in this file; VLLM_API_KEY was found only as an environment lookup, never as a literal",
+  "artifacts": [
+    {
+      "component": "cuda-samples",
+      "claim": "alignedTypes RGBA32 global-memory copy throughput",
+      "value": "341.533883",
+      "unit": "GB/s one-way",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/docs/01-hardware-dossier.md",
+      "source_sha256": "8f31d611b2439fa8eb347ca5abb131468918a4b2f63452650cbc1a6c0090dcd0",
+      "source_mtime": "2026-08-17T15:11:31",
+      "notes": "verbatim tool transcript at :355; all types tested, TEST OK lines and '0 Failures' present. 49999872 B working set"
+    },
+    {
+      "component": "cuda-samples",
+      "claim": "reduction sample memory bandwidth",
+      "value": "752.30",
+      "unit": "GB/s",
+      "grade": "C",
+      "source_path": "/home/google/Symoneural/docs/04-cuda-curriculum/2_CoreConcepts.md",
+      "source_sha256": "9fe9e22a8a81bd5cc6ef3b30873991b923eaf4de3d62e303577b2c008db33da1",
+      "source_mtime": "2026-08-17T15:11:31",
+      "notes": "REGRADED B->C on 2026-08-24. Source is PROSE, not machine output: '**Result** - PASSED. Two-stage reduction, 8,388,608 global reads, 32768 block outputs, **752.30 GB/s**' at :2661. No verbatim stdout exists anywhere on this box. A benchmark RESULT cannot be grade B for being written in a document. ALSO: the recorded command is 'python reduction.py' under python/2_CoreConcepts/ - the PYTHON sample, not the C++ one P1 builds, so any P1 comparison is DIRECTIONAL at best"
+    },
+    {
+      "component": "cuda-samples",
+      "claim": "reductionMultiBlockCG memory bandwidth",
+      "value": "708.92",
+      "unit": "GB/s",
+      "grade": "C",
+      "source_path": "/home/google/Symoneural/docs/04-cuda-curriculum/2_CoreConcepts.md",
+      "source_sha256": "9fe9e22a8a81bd5cc6ef3b30873991b923eaf4de3d62e303577b2c008db33da1",
+      "source_mtime": "2026-08-17T15:11:31",
+      "notes": "REGRADED B->C on 2026-08-24. Source is PROSE at :2826: '**Result** - PASSED with **708.92 GB/s** in a single kernel launch'. No verbatim stdout survives. ALSO a PYTHON sample: reductionMultiBlockCG.py run under a venv-extras environment requiring a two-directory --cuda-include-dir for libcu++ from the cuda-cccl pip package. Not the same program as the C++ sample; P1 comparison is DIRECTIONAL at best"
+    },
+    {
+      "component": "cuda-samples",
+      "claim": "PCIe host-to-device pinned transfer",
+      "value": "6.94",
+      "unit": "GB/s",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/docs/01-hardware-dossier.md",
+      "source_sha256": "8f31d611b2439fa8eb347ca5abb131468918a4b2f63452650cbc1a6c0090dcd0",
+      "source_mtime": "2026-08-17T15:11:31",
+      "notes": "verbatim CuPy bandwidth table at :304; 88 percent of Gen 3 x8 theoretical peak"
+    },
+    {
+      "component": "cuda-samples",
+      "claim": "PCIe device-to-host pinned transfer",
+      "value": "7.20",
+      "unit": "GB/s",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/docs/01-hardware-dossier.md",
+      "source_sha256": "8f31d611b2439fa8eb347ca5abb131468918a4b2f63452650cbc1a6c0090dcd0",
+      "source_mtime": "2026-08-17T15:11:31",
+      "notes": "verbatim CuPy bandwidth table at :304; 91 percent of peak"
+    },
+    {
+      "component": "cuda-samples",
+      "claim": "host GPU identity at measurement time",
+      "value": "NVIDIA GeForce RTX 5070 Ti, compute capability 12.0 (sm_120), driver 610.57.04, CUDA driver and runtime 13.3, 70 MP x 128 cores, PCIe Gen 3 x8",
+      "unit": "identity",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/docs/01-hardware-dossier.md",
+      "source_sha256": "8f31d611b2439fa8eb347ca5abb131468918a4b2f63452650cbc1a6c0090dcd0",
+      "source_mtime": "2026-08-17T15:11:31",
+      "notes": "verbatim deviceQuery and nvidia-smi transcripts; matches the current host exactly as of 2026-08-24"
+    },
+    {
+      "component": "cuda-samples",
+      "claim": "samples version, build flags and CMake cache",
+      "value": "NOT AVAILABLE",
+      "unit": null,
+      "grade": "E",
+      "source_path": null,
+      "source_sha256": null,
+      "source_mtime": null,
+      "notes": "no cuda-samples tree, binary or CMakeCache.txt exists anywhere on this box; results are recoverable but the build that produced them is not"
+    },
+    {
+      "component": "llama.cpp",
+      "claim": "Qwen3.6-27B UD-Q2_K_XL prompt throughput, llama-bench -p 512 -n 128",
+      "value": "1537.77 +/- 94.82",
+      "unit": "tok/s (pp512)",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/.claude/HANDOVER.md",
+      "source_sha256": "05c9361beb6e6513ea3236c897ca2048af379d9409d209b6481f2c911eb67a91",
+      "source_mtime": "2026-08-23T07:15:05",
+      "notes": "at :1257, build 4df29be; error bars imply repeats were run; corroborated at docs/symoneural-manual.md:214; concurrency 1, bare benchmark"
+    },
+    {
+      "component": "llama.cpp",
+      "claim": "Qwen3.6-27B UD-Q2_K_XL generation throughput, llama-bench -p 512 -n 128",
+      "value": "56.90 +/- 0.22",
+      "unit": "tok/s (tg128)",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/.claude/HANDOVER.md",
+      "source_sha256": "05c9361beb6e6513ea3236c897ca2048af379d9409d209b6481f2c911eb67a91",
+      "source_mtime": "2026-08-23T07:15:05",
+      "notes": "model symon-1.0-27b-q2_k_xl.gguf, exactly 11849779424 bytes, -ngl 99 fully GPU-resident; the bandwidth-derived prediction of 63.46 tok/s was 11.5 percent optimistic"
+    },
+    {
+      "component": "llama.cpp",
+      "claim": "Qwen3.6-27B context ceiling, largest that loads",
+      "value": "64K at q8_0 KV using 14288 of 16303 MiB; 128K at q8_0 FAILS with cudaMalloc out of memory",
+      "unit": "MiB / context",
+      "grade": "A",
+      "source_path": "/home/google/Symoneural/.claude/HANDOVER.md",
+      "source_sha256": "05c9361beb6e6513ea3236c897ca2048af379d9409d209b6481f2c911eb67a91",
+      "source_mtime": "2026-08-23T07:15:05",
+      "notes": "each row a real llama-server load; KV slope 63.5 MiB/1K at f16 and 38.1 MiB/1K at q8_0; load-and-idle, concurrency untested"
+    },
+    {
+      "component": "llama.cpp",
+      "claim": "build configuration of the local fork",
+      "value": "CMAKE_CUDA_ARCHITECTURES=120, GGML_CUDA=ON, CMAKE_BUILD_TYPE=Release, nvcc /usr/local/cuda/bin/nvcc",
+      "unit": "build flags",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/engines/symoneural-llm/build/CMakeCache.txt",
+      "source_sha256": "d6a60d673c18169e892e93c6fd84db1f145b751b4c16a9ad995772725dbc3d2b",
+      "source_mtime": "2026-08-20T15:29:36",
+      "notes": "machine-generated cache; omitting -DGGML_CUDA=ON yields a CPU-only build that compiles, links, runs and fails silently"
+    },
+    {
+      "component": "llama.cpp",
+      "claim": "historical upstream build identity",
+      "value": "ggml-org/llama.cpp @ 4df29be",
+      "unit": "commit",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/.claude/HANDOVER.md",
+      "source_sha256": "05c9361beb6e6513ea3236c897ca2048af379d9409d209b6481f2c911eb67a91",
+      "source_mtime": "2026-08-23T07:15:05",
+      "notes": "the contrib/llama.cpp tree that produced the benchmarks is ABSENT; the surviving engines/symoneural-llm fork has no origin remote and its upstream merge-base is not recoverable (grade E)"
+    },
+    {
+      "component": "llama.cpp",
+      "claim": "7B Q4 decode suite: bare 149.6, API+LoRA 104-114, spec depth 2 157.4 at 43.8 percent accept, spec default 139.1, spec depth 5 121.4, q8_0 KV 142.7",
+      "value": "see claim",
+      "unit": "tok/s",
+      "grade": "C",
+      "source_path": "/home/google/Symoneural/docs/archive/PROJECT-STATE.md",
+      "source_sha256": "338068844b2792526b26135b01f6c61732689f78d0d920d53792e5d5a8ad8991",
+      "source_mtime": "2026-08-20T04:27:09",
+      "notes": "summary table at :74-78 only; no raw output, no command line, no model identity, no draft model identity, no run counts. docs/archive/README.md states 'Nothing in this directory is current ... do not act on it'. NOT PROMOTABLE"
+    },
+    {
+      "component": "stable-diffusion.cpp",
+      "claim": "historical upstream build identity",
+      "value": "leejet/stable-diffusion.cpp master-820-de298c2",
+      "unit": "version string",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/docs/specs/sigils-spec.md",
+      "source_sha256": "588857f13f0fe37aea84d19b2e950458c42a0c5700e2599346a7967dc0ddbe28",
+      "source_mtime": "2026-08-21T15:54:00",
+      "notes": "at :76, self-reported by the sd-cli binary and transcribed; confirms and localises the de298c2 lead"
+    },
+    {
+      "component": "stable-diffusion.cpp",
+      "claim": "build configuration of the local fork",
+      "value": "CMAKE_CUDA_ARCHITECTURES=120, SD_CUDA=ON, CMAKE_BUILD_TYPE=Release, submodules required",
+      "unit": "build flags",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/engines/symoneural-diffuse/build/CMakeCache.txt",
+      "source_sha256": "77d0dd15ba96baa03d0ad1a3709874c0bfc729e1213905d55af170936b14ca42",
+      "source_mtime": "2026-08-20T15:36:37",
+      "notes": "the option is SD_CUDA, NOT GGML_CUDA; using the wrong name produces a silent CPU-only build. This project is the only one of the three needing --recursive"
+    },
+    {
+      "component": "stable-diffusion.cpp",
+      "claim": "FLUX 768x768, 4 steps, render time",
+      "value": "9.3-11.1",
+      "unit": "seconds per image",
+      "grade": "C",
+      "source_path": "/home/google/Symoneural/docs/archive/PROJECT-STATE.md",
+      "source_sha256": "338068844b2792526b26135b01f6c61732689f78d0d920d53792e5d5a8ad8991",
+      "source_mtime": "2026-08-20T04:27:09",
+      "notes": "single table row at :79 in a superseded archive; a range implies more than one render but no count or distribution survives. The P0 brief's lead said 9.3-11.2 s; local evidence says 9.3-11.1 s and is authoritative. Quantisation q4_k is inference (grade D), not stated locally"
+    },
+    {
+      "component": "stable-diffusion.cpp",
+      "claim": "GPU handoff between runs",
+      "value": "about 1 second drain to a 1.5 GB floor, 3 of 3 cycles with no OOM",
+      "unit": "seconds / cycles",
+      "grade": "C",
+      "source_path": "/home/google/Symoneural/docs/archive/PROJECT-STATE.md",
+      "source_sha256": "338068844b2792526b26135b01f6c61732689f78d0d920d53792e5d5a8ad8991",
+      "source_mtime": "2026-08-20T04:27:09",
+      "notes": "at :81; corroborates the clean-handoff lead in the P0 brief"
+    },
+    {
+      "component": "vllm",
+      "claim": "installed version and torch build",
+      "value": "vLLM 0.25.1, Python 3.12.13, torch 2.11.0+cu130",
+      "unit": "version",
+      "grade": "A",
+      "source_path": "/home/google/.venvs/vllm/lib/python3.12/site-packages/vllm-0.25.1.dist-info",
+      "source_sha256": null,
+      "source_mtime": null,
+      "notes": "read live from the interpreter's own package metadata; dist-info directory present. Note torch is built against CUDA 13.0 while the system toolkit is 13.3 - a real configuration fact for any P2 result using this venv. Directory, so no file sha256"
+    },
+    {
+      "component": "vllm",
+      "claim": "runtime state",
+      "value": "installed-not-serving",
+      "unit": "state",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/docs/ops/RUNTIME-PROFILES.md",
+      "source_sha256": "54bdec0b1648f97d60fc871d891827be4c9afceb6468ddbb4b76928650c35d51",
+      "source_mtime": "2026-08-23T07:06:13",
+      "notes": "at :43, with a correction record at :47-50 stating the earlier 'absent' classification was false when written; vLLM imports, torch.cuda.is_available() True, device RTX 5070 Ti"
+    },
+    {
+      "component": "vllm",
+      "claim": "service configuration",
+      "value": "OpenAI-compatible API on loopback port 9001, model id symon, auth via VLLM_API_KEY environment variable",
+      "unit": "configuration",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/backend/apps/remix/symoneural_dj/config.py",
+      "source_sha256": "bf0877ca028113a8a4e862012c379accf11c6e9aed6f5a7ed9ea16eb79a8cfca",
+      "source_mtime": "2026-08-08T23:41:22",
+      "notes": "SYMON_URL defaults to http://127.0.0.1:9001 at :41; recovered from the CLIENT side. No vllm serve invocation survives anywhere, so the launch command is grade E"
+    },
+    {
+      "component": "vllm",
+      "claim": "numeric performance baseline",
+      "value": "NOT AVAILABLE",
+      "unit": null,
+      "grade": "E",
+      "source_path": null,
+      "source_sha256": null,
+      "source_mtime": null,
+      "notes": "HISTORICAL VLLM EXECUTION CONFIRMED, NUMERIC PERFORMANCE BASELINE NOT RECOVERED. Searched the production repo, the frozen research repo, experiments/ and the venv: no benchmark output, report, CSV or logged figure at any grade. No number invented"
+    },
+    {
+      "component": "sglang",
+      "claim": "any historical evidence",
+      "value": "NOT AVAILABLE",
+      "unit": null,
+      "grade": "E",
+      "source_path": null,
+      "source_sha256": null,
+      "source_mtime": null,
+      "notes": "no installation, source tree, configuration or result found on this box"
+    },
+    {
+      "component": "tensorrt-llm",
+      "claim": "source tree presence, no build or result",
+      "value": "source present at /home/google/TensorRT-LLM; never built, never benchmarked",
+      "unit": "state",
+      "grade": "B",
+      "source_path": "/home/google/Symoneural/docs/ops/RUNTIME-PROFILES.md",
+      "source_sha256": "54bdec0b1648f97d60fc871d891827be4c9afceb6468ddbb4b76928650c35d51",
+      "source_mtime": "2026-08-23T07:06:13",
+      "notes": "at :45, classified 'future NVIDIA-optimized path, after proof' and 'absent - future/AUDIT only'. Directory exists on disk but no build artefact or result was found"
+    },
+    {
+      "component": "diffusers",
+      "claim": "any historical benchmark evidence",
+      "value": "NOT AVAILABLE",
+      "unit": null,
+      "grade": "E",
+      "source_path": null,
+      "source_sha256": null,
+      "source_mtime": null,
+      "notes": "ComfyUI-Shared/models/diffusers exists as a model directory, but no Diffusers benchmark, configuration or result was found"
+    },
+    {
+      "component": "host",
+      "claim": "current host state, observation only",
+      "value": "kernel 6.12.101+deb13-amd64; RTX 5070 Ti, VBIOS 98.03.58.00.23, driver 610.57.04, cc 12.0, 16303 MiB; nvcc 13.3 V13.3.73; PCIe gen max 3 width 8; Intel i9-10900KF 20 logical CPUs; 94 GiB RAM",
+      "unit": "identity",
+      "grade": "A",
+      "source_path": "/home/google/SyMoNeuRaL-Projects/Symoneural-Performance/hardware/CURRENT-HOST-INVENTORY.md",
+      "source_sha256": null,
+      "source_mtime": "2026-08-24",
+      "notes": "read by query, not benchmark. Matches the historical host on GPU, compute capability, driver, CUDA, VRAM and PCIe width - no version drift to confound P1. pcie.link.gen.current reads 1 at idle due to power management, which is NOT a regression; compare gen.max"
+    }
+  ],
+  "corrections": [
+    {
+      "date": "2026-08-24",
+      "applies_to_commit": "6a4e4e82",
+      "change": "reduction 752.30 and reductionMultiBlockCG 708.92 regraded B -> C",
+      "reason": "a benchmark RESULT can only be A (machine output) or C (reported claim); B is for direct configuration evidence and must never be assigned to a number merely because it appears in a document. Re-inspection found prose only, and additionally established that both were the PYTHON sample variants rather than the C++ samples",
+      "also": "the phrase 'the host has not drifted' was narrowed to the enumerated GPU/driver/CUDA identity actually compared; whole-host identity is not established"
+    }
+  ]
+}

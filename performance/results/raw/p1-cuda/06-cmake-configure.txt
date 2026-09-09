@@ -1,0 +1,27 @@
+=== P1.3 CONFIGURE from repository ROOT (as intended) ===
+note: libopenmpi-dev 5.0.7-1 was installed by the operator, which resolved the
+      earlier FindMPI failure in cpp/0_Introduction/simpleMPI. No other change.
+cmake: cmake version 3.31.6
+nvcc:  Cuda compilation tools, release 13.3, V13.3.73
+c++:   c++ (Debian 14.2.0-19) 14.2.0
+command: cmake -S sources/cuda-samples -B build/cuda-samples-v13.3 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=120
+started: 2026-08-24T15:28:15-04:00
+-- Debian 13 or later detected
+-- Sample 'simpleD3D11' is Windows-only - skipping
+-- Sample 'simpleD3D11Texture' is Windows-only - skipping
+-- Sample 'simpleD3D12' is Windows-only - skipping
+-- Found Vulkan: /usr/lib/x86_64-linux-gnu/libvulkan.so (found version "1.4.309")  missing components: glslc glslangValidator
+-- Looking for GLFW/glfw3.h
+-- Looking for GLFW/glfw3.h - found
+-- Using CUDA_HOME: /usr/local/cuda
+-- Using CUDA_LIB:  /usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so
+-- Using LIBNVVM_HOME: /usr/local/cuda/nvvm
+-- Using libnvvm header:      /usr/local/cuda/nvvm/include/nvvm.h
+-- Using libnvvm header path: /usr/local/cuda/nvvm/include
+-- Using libnvvm library:     /usr/local/cuda/nvvm/lib64/libnvvm.so
+-- Using rpath: /usr/local/cuda/nvvm/lib64
+-- Skipping the build of the cuda-c-linking sample.
+-- Configuring done (25.2s)
+-- Generating done (0.4s)
+-- Build files have been written to: /home/google/SyMoNeuRaL-Projects/Symoneural-Performance/build/cuda-samples-v13.3
+rc=0

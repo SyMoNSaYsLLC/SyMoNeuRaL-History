@@ -1,0 +1,20 @@
+=== P1.5.1 COMMAND / BINARY INVENTORY (read-only) ===
+date: 2026-08-24T15:53:02-04:00
+  nvidia-smi           PRESENT  /usr/bin/nvidia-smi
+  nvcc                 PRESENT  /usr/local/cuda/bin/nvcc
+  cmake                PRESENT  /usr/bin/cmake
+  ninja                PRESENT  /home/google/.local/share/../bin/ninja
+  make                 PRESENT  /usr/bin/make
+  gcc                  PRESENT  /usr/bin/gcc
+  g++                  PRESENT  /usr/bin/g++
+  docker               ABSENT
+  podman               PRESENT  /usr/bin/podman
+  nvidia-ctk           PRESENT  /usr/bin/nvidia-ctk
+  ngc                  ABSENT
+  nsys                 PRESENT  /usr/local/cuda/bin/nsys
+  ncu                  PRESENT  /usr/local/cuda/bin/ncu
+  trtexec              ABSENT
+  nvbandwidth          ABSENT
+  cuobjdump            PRESENT  /usr/local/cuda/bin/cuobjdump
+  nvdisasm             PRESENT  /usr/local/cuda/bin/nvdisasm
+  compute-sanitizer    PRESENT  /usr/local/cuda/bin/compute-sanitizer

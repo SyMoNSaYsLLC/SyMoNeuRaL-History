@@ -1,0 +1,74 @@
+=== CURRENT CUDA-RUNTIME PCIE CHARACTERIZATION — RUN ===
+date: 2026-08-24T15:41:07-04:00
+command: ./build/p1-cuda/p1_cuda_pcie --size-mib=512 --iters=12 --sustain=8
+=== CURRENT CUDA-RUNTIME PCIE CHARACTERIZATION ===
+NOT a reproduction of the historical CuPy test. Comparison is DIRECTIONAL ONLY.
+Historical (Grade A, CuPy, unaltered): H2D pinned 6.94 GB/s, D2H pinned 7.20 GB/s
+
+Device: NVIDIA GeForce RTX 5070 Ti
+Compute capability: 12.0
+Memory bus width: 256-bit
+L2 cache: 50331648 bytes
+Implementation: CUDA Runtime API, cudaHostAlloc + cudaMemcpyAsync, CUDA events
+Bandwidth formula: bytes / elapsed_seconds  (ONE WAY, not read+write)
+
+--- SUSTAINED TRANSFER for 8.0 s (for external PCIe link sampling) ---
+  sustained 112 transfers over 8.53 s
+
+[H2D PINNED  (primary)]  size=512 MiB  iterations=12
+  per-iteration GB/s:
+       6.977    6.959    6.838    6.900    6.957
+       6.905    6.877    6.982    6.957    6.884
+       6.900    6.978
+  mean     6.9261 GB/s
+  median   6.9309 GB/s
+  min      6.8382 GB/s
+  max      6.9818 GB/s
+  stdev    0.0478 GB/s
+  CoV      0.6906 %
+
+[D2H PINNED  (primary)]  size=512 MiB  iterations=12
+  per-iteration GB/s:
+       7.242    7.164    7.237    7.187    7.205
+       7.178    7.133    7.196    7.164    7.196
+       7.235    7.197
+  mean     7.1945 GB/s
+  median   7.1962 GB/s
+  min      7.1326 GB/s
+  max      7.2423 GB/s
+  stdev    0.0329 GB/s
+  CoV      0.4572 %
+
+[H2D pageable (optional)]  size=512 MiB  iterations=12
+  per-iteration GB/s:
+       6.721    6.831    6.909    6.887    6.694
+       6.862    6.899    6.694    6.895    6.861
+       6.897    6.731
+  mean     6.8234 GB/s
+  median   6.8614 GB/s
+  min      6.6936 GB/s
+  max      6.9089 GB/s
+  stdev    0.0868 GB/s
+  CoV      1.2721 %
+
+[D2H pageable (optional)]  size=512 MiB  iterations=12
+  per-iteration GB/s:
+       7.027    6.982    6.885    7.040    7.066
+       6.939    6.869    6.941    7.062    6.885
+       6.934    7.011
+  mean     6.9700 GB/s
+  median   6.9613 GB/s
+  min      6.8691 GB/s
+  max      7.0661 GB/s
+  stdev    0.0710 GB/s
+  CoV      1.0181 %
+
+--- consistency with the physical link ceiling ---
+Gen 3 x8 theoretical: 7.88 GB/s
+H2D pinned mean is 87.9% of that ceiling
+D2H pinned mean is 91.3% of that ceiling
+
+NOTE: no regression percentage against the historical CuPy figures is
+computed here, deliberately. The implementations are not equivalent.
+
+Done. No model was loaded and no engine was started.

@@ -1,0 +1,78 @@
+=== P1.5B transpose — L2-EXCEEDING working set (CURRENT CHARACTERIZATION ONLY) ===
+date: 2026-08-24T15:35:25-04:00
+dimX=dimY=8192 float => 8192*8192*4 = 268,435,456 B per matrix (256 MiB),
+read+write => ~512 MiB of traffic, comfortably beyond the 48 MiB L2.
+
+--- WARM-UP (not recorded) ---
+transpose simple copy       , Throughput = 650.6686 GB/s, Time = 0.76844 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose shared memory copy, Throughput = 675.7055 GB/s, Time = 0.73997 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+--- RUN 1 ---
+tel: 55, 75.91 W, 2992 MHz, 13801 MHz, 48 %, 3, 8
+> MatrixSize X = 8192 is greater than the recommended size = 1024
+> MatrixSize Y = 8192 is greater than the recommended size = 1024
+Matrix size: 8192x8192 (256x256 tiles), tile size: 32x32, block size: 32x16
+transpose simple copy       , Throughput = 646.6102 GB/s, Time = 0.77326 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose shared memory copy, Throughput = 649.6434 GB/s, Time = 0.76965 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose naive             , Throughput = 380.4164 GB/s, Time = 1.31435 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coalesced         , Throughput = 606.0237 GB/s, Time = 0.82505 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose optimized         , Throughput = 613.1613 GB/s, Time = 0.81545 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coarse-grained    , Throughput = 616.1710 GB/s, Time = 0.81146 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose fine-grained      , Throughput = 650.5437 GB/s, Time = 0.76859 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose diagonal          , Throughput = 564.2623 GB/s, Time = 0.88611 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+Test passed
+--- RUN 2 ---
+tel: 55, 75.98 W, 2992 MHz, 13801 MHz, 40 %, 3, 8
+> MatrixSize X = 8192 is greater than the recommended size = 1024
+> MatrixSize Y = 8192 is greater than the recommended size = 1024
+Matrix size: 8192x8192 (256x256 tiles), tile size: 32x32, block size: 32x16
+transpose simple copy       , Throughput = 645.7465 GB/s, Time = 0.77430 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose shared memory copy, Throughput = 650.4307 GB/s, Time = 0.76872 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose naive             , Throughput = 380.5764 GB/s, Time = 1.31380 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coalesced         , Throughput = 611.4881 GB/s, Time = 0.81768 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose optimized         , Throughput = 616.3188 GB/s, Time = 0.81127 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coarse-grained    , Throughput = 621.1484 GB/s, Time = 0.80496 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose fine-grained      , Throughput = 652.5720 GB/s, Time = 0.76620 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose diagonal          , Throughput = 570.1260 GB/s, Time = 0.87700 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+Test passed
+--- RUN 3 ---
+tel: 57, 77.72 W, 2992 MHz, 13801 MHz, 100 %, 3, 8
+> MatrixSize X = 8192 is greater than the recommended size = 1024
+> MatrixSize Y = 8192 is greater than the recommended size = 1024
+Matrix size: 8192x8192 (256x256 tiles), tile size: 32x32, block size: 32x16
+transpose simple copy       , Throughput = 651.1198 GB/s, Time = 0.76791 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose shared memory copy, Throughput = 654.6782 GB/s, Time = 0.76373 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose naive             , Throughput = 384.6327 GB/s, Time = 1.29994 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coalesced         , Throughput = 626.8673 GB/s, Time = 0.79762 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose optimized         , Throughput = 625.8216 GB/s, Time = 0.79895 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coarse-grained    , Throughput = 618.7084 GB/s, Time = 0.80814 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose fine-grained      , Throughput = 646.6667 GB/s, Time = 0.77320 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose diagonal          , Throughput = 554.8938 GB/s, Time = 0.90107 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+Test passed
+--- RUN 4 ---
+tel: 56, 83.04 W, 2992 MHz, 13801 MHz, 40 %, 3, 8
+> MatrixSize X = 8192 is greater than the recommended size = 1024
+> MatrixSize Y = 8192 is greater than the recommended size = 1024
+Matrix size: 8192x8192 (256x256 tiles), tile size: 32x32, block size: 32x16
+transpose simple copy       , Throughput = 647.9832 GB/s, Time = 0.77162 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose shared memory copy, Throughput = 659.8802 GB/s, Time = 0.75771 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose naive             , Throughput = 377.6185 GB/s, Time = 1.32409 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coalesced         , Throughput = 613.3854 GB/s, Time = 0.81515 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose optimized         , Throughput = 624.3812 GB/s, Time = 0.80079 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coarse-grained    , Throughput = 619.2734 GB/s, Time = 0.80740 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose fine-grained      , Throughput = 655.6715 GB/s, Time = 0.76258 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose diagonal          , Throughput = 561.1045 GB/s, Time = 0.89110 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+Test passed
+--- RUN 5 ---
+tel: 57, 82.12 W, 2992 MHz, 13801 MHz, 40 %, 3, 8
+> MatrixSize X = 8192 is greater than the recommended size = 1024
+> MatrixSize Y = 8192 is greater than the recommended size = 1024
+Matrix size: 8192x8192 (256x256 tiles), tile size: 32x32, block size: 32x16
+transpose simple copy       , Throughput = 652.4510 GB/s, Time = 0.76634 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose shared memory copy, Throughput = 655.3896 GB/s, Time = 0.76290 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose naive             , Throughput = 381.6891 GB/s, Time = 1.30997 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coalesced         , Throughput = 610.6556 GB/s, Time = 0.81879 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose optimized         , Throughput = 615.3479 GB/s, Time = 0.81255 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose coarse-grained    , Throughput = 613.6003 GB/s, Time = 0.81486 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose fine-grained      , Throughput = 653.7515 GB/s, Time = 0.76482 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+transpose diagonal          , Throughput = 566.2450 GB/s, Time = 0.88301 ms, Size = 67108864 fp32 elements, NumDevsUsed = 1, Workgroup = 512
+Test passed

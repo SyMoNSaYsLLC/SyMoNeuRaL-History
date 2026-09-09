@@ -1,0 +1,29 @@
+=== P1.5.4 SGLang ===
+Cloning into 'sglang'...
+  origin: https://github.com/sgl-project/sglang.git
+  default branch: main
+  main HEAD: 6e2f87d589410edd8740a87f8eb73b02e9cf0fe8  date=2026-08-25 02:05:32 +0800
+--- release tags (newest 10) ---
+    v0.5.18
+    v0.5.17
+    v0.5.16
+    v0.5.15.post1
+    v0.5.15
+    v0.5.14
+    v0.5.13.post1
+    v0.5.13
+    v0.5.12.post1
+    v0.5.12
+=== SGLang candidate provenance (NOT selected) ===
+  v0.5.16        -> fdebc938f7f4d16fe6b9f55dcd9a767cf0899ea1  date=2026-07-24 13:25:42 -0700
+  v0.5.17        -> 29481685462732237d80d86076d6563e1f658102  date=2026-08-07 14:50:47 -0700
+  v0.5.18        -> 71de97b264b04dcd514cf904003028aefe9775c8  date=2026-08-20 14:29:24 -0700
+  LATEST STABLE: v0.5.18 (checked out for inspection)
+  license: sglang/LICENSE —                                  Apache License             
+  requires-python = ">=3.10"
+--- torch pin ---
+    "torch==2.13.0",
+    "torch_memory_saver>=0.0.9.post1",
+    "torchaudio==2.11.0",
+--- sm_120 / Blackwell evidence ---
+=== SGLang sm_120 evidence (broader search) ===

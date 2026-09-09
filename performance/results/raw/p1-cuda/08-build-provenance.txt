@@ -1,0 +1,19 @@
+=== P1.3 BUILD PROVENANCE ===
+--- CMakeCache relevant fields ---
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=120
+CMAKE_CUDA_COMPILER:FILEPATH=/usr/local/cuda/bin/nvcc
+CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++
+CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc
+CMAKE_HOME_DIRECTORY:INTERNAL=/home/google/SyMoNeuRaL-Projects/Symoneural-Performance/sources/cuda-samples
+--- executable hashes ---
+  deviceQuery              build/cuda-samples-v13.3/cpp/1_Utilities/deviceQuery/deviceQuery
+    sha256=711b4d684ad2055e106f10ba616acc1fd5805d957c3f315f4701080cb929f70d  size=26280
+  alignedTypes             build/cuda-samples-v13.3/cpp/6_Performance/alignedTypes/alignedTypes
+    sha256=ee1cd65054506554943440920a48e73c6d5e17a3f8c3455971017f6a34c26fd5  size=1992384
+  reduction                build/cuda-samples-v13.3/cpp/2_Concepts_and_Techniques/reduction/reduction
+    sha256=c31c8d49e0e24c07a318d2a605a3b3aa108d98454ade33c79df329756437cb1c  size=21351944
+  reductionMultiBlockCG    build/cuda-samples-v13.3/cpp/2_Concepts_and_Techniques/reductionMultiBlockCG/reductionMultiBlockCG
+    sha256=cbdcaf9b2d128c81feb74f1737adc1c29a30728929b28e42d1bce17df2372fa1  size=1599656
+  transpose                build/cuda-samples-v13.3/cpp/6_Performance/transpose/transpose
+    sha256=fb00574dc81942b5dbe1aceac608464c73f982642642455a371119a617d8541b  size=1634672

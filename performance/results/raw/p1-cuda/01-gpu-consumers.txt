@@ -1,0 +1,27 @@
+=== GPU non-compute consumers (graphics/desktop) ===
+pid, process_name, used_gpu_memory [MiB]
+--- full process list incl. graphics ---
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            1902      G   /usr/lib/xorg/Xorg                      378MiB |
+|    0   N/A  N/A            2118      G   /usr/bin/kwalletd6                        3MiB |
+|    0   N/A  N/A            2251      G   /usr/bin/ksmserver                        3MiB |
+|    0   N/A  N/A            2253      G   /usr/bin/kded6                            3MiB |
+|    0   N/A  N/A            2254      G   /usr/bin/kwin_x11                       175MiB |
+|    0   N/A  N/A            2316      G   /usr/bin/kaccess                          3MiB |
+|    0   N/A  N/A            2317      G   ...it-kde-authentication-agent-1          3MiB |
+|    0   N/A  N/A            2425      G   /usr/bin/kdeconnectd                      3MiB |
+|    0   N/A  N/A            2466      G   ...-gnu/libexec/DiscoverNotifier          3MiB |
+|    0   N/A  N/A            2532      G   ...ibexec/xdg-desktop-portal-kde          3MiB |
+|    0   N/A  N/A            2673      G   /usr/bin/plasmashell                    231MiB |
+|    0   N/A  N/A            2916      G   /usr/bin/konsole                          3MiB |
+|    0   N/A  N/A            2942      G   /opt/google/chrome/chrome                 3MiB |
+|    0   N/A  N/A            2989      G   ...rack-uuid=3190708988185955192        110MiB |
+|    0   N/A  N/A            3156      G   /usr/bin/dolphin                          3MiB |
+|    0   N/A  N/A            3430      G   /usr/bin/plasma-discover                 42MiB |
+|    0   N/A  N/A           58747      G   /usr/bin/konsole                          3MiB |
+|    0   N/A  N/A           59332      G   /usr/bin/dolphin                          3MiB |
+|    0   N/A  N/A           60294      G   /usr/bin/konsole                          3MiB |
++-----------------------------------------------------------------------------------------+

@@ -1,0 +1,30 @@
+=== P1.6.2 BUILD ===
+date: 2026-08-24T16:21:57-04:00
+command: cmake --build build/nvbandwidth-v0.10.0 -j 8
+[  7%] Building CXX object CMakeFiles/nvbandwidth.dir/cuda_version_check.cpp.o
+[ 14%] Building CXX object CMakeFiles/nvbandwidth.dir/testcase.cpp.o
+[ 21%] Building CUDA object CMakeFiles/nvbandwidth.dir/kernels.cu.o
+[ 28%] Building CXX object CMakeFiles/nvbandwidth.dir/memcpy.cpp.o
+[ 35%] Building CXX object CMakeFiles/nvbandwidth.dir/testcases.cpp.o
+[ 42%] Building CXX object CMakeFiles/nvbandwidth.dir/nvbandwidth.cpp.o
+[ 50%] Building CXX object CMakeFiles/nvbandwidth.dir/multinode_memcpy.cpp.o
+[ 57%] Building CXX object CMakeFiles/nvbandwidth.dir/environment.cpp.o
+[ 64%] Building CXX object CMakeFiles/nvbandwidth.dir/multinode_testcases.cpp.o
+[ 71%] Building CXX object CMakeFiles/nvbandwidth.dir/output.cpp.o
+[ 78%] Building CXX object CMakeFiles/nvbandwidth.dir/json_output.cpp.o
+[ 85%] Building CXX object CMakeFiles/nvbandwidth.dir/perf_parser_output.cpp.o
+[ 92%] Building CXX object CMakeFiles/nvbandwidth.dir/json/jsoncpp.cpp.o
+[100%] Linking CXX executable nvbandwidth
+[100%] Built target nvbandwidth
+BUILD rc=0
+=== ISSUE #68 GUARD: why it did NOT fire ===
+--- does CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED exist in the selected cuda.h? ---
+  951:    CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED = 132,                          /**< Device supports switch multicast and reduction operations. */
+  14186: * attribute ::CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED
+  -> present in /usr/local/cuda-13.3/include/cuda.h
+--- does the source reference it? ---
+  sources/nvbandwidth/testcase.cpp:71:        CU_ASSERT(cuDeviceGetAttribute(&supportsMulticast, CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED, dev));
+--- which CUDA include dir did CMake select? ---
+  CMAKE_CUDA_COMPILER:FILEPATH=/usr/local/cuda/bin/nvcc
+  CONCLUSION: v0.10.0 + system CUDA 13.3 headers build cleanly on this host.
+  Upstream issue #68 is not reproducible here. No patch applied, no source touched.

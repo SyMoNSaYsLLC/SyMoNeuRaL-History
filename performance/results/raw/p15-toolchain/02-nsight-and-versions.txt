@@ -1,0 +1,18 @@
+=== P1.5.7 NSIGHT QUALIFICATION ===
+--- nsys --version ---
+NVIDIA Nsight Systems version 2026.1.3.425-261338342291v0
+  path: /usr/local/cuda/bin/nsys  realpath: /usr/local/cuda-13.3/bin/nsys
+--- ncu --version ---
+NVIDIA (R) Nsight Compute Command Line Profiler
+Copyright (c) 2018-2026 NVIDIA Corporation
+Version 2026.2.1.0 (build 38283040) (public-release)
+  path: /usr/local/cuda/bin/ncu  realpath: /usr/local/cuda-13.3/bin/ncu
+--- package source ---
+cuda-nsight-systems-13-3: /usr/local/cuda-13.3/bin/nsys
+cuda-nsight-compute-13-3: /usr/local/cuda-13.3/bin/ncu
+--- other versions ---
+  cmake:  cmake version 3.31.6
+  ninja:  1.13.0.git.kitware.jobserver-pipe-1
+  podman: podman version 5.4.2
+  nvidia-ctk: NVIDIA Container Toolkit CLI version 1.20.0 commit: 5505e2f94d9aaa08561490db974ba3cd676af209 
+  gcc:    gcc (Debian 14.2.0-19) 14.2.0

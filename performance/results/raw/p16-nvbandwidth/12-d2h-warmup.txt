@@ -1,0 +1,6 @@
+=== P1.6.5 D2H CE — WARM-UP (discarded) ===
+date: 2026-08-24T16:25:55-04:00
+Running device_to_host_memcpy_ce.
+ 0      7.19
+SUM device_to_host_memcpy_ce 7.19
+COEFFICIENT_OF_VARIATION device_to_host_memcpy_ce 0.00

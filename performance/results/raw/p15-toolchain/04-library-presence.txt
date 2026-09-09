@@ -1,0 +1,36 @@
+=== targeted presence check: cuDNN / NCCL / TensorRT / cuBLAS ===
+  cudnn          packages=0
+  nccl           packages=1  libvncclient1:amd64 0.9.15+dfsg-1+deb13u2;
+  tensorrt       packages=0
+  libnvinfer     packages=0
+  cublas         packages=2  libcublas-13-3 13.6.0.2-1;  libcublas-dev-13-3 13.6.0.2-1;
+  cufft          packages=2  libcufft-13-3 12.3.0.29-1;  libcufft-dev-13-3 12.3.0.29-1;
+  curand         packages=2  libcurand-13-3 10.4.3.29-1;  libcurand-dev-13-3 10.4.3.29-1;
+  cusparse       packages=2  libcusparse-13-3 12.8.2.51-1;  libcusparse-dev-13-3 12.8.2.51-1;
+
+--- library files on disk (cuDNN / TensorRT) ---
+  libcudnn     NOT FOUND
+  libnvinfer   NOT FOUND
+  libnccl      NOT FOUND
+
+--- what CUDA math libs ARE present ---
+  libcheckpoint.so
+  libcublasLt.so
+  libcublas.so
+  libcudart.so
+  libcufft.so
+  libcufftw.so
+  libcufile_rdma.so
+  libcufile.so
+  libcuobjclient.so
+  libcupti.so
+  libcurand.so
+  libcusolverMg.so
+  libcusolver.so
+  libcusparse.so
+  libnppc.so
+  libnppial.so
+  libnppicc.so
+  libnppidei.so
+  libnppif.so
+  libnppig.so

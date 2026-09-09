@@ -1,0 +1,44 @@
+=== P1.6 reductionMultiBlockCG (C++ v13.3) — corrected capture ===
+date: 2026-08-24T15:37:12-04:00
+Historical 708.92 GB/s: Grade C, PYTHON sample, 'single launch 70 blocks grid.sync()'.
+This C++ sample reports numBlocks: 70 -- the block count MATCHES the historical note.
+Still DIRECTIONAL: different language/program, and 33,554,432 elements is the
+compile-time default here; the historical element count was never recorded.
+--- WARM-UP ---
+Average time: 0.234680 ms
+Bandwidth:    571.918094 GB/s
+--- RUN 1 ---
+tel: 54, 31.53 W, 2565 MHz, 13801 MHz, 43 %, 3, 8
+33554432 elements
+numThreads: 768
+numBlocks: 70
+Average time: 0.234830 ms
+Bandwidth:    571.552932 GB/s
+--- RUN 2 ---
+tel: 55, 45.94 W, 2565 MHz, 13801 MHz, 0 %, 3, 8
+33554432 elements
+numThreads: 768
+numBlocks: 70
+Average time: 0.243320 ms
+Bandwidth:    551.610057 GB/s
+--- RUN 3 ---
+tel: 55, 45.40 W, 2587 MHz, 13801 MHz, 17 %, 3, 8
+33554432 elements
+numThreads: 768
+numBlocks: 70
+Average time: 0.248190 ms
+Bandwidth:    540.785813 GB/s
+--- RUN 4 ---
+tel: 55, 45.49 W, 2632 MHz, 13801 MHz, 1 %, 3, 8
+33554432 elements
+numThreads: 768
+numBlocks: 70
+Average time: 0.234550 ms
+Bandwidth:    572.235003 GB/s
+--- RUN 5 ---
+tel: 55, 45.50 W, 2632 MHz, 13801 MHz, 1 %, 3, 8
+33554432 elements
+numThreads: 768
+numBlocks: 70
+Average time: 0.236290 ms
+Bandwidth:    568.021247 GB/s

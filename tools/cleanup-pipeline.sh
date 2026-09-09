@@ -24,7 +24,10 @@ say "yocto set done -- /yocto now $(df -h /yocto | tail -1 | awk '{print $5}')"
 INV=/tmp/claude-1000/-home-google/0d019856-dbe0-49b4-ad80-0c3d9779a69b/scratchpad/gdrive-inventory.json
 ERR=${INV%.json}.err
 for i in $(seq 1 240); do grep -q DONE "$ERR" 2>/dev/null && break; sleep 60; done
-if grep -q DONE "$ERR" 2>/dev/null; then
+if [ -f .private/dedupe-run-by-owner.marker ]; then
+  say "drive dedupe SKIPPED -- the owner ran it manually at 22:45; a second concurrent"
+  say "  deleter would race the first for the same victims and log spurious not-founds"
+elif grep -q DONE "$ERR" 2>/dev/null; then
   say "starting drive dedupe"
   python3 tools/drive-dedupe.py --apply >> "$L" 2>&1
   say "drive dedupe done"

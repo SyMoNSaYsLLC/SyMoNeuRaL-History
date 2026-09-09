@@ -1,0 +1,16 @@
+=== NVBANDWIDTH PRESENCE ===
+NVBANDWIDTH = ABSENT
+P1 INSTALL DEFERRED
+  command -v nvbandwidth   -> rc=1 (not on PATH)
+  find (rc=0, 0 matches)   -> /home/google /usr/local /usr/bin /opt maxdepth 5
+  dpkg -l | grep -ci       -> 0
+
+=== BUILD: current CUDA-runtime PCIe characterization ===
+source:  benchmarks/p1_cuda_pcie.cu
+src sha256: c7f5c77c91787b7fdb7791ca874d5c25225a9118efcaa1a10da422a148ac0ce2
+nvcc command:
+  /usr/local/cuda/bin/nvcc -O3 -arch=sm_120 -o build/p1-cuda/p1_cuda_pcie benchmarks/p1_cuda_pcie.cu
+  rc=0
+binary sha256: 5ea2da7b0ba058b7cc4adf043711f66925513c0f7c8697fbb2daf4769705aed8
+binary size:   1100088 bytes
+nvcc version:  Cuda compilation tools, release 13.3, V13.3.73

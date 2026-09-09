@@ -1,0 +1,47 @@
+=== P1.5.4 vLLM ===
+Cloning into 'vllm'...
+  origin: https://github.com/vllm-project/vllm.git
+  default branch: main
+  main HEAD: 6a9c69fa851389dcf1ee5d3a2363e27af665d26d  date=2026-08-24 14:43:57 -0400
+--- release tags (newest 12) ---
+    v0.28.0rc2
+    v0.28.0rc1
+    v0.27.1
+    v0.27.0rc2
+    v0.27.0rc1
+    v0.27.0
+    v0.26.1rc0
+    v0.26.0rc1
+    v0.26.0
+    v0.25.1
+    v0.25.0rc3
+    v0.25.0rc2
+--- installed version for reference: 0.25.1 ---
+    v0.25.0
+    v0.25.0rc1
+    v0.25.0rc2
+    v0.25.0rc3
+    v0.25.1
+=== vLLM candidate provenance (NOT selected) ===
+  v0.25.1      -> 752a3a504485790a2e8491cacbb35c137339ad34  date=2026-07-12 16:40:12 -0700
+  v0.26.0      -> 568afb3a13806beb53bb2e6bd518269357b237c0  date=2026-07-26 17:57:50 -0700
+  v0.27.0      -> 4bdc8a788d2e2ce9165d552b3d4d8b72604626bf  date=2026-08-10 11:48:34 +0100
+  v0.27.1      -> 6e448d0ea9bf3d88d898b65449ca6dc2aec170ac  date=2026-08-11 01:12:11 -0700
+  v0.28.0rc2 -> 74a6576b9b5832494c314405c3cae94db55801e1 [RELEASE CANDIDATE, not stable]
+  INSTALLED locally: 0.25.1 (in /home/google/.venvs/vllm)
+  LATEST STABLE upstream: v0.27.1
+  P2 selection: DEFERRED. 'newer' is not a selection criterion.
+--- v0.27.1 requirements evidence ---
+  license: vllm/LICENSE —                                  Apache License             
+  requires-python = ">=3.10,<3.15"
+--- torch pin ---
+  torch==2.13.0
+  torchaudio==2.11.0
+  torchvision==0.28.0 # Required for phi3v processor. See https://github.com/pytorch/vision?tab=readme-ov-file#installation for corresponding version
+  torchcodec >= 0.14
+--- CUDA arch / sm_120 / Blackwell evidence ---
+  vllm/CMakeLists.txt:120:  set(CUDA_SUPPORTED_ARCHS "7.5;8.0;8.6;8.7;8.9;9.0;10.0;10.7;11.0;12.0")
+  vllm/CMakeLists.txt:123:   # starting from CUDA 12.9 and Blackwell (10.0), we use family-specific targets (10.0f, 12.0f, etc)
+  vllm/CMakeLists.txt:125:   # see: https://developer.nvidia.com/blog/nvidia-blackwell-and-nvidia-cuda-12-9-introduce-family-specific-architecture-features/
+  vllm/CMakeLists.txt:126:  set(CUDA_SUPPORTED_ARCHS "7.5;8.0;8.6;8.7;8.9;9.0;10.0;11.0;12.0")
+  vllm/CMakeLists.txt:129:  set(CUDA_SUPPORTED_ARCHS "7.5;8.0;8.6;8.7;8.9;9.0;10.0;10.1;10.3;12.0;12.1")

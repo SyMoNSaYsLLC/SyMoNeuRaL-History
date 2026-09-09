@@ -1,0 +1,34 @@
+=== P1.5.3D TensorRT-RTX (OSS components/samples — NOT the complete SDK) ===
+Cloning into 'TensorRT-RTX'...
+  origin: https://github.com/NVIDIA/TensorRT-RTX.git
+--- all tags (newest 12) ---
+    v1.6.1.120
+    v1.5.0.114
+    v1.4.0.76
+    v1.3.0.35
+    v1.2.0.44
+    v1.1.1.26
+    v1.0.0.21
+--- 1.6.x family ---
+    v1.6.1.120
+=== TensorRT-RTX v1.6.1.120 provenance ===
+  tag -> 058c78afdd026df518529e859605501e2a72a5ac
+  date:  2026-07-28 13:42:57 -0700
+  checked out: v1.6.1.120
+  license: TensorRT-RTX/LICENSE
+    
+                                     Apache License
+                               Version 2.0, January 2004
+  submodules: none
+
+*** CRITICAL: this GitHub repository contains OSS COMPONENTS AND SAMPLES ONLY.
+*** It is NOT the complete TensorRT-RTX SDK. Cloning it does NOT mean
+*** TensorRT-RTX is installed. The SDK requires a separate NVIDIA download.
+  top-level contents:
+    CONTRIBUTING.md
+    demo
+    LICENSE
+    README.md
+    ruff.toml
+    samples
+  INSTALLED: NO · SDK PRESENT: NO · BUILT: NO

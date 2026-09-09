@@ -1,0 +1,20 @@
+=== P1.6.9 OPTIONAL SM-PATH CHARACTERISATION ===
+date: 2026-08-24T16:37:52-04:00
+gate check: primary CE tests PASSED; both SM testcases appear in -l (indices 16, 17);
+no extra dependency, no source change. Proceeding.
+*** CURRENT CHARACTERISATION ONLY — the SM path uses a COPY KERNEL, not the
+*** copy engine, so these are NOT comparable to CuPy/P1/P1.6 CE measurements.
+--- host_to_device_memcpy_sm (warm-up discarded, then 5 recorded) ---
+  run 1: 6.00
+  run 2: 6.23
+  run 3: 6.28
+  run 4: 6.27
+  run 5: 6.12
+  tel: 3, 8, 55, 67.68 W
+--- device_to_host_memcpy_sm (warm-up discarded, then 5 recorded) ---
+  run 1: 6.31
+  run 2: 6.22
+  run 3: 6.49
+  run 4: 6.43
+  run 5: 6.34
+  tel: 3, 8, 59, 68.57 W

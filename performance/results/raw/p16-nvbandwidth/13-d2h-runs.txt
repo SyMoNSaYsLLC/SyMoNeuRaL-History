@@ -1,0 +1,26 @@
+=== P1.6.5 D2H CE — 5 RECORDED TOP-LEVEL INVOCATIONS ===
+--- RUN 1 ---
+pre-tel: 3, 8, 58, 58.33 W, 2992 MHz
+ 0      7.21
+SUM device_to_host_memcpy_ce 7.21
+COEFFICIENT_OF_VARIATION device_to_host_memcpy_ce 0.00
+--- RUN 2 ---
+pre-tel: 3, 8, 58, 58.67 W, 2992 MHz
+ 0      7.21
+SUM device_to_host_memcpy_ce 7.21
+COEFFICIENT_OF_VARIATION device_to_host_memcpy_ce 0.00
+--- RUN 3 ---
+pre-tel: 3, 8, 58, 58.22 W, 2992 MHz
+ 0      7.21
+SUM device_to_host_memcpy_ce 7.21
+COEFFICIENT_OF_VARIATION device_to_host_memcpy_ce 0.00
+--- RUN 4 ---
+pre-tel: 3, 8, 59, 58.48 W, 2992 MHz
+ 0      7.20
+SUM device_to_host_memcpy_ce 7.20
+COEFFICIENT_OF_VARIATION device_to_host_memcpy_ce 0.00
+--- RUN 5 ---
+pre-tel: 3, 8, 59, 59.27 W, 2992 MHz
+ 0      7.22
+SUM device_to_host_memcpy_ce 7.22
+COEFFICIENT_OF_VARIATION device_to_host_memcpy_ce 0.00

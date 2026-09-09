@@ -1,0 +1,20 @@
+=== P1.5.6 NGC / CONTAINER QUALIFICATION (boolean state only — NO auth material read) ===
+--- docker ---
+  docker CLI: ABSENT
+  docker daemon: inactive
+--- podman (present instead) ---
+  podman: podman version 5.4.2
+  OCI runtime: crun
+--- NVIDIA Container Toolkit ---
+  nvidia-ctk: NVIDIA Container Toolkit CLI version 1.20.0
+  libnvidia-container-tools              1.20.0-1
+  libnvidia-container1:amd64             1.20.0-1
+  nvidia-container-toolkit               1.20.0-1
+  nvidia-container-toolkit-base          1.20.0-1
+  CDI spec present? /etc/cdi/nvidia.yaml /var/run/cdi/nvidia.yaml 
+--- ngc CLI ---
+  ngc CLI: ABSENT
+--- nvcr.io auth CONFIGURED? (boolean only; no fields printed) ---
+  /home/google/.docker/config.json : absent
+  /run/user/1000/containers/auth.json : absent
+  /home/google/.config/containers/auth.json : absent

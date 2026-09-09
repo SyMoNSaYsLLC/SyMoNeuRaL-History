@@ -1,0 +1,18 @@
+=== P1.12 POST-RUN SAFETY CHECK ===
+date: 2026-08-24T15:42:13-04:00
+--- GPU compute apps (must be none) ---
+  (blank=none)
+--- benchmark processes left? ---
+  none
+--- GPU back to idle? ---
+utilization.gpu [%], utilization.memory [%], memory.used [MiB], power.draw [W], temperature.gpu, clocks.current.sm [MHz], pcie.link.gen.current, pcie.link.width.current
+1 %, 15 %, 1222 MiB, 15.17 W, 52, 540 MHz, 1, 8
+--- listening benchmark service? ---
+  none on 8811/9001
+--- production services ---
+  symoneural-api       active MainPID=1866
+  caddy                active MainPID=1907
+  symoneural-gateway   active MainPID=1903
+--- repos ---
+  production main=7d1a5529 changed=0
+  custom HEAD=44863110 changed=0 locked=1

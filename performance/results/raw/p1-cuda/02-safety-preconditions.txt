@@ -1,0 +1,12 @@
+=== P1.1 SAFETY PRECONDITIONS ===
+production services:
+  symoneural-api       active
+  caddy                active
+  symoneural-gateway   active
+port 8811:
+  not listening
+AI/custom GPU compute process:
+  none
+production repo: main=7d1a5529 changed=0
+custom repo: HEAD=44863110 changed=0 locked=1
+performance repo: HEAD=d1eac18 changed=0

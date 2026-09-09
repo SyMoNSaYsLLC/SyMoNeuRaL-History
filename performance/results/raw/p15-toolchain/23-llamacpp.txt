@@ -1,0 +1,18 @@
+=== P1.5.4 llama.cpp ===
+Cloning into 'llama.cpp'...
+  origin: https://github.com/ggml-org/llama.cpp.git
+  default branch: master
+  master HEAD: f280b26983ad0fdb705a0d9ebf0503e76f2899b0  date=2026-08-24 19:22:27 +0300
+--- newest release tags ---
+    v0.2.0
+    v0.1.2
+    v0.1.1
+    v0.1.0
+    tmp-testing-0
+    master-fff0e0e
+--- the HISTORICAL build 4df29be — does it exist upstream? ---
+    type: commit
+    date=2026-08-16 14:53:13 +0200
+    subject=ci : fix dry-run reporting in make-release job [no ci] (#27167)
+  license: 
+  submodules: none

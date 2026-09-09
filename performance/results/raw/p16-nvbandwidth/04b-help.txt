@@ -1,0 +1,33 @@
+=== v0.10.0 EXACT OPTION SYNTAX (not assumed from an older release) ===
+nvbandwidth Version: v0.10.0
+Built from Git version: v0.10
+
+Usage: nvbandwidth [--help] [--version] [--version] [--bufferSize SIZE] [--list] [[--testcase TEST...]...|[--testcasePrefixes PREFIX]...] [--verbose] [--skipVerification] [--disableAffinity] [--testSamples N] [--targetNumPairs N] [--useMean] [--useHugePages] [--format FORMAT] [--pair UUID...]
+
+A tool for bandwidth measurements on NVIDIA GPUs.
+
+Optional arguments:
+  -h, --help                     shows help message and exits 
+  -v, --version                  prints version information and exits 
+  --version                      Print nvbandwidth release version and exit 
+  -b, --bufferSize               Memcpy buffer size in MiB [nargs=0..1] [default: 512]
+  -l, --list                     List available testcases 
+  -t, --testcase                 Testcase(s) to run (by name or index) [nargs: 0 or more] [default: {}] [may be repeated]
+  -p, --testcasePrefixes PREFIX  Testcase(s) to run (by prefix) [may be repeated]
+  -v, --verbose                  Verbose output 
+  -s, --skipVerification         Skips data verification after copy 
+  -d, --disableAffinity          Disable automatic CPU affinity control 
+  -i, --testSamples              Iterations of the benchmark [nargs=0..1] [default: 3]
+  -P, --targetNumPairs           Target pairs for multinode device-to-device tests [nargs=0..1] [default: -1]
+  -m, --useMean                  Use mean instead of median for results 
+  -H, --useHugePages             Use huge pages for host allocations 
+  -F, --format                   Output format [nargs=0..1] [default: "text"]
+  --pair                         Run tests only between these two GPUs (by UUID). GPUs may be on the same or different nodes. [nargs: 2] 
+
+Examples:
+  nvbandwidth                          # Run all testcases
+  nvbandwidth -l                       # List available testcases
+  nvbandwidth -t host_to_device_memcpy_ce device_to_host_memcpy_ce
+  nvbandwidth -p device_to_device      # Run all device_to_device* tests
+  nvbandwidth --format json            # Output in JSON format
+

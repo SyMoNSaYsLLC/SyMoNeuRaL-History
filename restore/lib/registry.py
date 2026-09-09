@@ -645,6 +645,38 @@ COMPONENTS: tuple[Component, ...] = (
     ),
 
     Component(
+        component_id="symoneural-performance",
+        canonical_name="SyMoNeuRaL Performance",
+        cls="framework",
+        source_root="performance",
+        language="Python/shell",
+        build_system="none",
+        build_authority="-",
+        production_status=INFRASTRUCTURE,
+        first_party_status=FIRST_PARTY,
+        primary_artifact="performance/PERFORMANCE-POLICY.md",
+        restore_required="OPTIONAL",
+        test_command="-",
+        notes="The benchmark harness and its admissibility rules. Recovered 2026-09-08 from "
+              "/home/google/SyMoNeuRaL-Projects/Symoneural-Performance, which the owner "
+              "flagged as being in the wrong place -- and it was, twice over. That "
+              "directory ALSO contained a symlink named `Symoneural` pointing at the live "
+              "repository, which is why the tree measured 311 GB and why an offload had it "
+              "queued for delete; tar archives a symlink rather than following it and rm "
+              "removes the link not the target, so nothing was at risk, but the phantom "
+              "size was real and the link is gone. "
+              "SPLIT rather than moved wholesale: 684 KB of first-party policy, harness, "
+              "benchmarks, manifests and results came here; 2.5 GB of third-party "
+              "benchmark `sources/` and 315 MB of build output go to Drive. Its 7 commits "
+              "are preserved at .private/git-backup/Symoneural-Performance.bundle, because "
+              "moving files out of a git repository leaves the history behind and nobody "
+              "notices until they want it. "
+              "PERFORMANCE-POLICY.md is worth reading before quoting any number from here: "
+              "its own opening says the failure mode is not picking a slow engine but "
+              "'picking an engine on evidence that did not mean what it appeared to mean'.",
+    ),
+
+    Component(
         component_id="symoneural-restore",
         canonical_name="SyMoNeuRaL Restore",
         cls="plane",

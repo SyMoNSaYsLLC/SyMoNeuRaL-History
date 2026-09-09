@@ -1,0 +1,27 @@
+=== P1.2 PROVENANCE ===
+remote:      https://github.com/NVIDIA/cuda-samples.git
+tag:         v13.3
+full commit: b7c5481c556c3fe98db060207ecaa41a4b9a9abc
+expected:    b7c5481  -> MATCH: b7c5481
+tag points:  b7c5481c556c3fe98db060207ecaa41a4b9a9abc
+describe:    v13.3
+commit date: 2026-05-27 16:50:59 -0500
+subject:     Release v13.3 of the CUDA samples with CUDA 13.3 Toolkit (#435)
+clone ts:    2026-08-24T15:26:03-04:00
+--- license ---
+LICENSE
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+license sha256: b3e40c5bfed1fca5c62d2c1f2208bf51f8d2c910219f94c443f657ace9001be3
+--- tree provenance ---
+tree object:  7c8d88b045a395d938c029618670f0a31b3253f5
+file count:   2022
+worktree clean: 0 changes
+--- do the target samples exist? ---
+  deviceQuery              ./python/1_GettingStarted/deviceQuery
+  alignedTypes             ./cpp/6_Performance/alignedTypes
+  reduction                ./python/2_CoreConcepts/reduction
+  reductionMultiBlockCG    ./python/2_CoreConcepts/reductionMultiBlockCG
+  transpose                ./cpp/6_Performance/transpose
+  bandwidthTest            

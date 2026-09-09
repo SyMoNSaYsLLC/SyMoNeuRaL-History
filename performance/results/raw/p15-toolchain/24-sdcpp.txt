@@ -1,0 +1,27 @@
+=== P1.5.4 stable-diffusion.cpp (recursive — upstream requires submodules) ===
+Cloning into 'stable-diffusion.cpp'...
+  origin: https://github.com/leejet/stable-diffusion.cpp.git
+  default branch: master
+  master HEAD: 97d2990807fe6d558e395f8764198d7c7e7b411c  date=2026-08-19 23:06:07 +0800
+--- tags ---
+    workflow-ee62076
+    workflow-302-fad6178
+    master-ff4fdbb
+    master-fce6afc
+    master-fbd42b6
+    master-fbd18e1
+    master-f5997a1
+    master-f469b83
+--- the HISTORICAL build de298c2 (master-820-de298c2) — exists upstream? ---
+    type: commit
+    date=2026-08-12 23:43:42 +0800
+    subject=fix(ci): trigger builds for ggml updates
+--- submodules (P0 recorded this as the only engine needing --recursive) ---
+=== stable-diffusion.cpp submodule status — CHANGED vs P0's record ===
+  ls: cannot access 'stable-diffusion.cpp/.gitmodules': No such file or directory
+  finding: NO .gitmodules at current master (97d2990). P0 recorded --recursive as
+  required, based on a 2026-08 HANDOVER note about the historical de298c2 build.
+  Checking whether de298c2 itself had submodules:
+    100644 blob a26210d90afe65ed4628dadbb1352987f32baf17	.gitmodules
+  --recursive is therefore HARMLESS but not currently required.
+  license: 

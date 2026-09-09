@@ -1,0 +1,21 @@
+=== P1.2 OFFICIAL CUDA SAMPLES CLONE ===
+clone started: 2026-08-24T15:25:42-04:00
+Cloning into 'sources/cuda-samples'...
+Note: switching to 'b7c5481c556c3fe98db060207ecaa41a4b9a9abc'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+rc=0

@@ -1,0 +1,31 @@
+=== P1.5.1 PYTHON PACKAGE INVENTORY (importlib.metadata — no GPU framework import) ===
+--- /usr/bin/python3 ---
+    numba                        0.61.2
+--- /home/google/.venvs/vllm/bin/python ---
+    torch                        2.11.0
+    vllm                         0.25.1
+    cuda-python                  13.3.1
+    cuda-bindings                13.3.1
+    cuda-core                    1.0.1
+    numba                        0.65.0
+    nvidia-cudnn-cu13            9.19.0.56
+    nvidia-nccl-cu13             2.28.9
+    transformers                 5.14.1
+    triton                       3.6.0
+    nvtx                         0.2.15
+--- /home/google/.venvs/symoneural/bin/python ---
+    (none of the tracked packages)
+--- /home/google/.venvs/symoneural-hybrid/bin/python ---
+    torch                        2.11.0+cu130
+    cuda-bindings                13.3.1
+    nvidia-cudnn-cu13            9.19.0.56
+    nvidia-nccl-cu13             2.28.9
+    diffusers                    0.40.0
+    transformers                 5.14.1
+    triton                       3.6.0
+--- /home/google/.venvs/coreml/bin/python ---
+    torch                        2.11.0
+    cuda-bindings                13.3.1
+    nvidia-cudnn-cu13            9.19.0.56
+    nvidia-nccl-cu13             2.28.9
+    triton                       3.6.0

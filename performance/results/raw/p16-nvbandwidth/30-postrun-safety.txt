@@ -1,0 +1,21 @@
+=== P1.6 POSTRUN SAFETY ===
+date: 2026-08-24T16:44:52-04:00
+--- no nvbandwidth / benchmark process ---
+ 108863 tee results/raw/p16-nvbandwidth/30-postrun-safety.txt
+--- GPU compute applications (must be 0) ---
+  (blank=none)
+--- GPU returned to idle? ---
+utilization.gpu [%], utilization.memory [%], memory.used [MiB], power.draw [W], temperature.gpu, clocks.current.sm [MHz], pcie.link.gen.current, pcie.link.width.current
+4 %, 9 %, 1359 MiB, 16.46 W, 52, 630 MHz, 1, 8
+--- ports ---
+  8811 CLOSED · 9001 CLOSED
+--- production services ---
+  symoneural-api       active MainPID=1866
+  caddy                active MainPID=1907
+  symoneural-gateway   active MainPID=1903
+--- repos ---
+  production main=7d1a5529 changed=0
+  custom HEAD=44863110 changed=0 locked=1
+--- NVBANDWIDTH SOURCE PRISTINE ---
+  HEAD:  82fc4e8c6afa0babb8687793678f615b3b8d793e
+  dirty: 0

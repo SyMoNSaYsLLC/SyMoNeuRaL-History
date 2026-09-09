@@ -1,0 +1,98 @@
+=== P1.5.4 TensorRT-LLM (clean upstream checkout for the Performance repo) ===
+Cloning into 'TensorRT-LLM'...
+  origin: https://github.com/NVIDIA/TensorRT-LLM.git
+  default branch: main
+  main HEAD: d9329fb8d3cd2d50807daafcc4d1d4e7a6473af0  date=2026-08-25 01:12:49 +0800
+--- release tags (newest 12) ---
+    v1.3.0rc24
+    v1.3.0rc23.post1
+    v1.3.0rc23
+    v1.3.0rc22.post1
+    v1.3.0rc22
+    v1.3.0rc21
+    v1.3.0rc20
+    v1.3.0rc19
+    v1.3.0rc18
+    v1.3.0rc17
+    v1.3.0rc16
+    v1.3.0rc15.post1
+--- stable (non-rc) tags ---
+    v0.18.2
+    v0.19.0
+    v0.20.0
+    v0.21.0
+    v1.0.0
+    v1.1.0
+    v1.2.0
+    v1.2.1
+=== TensorRT-LLM stable candidates ===
+  v1.2.0     -> 51f5ef32b695f421dd27727f3935052015c945f9  date=2026-03-10 20:36:53 +0800
+  v1.2.1     -> 376f7e1bd8ed543f75014309e3fd4b237e9b0e73  date=2026-04-16 08:13:33 -0700
+  v1.3.0rc24 -> 1cef02e901be43081b1ba6d4981e94ed3bd9c1e8 [RC, not stable]
+
+=== P1.5.5 ARCHITECTURE VERIFICATION — did 1.2 remove the TensorRT backend? ===
+  checked out: v1.2.1
+--- search release notes / changelog for backend removal ---
+  TensorRT-LLM/docs/source/release-notes.md:269:  - Remove support for llmapi + TRT backend in Triton
+--- is there a _torch / pytorch backend dir? ---
+  PRESENT: TensorRT-LLM/tensorrt_llm/_torch
+--- is there still a TensorRT-engine build path? ---
+  TensorRT-LLM/tensorrt_llm/builder.py
+=== P1.5.5 direct evidence on backend removal in 1.2 ===
+TensorRT-LLM/docs/source/release-notes.md-203-  - Add phi-4-multimodal model support
+TensorRT-LLM/docs/source/release-notes.md-204-  - Add EXAONE 4.0 model support
+TensorRT-LLM/docs/source/release-notes.md:205:  - Add Qwen3 MoE support to TensorRT backend
+TensorRT-LLM/docs/source/release-notes.md-206-
+TensorRT-LLM/docs/source/release-notes.md-207-- **Features**
+TensorRT-LLM/docs/source/release-notes.md-208-  - Add support for sm121
+TensorRT-LLM/docs/source/release-notes.md-209-  - Add LoRA support for Gemma3
+TensorRT-LLM/docs/source/release-notes.md-210-  - Support PyTorch LoRA adapter eviction
+TensorRT-LLM/docs/source/release-notes.md-211-  - Add LoRA support for PyTorch backend in trtllm-serve
+=== P1.5.5 backend-removal evidence: search 1.2 release section ===
+7:## TensorRT-LLM Release 1.2.1
+17:## TensorRT-LLM Release 1.2
+34:    - Added support for Mooncake transfer engine as a cache transceiver backend
+37:    - Added support for returning logprobs incrementally with streaming mode in PyTorch backend
+46:    - Enabled EPLB for trtllm-gen and cutlass backend
+--- explicit 'removed' lines anywhere in release notes ---
+  TensorRT-LLM/docs/source/release-notes.md:213:  - Remove padding of FusedMoE in attention DP
+  TensorRT-LLM/docs/source/release-notes.md:269:  - Remove support for llmapi + TRT backend in Triton
+  TensorRT-LLM/docs/source/release-notes.md:288:  - Removed legacy documentation related to the TensorRT workflow.
+  TensorRT-LLM/docs/source/release-notes.md:307:- Remove deprecated LoRA LLM args, that are already specified in lora_config
+  TensorRT-LLM/docs/source/release-notes.md:309:- Remove batch_manager::KvCacheConfig and use executor::KvCacheConfig instead
+  TensorRT-LLM/docs/source/release-notes.md:310:- Remove TrtGptModelOptionalParams
+  TensorRT-LLM/docs/source/release-notes.md:311:- Remove ptuning knobs from TorchLlmArgs
+  TensorRT-LLM/docs/source/release-notes.md:351:- Remove SpecConfig and fix thread leak issues (#5931)
+  TensorRT-LLM/docs/source/release-notes.md:419:- Removed decoder request from decoder interface
+  TensorRT-LLM/docs/source/release-notes.md:421:- Removed the redundant use_kv_cache field from PytorchConfig
+  TensorRT-LLM/docs/source/release-notes.md:462:  - Remove deprecated Python runtime benchmark
+  TensorRT-LLM/docs/source/release-notes.md:500:- Remove deprecated GptSession/V1 from TRT workflow
+=== P1.5.5 the Release 1.2 section, verbatim head ===
+## TensorRT-LLM Release 1.2
+
+### Highlights
+
+- **Model Support**
+  - Added beta support for K-EXAONE, Nemotron Nano V3, Qwen3-Next and Qwen3-VL.
+  - Improved GPT-OSS, Nemotron, EXAONE, GLM, Starcoder2, Qwen3, KimiK2, DeepSeek v3.2 and Mistral Large 3 support and validation.
+  - Expanded Blackwell/Hopper/Ampere enablement including B300/GB200/GB300 and SM120/SM121/SM103 paths.
+  - Broadened low-precision and MoE capabilities (FP8/NVFP4/MXFP4/INT4-AWQ), including routing and kernels.
+
+- **Features**
+  - **Speculative Decoding:**
+    - Enabled MTP>1 support for DeepSeek v3.2
+  - **Disaggregated Serving:**
+    - Added service discovery mechanism for dynamic scaling
+    - Added support for cancelling requests
+    - Added NIXL-LibFabric support
+
+--- line 288 context (legacy TensorRT workflow docs removed) ---
+
+- Documentation:
+  - Refactored the doc structure to focus on the PyTorch workflow.
+  - Improved the LLMAPI and API reference documentation. Stable APIs are now protected and will remain consistent in subsequent versions following v1.0.
+  - Removed legacy documentation related to the TensorRT workflow.
+
+### Infrastructure Changes
+- The base Docker image for TensorRT-LLM is updated to `nvcr.io/nvidia/pytorch:25.06-py3`.
+- The base Docker image for TensorRT-LLM Backend is updated to `nvcr.io/nvidia/tritonserver:25.06-py3`.

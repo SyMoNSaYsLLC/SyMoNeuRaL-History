@@ -142,6 +142,12 @@ SUBTREES=(
 #   lockdown-*.log             ROOT-OWNED; needs one sudo command, reported to the owner.
 HOME_SUBTREES=(
     "/home/google/experiments"
+    # Symoneural-Performance was SPLIT, not moved wholesale: its first-party half
+    # (PERFORMANCE-POLICY.md, benchmarks, harness, results, manifests -- under 1 MB) is now
+    # performance/ in the repository, and its 2.5 GB of third-party benchmark `sources/`
+    # plus build output goes to Drive. Its 7 commits are preserved as a bundle in
+    # .private/git-backup/Symoneural-Performance.bundle first, because moving files out of
+    # a git repository leaves the history behind.
     "/home/google/SyMoNeuRaL-Projects"
     "/home/google/ia.Wallpapers"
     "/home/google/Platforms.tar.gz"

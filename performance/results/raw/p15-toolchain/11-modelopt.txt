@@ -1,0 +1,33 @@
+=== P1.5.3B NVIDIA Model Optimizer ===
+Cloning into 'Model-Optimizer'...
+rc=0
+  origin: https://github.com/NVIDIA/Model-Optimizer.git
+--- available tags (newest 12) ---
+    0.47.0dev
+    0.46.0rc2
+    0.46.0rc1
+    0.46.0rc0
+    0.46.0dev
+    0.46.0
+    0.45.0rc3
+    0.45.0rc2
+    0.45.0rc1
+    0.45.0rc0
+    0.45.0dev
+    0.45.0
+--- default branch HEAD ---
+  73d778422388f0e849ecb180375d34ac445711ca
+  branch: main
+=== Model Optimizer 0.46.0 exact provenance ===
+  tag 0.46.0 -> 43fd41a58d52c4e6e5dec1d1ff5989ecc737ae1a
+  tag date:     2026-08-15 18:39:43 +0530
+  tag object:   commit
+  0.47.0dev ->  87c9f8cf83021957d1a1a575c90c9a4eaaf7ef0c [PRE-RELEASE, not selected]
+  main HEAD ->  73d778422388f0e849ecb180375d34ac445711ca [not selected]
+--- checkout the stable tag so license/requirements are readable ---
+  checked out: 0.46.0
+  license: Model-Optimizer/LICENSE
+                                     Apache License
+                               Version 2.0, January 2004
+                            http://www.apache.org/licenses/
+  INSTALLED: NO · BUILT: NO

@@ -1,0 +1,30 @@
+=== P1.1 PRE-RUN HOST STATE FREEZE ===
+date: 2026-08-24T15:25:15-04:00
+--- uname -a ---
+Linux symon 6.12.101+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.101-1 (2026-08-05) x86_64 GNU/Linux
+--- CPU ---
+CPU(s):                                  20
+Model name:                              Intel(R) Core(TM) i9-10900KF CPU @ 3.70GHz
+Thread(s) per core:                      2
+Core(s) per socket:                      10
+CPU max MHz:                             5300.0000
+CPU min MHz:                             800.0000
+--- CPU governor ---
+powersave
+--- RAM ---
+               total        used        free      shared  buff/cache   available
+Mem:           96360       10407       28099         623       59442       85953
+--- GPU identity ---
+NVIDIA GeForce RTX 5070 Ti, GPU-15e0078a-cb3a-50d1-a40b-94e4d538fc78, 98.03.58.00.23, 610.57.04, 12.0, 16303 MiB
+--- persistence / power / clocks / thermals ---
+Enabled, 300.00 W, 300.00 W, 30.25 W, 1642 MHz, 1642 MHz, 405 MHz, 3210 MHz, 14001 MHz, 48, 15 %, 14 %, 1309 MiB
+--- PCIe idle ---
+3, 16, 2, 8
+--- nvcc ---
+Cuda compilation tools, release 13.3, V13.3.73
+Build cuda_13.3.r13.3/compiler.38244171_0
+--- cmake / gcc ---
+cmake version 3.31.6
+c++ (Debian 14.2.0-19) 14.2.0
+--- compute apps ---
+(blank=none)

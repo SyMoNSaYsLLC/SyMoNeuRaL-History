@@ -1,0 +1,634 @@
+{
+  "schema": 1,
+  "pass": "P1 current raw CUDA/hardware baseline",
+  "measured_on": "2026-08-24",
+  "question": "Does the current raw GPU/host performance match or exceed the historical raw hardware evidence?",
+  "answer": "YES on every measurement where a defensible comparison exists. No software-stack investigation justified.",
+  "not_an_engine_benchmark": "no AI model loaded, no engine started, nothing tuned",
+  "cuda_samples": {
+    "repo": "https://github.com/NVIDIA/cuda-samples.git",
+    "tag": "v13.3",
+    "commit": "b7c5481c556c3fe98db060207ecaa41a4b9a9abc",
+    "expected_commit_prefix": "b7c5481",
+    "match": true,
+    "tree": "7c8d88b045a395d938c029618670f0a31b3253f5",
+    "files": 2022,
+    "license": "NVIDIA BSD-3-Clause style",
+    "license_sha256": "b3e40c5bfed1fca5c62d2c1f2208bf51f8d2c910219f94c443f657ace9001be3",
+    "cloned_at": "2026-08-24T15:26:03-04:00",
+    "committed_to_git": false,
+    "path": "sources/cuda-samples (ignored)"
+  },
+  "build": {
+    "cmake_command": "cmake -S sources/cuda-samples -B build/cuda-samples-v13.3 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=120",
+    "configured_from": "repository root (NOT -S cpp)",
+    "cmake": "3.31.6",
+    "nvcc": "13.3 V13.3.73",
+    "cxx": "c++ (Debian 14.2.0-19) 14.2.0",
+    "cache": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "CMAKE_CUDA_ARCHITECTURES": "120",
+      "CMAKE_CUDA_COMPILER": "/usr/local/cuda/bin/nvcc",
+      "CMAKE_CXX_COMPILER": "/usr/bin/c++"
+    },
+    "note": "root configure first failed in cpp/0_Introduction/simpleMPI because libopenmpi-dev was absent while libopenmpi40 runtime was present; operator installed libopenmpi-dev 5.0.7-1 and the root configure then succeeded. Only system change in this pass, made by the operator.",
+    "binaries": {
+      "deviceQuery": "711b4d684ad2055e106f10ba616acc1fd5805d957c3f315f4701080cb929f70d",
+      "alignedTypes": "ee1cd65054506554943440920a48e73c6d5e17a3f8c3455971017f6a34c26fd5",
+      "reduction": "c31c8d49e0e24c07a318d2a605a3b3aa108d98454ade33c79df329756437cb1c",
+      "reductionMultiBlockCG": "cbdcaf9b2d128c81feb74f1737adc1c29a30728929b28e42d1bce17df2372fa1",
+      "transpose": "fb00574dc81942b5dbe1aceac608464c73f982642642455a371119a617d8541b",
+      "p1_cuda_pcie": "5ea2da7b0ba058b7cc4adf043711f66925513c0f7c8697fbb2daf4769705aed8"
+    }
+  },
+  "host_prerun": {
+    "kernel": "6.12.101+deb13-amd64",
+    "cpu": "Intel i9-10900KF 10C/20T 800-5300MHz",
+    "cpu_governor": "powersave (untouched; uncontrolled variable)",
+    "ram_mib": 96360,
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "uuid": "GPU-15e0078a-cb3a-50d1-a40b-94e4d538fc78",
+    "vbios": "98.03.58.00.23",
+    "driver": "610.57.04",
+    "cuda": "13.3/13.3",
+    "compute_cap": "12.0",
+    "vram_mib": 16303,
+    "l2_bytes": 50331648,
+    "persistence_mode": "Enabled",
+    "power_limit_w": 300.0,
+    "idle": {
+      "power_w": 30.25,
+      "sm_mhz": 1642,
+      "mem_mhz": 405,
+      "temp_c": 48,
+      "util_pct": 15
+    },
+    "pcie_idle": {
+      "gen_max": 3,
+      "width_max": 16,
+      "gen_current": 2,
+      "width_current": 8
+    }
+  },
+  "contamination": {
+    "graphics_contexts": 19,
+    "vram_held_mib": "1222-1309",
+    "idle_gpu_util_pct": "13-15",
+    "compute_contexts": 0,
+    "stopped": false,
+    "reason": "KDE desktop session; out of scope to stop. The current desktop graphics workload remained present and stable enough for the P1 measurements. HISTORICAL GRAPHICS-LOAD EQUIVALENCE WAS NOT PROVEN - no record of the historical graphics load exists.",
+    "production_interference": "none - api/caddy/gateway hold no GPU compute context; no benchmark aborted"
+  },
+  "deviceQuery": {
+    "result": "PASS",
+    "comparability": "EXACTLY COMPARABLE (validation)",
+    "matches_historical": [
+      "RTX 5070 Ti",
+      "cc 12.0",
+      "CUDA 13.3/13.3",
+      "70 MP x 128 = 8960 cores",
+      "14001 MHz mem",
+      "256-bit"
+    ],
+    "l2_bytes": 50331648,
+    "global_mem_bytes": 16628514816,
+    "max_clock_mhz": 2572,
+    "warnings": "none"
+  },
+  "measurements": [
+    {
+      "id": "alignedTypes_rgba32",
+      "sample": "alignedTypes (C++)",
+      "metric": "copy throughput",
+      "unit": "GB/s one-way",
+      "working_set_bytes": 49999872,
+      "working_set_note": "MEM_SIZE compile-time constant, no CLI override, scale_factor 1.00 -> byte-identical to historical",
+      "warmups": 1,
+      "stats": {
+        "n": 5,
+        "runs": [
+          340.986806,
+          330.621769,
+          330.328586,
+          330.182207,
+          329.670865
+        ],
+        "mean": 332.358,
+        "median": 330.3286,
+        "min": 329.6709,
+        "max": 340.9868,
+        "stdev": 4.8359,
+        "cov_pct": 1.455
+      },
+      "historical": {
+        "value": 341.533883,
+        "grade": "A",
+        "source": "docs/01-hardware-dossier.md:355 verbatim transcript"
+      },
+      "comparability": "MOSTLY COMPARABLE",
+      "comparability_reason": "same C++ sample, byte-identical working set, no args accepted; historical iteration count unrecorded and historical samples VERSION unknown",
+      "delta_mean_pct": -2.69,
+      "delta_best_pct": -0.16,
+      "verdict": "PASS",
+      "note": "runs decline monotonically 340.99 -> 329.67 while temp moved only 53->54C, power 50->63W against a 300W limit, and SM clock ROSE 2760->2985MHz. CORRECTED 2026-08-24: this is run-to-run warm-state/clock/background-load variability; NO EVIDENCE OF THERMAL OR POWER THROTTLING WAS OBSERVED. An earlier draft called it a thermal/clock signature, which overstated the evidence - 1C is not a thermal event and a rising clock is the opposite of throttling. Mechanism NOT established. Historical is a single run with no variance recorded."
+    },
+    {
+      "id": "transpose_simple_copy",
+      "sample": "transpose (C++)",
+      "metric": "throughput",
+      "unit": "GB/s",
+      "args": "-dimX=8192 -dimY=8192",
+      "traffic_mib": 512,
+      "warmups": 1,
+      "stats": {
+        "n": 5,
+        "runs": [
+          646.6102,
+          645.7465,
+          651.1198,
+          647.9832,
+          652.451
+        ],
+        "mean": 648.7821,
+        "median": 647.9832,
+        "min": 645.7465,
+        "max": 652.451,
+        "stdev": 2.8938,
+        "cov_pct": 0.446
+      },
+      "historical": null,
+      "comparability": "NOT COMPARABLE (no historical figure)",
+      "verdict": "CURRENT CHARACTERISATION",
+      "note": "L2-EXCEEDING. ~73% of the 896.1 GB/s theoretical peak. Highest-confidence current number in P1 (CoV<0.5%). Demonstrates the L2 trap: ~2x the alignedTypes figure on the same card."
+    },
+    {
+      "id": "transpose_shared_mem_copy",
+      "sample": "transpose (C++)",
+      "metric": "throughput",
+      "unit": "GB/s",
+      "args": "-dimX=8192 -dimY=8192",
+      "traffic_mib": 512,
+      "warmups": 1,
+      "stats": {
+        "n": 5,
+        "runs": [
+          649.6434,
+          650.4307,
+          654.6782,
+          659.8802,
+          655.3896
+        ],
+        "mean": 654.0044,
+        "median": 654.6782,
+        "min": 649.6434,
+        "max": 659.8802,
+        "stdev": 4.1439,
+        "cov_pct": 0.6336
+      },
+      "historical": null,
+      "comparability": "NOT COMPARABLE",
+      "verdict": "CURRENT CHARACTERISATION"
+    },
+    {
+      "id": "reduction_n8388608",
+      "sample": "reduction (C++)",
+      "metric": "throughput",
+      "unit": "GB/s",
+      "args": "-n=8388608 (matches historical READ COUNT 2^23)",
+      "threads": 256,
+      "blocks": 64,
+      "warmups": 1,
+      "stats": {
+        "n": 5,
+        "runs": [
+          692.1291,
+          787.8475,
+          694.1335,
+          688.7198,
+          770.6576
+        ],
+        "mean": 726.6975,
+        "median": 694.1335,
+        "min": 688.7198,
+        "max": 787.8475,
+        "stdev": 48.3981,
+        "cov_pct": 6.66
+      },
+      "historical": {
+        "value": 752.3,
+        "grade": "C",
+        "implementation": "PYTHON sample python/2_CoreConcepts/reduction/reduction.py",
+        "source": "docs/04-cuda-curriculum/2_CoreConcepts.md:2661 prose"
+      },
+      "comparability": "DIRECTIONAL ONLY",
+      "comparability_reason": "historical was the PYTHON sample; different program and launch path",
+      "nominal_delta_mean_pct": -3.4,
+      "verdict": "PASS (directional)",
+      "note": "our MAXIMUM 787.85 exceeds the historical claim. CoV 6.66% on a ~40-50us timed interval - too short to anchor a baseline. Nominal delta is not a valid regression figure."
+    },
+    {
+      "id": "reduction_default",
+      "sample": "reduction (C++)",
+      "metric": "throughput",
+      "unit": "GB/s",
+      "args": "default n=16777216",
+      "warmups": 0,
+      "stats": {
+        "n": 3,
+        "runs": [
+          358.3343,
+          340.9138,
+          356.3744
+        ],
+        "mean": 351.8742,
+        "median": 356.3744,
+        "min": 340.9138,
+        "max": 358.3343,
+        "stdev": 9.5424,
+        "cov_pct": 2.7119
+      },
+      "historical": null,
+      "comparability": "NOT COMPARABLE",
+      "verdict": "CURRENT CHARACTERISATION"
+    },
+    {
+      "id": "reductionMultiBlockCG",
+      "sample": "reductionMultiBlockCG (C++)",
+      "metric": "bandwidth",
+      "unit": "GB/s",
+      "elements": 33554432,
+      "threads": 768,
+      "blocks": 70,
+      "warmups": 1,
+      "stats": {
+        "n": 5,
+        "runs": [
+          571.552932,
+          551.610057,
+          540.785813,
+          572.235003,
+          568.021247
+        ],
+        "mean": 560.841,
+        "median": 568.0212,
+        "min": 540.7858,
+        "max": 572.235,
+        "stdev": 13.9959,
+        "cov_pct": 2.4955
+      },
+      "historical": {
+        "value": 708.92,
+        "grade": "C",
+        "implementation": "PYTHON sample, venv-extras, --cuda-include-dir for libcu++ from cuda-cccl",
+        "source": "docs/04-cuda-curriculum/2_CoreConcepts.md:2826 prose"
+      },
+      "comparability": "DIRECTIONAL ONLY",
+      "nominal_delta_mean_pct": -20.89,
+      "verdict": "NOT COMPARABLE for a regression conclusion",
+      "note": "largest apparent gap and the most likely to be misread. Different program (C++ vs Python), historical element count NEVER RECORDED, baseline is Grade C prose. numBlocks:70 DOES match the historical '70 blocks grid.sync()' note, so algorithm shape is right. This is the row that would have been reported as a driver regression without the P0 correction gate."
+    },
+    {
+      "id": "pcie_h2d_pinned",
+      "metric": "PCIe host-to-device, pinned",
+      "unit": "GB/s one-way",
+      "implementation": "CURRENT CUDA-RUNTIME PCIE CHARACTERIZATION (cudaHostAlloc + cudaMemcpyAsync + CUDA events)",
+      "source": "benchmarks/p1_cuda_pcie.cu",
+      "source_sha256": "c7f5c77c91787b7fdb7791ca874d5c25225a9118efcaa1a10da422a148ac0ce2",
+      "binary_sha256": "5ea2da7b0ba058b7cc4adf043711f66925513c0f7c8697fbb2daf4769705aed8",
+      "compile_command": "/usr/local/cuda/bin/nvcc -O3 -arch=sm_120 -o build/p1-cuda/p1_cuda_pcie benchmarks/p1_cuda_pcie.cu",
+      "transfer_size_mib": 512,
+      "formula": "bytes / elapsed_seconds (ONE WAY, not read+write)",
+      "timing": "CUDA events around transfer region only; allocation/free outside timed region",
+      "warmups": 1,
+      "stats": {
+        "n": 12,
+        "runs": [
+          6.977,
+          6.959,
+          6.838,
+          6.9,
+          6.957,
+          6.905,
+          6.877,
+          6.982,
+          6.957,
+          6.884,
+          6.9,
+          6.978
+        ],
+        "mean": 6.9262,
+        "median": 6.931,
+        "min": 6.838,
+        "max": 6.982,
+        "stdev": 0.0478,
+        "cov_pct": 0.6904
+      },
+      "historical": {
+        "value": 6.94,
+        "grade": "A",
+        "implementation": "CuPy, 512 MB row"
+      },
+      "comparability": "DIRECTIONAL ONLY",
+      "comparability_reason": "CuPy absent from all environments and historical venv-extras gone; CuPy NOT installed; timing/allocation semantics cannot be proven equivalent",
+      "regression_pct": "deliberately NOT computed",
+      "pct_of_gen3x8_ceiling": 87.9,
+      "historical_pct_of_ceiling": 88,
+      "verdict": "PASS - consistent with a healthy Gen 3 x8 link"
+    },
+    {
+      "id": "pcie_d2h_pinned",
+      "metric": "PCIe device-to-host, pinned",
+      "unit": "GB/s one-way",
+      "transfer_size_mib": 512,
+      "warmups": 1,
+      "stats": {
+        "n": 12,
+        "runs": [
+          7.242,
+          7.164,
+          7.237,
+          7.187,
+          7.205,
+          7.178,
+          7.133,
+          7.196,
+          7.164,
+          7.196,
+          7.235,
+          7.197
+        ],
+        "mean": 7.1945,
+        "median": 7.196,
+        "min": 7.133,
+        "max": 7.242,
+        "stdev": 0.0327,
+        "cov_pct": 0.4551
+      },
+      "historical": {
+        "value": 7.2,
+        "grade": "A",
+        "implementation": "CuPy, 512 MB row"
+      },
+      "comparability": "DIRECTIONAL ONLY",
+      "regression_pct": "deliberately NOT computed",
+      "pct_of_gen3x8_ceiling": 91.3,
+      "historical_pct_of_ceiling": 91,
+      "verdict": "PASS - consistent with a healthy Gen 3 x8 link"
+    },
+    {
+      "id": "pcie_h2d_pageable",
+      "metric": "PCIe host-to-device, pageable",
+      "unit": "GB/s one-way",
+      "transfer_size_mib": 512,
+      "stats": {
+        "n": 12,
+        "runs": [
+          6.721,
+          6.831,
+          6.909,
+          6.887,
+          6.694,
+          6.862,
+          6.899,
+          6.694,
+          6.895,
+          6.861,
+          6.897,
+          6.731
+        ],
+        "mean": 6.8234,
+        "median": 6.8615,
+        "min": 6.694,
+        "max": 6.909,
+        "stdev": 0.0869,
+        "cov_pct": 1.2738
+      },
+      "historical": {
+        "value": 6.49,
+        "grade": "A",
+        "note": "historical pageable 512MB row, for context only"
+      },
+      "comparability": "DIRECTIONAL ONLY",
+      "verdict": "CURRENT CHARACTERISATION (optional)"
+    },
+    {
+      "id": "pcie_d2h_pageable",
+      "metric": "PCIe device-to-host, pageable",
+      "unit": "GB/s one-way",
+      "transfer_size_mib": 512,
+      "stats": {
+        "n": 12,
+        "runs": [
+          7.027,
+          6.982,
+          6.885,
+          7.04,
+          7.066,
+          6.939,
+          6.869,
+          6.941,
+          7.062,
+          6.885,
+          6.934,
+          7.011
+        ],
+        "mean": 6.9701,
+        "median": 6.9615,
+        "min": 6.869,
+        "max": 7.066,
+        "stdev": 0.071,
+        "cov_pct": 1.0182
+      },
+      "historical": {
+        "value": 7.15,
+        "grade": "A",
+        "note": "historical pageable 512MB row, for context only"
+      },
+      "comparability": "DIRECTIONAL ONLY",
+      "verdict": "CURRENT CHARACTERISATION (optional)"
+    }
+  ],
+  "pcie_link_during_transfer": {
+    "method": "nvidia-smi polled every 250ms during an 8.53s sustained window (112 transfers)",
+    "samples": 50,
+    "gen3_x8_samples": 46,
+    "gen1_x8_samples": 4,
+    "gen1_explanation": "the 4 gen-1 samples are the IDLE period before the run began; the link negotiated to Gen 3 x8 as soon as transfers started",
+    "conclusion": "idle gen.current=1 is power management, NOT a fault. Reading it at idle would have produced a phantom Gen-1 regression.",
+    "telemetry_peak": {
+      "gpu_util_pct": 100,
+      "mem_util_pct": 14,
+      "power_w": 57.15,
+      "temp_c": 56,
+      "sm_mhz": 300
+    }
+  },
+  "nvbandwidth": {
+    "status": "ABSENT",
+    "action": "P1 INSTALL DEFERRED",
+    "verification": [
+      "command -v nvbandwidth -> rc=1",
+      "find /home/google /usr/local /usr/bin /opt maxdepth 5 -> rc=0 with 0 matches",
+      "dpkg -l | grep -ci nvbandwidth -> 0"
+    ]
+  },
+  "cupy": {
+    "status": "ABSENT from system python3 and all four venvs",
+    "historical_env": "venv-extras no longer exists",
+    "installed": false
+  },
+  "conclusion": {
+    "driver_or_cuda_investigation_justified": false,
+    "reason": "P1.11 requires multiple well-controlled COMPARABLE metrics showing consistent regression. The one MOSTLY COMPARABLE metric passes (best run -0.16%); both PCIe directions land within a tenth of a percent of the historical fraction-of-ceiling; reduction's maximum exceeds the historical claim; the only large gap is a C++-vs-Python comparison against a Grade-C baseline at an unknown problem size, explicitly excluded. There is also no version delta to investigate - driver 610.57.04 and CUDA 13.3 are the versions the historical figures were taken on.",
+    "plan_against": "~650 GB/s DRAM-bound (transpose, L2-exceeding, CoV<1%)"
+  },
+  "postrun_safety": {
+    "gpu_compute_apps": 0,
+    "benchmark_processes": 0,
+    "gpu_idle": {
+      "util_pct": 1,
+      "mem_used_mib": 1222,
+      "power_w": 15.17,
+      "temp_c": 52,
+      "pcie_gen": 1
+    },
+    "ports_8811_9001": "not listening",
+    "production": {
+      "symoneural-api": "active/1866",
+      "caddy": "active/1907",
+      "symoneural-gateway": "active/1903"
+    },
+    "production_repo": "7d1a5529 clean",
+    "custom_repo": "44863110 clean and locked"
+  },
+  "raw_evidence": [
+    {
+      "file": "00-prerun-host-state.txt",
+      "sha256": "8b6fef73365a73bcaa2232e64a997299707126b9d30dc6b8a5bea2383117ec6b",
+      "size": 1257,
+      "mtime": "2026-08-24 15:25:15"
+    },
+    {
+      "file": "01-gpu-consumers.txt",
+      "sha256": "fdf6ca95eddcc067fa9e060bb780e739cc507f0faa293c34a22955d9af87e8a4",
+      "size": 2343,
+      "mtime": "2026-08-24 15:25:26"
+    },
+    {
+      "file": "02-safety-preconditions.txt",
+      "sha256": "8ee9ed43c8773ddedc14a4536777129947352e86c7752d062562241046a27441",
+      "size": 338,
+      "mtime": "2026-08-24 15:25:34"
+    },
+    {
+      "file": "03-clone.txt",
+      "sha256": "1e061cbc15bec7bf30c8a2320072c68b6dcef1019b2397d09f286966a473c1b4",
+      "size": 706,
+      "mtime": "2026-08-24 15:25:51"
+    },
+    {
+      "file": "04-provenance.txt",
+      "sha256": "4409c478f3119b0e902d4db11694af06c8f7ca0e2e157fc5cb96d2cfb0b8ddc4",
+      "size": 1160,
+      "mtime": "2026-08-24 15:26:04"
+    },
+    {
+      "file": "05-sample-inventory.txt",
+      "sha256": "3e8ca6b42fed990ea356df8b310312ce04953aa647bb12175d340ed956148605",
+      "size": 682,
+      "mtime": "2026-08-24 15:26:15"
+    },
+    {
+      "file": "06-cmake-configure.txt",
+      "sha256": "63bdee2eba934388bb543961000b106b851f0aacfeef9a5d92f16acd3dbae02e",
+      "size": 1500,
+      "mtime": "2026-08-24 15:28:41"
+    },
+    {
+      "file": "07-build.txt",
+      "sha256": "43066a230bdbb1ebed9d37bd7bfa88fdeddebabb57a8263064674bf1b5636f53",
+      "size": 1048,
+      "mtime": "2026-08-24 15:30:02"
+    },
+    {
+      "file": "08-build-provenance.txt",
+      "sha256": "321151dc5d58ca642ee98aa02ea9774aecf2e057853a47cf4c881ee2053b118c",
+      "size": 1361,
+      "mtime": "2026-08-24 15:34:00"
+    },
+    {
+      "file": "10-deviceQuery.txt",
+      "sha256": "3fedc535948985be189bdd47ac5c90c6f4244fdb7a7eb2164da01d321fedf64d",
+      "size": 2659,
+      "mtime": "2026-08-24 15:34:09"
+    },
+    {
+      "file": "11-alignedTypes-histcomparable.txt",
+      "sha256": "9587e25b0e5b60c9843bfca6a5ffe69e5ae61764e2cbeedcb0fbd078eb63a635",
+      "size": 1565,
+      "mtime": "2026-08-24 15:34:46"
+    },
+    {
+      "file": "12-transpose-help.txt",
+      "sha256": "96f6e0911768027340773ecafb35e60e1be1d7427d329d9e1fa4bde1638ef2fa",
+      "size": 752,
+      "mtime": "2026-08-24 15:35:11"
+    },
+    {
+      "file": "13-transpose-l2exceeding.txt",
+      "sha256": "9bdcab55e243ddd5e8f85cda0d71f320df07a45aeef137eeae171dd4cc79ff70",
+      "size": 7635,
+      "mtime": "2026-08-24 15:35:47"
+    },
+    {
+      "file": "14-reduction-help.txt",
+      "sha256": "8242e664f7b5c41cbf89ea0bfca93c222504c69ef5f0193307d52bc40ab65ce9",
+      "size": 901,
+      "mtime": "2026-08-24 15:36:19"
+    },
+    {
+      "file": "15-reduction.txt",
+      "sha256": "aff85572aed16fc222c1663ef12d7469dee7f54fa2df54f14536378eb2a8e5d5",
+      "size": 1837,
+      "mtime": "2026-08-24 15:36:34"
+    },
+    {
+      "file": "16-reductionMultiBlockCG.txt",
+      "sha256": "2b7cd8dffec9fc6a6d90e7cb16d714732be380018ab756e8de4e3c4f54041f26",
+      "size": 1337,
+      "mtime": "2026-08-24 15:37:16"
+    },
+    {
+      "file": "17-pcie-build.txt",
+      "sha256": "55687fed5ef9b16ce1fc17e5256fc5d340d32e68c1ecbb214278d48a6f86d029",
+      "size": 695,
+      "mtime": "2026-08-24 15:40:32"
+    },
+    {
+      "file": "18-pcie-telemetry-during-transfer.txt",
+      "sha256": "38906e8203b27dd14fb10face897c5f3daee0a9775d5bc3ebaf61fddd559d71e",
+      "size": 3094,
+      "mtime": "2026-08-24 15:41:20"
+    },
+    {
+      "file": "19-pcie-cuda-runtime-512mib.txt",
+      "sha256": "60202eb21b7beb882fc2b7da1d1dd45c3cfa8ea88d56533cef7ae5784ef00d8b",
+      "size": 2439,
+      "mtime": "2026-08-24 15:41:20"
+    },
+    {
+      "file": "20-postrun-safety.txt",
+      "sha256": "6c90d93b52c9b207cf42da7f0929c71a7c3afaad02383d53d70e708f5917c5b6",
+      "size": 714,
+      "mtime": "2026-08-24 15:42:16"
+    }
+  ],
+  "corrections": [
+    {
+      "date": "2026-08-24",
+      "applies_to_commit": "1ec2ec3",
+      "change": "alignedTypes decline re-characterised; desktop-equivalence claim qualified",
+      "reason": "the observed facts do not prove thermal throttling: temperature changed ~1C, SM clock INCREASED rather than throttled down, and the GPU stayed far below thermal and power limits. Correct characterisation is run-to-run warm-state/clock/background-load variability with no evidence of thermal or power throttling. Separately, the claim that the historical figures were 'almost certainly' taken on the same desktop was an assumption, not evidence."
+    }
+  ]
+}

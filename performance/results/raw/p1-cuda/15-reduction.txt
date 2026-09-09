@@ -1,0 +1,45 @@
+=== P1.6 reduction (C++) — n=8388608 to match the historical READ COUNT ===
+date: 2026-08-24T15:36:30-04:00
+--- WARM-UP ---
+Reduction, Throughput = 676.3639 GB/s, Time = 0.00005 s, Size = 8388608 Elements, NumDevsUsed = 1, Workgroup = 256
+Test passed
+--- RUN 1 ---
+tel: 54, 33.52 W, 1515 MHz, 405 MHz, 11 %, 3, 8
+8388608 elements
+256 threads (max)
+64 blocks
+Reduction, Throughput = 692.1291 GB/s, Time = 0.00005 s, Size = 8388608 Elements, NumDevsUsed = 1, Workgroup = 256
+Test passed
+--- RUN 2 ---
+tel: 55, 37.91 W, 1515 MHz, 405 MHz, 6 %, 3, 8
+8388608 elements
+256 threads (max)
+64 blocks
+Reduction, Throughput = 787.8475 GB/s, Time = 0.00004 s, Size = 8388608 Elements, NumDevsUsed = 1, Workgroup = 256
+Test passed
+--- RUN 3 ---
+tel: 55, 43.84 W, 1515 MHz, 405 MHz, 6 %, 3, 8
+8388608 elements
+256 threads (max)
+64 blocks
+Reduction, Throughput = 694.1335 GB/s, Time = 0.00005 s, Size = 8388608 Elements, NumDevsUsed = 1, Workgroup = 256
+Test passed
+--- RUN 4 ---
+tel: 55, 46.05 W, 1515 MHz, 405 MHz, 6 %, 3, 8
+8388608 elements
+256 threads (max)
+64 blocks
+Reduction, Throughput = 688.7198 GB/s, Time = 0.00005 s, Size = 8388608 Elements, NumDevsUsed = 1, Workgroup = 256
+Test passed
+--- RUN 5 ---
+tel: 55, 46.32 W, 1515 MHz, 405 MHz, 6 %, 3, 8
+8388608 elements
+256 threads (max)
+64 blocks
+Reduction, Throughput = 770.6576 GB/s, Time = 0.00004 s, Size = 8388608 Elements, NumDevsUsed = 1, Workgroup = 256
+Test passed
+
+=== also at DEFAULT size (16777216) for a second reference point ===
+Reduction, Throughput = 358.3343 GB/s, Time = 0.00019 s, Size = 16777216 Elements, NumDevsUsed = 1, Workgroup = 256
+Reduction, Throughput = 340.9138 GB/s, Time = 0.00020 s, Size = 16777216 Elements, NumDevsUsed = 1, Workgroup = 256
+Reduction, Throughput = 356.3744 GB/s, Time = 0.00019 s, Size = 16777216 Elements, NumDevsUsed = 1, Workgroup = 256

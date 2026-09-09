@@ -1,0 +1,17 @@
+=== P1.6.4 BIDIRECTIONAL CE (secondary characterisation) ===
+date: 2026-08-24T16:27:50-04:00
+--- host_to_device_bidirectional_memcpy_ce (warm-up discarded, then 5 recorded) ---
+  run 1: 6.53
+  run 2: 6.52
+  run 3: 6.54
+  run 4: 6.54
+  run 5: 6.53
+  tel: 3, 8, 58, 58.39 W
+--- device_to_host_bidirectional_memcpy_ce (warm-up discarded, then 5 recorded) ---
+--- device_to_host_bidirectional_memcpy_ce (warm-up discarded, then 5 recorded) ---
+  run 1: 6.48
+  run 2: 6.47
+  run 3: 6.49
+  run 4: 6.48
+  run 5: 6.44
+  tel: 3, 8, 45, 56.72 W

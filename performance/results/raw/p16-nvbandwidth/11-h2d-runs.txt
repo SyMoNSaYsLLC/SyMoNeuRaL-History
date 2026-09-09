@@ -1,0 +1,27 @@
+=== P1.6.5 H2D CE — 5 RECORDED TOP-LEVEL INVOCATIONS ===
+each invocation runs --testSamples 5 internally; 512 MiB buffer
+--- RUN 1 ---
+pre-tel: 1, 8, 53, 14.26 W, 352 MHz
+ 0      6.92
+SUM host_to_device_memcpy_ce 6.92
+COEFFICIENT_OF_VARIATION host_to_device_memcpy_ce 0.00
+--- RUN 2 ---
+pre-tel: 3, 8, 56, 57.27 W, 2992 MHz
+ 0      6.93
+SUM host_to_device_memcpy_ce 6.93
+COEFFICIENT_OF_VARIATION host_to_device_memcpy_ce 0.00
+--- RUN 3 ---
+pre-tel: 3, 8, 56, 57.70 W, 2992 MHz
+ 0      6.93
+SUM host_to_device_memcpy_ce 6.93
+COEFFICIENT_OF_VARIATION host_to_device_memcpy_ce 0.00
+--- RUN 4 ---
+pre-tel: 3, 8, 57, 57.75 W, 2992 MHz
+ 0      6.94
+SUM host_to_device_memcpy_ce 6.94
+COEFFICIENT_OF_VARIATION host_to_device_memcpy_ce 0.00
+--- RUN 5 ---
+pre-tel: 3, 8, 57, 57.78 W, 2992 MHz
+ 0      6.94
+SUM host_to_device_memcpy_ce 6.94
+COEFFICIENT_OF_VARIATION host_to_device_memcpy_ce 0.00

@@ -1,0 +1,27 @@
+=== D2H bidirectional resolution ===
+outcome: COMPLETED NORMALLY
+exit code: 0
+valid runs: 5/5
+earlier apparent truncation was the foreground observation timeout, not an
+NVBandwidth/CUDA failure
+no process was killed
+no source was patched
+no system/GPU setting was changed
+
+Raw-file structure:
+- D2H header occurs twice
+- benchmark result rows occur exactly once
+- 5 H2D + 5 D2H result rows
+- no benchmark result was reconstructed or appended after the fact
+
+Why the header occurs twice: the first foreground invocation's OBSERVATION was
+cut at a 2-minute limit while the process itself was still running normally.
+The run was then carried to completion in the background. Both invocations
+emitted the same header line, and both lines are original machine output. The
+raw file 14-bidirectional-runs.txt was NOT edited to tidy this up -- it is
+preserved exactly as the tools emitted it, and this note lives in a separate
+file so the raw evidence keeps a stable hash.
+
+Why bidirectional runs take materially longer: each sample runs two simultaneous
+copies rather than one, so a 5-sample invocation does roughly twice the transfer
+work of a unidirectional one. The delay was expected behaviour, not a fault.

@@ -1,0 +1,20 @@
+=== P1.5.3E CUTLASS ===
+Cloning into 'cutlass'...
+  origin: https://github.com/NVIDIA/cutlass.git
+--- tags (newest 10) ---
+    v4.7.0
+    v4.6.2
+    v4.6.1
+    v4.6.0
+    v4.5.3
+    v4.5.2
+    v4.5.1
+    v4.5.0
+    v4.4.3
+    v4.4.2
+=== CUTLASS v4.7.0 provenance ===
+  tag -> dcf215af68a2d08d305076c152a06f201728cd53
+  date:  2026-08-06 22:31:22 +0800
+  checked out: v4.7.0
+  license: cutlass/LICENSE.txt — Copyright (c) 2017 - 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. SPDX-Licen
+  BUILT: NO

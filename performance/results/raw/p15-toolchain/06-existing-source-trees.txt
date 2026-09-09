@@ -1,0 +1,17 @@
+=== P1.5.2 EXISTING SOURCE TREES (read-only, NOT modified) ===
+--- /home/google/TensorRT-LLM (historical/external state) ---
+  path:        /home/google/TensorRT-LLM
+  origin:      https://github.com/NVIDIA/TensorRT-LLM.git
+  branch:      
+  HEAD:        0eeda343df8cf44e743d00d1b666b08a43fde83e
+  describe:    v1.3.0rc24-263-g0eeda343df
+  dirty:       0 changes
+  commit date: 2026-08-18 13:53:08 +0800
+  license:     /home/google/TensorRT-LLM/LICENSE Copyright (c) 2011-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+--- Performance sources/ ---
+  sources/cuda-samples/
+    origin: https://github.com/NVIDIA/cuda-samples.git
+    HEAD:   b7c5481c556c3fe98db060207ecaa41a4b9a9abc
+    describe: v13.3
+    dirty:  0

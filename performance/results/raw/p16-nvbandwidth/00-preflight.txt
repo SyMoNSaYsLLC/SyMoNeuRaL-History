@@ -1,0 +1,34 @@
+=== P1.6 PRE-FLIGHT ===
+date: 2026-08-24T16:17:04-04:00
+--- Performance repo ---
+  branch:  main
+  HEAD:    b512ae3
+  includes b512ae3: YES
+  clean:   0 changed
+  P1.5 tag: type=tag -> b512ae38
+  remotes: 0
+--- NVBandwidth source (must be pristine) ---
+  origin:   https://github.com/NVIDIA/nvbandwidth.git
+  HEAD:     82fc4e8c6afa0babb8687793678f615b3b8d793e
+  expected: 82fc4e8c6afa0babb8687793678f615b3b8d793e
+  MATCH:    YES
+  describe: v0.10
+  dirty:    0
+--- Production ---
+  main: 7d1a5529 changed=0
+  symoneural-api       active
+  caddy                active
+  symoneural-gateway   active
+--- Frozen custom ---
+  HEAD: 44863110 changed=0 locked=1
+=== GPU / ports / idle state ===
+NVIDIA GeForce RTX 5070 Ti, 610.57.04, 12.0
+  nvcc: Cuda compilation tools, release 13.3, V13.3.73
+  GPU compute apps: 0
+  8811/9001 CLOSED
+--- IDLE baseline ---
+utilization.gpu [%], utilization.memory [%], power.draw [W], temperature.gpu, memory.used [MiB], clocks.current.sm [MHz], clocks.current.memory [MHz], pcie.link.gen.current, pcie.link.gen.max, pcie.link.width.current, pcie.link.width.max
+2 %, 15 %, 13.74 W, 51, 1273 MiB, 352 MHz, 405 MHz, 1, 3, 8, 16
+--- graphics contexts (standing contamination) ---
+  compute: 0
+  graphics: 20

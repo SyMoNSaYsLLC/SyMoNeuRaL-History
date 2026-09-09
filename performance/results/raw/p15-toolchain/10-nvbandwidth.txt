@@ -1,0 +1,15 @@
+=== P1.5.3A NVBandwidth — pin v0.10.0 ===
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+rc=0
+  origin:   https://github.com/NVIDIA/nvbandwidth.git
+  tag:      v0.10.0
+  HEAD:     82fc4e8c6afa0babb8687793678f615b3b8d793e
+  describe: v0.10
+  date:     2026-07-21 11:40:28 -0700
+  license:  nvbandwidth/LICENSE
+    
+                                     Apache License
+                               Version 2.0, January 2004
+  BUILT: NO (deliberately)

@@ -1,0 +1,386 @@
+{
+  "schema": 1,
+  "pass": "P1.6 NVBandwidth standard forward baseline",
+  "measured_on": "2026-08-24",
+  "purpose": "establish an NVIDIA-authored reproducible forward PCIe bandwidth baseline. Does NOT replace the historical CuPy Grade-A measurements or the P1 custom CUDA-runtime characterization.",
+  "three_distinct_implementations": {
+    "HISTORICAL": "CuPy - H2D pinned 6.94, D2H pinned 7.20 GB/s, Grade A",
+    "P1": "SyMoNeuRaL CUDA Runtime API test (benchmarks/p1_cuda_pcie.cu) - H2D 6.9262, D2H 7.1945 GB/s",
+    "P1.6": "NVIDIA NVBandwidth v0.10.0 CE path"
+  },
+  "not_exactly_comparable": "the three are separate implementations; none is promoted to EXACT merely because all use CUDA copy APIs",
+  "build": {
+    "status": "PASS",
+    "pristine": true,
+    "origin": "https://github.com/NVIDIA/nvbandwidth.git",
+    "tag": "v0.10.0",
+    "describe": "v0.10",
+    "commit": "82fc4e8c6afa0babb8687793678f615b3b8d793e",
+    "source_dirty": 0,
+    "configure_command": "cmake -S sources/nvbandwidth -B build/nvbandwidth-v0.10.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=120",
+    "build_command": "cmake --build build/nvbandwidth-v0.10.0 -j 8",
+    "arch_rationale": "CMAKE_CUDA_ARCHITECTURES is an explicitly supported user variable in this project (CUDA_ARCH_DEFINED_BY_USER path). Auto-detect filters against supported_archs = 75 80 86 89 90 100 for CUDA>=13.0, which EXCLUDES this GPU's 120. Not a forced variable.",
+    "configured_architecture": "120 (CMakeCache: CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=120)",
+    "cmake": "3.31.6",
+    "nvcc": "13.3 V13.3.73",
+    "cxx": "c++ (Debian 14.2.0-19) 14.2.0",
+    "cmakecache_sha256": "c0292b1e4e79bb6656ca5c4763a2523f074d3fe55108df9ea3238377eaf21174",
+    "binary_path": "build/nvbandwidth-v0.10.0/nvbandwidth",
+    "binary_sha256": "030e47edf847da75dba0a284152c53801cf34a3f8c6882c242eb07ed321e09f3",
+    "binary_size": 2167960,
+    "version_string": "nvbandwidth Version: v0.10.0 / Built from Git version: v0.10",
+    "linked_cuda_libs": [
+      "libnvidia-ml.so.1",
+      "libcuda.so.1"
+    ],
+    "dependencies": "FetchContent argparse v3.2 (pinned, SHA256-verified); nvml.h probe succeeded; MULTINODE not set so the broken system-MPI path was never touched",
+    "upstream_issue_68": {
+      "fired": false,
+      "symptom_watched_for": "CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED not declared",
+      "evidence": "the enum IS present at /usr/local/cuda-13.3/include/cuda.h:951 (value 132); source references it at testcase.cpp:71; build produced 0 errors and 0 mentions of the symbol",
+      "conclusion": "not reproducible on this host with CUDA 13.3. NO patch applied, NO source commented out, NO CUDA or driver change."
+    },
+    "debian_install_sh_used": false,
+    "installed_system_wide": false
+  },
+  "test_config": {
+    "buffer_size_mib": 512,
+    "buffer_size_rationale": "NVBandwidth documented default AND the size used in the P1 characterization",
+    "testSamples": 5,
+    "testSamples_note": "exact v0.10.0 syntax confirmed from --help (default 3); NOT substituted from an older release",
+    "top_level_invocations_recorded": 5,
+    "warmup_invocations_discarded": 1,
+    "reported_statistic": "MEDIAN - NVBandwidth default; --useMean NOT passed",
+    "output_format": "text (authoritative). JSON not relied upon due to known open upstream JSON issues.",
+    "testcases_available": 44
+  },
+  "measurements": [
+    {
+      "id": "h2d_ce",
+      "testcase": "host_to_device_memcpy_ce",
+      "path": "CE / cuMemcpyAsync",
+      "unit": "GB/s",
+      "stats": {
+        "n": 5,
+        "runs": [
+          6.92,
+          6.93,
+          6.93,
+          6.94,
+          6.94
+        ],
+        "mean": 6.932,
+        "median": 6.93,
+        "min": 6.92,
+        "max": 6.94,
+        "stdev": 0.0084,
+        "cov_pct": 0.1207,
+        "pct_of_gen3x8_ceiling": 88.0
+      },
+      "historical_cupy": 6.94,
+      "delta_vs_historical_pct": -0.12,
+      "p1_cuda_runtime": 6.9262,
+      "delta_vs_p1_pct": 0.08,
+      "comparability_vs_historical": "DIRECTIONAL ONLY",
+      "comparability_vs_p1": "DIRECTIONAL ONLY",
+      "internal_cov_reported_by_tool": "0.00 on every invocation",
+      "verdict": "PASS - link healthy at negotiated Gen3 x8"
+    },
+    {
+      "id": "d2h_ce",
+      "testcase": "device_to_host_memcpy_ce",
+      "path": "CE / cuMemcpyAsync",
+      "unit": "GB/s",
+      "stats": {
+        "n": 5,
+        "runs": [
+          7.21,
+          7.21,
+          7.21,
+          7.2,
+          7.22
+        ],
+        "mean": 7.21,
+        "median": 7.21,
+        "min": 7.2,
+        "max": 7.22,
+        "stdev": 0.0071,
+        "cov_pct": 0.0981,
+        "pct_of_gen3x8_ceiling": 91.5
+      },
+      "historical_cupy": 7.2,
+      "delta_vs_historical_pct": 0.14,
+      "p1_cuda_runtime": 7.1945,
+      "delta_vs_p1_pct": 0.22,
+      "comparability_vs_historical": "DIRECTIONAL ONLY",
+      "comparability_vs_p1": "DIRECTIONAL ONLY",
+      "internal_cov_reported_by_tool": "0.00 on every invocation",
+      "verdict": "PASS - link healthy at negotiated Gen3 x8"
+    },
+    {
+      "id": "h2d_bidirectional_ce",
+      "testcase": "host_to_device_bidirectional_memcpy_ce",
+      "path": "CE",
+      "unit": "GB/s",
+      "stats": {
+        "n": 5,
+        "runs": [
+          6.53,
+          6.52,
+          6.54,
+          6.54,
+          6.53
+        ],
+        "mean": 6.532,
+        "median": 6.53,
+        "min": 6.52,
+        "max": 6.54,
+        "stdev": 0.0084,
+        "cov_pct": 0.1281,
+        "pct_of_gen3x8_ceiling": 82.9
+      },
+      "reference": "P1.6 one-way H2D CE mean 6.932",
+      "delta_vs_p16_oneway_pct": -5.77,
+      "comparability": "CURRENT CHARACTERIZATION ONLY",
+      "historical_counterpart": null,
+      "note": "Under simultaneous opposite-direction CE traffic, reported H2D bandwidth was ~5.8% below the P1.6 one-way H2D result. Current characterization only; the mechanism was not investigated in P1.6."
+    },
+    {
+      "id": "d2h_bidirectional_ce",
+      "testcase": "device_to_host_bidirectional_memcpy_ce",
+      "path": "CE",
+      "unit": "GB/s",
+      "stats": {
+        "n": 5,
+        "runs": [
+          6.48,
+          6.47,
+          6.49,
+          6.48,
+          6.44
+        ],
+        "mean": 6.472,
+        "median": 6.48,
+        "min": 6.44,
+        "max": 6.49,
+        "stdev": 0.0192,
+        "cov_pct": 0.2972,
+        "pct_of_gen3x8_ceiling": 82.1
+      },
+      "reference": "P1.6 one-way D2H CE mean 7.210",
+      "delta_vs_p16_oneway_pct": -10.24,
+      "comparability": "CURRENT CHARACTERIZATION ONLY",
+      "historical_counterpart": null,
+      "note": "Under simultaneous opposite-direction CE traffic, reported D2H bandwidth was ~10.3% below the P1.6 one-way D2H result. Current characterization only; the mechanism was not investigated in P1.6.",
+      "resolution": "the foreground observation of this testcase was cut at a 2-minute limit; the run was completed in the background with exit code 0 and 5/5 valid runs. Not a hang, not a CUDA error, not an NVBandwidth error. Nothing killed, nothing patched."
+    },
+    {
+      "id": "h2d_sm",
+      "testcase": "host_to_device_memcpy_sm",
+      "path": "SM / copy kernel",
+      "unit": "GB/s",
+      "stats": {
+        "n": 5,
+        "runs": [
+          6.0,
+          6.23,
+          6.28,
+          6.27,
+          6.12
+        ],
+        "mean": 6.18,
+        "median": 6.23,
+        "min": 6.0,
+        "max": 6.28,
+        "stdev": 0.119,
+        "cov_pct": 1.9248,
+        "pct_of_gen3x8_ceiling": 78.4
+      },
+      "comparability": "CURRENT CHARACTERIZATION ONLY",
+      "historical_counterpart": null,
+      "note": "SM path uses a COPY KERNEL, not the copy engine. NOT comparable to CuPy/P1/P1.6 CE measurements. -10.85 pct vs the P1.6 one-way H2D CE mean, with CoV 1.92 pct (vs 0.12 pct for CE) and higher power (67.7 W vs ~58 W)."
+    },
+    {
+      "id": "d2h_sm",
+      "testcase": "device_to_host_memcpy_sm",
+      "path": "SM / copy kernel",
+      "unit": "GB/s",
+      "stats": {
+        "n": 5,
+        "runs": [
+          6.31,
+          6.22,
+          6.49,
+          6.43,
+          6.34
+        ],
+        "mean": 6.358,
+        "median": 6.34,
+        "min": 6.22,
+        "max": 6.49,
+        "stdev": 0.1052,
+        "cov_pct": 1.6548,
+        "pct_of_gen3x8_ceiling": 80.7
+      },
+      "comparability": "CURRENT CHARACTERIZATION ONLY",
+      "historical_counterpart": null,
+      "note": "-11.82 pct vs the P1.6 one-way D2H CE mean, CoV 1.65 pct, power 68.6 W."
+    }
+  ],
+  "pcie_link_during_transfer": {
+    "method": "nvidia-smi polled every 250ms across the H2D and D2H family",
+    "samples": 200,
+    "gen3_x8": 149,
+    "gen2_x8": 15,
+    "gen1_x8": 36,
+    "conclusion": "P1.6 independently reconfirms P1's Gen3 x8 under-load observation. Lower-generation samples are consistent with PCIe link power management between transfer activity. Gen3 x8 was repeatedly observed under load; no PCIe link fault was observed.",
+    "telemetry_peak": {
+      "gpu_util_pct": 100,
+      "mem_util_pct": 15,
+      "sm_mhz": 2992,
+      "mem_mhz": 13801,
+      "power_w": 62.26,
+      "temp_c": 57
+    }
+  },
+  "physical_link_sanity": {
+    "gen3x8_theoretical_gbps": 7.88,
+    "p16_h2d_pct": 88.0,
+    "p16_d2h_pct": 91.5,
+    "p1_h2d_pct": 87.9,
+    "p1_d2h_pct": 91.3,
+    "historical_h2d_pct": 88,
+    "historical_d2h_pct": 91,
+    "verdict": "LINK HEALTHY AT NEGOTIATED GEN3 x8 - all three implementations land in the same physical bandwidth neighbourhood. No regression is diagnosed from implementation-specific deltas. Why the platform negotiates x8 rather than the reported x16 maximum remains unresolved and is outside P1.6."
+  },
+  "contamination": {
+    "graphics_contexts": 20,
+    "compute_contexts": 0,
+    "vram_held_mib": "1273-1359",
+    "idle_gpu_util_pct": "2-4",
+    "stopped": false,
+    "reason": "KDE desktop session; out of scope to stop. Present and stable across all P1.6 measurements. Historical graphics-load equivalence was not proven.",
+    "production_interference": "none - api/caddy/gateway hold no GPU compute context; no benchmark aborted"
+  },
+  "postrun_safety": {
+    "nvbandwidth_processes": 0,
+    "benchmark_processes": 0,
+    "gpu_compute_apps": 0,
+    "gpu_idle": {
+      "util_pct": 4,
+      "mem_used_mib": 1359,
+      "power_w": 16.46,
+      "temp_c": 52,
+      "pcie_gen": 1
+    },
+    "port_8811": "closed",
+    "port_9001": "closed",
+    "production": {
+      "symoneural-api": "active/1866",
+      "caddy": "active/1907",
+      "symoneural-gateway": "active/1903"
+    },
+    "production_repo": "7d1a5529 clean",
+    "custom_repo": "44863110 clean and locked",
+    "nvbandwidth_source_dirty": 0,
+    "observer_self_match": "post-run process search matched the active evidence-capture/tee command itself; no NVBandwidth benchmark process remained"
+  },
+  "raw_evidence": [
+    {
+      "file": "00-preflight.txt",
+      "sha256": "110de1137a17702439cb7e79c0d0143d59c012adeef6b696408902682f95d10b",
+      "size": 1231,
+      "mtime": "2026-08-24 16:17:16"
+    },
+    {
+      "file": "01-build-system-inspection.txt",
+      "sha256": "84a2e79cf4415fcba92b7064598352c4170644dd6aeed90f9b6e5bd56b25ef0e",
+      "size": 6118,
+      "mtime": "2026-08-24 16:17:36"
+    },
+    {
+      "file": "01b-build-configure.txt",
+      "sha256": "ad96123583b83c23752d04a14c9c7b4326130c61b784062f3ffa0b34f182b4f2",
+      "size": 1824,
+      "mtime": "2026-08-24 16:21:43"
+    },
+    {
+      "file": "02-build.txt",
+      "sha256": "520829e4da7121a625c6bd50066d73e3931468bb1cc04d8d8e5e9d4f51324a01",
+      "size": 1978,
+      "mtime": "2026-08-24 16:22:31"
+    },
+    {
+      "file": "03-binary-provenance.txt",
+      "sha256": "2c42472d94a8ed670c18166bcfc889138968db932cd4cf027731c99eb6d0505e",
+      "size": 1404,
+      "mtime": "2026-08-24 16:22:53"
+    },
+    {
+      "file": "04-test-list.txt",
+      "sha256": "ad454e5b6f9defc39c782188034a0dad388abbd62515ba2e69a5d9d52f550aed",
+      "size": 9468,
+      "mtime": "2026-08-24 16:23:02"
+    },
+    {
+      "file": "04b-help.txt",
+      "sha256": "5a862095e6c2376ba98a097a83e81bf08a7633736f158e93a843733361d6fa98",
+      "size": 2146,
+      "mtime": "2026-08-24 16:24:01"
+    },
+    {
+      "file": "10-h2d-warmup.txt",
+      "sha256": "0dff9bdba49e358ff6b585f65a9b4a3bde1413d88fcc9f49019f52f9fb140e9b",
+      "size": 750,
+      "mtime": "2026-08-24 16:24:42"
+    },
+    {
+      "file": "11-h2d-runs.txt",
+      "sha256": "674cf0a3437dcc42fb541388e27ee228187b77aece6f60d960b0147e926a66fe",
+      "size": 887,
+      "mtime": "2026-08-24 16:25:42"
+    },
+    {
+      "file": "12-d2h-warmup.txt",
+      "sha256": "452b054babfda67ebc75b4599615a1e6bdb03c9ae962e890127eec3d583fb1bf",
+      "size": 214,
+      "mtime": "2026-08-24 16:26:04"
+    },
+    {
+      "file": "13-d2h-runs.txt",
+      "sha256": "6599fddd0dbf44d535e9a0ac9c63f5ac8be175b232fd7cbe8f2c904f8072fb5f",
+      "size": 824,
+      "mtime": "2026-08-24 16:26:47"
+    },
+    {
+      "file": "14-bidirectional-resolution.txt",
+      "sha256": "1389bb1569a7c07c38e2e86c24e476a4a8dc666cd4f930d041c3c9869d4e8ec9",
+      "size": 1205,
+      "mtime": "2026-08-24 16:36:22"
+    },
+    {
+      "file": "14-bidirectional-runs.txt",
+      "sha256": "ded5eb84ae4b99e1e5368643e89d905fbb26a434ca8ad3692ca46bc1faa91a7c",
+      "size": 535,
+      "mtime": "2026-08-24 16:31:53"
+    },
+    {
+      "file": "15-sm-optional-runs.txt",
+      "sha256": "18d8d8dc43f59c4b9182a2bf6de322368bafb103de6954b176a9dee0426ca4ab",
+      "size": 704,
+      "mtime": "2026-08-24 16:39:48"
+    },
+    {
+      "file": "20-telemetry.txt",
+      "sha256": "0af684b7b7a57aae0ed021edcc35d4427fa0f3373561fd48529ae8f7a7622a3c",
+      "size": 12528,
+      "mtime": "2026-08-24 16:25:29"
+    },
+    {
+      "file": "30-postrun-safety.txt",
+      "sha256": "3b1e66c958f216334abe5b3989d0fefc71fa631f30ec4ef9e6177a696d0a93a7",
+      "size": 861,
+      "mtime": "2026-08-24 16:44:56"
+    }
+  ]
+}

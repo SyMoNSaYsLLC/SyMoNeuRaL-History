@@ -1,0 +1,41 @@
+=== P1.5A alignedTypes — HISTORICAL-COMPARABLE WORKING SET ===
+date: 2026-08-24T15:34:41-04:00
+MEM_SIZE is a compile-time constant (50000000 & 0xffffff00 = 49999872 B) with no
+CLI override, and scale_factor=1.00 on 8960 cores -> working set IDENTICAL to the
+historical run's '> Memory Size = 49999872'. Exactly comparable on problem size.
+
+--- WARM-UP (not recorded) ---
+> Compute scaling value = 1.00
+> Memory Size = 49999872
+RGBA32...
+
+--- RUN 1 ---
+pre: 53, 50.28 W, 2760 MHz, 13801 MHz, 33 %, 3, 8
+> Memory Size = 49999872
+Avg. time: 0.136562 ms / Copy throughput: 340.986806 GB/s.
+[alignedTypes] -> Test Results: 0 Failures
+post: 53, 55.56 W, 2745 MHz, 36 %
+--- RUN 2 ---
+pre: 53, 55.56 W, 2745 MHz, 13801 MHz, 36 %, 3, 8
+> Memory Size = 49999872
+Avg. time: 0.140844 ms / Copy throughput: 330.621769 GB/s.
+[alignedTypes] -> Test Results: 0 Failures
+post: 53, 55.47 W, 2835 MHz, 32 %
+--- RUN 3 ---
+pre: 53, 55.47 W, 2835 MHz, 13801 MHz, 32 %, 3, 8
+> Memory Size = 49999872
+Avg. time: 0.140969 ms / Copy throughput: 330.328586 GB/s.
+[alignedTypes] -> Test Results: 0 Failures
+post: 53, 56.72 W, 2835 MHz, 32 %
+--- RUN 4 ---
+pre: 53, 56.72 W, 2835 MHz, 13801 MHz, 32 %, 3, 8
+> Memory Size = 49999872
+Avg. time: 0.141031 ms / Copy throughput: 330.182207 GB/s.
+[alignedTypes] -> Test Results: 0 Failures
+post: 54, 61.12 W, 2962 MHz, 43 %
+--- RUN 5 ---
+pre: 54, 61.12 W, 2962 MHz, 13801 MHz, 43 %, 3, 8
+> Memory Size = 49999872
+Avg. time: 0.141250 ms / Copy throughput: 329.670865 GB/s.
+[alignedTypes] -> Test Results: 0 Failures
+post: 54, 62.81 W, 2985 MHz, 33 %

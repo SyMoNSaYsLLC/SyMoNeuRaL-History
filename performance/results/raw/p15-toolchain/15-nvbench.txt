@@ -1,0 +1,22 @@
+=== P1.5.3F NVBench ===
+Cloning into 'nvbench'...
+  origin: https://github.com/NVIDIA/nvbench.git
+--- tags (newest 10) ---
+    python-0.3.0
+    python-0.2.1
+    python-0.2.0
+    python-0.1.0
+    pre_msvc_drop
+    old-cmake
+  (if no tags: main is the only line)
+  main HEAD: 66212f1da71cc9afb2894a46fa8f234cbdd6c0d8
+=== NVBench provenance ===
+  NO stable semver release tags exist. Tags present are python-* bindings
+  releases (python-0.3.0 newest) plus two legacy markers. Upstream ships from main.
+  main HEAD: 66212f1da71cc9afb2894a46fa8f234cbdd6c0d8
+  date:      2026-08-12 22:08:57 +0000
+  checked out: main @ 66212f1
+  license: nvbench/LICENSE —                                  Apache License                            Versi
+  submodules: none
+  BUILT: NO
+  NOTE: pinning a main SHA is the only option; there is no stable tag to select.

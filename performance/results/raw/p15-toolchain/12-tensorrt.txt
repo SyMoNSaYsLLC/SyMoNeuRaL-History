@@ -1,0 +1,68 @@
+=== P1.5.3C TensorRT ===
+Cloning into 'TensorRT'...
+  origin: https://github.com/NVIDIA/TensorRT.git
+--- GA tags (newest 15) ---
+    v11.2
+    v11.1
+    v11.0
+    v10.16
+    v10.15
+    v10.14
+    v10.13.3
+    v10.13.2
+    v10.13.0
+    v10.12.0
+    v10.11
+    v10.10.0
+    v10.9.0
+    v10.8.0
+    v10.7.0
+--- is 11.1 present? is anything NEWER present? ---
+    11.x: v11.0
+    11.x: v11.1
+    11.x: v11.2
+    NEWER: 19.12
+=== TensorRT tag provenance — 11.1 (documented GA) vs 11.2 (newer, NOT auto-selected) ===
+  v11.1 -> 82d1dca801c8318a5605399d5240780d0679e4e1  date=2026-06-24 14:24:47 -0700
+  v11.2 -> 1dade062a4e796c14ab6b3f32461ad694ec58951  date=2026-08-04 13:03:10 -0700
+
+NOTE: NVIDIA documentation establishes TensorRT 11.1 GA with CUDA 13.3 as the
+default/recommended path. v11.2 EXISTS upstream and is NEWER. It is recorded
+but NOT selected -- 'main/newest is newer' is not a selection criterion, and
+the CUDA 13.3 pairing for 11.2 has not been verified against NVIDIA docs here.
+
+--- checkout v11.1 (the documented GA) for license/requirements inspection ---
+  checked out: v11.1
+  license: TensorRT/LICENSE
+    
+                                     Apache License
+                               Version 2.0, January 2004
+--- submodules required? ---
+TensorRT/.gitmodules
+    [submodule "third_party/protobuf"]
+    	path = third_party/protobuf
+    	url = https://github.com/protocolbuffers/protobuf.git
+    	branch = 3.20.x
+    [submodule "third_party/cub"]
+    	path = third_party/cub
+    	url = https://github.com/NVlabs/cub.git
+    	branch = 1.8.0
+    [submodule "parsers/onnx"]
+    	path = parsers/onnx
+    	url = https://github.com/onnx/onnx-tensorrt.git
+    	branch = release/10.7-GA
+  INSTALLED: NO · BUILT: NO
+=== TensorRT submodules (upstream requires them) ===
+From https://github.com/google/benchmark
+ * branch            5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8 -> FETCH_HEAD
+Submodule path 'third_party/protobuf/third_party/benchmark': checked out '5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8'
+From https://github.com/google/googletest
+ * branch            5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081 -> FETCH_HEAD
+Submodule path 'third_party/protobuf/third_party/googletest': checked out '5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081'
+rc=0
+   7c51a63a719180eb5160c874c111746f3fb46a6b parsers/onnx (7c51a63)
+   be2b5fde82d9c8874f3d19328bdfe3b6962dc67b parsers/onnx/third_party/onnx (be2b5fd)
+   c3cceac115c072fb63df1836ff46d8c60d9eb304 third_party/cub (c3cceac)
+   aea4a275e28329f648e046469c095eef74254bb2 third_party/protobuf (aea4a27)
+   5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8 third_party/protobuf/third_party/benchmark (5b7683f)
+   5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081 third_party/protobuf/third_party/googletest (5ec7f0c)

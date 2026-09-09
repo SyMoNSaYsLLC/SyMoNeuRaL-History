@@ -1,0 +1,76 @@
+=== P1.5.8 PYTHON REDUCTION DEPENDENCY CHECK (no installs) ===
+--- the v13.3 Python samples that produced the Grade-C claims ---
+  sources/cuda-samples/python/2_CoreConcepts/reduction
+    README.md
+    reduction.py
+    requirements.txt
+  sources/cuda-samples/python/2_CoreConcepts/reductionMultiBlockCG
+    README.md
+    reductionMultiBlockCG.py
+    requirements.txt
+
+--- requirements.txt contents ---
+  sources/cuda-samples/python/requirements.txt:
+    # CUDA Python Samples — common base for CUDA 13.x
+    # Install sample-specific extras from each sample's requirements.txt (RAPIDS, TensorFlow, etc.).
+    
+    cuda-python>=13.0.0
+    cuda-core>=1.0.0
+    cupy-cuda13x>=14.0.0
+    numpy>=2.3.2
+  sources/cuda-samples/python/2_CoreConcepts/reduction/requirements.txt:
+    # Python CUDA Reduction Sample Requirements
+    # Install with: pip install -r requirements.txt
+    
+    numpy>=2.3.2
+    cuda-core>=1.0.0
+    cuda-python>=13.0.0
+    # Use cupy-cuda13x>=14.0.0 for cp.cuda.Stream.from_external(stream)
+    cupy-cuda13x>=14.0.0
+  sources/cuda-samples/python/2_CoreConcepts/reductionMultiBlockCG/requirements.txt:
+    # Python Multi-Block Cooperative Reduction Sample Requirements
+    # Install with: pip install -r requirements.txt
+    
+    numpy>=2.3.2
+    cuda-core>=1.0.0
+    cuda-python>=13.0.0
+    # Headers for NVRTC: cooperative_groups.h includes cuda/std/* (CCCL)
+    cuda-cccl>=1.0.0
+    # Use cupy-cuda13x>=14.0.0 for cp.cuda.Stream.from_external(stream)
+    cupy-cuda13x>=14.0.0
+=== dependency satisfaction per existing environment (metadata only, no installs) ===
+--- /usr/bin/python3 ---
+    numpy            2.2.4
+    cuda-core        MISSING
+    cuda-python      MISSING
+    cupy-cuda13x     MISSING
+    cuda-cccl        MISSING
+    -> MISSING: cuda-core, cuda-python, cupy-cuda13x, cuda-cccl
+--- /home/google/.venvs/vllm/bin/python ---
+    numpy            2.2.6
+    cuda-core        1.0.1
+    cuda-python      13.3.1
+    cupy-cuda13x     MISSING
+    cuda-cccl        MISSING
+    -> MISSING: cupy-cuda13x, cuda-cccl
+--- /home/google/.venvs/symoneural-hybrid/bin/python ---
+    numpy            2.5.2
+    cuda-core        MISSING
+    cuda-python      MISSING
+    cupy-cuda13x     MISSING
+    cuda-cccl        MISSING
+    -> MISSING: cuda-core, cuda-python, cupy-cuda13x, cuda-cccl
+--- /home/google/.venvs/coreml/bin/python ---
+    numpy            2.5.1
+    cuda-core        MISSING
+    cuda-python      MISSING
+    cupy-cuda13x     MISSING
+    cuda-cccl        MISSING
+    -> MISSING: cuda-core, cuda-python, cupy-cuda13x, cuda-cccl
+--- /home/google/.venvs/symoneural/bin/python ---
+    numpy            MISSING
+    cuda-core        MISSING
+    cuda-python      MISSING
+    cupy-cuda13x     MISSING
+    cuda-cccl        MISSING
+    -> MISSING: numpy, cuda-core, cuda-python, cupy-cuda13x, cuda-cccl
