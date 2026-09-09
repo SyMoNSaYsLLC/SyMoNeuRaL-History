@@ -492,6 +492,11 @@ def load_state() -> dict:
 
 
 def save_state(st: dict) -> None:
+    # Do not assume load_state() ran first. `record()` is called from two threads and from
+    # tests, and a writer that depends on call order to have its directory is a writer that
+    # will one day lose a checkpoint.
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    VERIFY_DIR.mkdir(parents=True, exist_ok=True)
     tmp = STATE.with_suffix(".tmp")
     tmp.write_text(json.dumps(st, indent=2, sort_keys=True) + "\n")
     os.chmod(tmp, 0o600)
@@ -586,41 +591,134 @@ def human(n: float) -> str:
 
 
 def write_manifest(src: pathlib.Path, out: pathlib.Path) -> tuple[int, int]:
-    """Every archive gets a sibling manifest so Drive stays browsable without one object
-    per file. Returns (file_count, total_bytes). This is what keeps section 5's
-    CATALOG.tsv answerable for a collection that travels as an archive."""
-    n = tot = 0
-    with out.open("w") as fh:
-        fh.write("RELPATH\tSIZE_BYTES\n")
-        if src.is_file():
-            s = src.stat().st_size
-            fh.write(f"{src.name}\t{s}\n")
+    """Write a CONTENT manifest for `src` via tools/sym_content_manifest.py.
+
+    Columns are TYPE, RELPATH, SIZE_BYTES, SHA256, MODE, LINK_TARGET, and symlinks are
+    recorded by their target rather than dereferenced. Returns (file_count, total_bytes).
+
+    This replaces an earlier path+size-only manifest. Size is not content identity: two
+    files of equal length are routinely different, so a size-only manifest cannot support
+    section 4's dedupe or prove that an archived collection is what it claims to be. The
+    SHA256 pass costs one sequential read of the leaf, which on NVMe is cheap next to the
+    upload it precedes.
+    """
+    helper = ROOT / "tools" / "sym_content_manifest.py"
+    if helper.is_file():
+        r = sh(["python3", str(helper), "make", str(src), str(out)], timeout=43200)
+        if r.returncode == 0:
+            n = tot = 0
+            try:
+                with out.open() as fh:
+                    next(fh, None)
+                    for line in fh:
+                        f = line.rstrip("\n").split("\t")
+                        if len(f) >= 3 and f[0] == "FILE":
+                            n += 1
+                            tot += int(f[2] or 0)
+            except OSError:
+                pass
             os.chmod(out, 0o600)
-            return 1, s
-        for p in sorted(src.rglob("*")):
-            if p.is_file() and not p.is_symlink():
-                try:
-                    s = p.stat().st_size
-                except OSError:
-                    continue
-                fh.write(f"{p.relative_to(src)}\t{s}\n")
-                n += 1
-                tot += s
-    os.chmod(out, 0o600)
-    return n, tot
+            return n, tot
+        print(f"      content manifest helper failed rc={r.returncode}: "
+              f"{r.stderr.strip()[:160]}")
+        # Fall through: a missing manifest must not silently become a missing check.
+        raise RuntimeError(f"content manifest failed for {src}")
+    raise RuntimeError(f"tools/sym_content_manifest.py absent; refusing a size-only manifest")
 
 
 # =========================================================================================
 # The single destructive primitive
 # =========================================================================================
+def _artifact_names(src: pathlib.Path) -> tuple[str, bool, bool]:
+    """(artifact filename, compress?, upload-in-place?) for a leaf. Pure, so resume derives
+    exactly the same names the original attempt used."""
+    single = src.is_file()
+    compress = not src.name.endswith(NO_COMPRESS)
+    if single and not compress:
+        return src.name, False, True
+    return f"{src.name}.tar" + (".zst" if compress else ""), compress, False
+
+
+def _retire_source(op_id: str, src: pathlib.Path, raw: int, st: dict) -> bool:
+    """The only destructive step. Never called before DEST_VERIFIED."""
+    if src.is_dir():
+        shutil.rmtree(src, ignore_errors=True)
+    else:
+        src.unlink(missing_ok=True)
+    if src.exists():
+        record(st, op_id, state="FAILED", detail="source still present after retire")
+        print(f"      {op_id}: source would not retire")
+        return False
+    record(st, op_id, state="SOURCE_RETIRED", detail=f"retired {human(raw)}")
+    record(st, op_id, state="COMPLETE", detail=f"retired {human(raw)}", raw_bytes=raw)
+    print(f"      {op_id}: COMPLETE -- freed {human(raw)}")
+    return True
+
+
 def _pack_upload_retire(op_id: str, src: pathlib.Path, dest_dir: str, why: str, st: dict,
                         retire: bool = True) -> bool:
-    """Pack, upload, confirm from the remote, and only then retire. Returns True only when
-    the destination was independently confirmed."""
-    cur = state_of(st, op_id)
-    if cur in ("COMPLETE", "SOURCE_RETIRED"):
-        print(f"      {op_id}: already {cur} -- resuming past it, not replaying")
+    """Pack, upload, confirm from the remote, and only then retire.
+
+    Resume enters at whichever state the ledger records, and never redoes verified work:
+
+      COMPLETE        -> return immediately; a completed transfer is never replayed
+      FAILED          -> fail closed; no silent destructive retry
+      SOURCE_RETIRED  -> re-confirm the destination, then close out as COMPLETE
+      DEST_VERIFIED   -> re-read the remote hash; if it still matches, retire the source
+                         directly with NO repack and NO re-upload
+      UPLOADING       -> ask the remote whether it already holds the recorded MD5; if so
+                         promote to DEST_VERIFIED instead of sending the bytes again
+      PACKING         -> reuse a staged artifact whose MD5 matches the recorded one
+
+    Each of those is a real interruption this work has hit, and each one re-sending
+    gigabytes over a 5 MB/s link is the cost of getting it wrong.
+    """
+    rec = st["ops"].get(op_id, {})
+    cur = rec.get("state", "PLANNED")
+    rec_md5 = rec.get("local_md5")
+    raw = rec.get("raw_bytes") or 0
+
+    if cur == "COMPLETE":
+        print(f"      {op_id}: COMPLETE already -- not replayed")
         return True
+
+    if cur == "FAILED":
+        # Fail closed. A previous attempt failed for a reason nobody has looked at yet, and
+        # retrying destructively is how a bad diagnosis becomes data loss.
+        print(f"      {op_id}: previously FAILED ({str(rec.get('detail'))[:90]}) -- "
+              f"failing closed, source untouched")
+        return False
+
+    dest = rec.get("dest")
+
+    if cur == "SOURCE_RETIRED":
+        rm = remote_md5(dest) if dest else None
+        if rm and rm == rec.get("remote_md5"):
+            record(st, op_id, state="COMPLETE", detail="destination re-confirmed on resume")
+            print(f"      {op_id}: source already retired, destination re-confirmed -> COMPLETE")
+            return True
+        record(st, op_id, state="FAILED",
+               detail=f"source retired but destination no longer verifies (remote={rm})")
+        print(f"      {op_id}: SOURCE RETIRED BUT DESTINATION LOST -- needs owner attention")
+        return False
+
+    if cur == "DEST_VERIFIED" and dest:
+        rm = remote_md5(dest)
+        if rm and rm == rec.get("remote_md5"):
+            print(f"      {op_id}: DEST_VERIFIED on resume, remote hash still {rm[:12]} "
+                  f"-- retiring source without repack or re-upload")
+            if not src.exists():
+                record(st, op_id, state="COMPLETE", detail="source already absent")
+                return True
+            if not retire:
+                record(st, op_id, state="COMPLETE", detail="uploaded, source kept")
+                return True
+            return _retire_source(op_id, src, raw or du_bytes(src), st)
+        record(st, op_id, state="FAILED",
+               detail=f"DEST_VERIFIED but remote hash now {rm} != {rec.get('remote_md5')}")
+        print(f"      {op_id}: remote changed since verification -- source untouched")
+        return False
+
     if not src.exists():
         record(st, op_id, state="COMPLETE", detail="source already absent")
         return True
@@ -628,32 +726,57 @@ def _pack_upload_retire(op_id: str, src: pathlib.Path, dest_dir: str, why: str, 
     raw = du_bytes(src)
     STAGE.mkdir(parents=True, exist_ok=True)
     os.chmod(STAGE, 0o700)
-
-    single_file = src.is_file()
-    compress = not src.name.endswith(NO_COMPRESS)
-    if single_file and not compress:
-        name = src.name                 # ship an already-compressed file as itself
-    else:
-        name = f"{src.name}.tar" + (".zst" if compress else "")
-    art = STAGE / name
+    name, compress, in_place = _artifact_names(src)
+    art = src if in_place else STAGE / name
     dest = f"{dest_dir}/{name}"
+    mani = STAGE / f"{src.name}.CONTENTS.tsv"
 
-    mani = STAGE / f"{src.name}.manifest.tsv"
-    fcount, fbytes = write_manifest(src, mani)
+    # ---- UPLOADING resume: is the object already complete on the remote? --------------
+    if cur == "UPLOADING" and rec_md5:
+        rm = remote_md5(dest)
+        if rm == rec_md5:
+            print(f"      {op_id}: interrupted at UPLOADING, but the remote already holds "
+                  f"{rm[:12]} -- promoting to DEST_VERIFIED, not re-uploading")
+            record(st, op_id, state="DEST_VERIFIED", detail=f"remote md5 {rm} (resume)",
+                   remote_md5=rm)
+            if not in_place:
+                art.unlink(missing_ok=True)
+            if not retire:
+                record(st, op_id, state="COMPLETE", detail="uploaded, source kept")
+                return True
+            return _retire_source(op_id, src, raw, st)
+        print(f"      {op_id}: interrupted at UPLOADING; remote holds {rm} not {rec_md5[:12]}"
+              f" -- will re-send")
+
+    # ---- PACKING resume: is a valid staged artifact already on disk? ------------------
+    reuse = False
+    if not in_place and art.is_file() and rec_md5:
+        staged = md5_of(art)
+        if staged == rec_md5:
+            print(f"      {op_id}: reusing staged artifact {name} "
+                  f"({human(art.stat().st_size)}, md5 {staged[:12]}) -- not repacking")
+            reuse = True
+        else:
+            print(f"      {op_id}: staged artifact md5 {staged[:12]} != recorded "
+                  f"{rec_md5[:12]} -- discarding it and repacking")
+            art.unlink(missing_ok=True)
+
+    if not mani.is_file():
+        fcount, fbytes = write_manifest(src, mani)
+    else:
+        fcount = sum(1 for i, l in enumerate(mani.open()) if i and l.startswith("FILE\t"))
+        fbytes = 0
     print(f"      {op_id}: {human(raw)}  {fcount} files -> {dest_dir}/")
     record(st, op_id, state="PACKING", detail=f"{raw} raw, {fcount} files",
            src=str(src), dest=dest, file_count=fcount, raw_bytes=raw, why=why)
 
-    if single_file and not compress:
-        art = src                       # upload in place; nothing to pack
-    else:
+    if not in_place and not reuse:
         art.unlink(missing_ok=True)
         base, leaf = str(src.parent), src.name
         if compress:
             tar = subprocess.Popen(["tar", "-cf", "-", "-C", base, leaf],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            z = subprocess.run(["zstd", "-3", "-T0", "-q", "-o", str(art)],
-                               stdin=tar.stdout)
+            z = subprocess.run(["zstd", "-3", "-T0", "-q", "-o", str(art)], stdin=tar.stdout)
             tar.stdout.close()
             tar.wait()
             rc = z.returncode or tar.returncode
@@ -667,38 +790,48 @@ def _pack_upload_retire(op_id: str, src: pathlib.Path, dest_dir: str, why: str, 
 
     packed = art.stat().st_size
     lm = md5_of(art)
-    print(f"      {op_id}: packed {human(packed)}  md5 {lm[:12]}  uploading ...")
     record(st, op_id, state="UPLOADING", detail=f"{packed} packed",
            local_md5=lm, packed_bytes=packed)
 
-    r = sh(["rclone", "copy", str(art), f"{REMOTE}{dest_dir}/"] + RCLONE)
-    if r.returncode != 0:
-        record(st, op_id, state="FAILED",
-               detail=f"upload rc={r.returncode}: {r.stderr.strip()[:150]}")
-        if art != src:
-            art.unlink(missing_ok=True)
-        print(f"      {op_id}: UPLOAD FAILED -- source untouched")
-        return False
+    # Even on a first pass, ask the remote first: an earlier owner may have completed it.
+    if remote_md5(dest) == lm:
+        print(f"      {op_id}: remote already holds {lm[:12]} -- skipping the upload")
+    else:
+        print(f"      {op_id}: packed {human(packed)}  md5 {lm[:12]}  uploading ...")
+        r = sh(["rclone", "copy", str(art), f"{REMOTE}{dest_dir}/"] + RCLONE)
+        if r.returncode != 0:
+            record(st, op_id, state="FAILED",
+                   detail=f"upload rc={r.returncode}: {r.stderr.strip()[:150]}")
+            print(f"      {op_id}: UPLOAD FAILED -- source untouched")
+            return False
 
     # Read the hash back FROM THE REMOTE, never from the FUSE mount.
     rm = remote_md5(dest)
     if rm != lm:
         record(st, op_id, state="FAILED",
                detail=f"remote md5 {rm} != local {lm} -- NOTHING RETIRED")
-        if art != src:
-            art.unlink(missing_ok=True)
         print(f"      {op_id}: MD5 MISMATCH (remote={rm} local={lm}) -- source untouched")
         return False
 
+    # The manifest is part of the deliverable, so it is verified too.
     sh(["rclone", "copy", str(mani), f"{REMOTE}{dest_dir}/"] + RCLONE)
-    record(st, op_id, state="DEST_VERIFIED", detail=f"remote md5 {rm}", remote_md5=rm)
+    mani_local = md5_of(mani)
+    mani_remote = remote_md5(f"{dest_dir}/{mani.name}")
+    if mani_remote != mani_local:
+        record(st, op_id, state="FAILED",
+               detail=f"manifest md5 {mani_remote} != {mani_local} -- NOTHING RETIRED")
+        print(f"      {op_id}: MANIFEST VERIFY FAILED -- source untouched")
+        return False
+
+    record(st, op_id, state="DEST_VERIFIED", detail=f"remote md5 {rm}", remote_md5=rm,
+           manifest_md5=mani_local, manifest_remote=f"{dest_dir}/{mani.name}")
     (VERIFY_DIR / f"{op_id.replace('/', '_').replace(':', '-')}.txt").write_text(
         f"op={op_id}\nsrc={src}\ndest={REMOTE}{dest}\nfile_count={fcount}\n"
-        f"manifest_bytes={fbytes}\nraw_bytes={raw}\npacked_bytes={packed}\n"
-        f"local_md5={lm}\nremote_md5={rm}\n"
+        f"manifest={REMOTE}{dest_dir}/{mani.name}\nmanifest_md5={mani_local}\n"
+        f"raw_bytes={raw}\npacked_bytes={packed}\nlocal_md5={lm}\nremote_md5={rm}\n"
         f"verified_at={time.strftime('%Y-%m-%dT%H:%M:%S%z')}\nwhy={why}\n")
 
-    if art != src:
+    if not in_place:
         art.unlink(missing_ok=True)
     mani.unlink(missing_ok=True)
 
@@ -706,19 +839,7 @@ def _pack_upload_retire(op_id: str, src: pathlib.Path, dest_dir: str, why: str, 
         record(st, op_id, state="COMPLETE", detail=f"uploaded {human(raw)}, source kept")
         print(f"      {op_id}: COMPLETE (source intentionally kept)")
         return True
-
-    # The only destructive step, reached only after DEST_VERIFIED.
-    if src.is_dir():
-        shutil.rmtree(src, ignore_errors=True)
-    else:
-        src.unlink(missing_ok=True)
-    if src.exists():
-        record(st, op_id, state="FAILED", detail="source still present after retire")
-        print(f"      {op_id}: source would not retire")
-        return False
-    record(st, op_id, state="COMPLETE", detail=f"retired {human(raw)}")
-    print(f"      {op_id}: COMPLETE -- freed {human(raw)}")
-    return True
+    return _retire_source(op_id, src, raw, st)
 
 
 # =========================================================================================
