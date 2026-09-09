@@ -218,3 +218,68 @@ def test_content_manifest_is_content_addressed_not_size_only(tmp_path):
     assert by["a.txt"][2] == by["b.txt"][2] == "4"
     assert by["link"][0] == "SYMLINK", "symlinks must be recorded, not followed"
     assert by["link"][5] == "a.txt", "the link target itself is the identity"
+
+
+# =========================================================================================
+# tools/drive-dedupe.py survivor selection
+# =========================================================================================
+# This function decides which copy is DELETED, so it gets tests. Path length alone used to
+# decide it, and that is backwards now the semantic collections exist: a stray copy loose
+# at the Drive root would have outranked the correctly-filed one inside a collection.
+
+def _dedupe():
+    spec = importlib.util.spec_from_file_location(
+        "drive_dedupe_under_test", REPO / "tools" / "drive-dedupe.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_survivor_prefers_a_canonical_collection_over_a_shallower_path():
+    m = _dedupe()
+    paths = ["stray-copy.zip", "Symoneural/History/Source-Snapshots/stray-copy.zip"]
+    assert m.survivor(paths) == "Symoneural/History/Source-Snapshots/stray-copy.zip", \
+        "the filed copy must outrank a loose root copy even though the root path is shorter"
+
+
+def test_survivor_prefers_earlier_taxonomy_rank():
+    m = _dedupe()
+    paths = ["Historical-Archive/a/x.zip", "Symoneural/a/x.zip"]
+    assert m.survivor(paths) == "Symoneural/a/x.zip"
+
+
+def test_survivor_breaks_ties_shallower_then_alphabetically_and_is_deterministic():
+    m = _dedupe()
+    paths = ["Projects/b/deep/deeper/x.zip", "Projects/a/x.zip", "Projects/b/x.zip"]
+    first = m.survivor(paths)
+    assert first == "Projects/a/x.zip"
+    # Determinism matters: a dry run and the real run must not disagree about which copy
+    # lives, or the plan the operator approved is not the plan that executes.
+    assert m.survivor(list(reversed(paths))) == first
+
+
+def test_restore_and_upstream_prefixes_are_protected_from_dedupe():
+    m = _dedupe()
+    rows = [
+        {"Path": "Symoneural/Restore-Recovery/bundle.tar", "Size": 5 << 20,
+         "Hashes": {"md5": "same"}},
+        {"Path": "Symoneural/Upstream-Source/p/abc123/src.tar", "Size": 5 << 20,
+         "Hashes": {"md5": "same"}},
+        {"Path": "Projects/copy-a.tar", "Size": 5 << 20, "Hashes": {"md5": "other"}},
+        {"Path": "Projects/copy-b.tar", "Size": 5 << 20, "Hashes": {"md5": "other"}},
+    ]
+    g = m.groups(rows)
+    flat = [p for v in g.values() for p in v]
+    assert not any(p.startswith("Symoneural/Restore-Recovery/") for p in flat), \
+        "restore material must never enter a dedupe group"
+    assert not any(p.startswith("Symoneural/Upstream-Source/") for p in flat), \
+        "revision-keyed upstream snapshots are immutable by design, not waste"
+    assert sorted(flat) == ["Projects/copy-a.tar", "Projects/copy-b.tar"]
+
+
+def test_files_below_one_mebibyte_are_ignored():
+    m = _dedupe()
+    rows = [{"Path": f"Projects/tiny-{i}.txt", "Size": 1024, "Hashes": {"md5": "z"}}
+            for i in range(3)]
+    assert m.groups(rows) == {}, \
+        "thousands of identical .gitkeep/__init__.py copies free nothing and break trees"

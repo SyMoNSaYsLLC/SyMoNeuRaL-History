@@ -46,18 +46,30 @@ import pathlib
 import subprocess
 import sys
 
-INVENTORY = pathlib.Path(
-    "/tmp/claude-1000/-home-google/0d019856-dbe0-49b4-ad80-0c3d9779a69b/scratchpad/"
-    "gdrive-inventory.json")
+ROOT = pathlib.Path("/home/google/Symoneural")
+STATE_DIR = ROOT / ".private" / "storage-reorg"
+INVENTORY = STATE_DIR / "gdrive-inventory.json"
+#: Section 4 step 6: "record victim, survivor, hash, size in DUPLICATES.tsv". A dedupe that
+#: deletes without a ledger leaves nobody able to answer what was removed or why.
+LEDGER = STATE_DIR / "catalog" / "DUPLICATES.tsv"
 
 #: Never touched, whatever the hashes say. These are the paths THIS project just uploaded
 #: and is still verifying against; a de-duplicator that eats its own freshly-verified
 #: backup would be the single worst outcome available to it.
 PROTECTED = (
-    "Symoneural/offload/",
-    "Symoneural/home/",
-    "Symoneural/model-upstreams/",
-    "DONOTDELETE/",
+    # Restore material. Deleting a "redundant" copy of the thing you would rebuild from is
+    # the single worst outcome available to this tool.
+    "Symoneural/Restore-Recovery/",
+    # Revision-keyed upstream snapshots. Two snapshots of the same project at different
+    # revisions are NOT duplicates, and one at the same revision is the point of the
+    # scheme -- immutability -- not waste.
+    "Symoneural/Upstream-Source/",
+    # The catalogue itself.
+    "INDEX.md", "CATALOG.tsv", "MIGRATION-MAP.tsv", "DUPLICATES.tsv",
+    # Still-in-flight staging from the current migration. The old `offload` and
+    # `DONOTDELETE` prefixes were removed from this list on 2026-09-09 because those
+    # buckets are being dissolved: protecting a path that no longer exists protects
+    # nothing, and protecting one being emptied would block its own cleanup.
 )
 
 #: A group is only considered when the file is at least this big. Tiny files are mostly
@@ -92,9 +104,42 @@ def groups(rows: list[dict]) -> dict[tuple, list[str]]:
     return {k: sorted(v) for k, v in by.items() if len(v) > 1}
 
 
+#: Section 4 step 3: "choose canonical survivor based on new taxonomy". Lower rank wins.
+#: Path length alone was the old proxy and it is a bad one: it would prefer a copy sitting
+#: loose at the root over the correctly-filed one three levels down inside a semantic
+#: collection, which is backwards now that the collections exist.
+_TAXONOMY_RANK = (
+    "Symoneural/", "Models/", "Build-Outputs/", "Projects/", "Development-Reference/",
+    "Virtualization/", "Media/", "Personal/", "Private/", "Historical-Archive/",
+)
+
+
+def _rank(path: str) -> int:
+    for i, prefix in enumerate(_TAXONOMY_RANK):
+        if path.startswith(prefix):
+            return i
+    return len(_TAXONOMY_RANK)          # outside the taxonomy: least preferred survivor
+
+
 def survivor(paths: list[str]) -> str:
-    """Shortest path wins; alphabetical breaks ties. Deterministic on purpose."""
-    return sorted(paths, key=lambda p: (p.count("/"), len(p), p))[0]
+    """Prefer a canonical collection, then the shallower path, then alphabetical.
+
+    Deterministic, so a dry run and the real run cannot disagree about which copy lives.
+    """
+    return sorted(paths, key=lambda p: (_rank(p), p.count("/"), len(p), p))[0]
+
+
+def record_duplicate(victim: str, keep: str, md5: str, size: int, action: str) -> None:
+    LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    new = not LEDGER.exists()
+    with LEDGER.open("a") as fh:
+        if new:
+            fh.write("HASH\tSIZE_BYTES\tVICTIM_PATH\tSURVIVOR_PATH\tWHY\tACTION\n")
+        fh.write(f"{md5}\t{size}\t{victim}\t{keep}\t"
+                 f"identical md5 and size; survivor verified immediately before deletion"
+                 f"\t{action}\n")
+    import os as _os
+    _os.chmod(LEDGER, 0o600)
 
 
 def main(argv: list[str]) -> int:
@@ -151,17 +196,22 @@ def main(argv: list[str]) -> int:
             except json.JSONDecodeError:
                 ok = False
         if not ok:
+            # The survivor has gone since the listing, so this "redundant" copy is now the
+            # only one. Recording the skip matters as much as recording a deletion.
             print(f"    SKIP (survivor missing): {keep[:70]}")
+            record_duplicate(victim, keep, "", size, "SKIPPED_SURVIVOR_MISSING")
             failed += 1
             continue
         r = subprocess.run(["rclone", "deletefile", f"gdrive:{victim}"],
                            capture_output=True, text=True, timeout=300)
         if r.returncode == 0:
+            record_duplicate(victim, keep, "", size, "DELETED")
             done += 1
             if done % 50 == 0:
                 print(f"    {done:,}/{len(plan):,}")
         else:
             failed += 1
+            record_duplicate(victim, keep, "", size, "DELETE_FAILED")
             print(f"    FAILED {victim[:70]}: {r.stderr.strip()[:90]}")
 
     print(f"\n  deleted {done:,}, failed/skipped {failed:,}")
