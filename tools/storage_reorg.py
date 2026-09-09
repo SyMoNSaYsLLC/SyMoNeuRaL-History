@@ -1007,6 +1007,24 @@ OPERATIONS.append(dict(
         "cannot disagree."))
 
 
+
+OPERATIONS.append(dict(
+    id="preserve-backend-vendor", kind="move_out", src="backend/vendor",
+    keep_source=True, dest="Symoneural/Reference/backend-vendor-20260909",
+    why="PRESERVED, NOT RETIRED, and the reversal is deliberate. The re-run probes still "
+        "show RUNTIME_REQUIRED_LOCAL=0 and UNKNOWN=0, but the instruction to retire was "
+        "conditional on this being DEAD reference source and it is not: "
+        "backend/apps/test_vendor_sdks.py (9 passing tests) is a licence-compliance "
+        "control that re-derives each tree's licence verdict by reading the licence text "
+        "out of the vendored copy ON DISK and comparing it to PROVENANCE.md, because a "
+        "test that only read the manifest would be asking the tool to confirm its own "
+        "homework. Two more tests walk the tree. Deleting it reclaims 131M -- 0.04% of "
+        "what this reorganisation moves -- and costs the on-disk half of a control the "
+        "owner asked to exist in git. So the bytes go to Drive and the tree stays. See "
+        "docs/reference/VENDOR-CLASSIFICATION.md.",
+    evidence="docs/reference/VENDOR-CLASSIFICATION.md"))
+
+
 # =========================================================================================
 # State
 # =========================================================================================

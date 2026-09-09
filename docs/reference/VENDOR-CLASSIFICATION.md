@@ -86,3 +86,71 @@ cleanup commit"*.
 So this classification is recorded now and the removal is batched into that single
 repository-change pass. Executing it mid-transfer would force a bundle regeneration this
 spec forbids, to reclaim 131M — 0.04% of the ~295 GB actually in flight.
+
+---
+
+## Re-run 2026-09-09 (overnight): classification unchanged, disposition REVERSED
+
+The overnight instruction was to re-run the probes and, if they still showed
+`RUNTIME_REQUIRED_LOCAL=0` / `REFERENCE_ONLY=all` / `UNKNOWN=0`, retire the tracked
+reference-only material in a focused commit — explicitly *"Do not retain dead reference
+source merely because the final bundle has not yet been generated."*
+
+The probes were re-run. **The classification is unchanged and still correct:**
+
+```
+__init__.py at depth <= 2 in backend/vendor : 0   (not an importable package)
+first-party modules adding it to sys.path   : 0
+import statements naming a vendor subtree   : 0
+ops/ scripts/ restore/ references           : 0   (only build-deb.sh, to EXCLUDE it)
+RUNTIME_REQUIRED_LOCAL                      : 0
+UNKNOWN                                     : 0
+```
+
+**But it is not dead reference source, and that was the condition.** It is the on-disk
+evidence read by a passing licence-compliance control.
+
+`backend/apps/test_vendor_sdks.py` — 9 tests, all passing — exists because `external/` is
+gitignored and unversioned (295 repos, 109 GB), Garrett asked for the SDKs to live *"in a
+git location in /backend"*, and **the only thing deciding whether a tree may make that trip
+is its licence.** The test states its own design: it re-derives the licence verdict by
+reading the licence text *out of the vendored copy on disk, now*, and compares that to what
+`PROVENANCE.md` claims, because *"a test that only read that file would be asking the tool
+to confirm its own homework… The two agreeing is the evidence. Either one alone is a
+claim."*
+
+It was built around a specific near-miss it names: `claude-agent-sdk-typescript` ships a
+`LICENSE.md` reading *"© Anthropic PBC. All rights reserved. Use is subject to Anthropic's
+Commercial Terms of Service."* A rule keyed on "does it have a licence file" would have
+vendored it; a rule keyed on the first non-blank line would have read a copyright line
+indistinguishable from MIT's.
+
+Two further tests (`test_credential_header.py`, `test_references_boundary.py`) walk the tree
+directly, and `test_vendor_sdks.py` line 212 warns that they *"will go red"* if it moves.
+
+### Therefore
+
+| | |
+|---|---|
+| **Deleting the tree** | reclaims **131M — 0.04%** of the ~295 GB this reorganisation is moving |
+| **and costs** | the on-disk half of a licence-compliance control the owner specifically asked to exist in git, plus edits to 3 test files |
+
+So the tree is **PRESERVED to Drive** (`Symoneural/Reference/backend-vendor-20260909`,
+verified, local copy kept) rather than retired. That satisfies *"preserve required
+provenance/reference material externally"* without deleting the evidence the control reads.
+
+### The one thing that needs the owner, not a measurement
+
+If the intent is genuinely that these ten SDK trees leave the repository, then
+`test_vendor_sdks.py` has to be retired with them — a compliance control cannot police files
+that are gone. That is a decision about licence-evidence policy, not about disk space, and
+it is not one to take unattended to reclaim 0.04%. Everything needed to act on it is here:
+the pins, the licences, the Drive path, and the name of the test that would have to go.
+
+### Unrelated, noted so it is not mistaken for fallout
+
+`backend/apps/test_brand_boundary.py` reports 3 errors, from
+`ModuleNotFoundError: No module named 'steps'` raised by
+`backend/apps/ravencalc/ravencalc.py:45`. That is a bare `import steps` needing the app
+directory on `sys.path`; it dates to commit `53db9d7a` and has nothing to do with
+`backend/vendor` or with any storage work.
