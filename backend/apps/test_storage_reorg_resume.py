@@ -283,3 +283,66 @@ def test_files_below_one_mebibyte_are_ignored():
             for i in range(3)]
     assert m.groups(rows) == {}, \
         "thousands of identical .gitkeep/__init__.py copies free nothing and break trees"
+
+
+# =========================================================================================
+# Drive-merge collision rules
+# =========================================================================================
+# A bare moveto into an occupied path is how one of two same-named objects silently becomes
+# the only one. Drive also permits two entries with the same NAME at one path, so "the
+# destination exists" is a different question from "this is the same object".
+
+def test_drive_children_deletes_a_verified_duplicate_instead_of_overwriting(
+        tmp_path, monkeypatch):
+    m = _load(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_sh(args, timeout=0):
+        import subprocess
+        calls.append(args)
+        if args[:2] == ["rclone", "lsjson"] and "--stat" in args:
+            # both source and destination report the same size and md5
+            return subprocess.CompletedProcess(
+                args, 0, '{"Name":"x.zip","Size":100,"Hashes":{"md5":"aaa"}}', "")
+        if args[:2] == ["rclone", "lsjson"]:
+            return subprocess.CompletedProcess(
+                args, 0, '[{"Name":"x.zip","Size":100,"IsDir":false}]', "")
+        return subprocess.CompletedProcess(args, 0, '{"bytes":100,"count":1}', "")
+
+    monkeypatch.setattr(m, "sh", fake_sh)
+    st = {"ops": {}}
+    m.do_drive_children({"id": "op", "src": "Bucket",
+                         "classify": lambda n, d: "Dest", "why": "w"}, st, apply=True)
+    verbs = [c[1] for c in calls if c[0] == "rclone"]
+    assert "deletefile" in verbs, "a byte-identical duplicate must be deleted, not moved"
+    assert "moveto" not in verbs, "it must not be moved on top of the survivor"
+    assert st["ops"]["op::x.zip"]["state"] == "COMPLETE"
+    assert "duplicate" in st["ops"]["op::x.zip"]["detail"]
+
+
+def test_drive_children_preserves_both_when_content_differs(tmp_path, monkeypatch):
+    m = _load(tmp_path)
+    moves: list[str] = []
+
+    def fake_sh(args, timeout=0):
+        import subprocess
+        if args[:2] == ["rclone", "lsjson"] and "--stat" in args:
+            # destination and source differ in md5
+            md5 = "bbb" if "Dest/" in args[2] else "aaa"
+            return subprocess.CompletedProcess(
+                args, 0, '{"Name":"x.zip","Size":100,"Hashes":{"md5":"%s"}}' % md5, "")
+        if args[:2] == ["rclone", "lsjson"]:
+            return subprocess.CompletedProcess(
+                args, 0, '[{"Name":"x.zip","Size":100,"IsDir":false}]', "")
+        if args[:2] == ["rclone", "moveto"]:
+            moves.append(args[3])
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return subprocess.CompletedProcess(args, 0, '{"bytes":100,"count":1}', "")
+
+    monkeypatch.setattr(m, "sh", fake_sh)
+    st = {"ops": {}}
+    m.do_drive_children({"id": "op", "src": "Bucket",
+                         "classify": lambda n, d: "Dest", "why": "w"}, st, apply=True)
+    assert moves, "a differing object must still be moved"
+    assert "__from_" in moves[0] and "__src_" in moves[0], \
+        "it must land under provenance-aware naming, not overwrite the destination"

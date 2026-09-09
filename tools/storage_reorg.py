@@ -1051,6 +1051,62 @@ OPERATIONS.extend([
 ])
 
 
+
+# =========================================================================================
+# gaps closed after a line-by-line re-audit of the owner's prompt
+# =========================================================================================
+
+OPERATIONS.extend([
+    # "Claude-related material MAY be copied and verified on Drive now, but respect the
+    # active-session local-retirement hold." So: copy and verify, keep local. The report
+    # then has a real VERIFIED_GDRIVE_COPY_BYTES instead of an assertion, and the held
+    # bytes are reported separately from unexplained duplicates.
+    dict(id="copy-claude-anthropics", kind="move_out", src="external/anthropics",
+         keep_source=True, dest="Symoneural/Reference/claude-hold-20260909",
+         why="The prompt permits copying and verifying Claude-related material on Drive "
+             "now while the local retirement stays held. This is the 5.4G of it. Copied "
+             "and verified; the local copy is KEPT because the hard-stop rule and section "
+             "9.6 both retain it until the post-exit finalizer no longer needs it."),
+    dict(id="copy-claude-alienware", kind="move_out", src="external/ClaudeAlienware",
+         keep_source=True, dest="Symoneural/History/Agent-Sessions/ClaudeAlienware-local",
+         why="Same hold, same treatment: verified Drive copy, local copy retained."),
+    dict(id="copy-claude-small", kind="move_out", src="external/Claude",
+         keep_source=True, dest="Symoneural/Reference/claude-hold-20260909",
+         why="Same hold, same treatment."),
+    dict(id="copy-claude-desktop-deb", kind="move_out",
+         src="external/claude-desktop_1.32885.1_amd64.deb", keep_source=True,
+         dest="Symoneural/Reference/claude-hold-20260909",
+         why="Same hold, same treatment. An installer package, version-pinned in its "
+             "filename."),
+
+    # /yocto's last unclassified entries. YOCTO_UNKNOWN_BYTES=0 requires every entry to be
+    # explained, and a filesystem trash directory is not build material.
+    dict(id="drop-yocto-trash", kind="drop", src="/yocto/.Trash-1000",
+         why="A desktop trash directory on the build volume. Not build material and not "
+             "evidence of anything -- anything genuinely needed would not have been "
+             "deleted into it. Required for YOCTO_UNKNOWN_BYTES=0."),
+    dict(id="drop-yocto-deleteme", kind="drop", src="/yocto/deleteme",
+         why="The owner's drop box for verified-retired material. Everything routed "
+             "through it has already been retired after verification, so the empty "
+             "container goes too."),
+
+    # Coverage proof, then retirement. LAST, because it depends on every other
+    # sendtodrive/AppleSDK operation having verified first.
+    dict(id="prove-and-retire-sendtodrive-zip", kind="zip_coverage",
+         zip="/yocto/Archives/sendtodrive.zip", member_prefix="sendtodrive/",
+         ledger_prefixes=("mv-yocto-sendtodrive::", "backfill-sendtodrive-manifests::"),
+         applesdk_op="mv-applesdk-from-zip",
+         why="Steps 6-8 of the sendtodrive plan, in the order given: prove every useful "
+             "ZIP collection has canonical coverage, retire the ZIP only when "
+             "ZIP_UNIQUE_UNMAPPED_BYTES=0, then remove the emptied Archives container. "
+             "This zip has earned that caution twice -- it held the only COMPLETE "
+             "AppleSDK after the disk copy lost 38,310 files, and it was the only source "
+             "able to rebuild SHA256 manifests for 21 collections whose local sources had "
+             "already retired. Every covered destination is RE-VERIFIED on the remote "
+             "before the ledger is trusted."),
+])
+
+
 # =========================================================================================
 # State
 # =========================================================================================
@@ -1890,6 +1946,107 @@ def do_publish_manifests(op: dict, st: dict, apply: bool) -> None:
     print(f"  {op_id}: {ok} published, {pend} awaiting their archive, {failed} failed")
 
 
+
+def do_zip_coverage(op: dict, st: dict, apply: bool) -> None:
+    """Prove every useful ZIP collection has canonical Drive coverage, then retire the ZIP.
+
+    The instruction is strict about the order: prove coverage first, retire only when
+    ZIP_UNIQUE_UNMAPPED_BYTES=0, then remove the emptied container. This zip has earned
+    that caution twice -- it held the only COMPLETE AppleSDK after the disk copy lost
+    38,310 files, and it was the only source able to rebuild SHA256 manifests for 21
+    collections whose local sources had already retired.
+
+    Coverage means: for each top-level collection inside the zip, an operation in the
+    ledger is COMPLETE with a destination, and that destination still verifies. Anything
+    not covered contributes its bytes to UNMAPPED, and while UNMAPPED > 0 the zip stays.
+    """
+    op_id = op["id"]
+    zp = pathlib.Path(op["zip"])
+    if state_of(st, op_id) == "COMPLETE":
+        print(f"  {op_id}: COMPLETE already")
+        return
+    if not zp.is_file():
+        record(st, op_id, state="COMPLETE", detail="zip already retired")
+        return
+
+    prefix = op["member_prefix"]
+    with zipfile.ZipFile(zp) as z:
+        per: dict[str, int] = {}
+        for i in z.infolist():
+            if i.is_dir() or not i.filename.startswith(prefix):
+                continue
+            rest = i.filename[len(prefix):]
+            if not rest:
+                continue
+            per[rest.split("/", 1)[0]] = per.get(rest.split("/", 1)[0], 0) + i.file_size
+
+    # Which collections are covered, read from the ledger and RE-VERIFIED on the remote.
+    covered: dict[str, str] = {}
+    for oid, o in st["ops"].items():
+        if o.get("state") != "COMPLETE" or not o.get("dest"):
+            continue
+        for pre in op["ledger_prefixes"]:
+            if oid.startswith(pre):
+                covered[oid.split("::", 1)[-1]] = o["dest"]
+    # AppleSDK was uploaded under its own operation id, not as a sendtodrive leaf.
+    for oid, o in st["ops"].items():
+        if oid == op.get("applesdk_op") and o.get("state") == "COMPLETE" and o.get("dest"):
+            covered["AppleSDK"] = o["dest"]
+
+    unmapped = {k: v for k, v in per.items() if k not in covered}
+    unmapped_bytes = sum(unmapped.values())
+
+    print(f"  {op_id}: {len(per)} collection(s) in the zip, {len(covered)} covered, "
+          f"{len(unmapped)} unmapped ({human(unmapped_bytes)})")
+    for k in sorted(unmapped):
+        print(f"        UNMAPPED {k:<24} {human(unmapped[k])}")
+
+    if not apply:
+        print(f"        ZIP_UNIQUE_UNMAPPED_BYTES={unmapped_bytes}; "
+              f"{'would retire the zip' if unmapped_bytes == 0 else 'zip STAYS'}")
+        return
+
+    # Re-verify each covered destination on the remote before trusting the ledger.
+    stale = []
+    for leaf, dest in sorted(covered.items()):
+        if leaf not in per:
+            continue
+        if remote_md5(dest) is None:
+            stale.append(leaf)
+    if stale:
+        record(st, op_id, state="PARTIAL",
+               detail=f"{len(stale)} covered destination(s) no longer verify: "
+                      f"{','.join(stale[:6])}; zip RETAINED")
+        print(f"  {op_id}: {len(stale)} destination(s) no longer verify -- zip RETAINED")
+        return
+
+    if unmapped_bytes != 0:
+        record(st, op_id, state="PARTIAL",
+               detail=f"ZIP_UNIQUE_UNMAPPED_BYTES={unmapped_bytes} "
+                      f"({len(unmapped)} collections); zip RETAINED")
+        print(f"  {op_id}: unmapped bytes remain -- zip RETAINED, which is correct")
+        return
+
+    (VERIFY_DIR / f"{op_id}.txt").write_text(
+        f"op={op_id}\nzip={zp}\ncollections_in_zip={len(per)}\n"
+        f"covered={len(covered)}\nZIP_UNIQUE_UNMAPPED_BYTES=0\n"
+        f"destinations_reverified={len([l for l in covered if l in per])}\n"
+        f"proved_at={time.strftime('%Y-%m-%dT%H:%M:%S%z')}\nwhy={op['why']}\n")
+    size = zp.stat().st_size
+    zp.unlink()
+    record(st, op_id, state="COMPLETE",
+           detail=f"coverage proven, zip retired ({human(size)})", raw_bytes=size)
+    print(f"  {op_id}: coverage proven -- zip retired, freed {human(size)}")
+    # Remove the container only if it is now genuinely empty.
+    parent = zp.parent
+    try:
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            print(f"  {op_id}: empty container {parent} removed")
+    except OSError as e:
+        print(f"  {op_id}: container not removed ({e})")
+
+
 def do_drive_children(op: dict, st: dict, apply: bool) -> None:
     """Classify the children of a Drive folder and distribute them server-side.
 
@@ -1950,6 +2107,51 @@ def do_drive_children(op: dict, st: dict, apply: bool) -> None:
             continue
         sp, dp = f"{src}/{name}", f"{dest}/{name}"
         record(st, child_id, state="MOVING", detail=f"{sp} -> {dp}", raw_bytes=sz)
+
+        # COLLISION HANDLING, required by the Drive-merge rules:
+        #   same name + same size + same MD5 -> verified duplicate; keep the survivor
+        #   same name + different content    -> preserve BOTH, provenance-aware naming
+        #   unique                            -> plain server-side move
+        # A bare `moveto` into an occupied path is how one of two same-named objects
+        # silently becomes the only one. Drive also allows two entries with the SAME NAME
+        # at one path, so "the destination exists" is not the same question as "this is
+        # the same object".
+        occupied = sh(["rclone", "lsjson", f"{REMOTE}{dp}", "--stat", "--hash"],
+                      timeout=600)
+        if occupied.returncode == 0 and not isdir:
+            try:
+                ex = json.loads(occupied.stdout) or {}
+            except json.JSONDecodeError:
+                ex = {}
+            ex_size = int(ex.get("Size") or -1)
+            ex_md5 = ((ex.get("Hashes") or {}).get("md5") or "")
+            mine = sh(["rclone", "lsjson", f"{REMOTE}{sp}", "--stat", "--hash"],
+                      timeout=600)
+            try:
+                mj = json.loads(mine.stdout) or {}
+            except json.JSONDecodeError:
+                mj = {}
+            my_md5 = ((mj.get("Hashes") or {}).get("md5") or "")
+            if ex_size == sz and ex_md5 and my_md5 and ex_md5 == my_md5:
+                # Byte-identical. The destination copy is the canonical survivor, so the
+                # source copy is redundant -- delete it rather than move it on top.
+                rm = sh(["rclone", "deletefile", f"{REMOTE}{sp}"], timeout=900)
+                if rm.returncode != 0:
+                    record(st, child_id, state="FAILED",
+                           detail=f"duplicate delete failed: {rm.stderr.strip()[:120]}")
+                    failed += 1
+                    continue
+                record(st, child_id, state="COMPLETE", dest=dp, raw_bytes=sz,
+                       detail=f"verified duplicate of destination (md5 {ex_md5}); "
+                              f"source copy removed, survivor kept")
+                print(f"      {name}: duplicate of destination -- survivor kept")
+                done += 1
+                continue
+            # Same name, different (or unverifiable) content. Preserving both is the only
+            # safe answer: a differing object under a shared name is not a duplicate.
+            tag = (my_md5[:12] if my_md5 else str(sz))
+            dp = f"{dest}/__from_{src.replace('/', '_') or 'root'}/{name}.__src_{tag}"
+            print(f"      {name}: name collision, content differs -- preserving both")
         mv = sh(["rclone", "moveto", f"{REMOTE}{sp}", f"{REMOTE}{dp}",
                  "--checksum"], timeout=21600)
         if mv.returncode != 0:
@@ -2027,7 +2229,8 @@ KINDS = {"drop": do_drop, "drop_glob": do_drop_glob, "move_out": do_move_out,
          "move_leaves": do_move_leaves, "extract_upload": do_extract_upload,
          "move_files": do_move_files, "drive_children": do_drive_children,
          "backfill_zip_manifests": do_backfill_zip_manifests,
-         "publish_manifests": do_publish_manifests}
+         "publish_manifests": do_publish_manifests,
+         "zip_coverage": do_zip_coverage}
 #: Kinds that cost no upload bandwidth. `drive_children` belongs here even though it
 #: mutates Drive: a server-side `moveto` inside one Drive is metadata work, so distributing
 #: 247.7 GiB of Projects_Organize takes minutes and competes with the uploads for nothing
