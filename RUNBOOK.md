@@ -228,10 +228,15 @@ Not done by commissioning, because it decides whether the gateway is part of the
 
 ### Nothing external has reached this box since 2026-09-04
 
-Zero requests from any of the 361 external IPs in the access log, for five days, while
-`symoneural-web` was up and answering loopback requests. Scanners knock on public hosts
-continuously and these stopped, which is the part that makes it look like a fault rather
-than a quiet week.
+Zero requests from any of the 361 external IPs in the access log. On **2026-09-08 and
+2026-09-09** the proxy was provably up and answering loopback requests through that silence;
+**2026-09-05 to 09-07 have no log lines at all**, and since this unit logs to file rather
+than the journal, nothing on the box says whether it was listening then. So: two verified
+quiet days, three unaccounted for.
+
+What makes it look like a fault rather than a quiet week is that the scanners stopped too —
+public hosts get knocked on continuously. That is an argument from how scanners behave, not
+a measurement, and it is the reason to go and check rather than the conclusion.
 
 **Not testable from this box** — it has one interface, on the private address
 `192.168.0.163/24`, and everything public depends on a NAT forward invisible from inside.
