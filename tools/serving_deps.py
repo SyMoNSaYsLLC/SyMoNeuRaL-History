@@ -59,6 +59,12 @@ except BaseException as exc:        # SystemExit/AssertionError are both plausib
 ROOT = %(root)r
 stdlib = set(sys.stdlib_module_names)
 
+# Interpreter-provided site hooks. Python imports these itself before any application code
+# runs, and they ship inside libpython3.13-minimal -- i.e. inside the interpreter, not
+# alongside it. Reporting them as third-party dependencies would put "apt install
+# libpython3.13-minimal" on a list of things to install to get Python working.
+stdlib |= {"sitecustomize", "usercustomize", "apport_python_hook"}
+
 # Map every installed distribution to the top-level names it provides, so a module can be
 # attributed to the package an operator would actually have to install.
 top2dist = {}
