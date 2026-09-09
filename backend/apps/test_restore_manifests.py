@@ -344,7 +344,13 @@ class ReleaseDocument(unittest.TestCase):
         rel = json.loads((ROOT / "restore" / "RELEASE.json").read_text())
         self.assertEqual(rel["component_count"], len(read("COMPONENTS.tsv")))
         self.assertEqual(rel["application_count"], len(read("APPLICATIONS.tsv")))
-        self.assertRegex(rel["repository_head"], r"^[0-9a-f]{40}$")
+        # Three heads, not one -- see the Idempotent class docstring. A tracked document
+        # cannot contain the SHA of the commit containing it, so `repository_head` was
+        # replaced by fields that say WHICH head each value is.
+        self.assertRegex(rel["manifest_generated_from_head"], r"^[0-9a-f]{40}$")
+        self.assertRegex(rel["current_measured_head"], r"^[0-9a-f]{40}$")
+        self.assertIsNone(rel["final_archive_head"],
+                          "final_archive_head must stay null until an archive exists")
         self.assertEqual(rel["restore_entrypoint"], "restore/symoneural-restore")
 
     def test_release_json_carries_no_secret_values(self):

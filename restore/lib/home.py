@@ -83,6 +83,10 @@ DISPOSITIONS: tuple[tuple[str, str, str, str], ...] = (
     ("autocontinuationprompt.md", "HISTORY_EVIDENCE", "archive/from-home/",
      "Task instructions."),
     ("patchprompt", "HISTORY_EVIDENCE", "archive/from-home/", "Task instructions."),
+    ("gptosspromptandsymoneuraldefaults.md", "HISTORY_EVIDENCE", "archive/from-home/",
+     "The GPT-OSS integration and owner storage-policy instructions. Carries the model "
+     "house-naming rules, the original-upstreams-live-on-Drive decision and the balanced "
+     "default-selection procedure -- owner decisions that are not derivable from the code."),
     ("someofthelineswerehiddeninpromptreadthis.md", "HISTORY_EVIDENCE",
      "archive/from-home/", "Task instructions."),
     ("productiondeployment.md", "HISTORY_EVIDENCE", "archive/from-home/",
@@ -197,8 +201,16 @@ def gen_home_disposition(write_tsv) -> int:
     for name, disp, loc, note in DISPOSITIONS:
         p = HOME / name
         seen.add(name)
-        rows.append([name, disp, loc, "YES" if p.exists() else "no",
-                     M.du_bytes(p) if p.exists() else 0,
+        # The canonical root's OWN size is deliberately not measured. It is live -- the API
+        # appends to run/api.log while this generator runs -- so two consecutive
+        # generations differed by 600 bytes and the determinism test went red. That is the
+        # same self-referential trap as a manifest carrying the hash of the archive
+        # containing it: the number cannot be stable because measuring it is part of the
+        # thing being measured. Its size is also not a restore DECISION -- it is the tree
+        # everything else is judged against.
+        size = "n/a (self-referential; see the note)" if name == "Symoneural" \
+            else (M.du_bytes(p) if p.exists() else 0)
+        rows.append([name, disp, loc, "YES" if p.exists() else "no", size,
                      M.mode_of(p), note])
 
     for name, disp, loc, note in HIDDEN:

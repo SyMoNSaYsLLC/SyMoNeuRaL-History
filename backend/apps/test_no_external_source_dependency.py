@@ -88,6 +88,13 @@ EXEMPT_PREFIXES = (
                                              # first-party source bundle. Deleting it
                                              # because the detector fired would put
                                              # somebody else's SDK back in the bundle.
+    "tools/offload-to-drive.sh",             # its ENTIRE JOB is relocating external/ to
+                                             # Google Drive; naming the trees it moves is
+                                             # the tool, not a dependency on them
+    "restore/lib/models.py",                 # "external/" appears in a path-PREFIX FILTER
+                                             # that classifies a reference as
+                                             # DOCUMENTATION_ONLY. Removing it would make
+                                             # the model requiredness taxonomy wrong.
     "training/project-history/",             # the history CORPUS: recorded question and
                                              # answer text about what was and was not in
                                              # external/. Training data, not a code path.

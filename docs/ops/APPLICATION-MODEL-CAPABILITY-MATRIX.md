@@ -58,7 +58,7 @@ is the only evidence that distinguishes `R` from a hopeful `W`.
 | chat 7B | `symon-1.0-7b-q4_k_m.gguf` | `backend/models/llm/` |
 | draft 0.5B | `symon-1.0-draft-0.5b-q4_k_m.gguf` | `backend/models/llm/` |
 | persona LoRA | `symoneural-lora.gguf` | **`training/adapter/`** — protected, reported separately |
-| 14B | `symon-1.0-14b-q4_k_m.gguf` | **ABSENT** — named by the tuner registry, on disk nowhere |
+| 14B | `symon-1.0-14b-q4_k_m.gguf` | **PRESENT** since 2026-09-08 — fetched through `scripts/fetch-models.sh` at the owner's instruction; 8,988,110,976 bytes, exactly the count `PROVENANCE.json` records, sha256 `e47ad95d…`. Still **not a serving default**: it is named by the tuner registry and by tests, and `RESTORE_REQUIREMENT=OPTIONAL` in `restore/manifests/MODELS.tsv` because nothing in `api.py` loads it. |
 | FLUX unet | `symoneural-image-unet-q4_k.gguf` | `backend/models/image/` |
 | FLUX t5 | `symoneural-image-t5-q8_0.gguf` | `backend/models/image/` |
 | FLUX clip | `symoneural-image-clip.safetensors` | `backend/models/image/` |

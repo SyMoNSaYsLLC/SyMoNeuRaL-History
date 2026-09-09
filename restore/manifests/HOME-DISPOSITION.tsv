@@ -1,8 +1,8 @@
 ITEM	DISPOSITION	CANONICAL_LOCATION	PRESENT_ON_DISK	SIZE_BYTES	MODE	NOTE
-Symoneural	PROJECT_AUTHORITY	/home/google/Symoneural	YES	596830466764	775	The canonical root. Everything below either lives here already or is judged against whether it needs to.
+Symoneural	PROJECT_AUTHORITY	/home/google/Symoneural	YES	n/a (self-referential; see the note)	775	The canonical root. Everything below either lives here already or is judged against whether it needs to.
 claude-preserve-list-20260908.txt	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	4436	600	Names every path the purge must not touch. Useless after the purge, essential before it.
 claude-purge-allowlist-20260908.txt	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	4994	600	13 literal paths, zero globs. The only list the purge is permitted to consult.
-claude-retirement-finalize-20260908-050000.sh	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	19608	700	The post-exit executor. Must be readable from outside the repository because it runs when this session is gone.
+claude-retirement-finalize-20260908-050000.sh	PROJECT_AUTHORITY	copied into .private/claude-backups/ by the finalizer	YES	20662	700	The post-exit executor. Must be readable from outside the repository because it runs when this session is gone.
 symoneural-information-scan.py	PROJECT_AUTHORITY	archive/from-home/symoneural-information-scan.py	YES	52893	664	First-party scanning tool that never made it into the repository.
 claude-system-inventory-20260908-034644.txt	HISTORY_EVIDENCE	.private/claude-backups/20260908-035459/	YES	1487343	600	The pre-migration system inventory the owner asked for. Evidence of what was on the box before anything was moved.
 claudelastrun.md	HISTORY_EVIDENCE	archive/from-home/	YES	983577	664	Session record. Mode 664 -- tightened on copy.
@@ -10,6 +10,7 @@ claudeterminalhistory.md	HISTORY_EVIDENCE	archive/from-home/	YES	514283	664	Term
 sanitycheck.md	HISTORY_EVIDENCE	archive/from-home/	YES	37505	664	The owner's review of what these three tasks were meant to accomplish. It is the statement of intent the work is judged against, so it travels.
 autocontinuationprompt.md	HISTORY_EVIDENCE	archive/from-home/	YES	25496	664	Task instructions.
 patchprompt	HISTORY_EVIDENCE	archive/from-home/	YES	15350	664	Task instructions.
+gptosspromptandsymoneuraldefaults.md	HISTORY_EVIDENCE	archive/from-home/	YES	36570	664	The GPT-OSS integration and owner storage-policy instructions. Carries the model house-naming rules, the original-upstreams-live-on-Drive decision and the balanced default-selection procedure -- owner decisions that are not derivable from the code.
 someofthelineswerehiddeninpromptreadthis.md	HISTORY_EVIDENCE	archive/from-home/	YES	19942	664	Task instructions.
 productiondeployment.md	HISTORY_EVIDENCE	archive/from-home/	YES	16078	664	Deployment notes.
 security-reverify-2026-09-03.md	HISTORY_EVIDENCE	archive/from-home/	YES	39096	664	Security re-verification record.
@@ -46,7 +47,6 @@ go	UNRELATED	regenerable	YES	1495373478	775	1.6 GB Go module and toolchain cache
 test	UNRELATED	not carried	YES	1	664	Scratch file.
 thinclient_drives	SYSTEM	not carried	YES	0	775	Thin-client mount point.
 lockdown-20260831T152822Z.log	HISTORY_EVIDENCE	archive/from-home/logs/	YES	292	644	Lockdown run logs, 2026-08-31. Eight files, small, kept together as one record.
-.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5530863771	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
+.claude	CLAUDE_BACKUP	purged post-exit by the finalizer; contents already captured in .private/claude-backups/	YES	5531058724	775	5.3 GB. The user-level Claude state. Named in the purge allowlist, and the repository has been proved not to depend on it.
 .symoneural-full	DUPLICATE	not carried	YES	22957084	700	26 MB. A stale copy of the CLI whose launcher had DIVERGED from its source and nothing noticed -- which is why scripts/install-cli.sh installs symlinks, not copies.
 .config/systemd/user	PROJECT_AUTHORITY	.private/host-snapshot/rootfs/home/google/.config/systemd/user	YES	5830	775	The user-scope symoneural units. Captured in the host snapshot.
-gptosspromptandsymoneuraldefaults.md	UNCLASSIFIED	-	YES	36570	664	ON DISK WITH NO DISPOSITION. Add a row to restore/lib/home.py. An unclassified item is destroyed by the reset without anyone having decided that.

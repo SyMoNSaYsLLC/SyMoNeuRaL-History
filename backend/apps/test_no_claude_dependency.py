@@ -53,6 +53,13 @@ EXEMPT_PREFIXES = (
     "backend/apps/test_no_claude_dependency.py",
     "backend/apps/test_archive_guard.py",  # tests that the protection rule works
     "docs/",                               # documentation and historical record
+    # The home-disposition table. It names `.claude` because its job is to record what
+    # HAPPENS to `.claude` at the reset -- it stats the path to report a size and a mode and
+    # then says "purged post-exit by the finalizer". A table that could not name the
+    # directory could not classify it, and an unclassified directory is destroyed by the
+    # reset without anyone having decided that. This is the same reasoning that exempts
+    # scripts/lib/archive-guard.sh: a rule ABOUT the path is not a dependency ON it.
+    "restore/lib/home.py",
 )
 
 #: A path under .claude being RESOLVED, not merely mentioned. Requires the quote or a
