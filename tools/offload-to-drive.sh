@@ -126,6 +126,29 @@ SUBTREES=(
 # that was de-duplicated out of /home earlier today. Its upload is verified against the
 # remote MD5 before a single byte is removed, exactly like every other subtree -- but if
 # any entry in this whole tool deserves a second look before deletion, it is that one.
+# Everything left loose in /home/google. The owner's rule: "/home/google is just stuff im
+# working on right now and havent found a home for it yet... that should be minimal when you
+# get done bc i am not working on anything."
+#
+# NOT listed, each for a stated reason:
+#   Symoneural                 the canonical root itself
+#   Desktop, Documents         the owner's active desktop; left for him
+#   go                         Go module + toolchain cache. Regenerable, but it is BUILD
+#                              MATERIAL for symoneural-web and must sit at $GOPATH -- the
+#                              same class as /yocto/sstate-cache, which also stays.
+#   claude-* control files     the finalizer and its two lists run AFTER Claude exits and
+#                              after the repo may be archived; they must be readable from
+#                              outside the repository at that moment.
+#   lockdown-*.log             ROOT-OWNED; needs one sudo command, reported to the owner.
+HOME_SUBTREES=(
+    "/home/google/experiments"
+    "/home/google/SyMoNeuRaL-Projects"
+    "/home/google/ia.Wallpapers"
+    "/home/google/Platforms.tar.gz"
+    "/home/google/Music"
+    "/home/google/Videos"
+)
+
 YOCTO_SUBTREES=(
     "/yocto/artifacts"
     "/yocto/sendtodrive"
@@ -283,6 +306,11 @@ case "${1:---plan}" in
                 "$(numfmt --to=iec "$(du -sb "$s" | cut -f1)")" \
                 "$(find "$s" -type f | wc -l)" "$(ledger_state "$s" || echo PENDING)"
         done ;;
+    --home)
+        say "=== home offload start; /home $(df -h /home | tail -1 | awk '{print $5}') full"
+        for s in "${HOME_SUBTREES[@]}"; do do_one "$s"; done
+        say "=== home offload end;   /home $(df -h /home | tail -1 | awk '{print $5}') full"
+        ;;
     --yocto)
         say "=== yocto offload start; /yocto $(df -h /yocto | tail -1 | awk '{print $5}') full"
         for s in "${YOCTO_SUBTREES[@]}"; do do_one "$s"; done
