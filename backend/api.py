@@ -640,6 +640,12 @@ class GpuState(BaseModel):
     temp_c: int | None = None
     holder: str | None = None
     queued: int = 0
+    # The driver's own health, reported as its own thing rather than folded into the unit
+    # states. A GPU driver mismatch used to show up only as "every GPU request 500s", which
+    # an operator reads as an application fault; the one action that fixes it -- a reboot --
+    # is not something you would try in response to that. `driver_detail` names the action.
+    driver: Literal["ok", "mismatch", "persistenced_down", "absent", "unreadable"] = "ok"
+    driver_detail: str | None = None
 
 
 class Status(BaseModel):
@@ -1045,6 +1051,31 @@ _telemetry: dict[str, float | int | None] = {}
 _telemetry_at = 0.0
 _TELEMETRY_TTL = 1.0
 
+# Why the driver's health is read from the telemetry call instead of its own probe:
+# `/api/status` is polled and also drives the websocket for every connected visitor, so it
+# must not spawn a process per request. `_read_smi()` already execs nvidia-smi at most once
+# per second, and a driver problem makes THAT call fail -- so the fault is free information
+# sitting in a call we were making anyway. Classifying it here adds no exec at all.
+#
+# Staleness window: driver state is at most `_TELEMETRY_TTL` (1 s) stale, same as the
+# numbers beside it. A mismatch does not come and go, so one second is far more freshness
+# than the fault needs.
+_smi_fault: tuple[str, str] = ("ok", "")
+
+#: What `nvidia-smi` says when the kernel module and the userspace library disagree. This is
+#: the 2026-09-09 case: a dist-upgrade replaced the driver, the running kernel kept the old
+#: modules, and every GPU path failed while the API reported itself healthy.
+_MISMATCH_MARKERS = (
+    "driver/library version mismatch",
+    "failed to initialize nvml",
+    "couldn't communicate with the nvidia driver",
+)
+
+#: nvidia-persistenced's pidfile. A stat, not a `systemctl is-active` subprocess, because
+#: this is read on the status path. It was `loaded failed failed` on this box before the
+#: 2026-09-09 reboot, alongside the mismatch.
+_PERSISTENCED_PID = pathlib.Path("/run/nvidia-persistenced/nvidia-persistenced.pid")
+
 
 def _read_smi() -> dict[str, float | int | None]:
     """All four telemetry fields in ONE nvidia-smi call.
@@ -1060,11 +1091,15 @@ def _read_smi() -> dict[str, float | int | None]:
     dead sensor -- a display that quietly shows nothing is worse than one showing a wrong
     number, because nobody goes looking for the bug.
     """
+    global _smi_fault
     try:
         out = subprocess.run(
             ["nvidia-smi", f"--query-gpu={','.join(_TELEMETRY_FIELDS)}",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=8)
+        if out.returncode != 0:
+            _smi_fault = _classify_smi_failure(out.returncode, out.stderr, out.stdout)
+            return dict.fromkeys(_TELEMETRY_FIELDS)
         parts = [p.strip() for p in out.stdout.strip().splitlines()[0].split(",")]
         values: dict[str, float | int | None] = {}
         for name, raw in zip(_TELEMETRY_FIELDS, parts):
@@ -1072,9 +1107,57 @@ def _read_smi() -> dict[str, float | int | None]:
                 values[name] = float(raw) if "." in raw else int(raw)
             except ValueError:
                 values[name] = None
+        # The driver answered. The only remaining GPU-health question is whether
+        # nvidia-persistenced is up, which is a stat rather than a subprocess.
+        _smi_fault = (("ok", "") if _PERSISTENCED_PID.exists() else (
+            "persistenced_down",
+            "The driver is healthy but nvidia-persistenced is not running, so the first GPU "
+            "request of each idle period pays the driver-initialisation cost. Surfaces work; "
+            "cold requests are slower. `systemctl status nvidia-persistenced`."))
         return values
-    except Exception:
+    except FileNotFoundError:
+        _smi_fault = ("absent", "No nvidia-smi on PATH: this host has no NVIDIA driver "
+                                "installed. GPU surfaces cannot serve here; CPU surfaces "
+                                "are unaffected.")
         return dict.fromkeys(_TELEMETRY_FIELDS)
+    except Exception as exc:
+        _smi_fault = ("unreadable", f"nvidia-smi did not complete "
+                                    f"({type(exc).__name__}). GPU state is unknown.")
+        return dict.fromkeys(_TELEMETRY_FIELDS)
+
+
+def _classify_smi_failure(rc: int, stderr: str, stdout: str) -> tuple[str, str]:
+    """Turn a failed nvidia-smi into a state an operator can act on.
+
+    The distinction that matters is **mismatch versus anything else**, because a mismatch is
+    the one class of GPU fault that restarting this service cannot fix -- the kernel module
+    and the userspace library have to be brought back into agreement, and on this box that
+    means a reboot. Reporting it as a generic surface failure is what made the 2026-09-09
+    upgrade read as "the app is broken" instead of "reboot the box".
+    """
+    blob = f"{stderr}\n{stdout}".lower()
+    if any(m in blob for m in _MISMATCH_MARKERS):
+        return ("mismatch",
+                "NVIDIA driver/library version mismatch: the loaded kernel module and the "
+                "userspace library disagree, which happens when a driver upgrade lands "
+                "under a running kernel. REBOOT REQUIRED -- restarting this service will "
+                "not fix it. CPU surfaces are unaffected and still serving.")
+    first = next((l for l in stderr.splitlines() if l.strip()), "").strip()
+    return ("unreadable",
+            f"nvidia-smi exited {rc}"
+            + (f": {first[:200]}" if first else " with no message")
+            + ". GPU state is unknown; CPU surfaces are unaffected.")
+
+
+def gpu_driver_health() -> tuple[str, str]:
+    """(state, detail) for the driver. One of ok / mismatch / persistenced_down /
+    absent / unreadable.
+
+    Reads through the telemetry cache, so calling it costs nothing beyond the one
+    nvidia-smi exec per second that the rack already performs.
+    """
+    smi("memory.total")            # refreshes `_smi_fault` if the cache has expired
+    return _smi_fault
 
 
 def smi(field: str):
@@ -2165,6 +2248,14 @@ def build_status() -> Status:
     chat_ok = CHAT_MODEL.exists() and LLM_ENGINE.exists()
     image_ok = all(p.exists() for p in FLUX.values()) and DIFFUSE_ENGINE.exists()
 
+    # A driver the card cannot talk through makes every GPU surface unserveable no matter
+    # what is on disk, so it is read once here and applied to the GPU rows below. Deliberately
+    # NOT an ExecStartPre check: that would refuse to start the whole service, taking
+    # ravencalc -- which is CPU-only and perfectly able to serve through a driver fault --
+    # down with it.
+    driver_state, driver_detail = gpu_driver_health()
+    driver_ok = driver_state in ("ok", "persistenced_down")
+
     def gpu_unit(name: str, ok: bool) -> str:
         """`ready` means LOADABLE ON DEMAND, not resident. Stated because it was misread.
 
@@ -2178,6 +2269,11 @@ def build_status() -> Status:
         What would be dishonest is a DETAIL line asserting present-tense residency, and two of
         them did until 2026-09-03 -- see the `~N GB when loaded` strings below.
         """
+        # The driver is checked BEFORE the on-disk check, because "offline" for a missing
+        # model and "offline" for an unusable driver need different actions and the detail
+        # line has to say which. `driver_detail` on GpuState carries the reason.
+        if not driver_ok:
+            return "offline"
         if not ok:
             return "offline"
         if holder == name:
@@ -2529,6 +2625,7 @@ def build_status() -> Status:
             vram_used_pct=round(100 * (1 - free / total)) if free and total else None,
             power_w=smi("power.draw"), temp_c=smi("temperature.gpu"),
             holder=holder, queued=gpu.waiting,
+            driver=driver_state, driver_detail=driver_detail or None,
         ),
         link={"gen": 3, "width": 8, "note": "Gen 3 x8 -- host capped"},
     )
