@@ -18,8 +18,17 @@ Two classes of requirement, and the distinction is the useful part:
     sympy starts green and fails the moment somebody uses the calculator. Reporting a green
     start on such a box is exactly the overstatement commissioning exists to prevent.
 
-Optional surfaces are reported and never fail the check: `cupy` absent means the training
-bench is unavailable, not that the service is broken.
+Beyond those two, absence is reported in two SEPARATE lists, because conflating them cost
+real confusion on 2026-09-09:
+
+  * **elsewhere** -- installed by design in its own virtualenv and checked against THAT
+    interpreter. The reinforce trainer's torch/transformers/peft/trl/datasets all live in
+    `training/.venv`; asking the serving interpreter for them answers nothing, and printing
+    the answer as UNAVAILABLE made a ready training stack look switched off.
+  * **dark** -- absent from every interpreter on the box, so the surface genuinely cannot
+    run. `cupy` is the live case.
+
+Neither fails the check. They are not the same thing.
 
 The declared lists below are checked against live measurement by
 `backend/apps/test_preflight.py`, so adding an import to the serving path without adding it
@@ -32,6 +41,7 @@ import argparse
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -84,22 +94,63 @@ SERVE = {
               "import ravencalc is inside a function at api.py:1166"),
 }
 
-#: Absence disables one surface. Never a hard failure.
+# The word "optional" used to cover two incompatible situations and the owner called it out
+# on 2026-09-09: "that word is doing two incompatible jobs." It was. A feature deliberately
+# built to run in its own interpreter, and a feature that cannot run because nothing installed
+# it, both printed as "UNAVAILABLE ... which is not a failure". Reading that, the reinforce
+# trainer looked switched off when its whole stack -- torch, transformers, peft, trl, datasets,
+# accelerate -- was installed and ready in `training/.venv`.
+#
+# They are now two dicts, and ELSEWHERE is checked against the interpreter that actually owns
+# the package rather than this one.
+
+#: Installed by design in its own virtualenv, NOT in the serving interpreter. Checked against
+#: that venv's python. "absent" here means the venv is genuinely missing the package -- a real
+#: gap -- not that the serving interpreter lacks it, which is correct and expected.
+ELSEWHERE = {
+    "transformers": ("training/.venv", "the reinforce trainer"),
+    "peft": ("training/.venv", "the reinforce trainer (adapters)"),
+    "trl": ("training/.venv", "the reinforce trainer (RL)"),
+    "datasets": ("training/.venv", "the reinforce trainer (data)"),
+    "torch": ("training/.venv", "the reinforce trainer, and the GGUF custom node"),
+    "accelerate": ("training/.venv", "the reinforce trainer (device placement)"),
+    "rembg": ("backend/apps/sigils/.venv", "the sigils cut-out worker"),
+    "onnxruntime": ("backend/apps/sigils/.venv", "the sigils cut-out worker (inference)"),
+    "pyasic": ("backend/apps/asicminer/.venv", "the ASIC rig probe"),
+}
+
+#: Genuinely gates a surface: absent everywhere on this box, so the surface cannot run.
+#: Still never a hard failure -- the API starts and serves without them -- but "UNAVAILABLE"
+#: here means a feature is dark, not that it lives somewhere else.
 OPTIONAL = {
     "PIL": "the remix cover art surface",
     "yaml": "the studio exp plugin loader",
     "bs4": "the studio discovery plugin",
-    "cupy": "the reinforce training bench",
+    "cupy": "the reinforce CUDA compute engine (compute/ops.py:17 imports it unguarded)",
     "cuda": "the reinforce training bench (CUDA python bindings)",
-    "pyasic": "the ASIC rig probe",
     "playwright": "the studio discovery crawler",
-    "rembg": "the sigils cut-out worker (runs in sigils/.venv, not here)",
-    "torch": "the GGUF custom node (runs in a venv, not here)",
-    "transformers": "the reinforce trainer (runs in training/.venv, not here)",
-    "peft": "the reinforce trainer (runs in training/.venv, not here)",
-    "trl": "the reinforce trainer (runs in training/.venv, not here)",
-    "datasets": "the reinforce trainer (runs in training/.venv, not here)",
 }
+
+
+def resolves_in_venv(venv: str, name: str) -> tuple[bool, str]:
+    """Does `name` resolve in that virtualenv's interpreter?
+
+    The point of the whole ELSEWHERE table: asking THIS interpreter whether `transformers`
+    is importable answers a question nobody has. The serving path has no virtualenv by
+    policy, so the answer is always no, and printing that as UNAVAILABLE made a fully
+    installed training stack look dark.
+    """
+    py = ROOT / venv / "bin" / "python3"
+    if not py.is_file():
+        return False, f"no interpreter at {venv}/bin/python3"
+    r = subprocess.run(
+        [str(py), "-c",
+         "import importlib.util as u,sys;"
+         f"s=u.find_spec({name!r});"
+         "print(getattr(s,'origin','') or 'present' if s else '')"],
+        capture_output=True, text=True, timeout=60)
+    out = r.stdout.strip()
+    return bool(out), (f"in {venv}" if out else f"MISSING from {venv}")
 
 
 def resolves(name: str) -> tuple[bool, str]:
@@ -166,7 +217,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    findings: dict[str, list] = {"start": [], "serve": [], "optional": [], "structural": []}
+    findings: dict[str, list] = {"start": [], "serve": [], "optional": [],
+                                 "elsewhere": [], "structural": []}
 
     for name, pkg in sorted({**START, **START_SCRIPT_ONLY}.items()):
         ok, ver = resolves(name)
@@ -181,6 +233,11 @@ def main(argv: list[str]) -> int:
         ok, ver = resolves(name)
         findings["optional"].append({"module": name, "ok": ok, "version": ver,
                                      "surface": surface})
+
+    for name, (venv, surface) in sorted(ELSEWHERE.items()):
+        ok, where = resolves_in_venv(venv, name)
+        findings["elsewhere"].append({"module": name, "ok": ok, "venv": venv,
+                                      "where": where, "surface": surface})
 
     findings["structural"] = structural()
 
@@ -207,9 +264,17 @@ def main(argv: list[str]) -> int:
         if not f["ok"]:
             print(f"      why it is not a startup failure: {f['why']}")
 
-    print(f"\n== optional surfaces ({len(findings['optional'])}) ==")
+    print(f"\n== installed in their own venv, NOT here -- by design "
+          f"({len(findings['elsewhere'])}) ==")
+    print("   absence in THIS list is a real gap; absence from the serving interpreter is not.")
+    for f in findings["elsewhere"]:
+        state = "ok " if f["ok"] else "GAP"
+        print(f"  {state} {f['module']:<14} {f['where']:<34} {f['surface']}")
+
+    print(f"\n== absent everywhere on this box -- these surfaces are dark "
+          f"({len(findings['optional'])}) ==")
     for f in findings["optional"]:
-        state = "available" if f["ok"] else "UNAVAILABLE"
+        state = "available" if f["ok"] else "DARK"
         print(f"  {state:<12} {f['module']:<14} {f['surface']}")
 
     print("\n== structural ==")
@@ -220,9 +285,13 @@ def main(argv: list[str]) -> int:
             print(f"      fix: {f['fix']}")
 
     if not hard:
-        print("\nPREFLIGHT OK -- every hard requirement is present. "
-              f"{sum(1 for f in findings['optional'] if not f['ok'])} optional "
-              "surface(s) unavailable, which is not a failure.")
+        dark = sum(1 for f in findings["optional"] if not f["ok"])
+        gaps = sum(1 for f in findings["elsewhere"] if not f["ok"])
+        print("\nPREFLIGHT OK -- every hard requirement to start and serve is present.")
+        print(f"  {dark} surface(s) DARK (absent everywhere: a feature that cannot run).")
+        print(f"  {gaps} venv GAP(s) (a package missing from the venv that owns it).")
+        print("  Neither fails the API. They are not the same thing and are no longer "
+              "printed as if they were.")
         return 0
 
     print(f"\nPREFLIGHT FAILED -- {hard} hard problem(s).")
