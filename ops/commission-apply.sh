@@ -10,6 +10,7 @@
 #     sudo ops/commission-apply.sh --apply --with-cuda-pin
 #     sudo ops/commission-apply.sh --apply --with-readiness-probe
 #     sudo ops/commission-apply.sh --apply --with-caddy-reload-fix
+#     sudo ops/commission-apply.sh --apply --with-surface-template
 #
 # Commissioning ran as `google` and has no sudo. `systemctl start|stop|restart` is
 # polkit-gated here -- it hangs waiting for an authentication that cannot arrive
@@ -44,6 +45,7 @@ CUDA_PIN=0
 FAILED=0
 READINESS=0
 RELOADFIX=0
+SURFTMPL=0
 STEPS_DONE=0
 STEPS_SKIPPED=0
 
@@ -54,6 +56,7 @@ for arg in "$@"; do
     --with-cuda-pin) CUDA_PIN=1 ;;
     --with-readiness-probe) READINESS=1 ;;
     --with-caddy-reload-fix) RELOADFIX=1 ;;
+    --with-surface-template) SURFTMPL=1 ;;
     -h|--help)       sed -n '6,33p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     *) printf 'unknown argument: %s (try --help)\n' "$arg" >&2; exit 2 ;;
   esac
@@ -502,6 +505,104 @@ say "      NOT proposed: deleting ops/symoneural-deploy.service. It is a working
 say "      the decision is that it is not installed automatically, not that it is unwanted."
 say ""
 say "  Neither edit is made. RUNBOOK section 2 keeps its warning until they land."
+
+# =====================================================================  STEP 9
+hdr "9. The surface template, for the RavenCalc pilot  [$([ "$SURFTMPL" -eq 1 ] && echo REQUESTED || echo SKIPPED, pass --with-surface-template)]"
+# The split's first process. Scoped in review/commissioning-20260909/SPLIT-SCOPING.md and
+# accepted at nine processes, not twelve: chat, image, remix and /api/ws stay together as one
+# GPU core because they share one card and one mkdir lock.
+#
+# What is already built and needs no root:
+#   ops/PORTS.tsv                          the registry -- the only place a port is named
+#   backend/apps/ports.py                  its reader, and the safety rule
+#   backend/apps/ravencalc/service.py      the surface: /api/ravencalc + /healthz
+#   backend/api.py                         registers its inline route ONLY while the registry
+#                                          says the surface is not delegated, and polls
+#                                          /healthz in the background for delegated ones
+#   tools/surface_pilot_proof.py           9 checks, incl. killing the surface and proving
+#                                          the rack reports `unreachable` with a reason
+#
+# What needs root is this: the unit file, and the proxy route.
+if [ "$SURFTMPL" -eq 1 ]; then
+  if [ -f "$ROOT/ops/symoneural-surface@.service" ]; then
+    # @@ROOT@@ substituted the same way install-runtime.sh does it, and refused if any
+    # placeholder survives -- an unsubstituted unit starts and then cannot find the repo.
+    tmpl="$(sed "s|@@ROOT@@|$ROOT|g" "$ROOT/ops/symoneural-surface@.service")"
+    if printf '%s' "$tmpl" | grep -q '@@ROOT@@'; then
+      say "    !! REFUSING: @@ROOT@@ survived substitution"
+      FAILED=$((FAILED + 1))
+    else
+      write_file /etc/systemd/system/symoneural-surface@.service 0644 <<EOF
+$tmpl
+EOF
+      run "systemctl daemon-reload" systemctl daemon-reload
+      say ""
+      say "    Then, and ONLY then, flip the registry:"
+      say "      ops/PORTS.tsv   symoneural-ravencalc  ...  DELEGATED  no -> yes"
+      say "      sudo systemctl enable --now symoneural-surface@ravencalc"
+      say "      sudo systemctl restart symoneural-api     # to drop its inline route"
+      say ""
+      say "    ORDER MATTERS and the wrong order is a visible outage: flipping DELEGATED"
+      say "    before the unit runs makes the monolith drop /api/ravencalc while nothing"
+      say "    else answers. backend/apps/ports.py refuses the no-port case but it cannot"
+      say "    tell whether the process is actually up -- that is what the rack's"
+      say "    \`unreachable\` state is for."
+    fi
+  else
+    say "    !! ops/symoneural-surface@.service is missing"
+    FAILED=$((FAILED + 1))
+  fi
+  say ""
+  say "  VERIFY:"
+  say "    systemctl status symoneural-surface@ravencalc"
+  say "    curl -s localhost:8811/healthz | python3 -m json.tool"
+  say "    curl -s localhost:8800/api/status | python3 -c 'import json,sys; print([u for u in json.load(sys.stdin)[\"units\"] if u[\"id\"]==\"ravencalc\"])'"
+  say "    python3 tools/surface_pilot_proof.py      # 9 checks, uses scratch ports only"
+  say "    curl -s -o /dev/null -w '%{http_code}\\n' localhost:8800/api/ravencalc   # expect 404 once delegated"
+  say ""
+  say "  REVERT (in this order):"
+  say "    ops/PORTS.tsv   DELEGATED  yes -> no"
+  say "    sudo systemctl restart symoneural-api          # the inline route comes back"
+  say "    sudo systemctl disable --now symoneural-surface@ravencalc"
+  say "    sudo rm /etc/systemd/system/symoneural-surface@.service && sudo systemctl daemon-reload"
+  say "    # Registry first: it is what decides who answers. Reversing the order leaves a"
+  say "    # window with two answerers, which is the state the design does not allow."
+else
+  say "    skipped -- pass --with-surface-template to install the unit."
+  say "    Nothing about the pilot is live without it: ops/PORTS.tsv ships DELEGATED=no, so"
+  say "    the monolith still answers /api/ravencalc and the surface process is spare"
+  say "    capacity nobody routes to. Proven on scratch ports by"
+  say "    tools/surface_pilot_proof.py -- 9 passed, production :8800 untouched."
+fi
+
+# ---------------------------------------------------------------- the proxy route, PROPOSED
+hdr "9a. Routing /api/ravencalc to the surface -- PROPOSED, NOT APPLIED"
+# ops/Caddyfile IS the live config -- ExecStart points at it, not at /etc/caddy/Caddyfile
+# (step 7). So editing it here would change production on the next restart, and if the
+# surface were not up that is a 502 on a path that works today. It is therefore a proposal.
+#
+# The gateway cannot do this without a rebuild: backend/apps/gateway/src/router.rs:50 routes
+# `/api/{*path}` to one upstream verbatim. cargo IS available on this box, so a gateway-side
+# route is possible -- but it is a Rust build plus a binary install for what a four-line Caddy
+# block does, and the block is revertable by an operator reading one file.
+say "  Add to ops/Caddyfile, BEFORE the existing \`handle /api/*\` block:"
+say ""
+say "      # RavenCalc runs as its own process (ops/PORTS.tsv). More specific than"
+say "      # /api/* so Caddy matches it first; everything else still goes to the gateway."
+say "      handle /api/ravencalc {"
+say "          reverse_proxy 127.0.0.1:8811"
+say "      }"
+say ""
+say "  Then: sudo systemctl restart symoneural-web    # restart, NOT reload -- see step 7"
+say ""
+say "  A dead surface behind this block returns Caddy's own 502. That is the shape of the"
+say "  outage the commissioning pass spent a day on, so the rack matters more than the proxy"
+say "  here: /api/status reports \`unreachable\` naming the port and the systemctl command,"
+say "  which is the thing an operator can act on. Measured: tools/surface_pilot_proof.py"
+say "  check 8 -- the API itself returns 404 for a delegated surface it does not own, and a"
+say "  404 is honest. Making Caddy return something friendlier is a later refinement and is"
+say "  NOT proposed here, because a custom error page that lies about which component failed"
+say "  would be worse than the 502."
 
 # =====================================================================  summary
 hdr "summary  [$(mode)]"

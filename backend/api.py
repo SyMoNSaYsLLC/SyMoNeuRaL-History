@@ -118,6 +118,12 @@ import coder      # noqa: E402  -- local-only developer surface. Takes NO GPU le
                   # has NO route: it is driven from the desktop session. See §2g.
 import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
 import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
+# The port registry. Nothing in this file names a surface port as a literal any more: which
+# surfaces run as their own process, and on which port, is `ops/PORTS.tsv`. See apps/ports.py
+# for why it refuses to report a surface delegated unless the registry also gives it a port.
+from apps import ports  # noqa: E402
+import httpx  # noqa: E402  -- only for polling a delegated surface's /healthz; see poll_delegated
+
 from apps import streamer  # noqa: E402  -- the IPTV surface AND the Guide that filters
 # it, merged into one package on Garrett's instruction ("you need to migrate tuner and
 # guide to be 1", then that the pair migrates to `streamer`). It exports one `router` and
@@ -607,7 +613,10 @@ class SubUnit(BaseModel):
     """
     id: str
     label: str
-    state: Literal["ready", "busy", "queued", "offline"]
+    # `unreachable` matters here too: once a parent surface is split, its folded
+    # children are reached through the same process, so a dead process takes the
+    # children with it and /miner.html must not show them ready.
+    state: Literal["ready", "busy", "queued", "offline", "unreachable"]
     bus: Literal["gpu", "cpu", "asic", "net"]
     detail: str
 
@@ -616,7 +625,13 @@ class Unit(BaseModel):
     id: str
     label: str
     slot: str
-    state: Literal["ready", "busy", "queued", "offline"]
+    # `unreachable` is the split's state and is deliberately NOT folded into
+    # `offline`. `offline` means the weights or the engine are missing -- an
+    # operator goes looking for a file. `unreachable` means the process that owns
+    # this row did not answer -- they go looking for a unit. Collapsing them would
+    # send someone hunting for weights that are sitting on disk. Added 2026-09-10
+    # with the RavenCalc pilot; site/console.js renders it dark with an amber blink.
+    state: Literal["ready", "busy", "queued", "offline", "unreachable"]
     # The bus a surface actually runs on. `asic` is external mining hardware reached over
     # the network, `net` is a surface whose work is I/O rather than compute -- neither
     # contends for the GPU lock, which is why they are distinct values rather than being
@@ -712,52 +727,26 @@ async def asic_refresher() -> None:
         await asyncio.sleep(AsicCache.TTL)
 
 
-class RateLimiter:
-    """Token bucket per client key.
-
-    The bucket logic is the RavenCalc service's, already in this repo and already correct;
-    the only change is that the window is a parameter. The original hardcoded 60 seconds,
-    and two buckets are needed here -- a burst limit and an hourly one. Reusing it with the
-    minute window for both would make the hourly cap refill sixty times too fast, which is a
-    limiter that looks present and enforces nothing.
-
-    Resets on restart, deliberately.
-    """
-
-    def __init__(self, rate: int, window_s: float = 60.0):
-        self.rate = max(1, int(rate))
-        self.capacity = float(self.rate)
-        self.refill_per_sec = float(self.rate) / float(window_s)
-        self.state: dict[str, tuple[float, float]] = {}
-        self._lock = asyncio.Lock()
-
-    async def allow(self, key: str) -> bool:
-        now = time.time()
-        async with self._lock:
-            tokens, last = self.state.get(key, (self.capacity, now))
-            tokens = min(self.capacity, tokens + (now - last) * self.refill_per_sec)
-            if tokens >= 1.0:
-                self.state[key] = (tokens - 1.0, now)
-                return True
-            self.state[key] = (tokens, now)
-            return False
-
+# The token bucket, the two-bucket check and the client key moved to `apps/ratelimits.py`
+# on 2026-09-10, alongside the BUDGETS they enforce. A split surface must apply the same
+# published cap from its own process, and the alternatives were to import this or to write a
+# second one -- and a second implementation of a published cap is the exact drift
+# `ratelimits.py` was created to end. The reasoning moved with the code.
+from apps.ratelimits import (allowed as _allowed,  # noqa: E402
+                             client_key_from_headers as _client_key_from_headers,
+                             limiters_for as _limiters_for)
 
 # A surface with no configured budget gets NO limiter object at all, rather than one
 # built with capacity 0. A zero-capacity bucket never refills to 1.0, so it would deny
 # every single request forever -- the exact inversion of "no limit", and indistinguishable
 # from a broken endpoint. Absent from this dict means unmetered; see check_rate.
-_limiters = {
-    name: (RateLimiter(per_min, 60.0), RateLimiter(per_hour, 3600.0))
-    for name, (per_min, per_hour) in LIMITS.items()
-    if per_min > 0 and per_hour > 0
-}
+_limiters = _limiters_for(LIMITS)
 
 
 def client_key(request: Request) -> str:
     """Caddy sits in front, so the real client is in the forwarded header."""
-    fwd = request.headers.get("x-forwarded-for", "")
-    return fwd.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return _client_key_from_headers(request.headers,
+                                    request.client.host if request.client else None)
 
 
 async def check_rate(surface: str, key: str) -> bool:
@@ -767,11 +756,7 @@ async def check_rate(surface: str, key: str) -> bool:
     is still spent. That is deliberate -- refunding it would mean tracking partial charges,
     and the drift is a token an hour.
     """
-    pair = _limiters.get(surface)
-    if pair is None:            # unmetered by configuration -- the default now
-        return True
-    minute, hour = pair
-    return await minute.allow(key) and await hour.allow(key)
+    return await _allowed(_limiters, surface, key)
 
 
 def throttled_for(surface: str):
@@ -1601,6 +1586,10 @@ async def lifespan(_: FastAPI):
     # switch off no task is started, so the default state of this box makes no outbound
     # request at all. Not called `ticker`: that name is the telemetry loop's, four lines up.
     newsfeed = asyncio.create_task(news.refresher()) if news.enabled() else None
+    # Only if something is actually delegated -- on a box where the monolith answers
+    # everything this task would poll nothing forever.
+    delegates = (asyncio.create_task(poll_delegated())
+                 if ports.delegated_surfaces() else None)
     if newsfeed:
         log.info("news surface enabled; %d sources, %d search engines, %.0fs interval",
                  len(news.feeds.SOURCES), len(news.feeds.SEARCHES), news.interval_s())
@@ -1627,6 +1616,8 @@ async def lifespan(_: FastAPI):
         gw.cancel()
     if newsfeed:
         newsfeed.cancel()
+    if delegates:
+        delegates.cancel()
     # Without this a reload leaks one ffmpeg per live stream: the sessions outlive the
     # process that spawned them and nothing else knows their pids.
     streamer.sessions.MANAGER.shutdown()
@@ -2232,6 +2223,100 @@ def external_holder() -> str | None:
         return None
 
 
+# ------------------------------------------------------------------ delegated surfaces
+#
+# A surface that runs as its own process (`ops/PORTS.tsv`, DELEGATED) no longer has its state
+# in this process's memory. `/api/status` has to get it over HTTP -- and the interesting case
+# is when it does not arrive.
+#
+# **Polled in the background, never in the request.** `build_status()` is synchronous and is
+# called from four places including a WebSocket loop (`:2707`) and the bus publisher
+# (`:2633`); a blocking fetch in there would stall the event loop for every listener. So a
+# task refreshes a cache and `build_status()` reads it. The rack page therefore pays NO added
+# latency for the split -- the cost is one request per delegated surface per interval, which
+# at nine surfaces and 2 s is 4.5 req/s of loopback traffic against a 240/min budget.
+#
+# The pattern is the one `asic_refresher` already uses (`:703`), started in `lifespan`.
+DELEGATE_POLL_S = 2.0
+#: Older than this and the row is `unreachable`. Three missed polls, so one slow answer does
+#: not flap the rack -- the failure this must not have is a surface that alternates.
+DELEGATE_STALE_S = 6.0
+
+#: surface -> (row, monotonic fetched_at, error or None). Absent means never yet polled.
+_delegated_rows: dict[str, tuple[dict | None, float, str | None]] = {}
+
+
+async def poll_delegated() -> None:
+    """Keep `_delegated_rows` warm for every surface another process owns."""
+    while True:
+        try:
+            surfaces = ports.delegated_surfaces()
+            if surfaces:
+                async with httpx.AsyncClient(timeout=1.5) as client:
+                    for surface in surfaces:
+                        base = ports.base_url(surface)
+                        try:
+                            r = await client.get(f"{base}/healthz")
+                            r.raise_for_status()
+                            _delegated_rows[surface] = (r.json(), time.monotonic(), None)
+                        except Exception as exc:
+                            # Keep the last good row and record the error. Which one wins is
+                            # decided by age in `_merge_delegated`, not here -- a single
+                            # dropped poll must not blank the rack.
+                            prev = _delegated_rows.get(surface, (None, 0.0, None))[0]
+                            _delegated_rows[surface] = (
+                                prev, _delegated_rows.get(surface, (None, 0.0, None))[1],
+                                f"{type(exc).__name__}: {exc}"[:160])
+            await asyncio.sleep(DELEGATE_POLL_S)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("delegated poll hiccup")
+            await asyncio.sleep(DELEGATE_POLL_S)
+
+
+def _merge_delegated(units: list[Unit]) -> list[Unit]:
+    """Replace each delegated surface's row with what its own process last said.
+
+    Runs BEFORE `rackpower.apply`, which keeps the last word: an operator who has taken a
+    surface off the rack must still see `offline`, not `unreachable`, because they know why
+    it is down and the reason they chose is more useful than the reason it is quiet.
+    """
+    try:
+        delegated = set(ports.delegated_surfaces())
+    except Exception:
+        # A malformed registry must not take the rack down. Report the monolith's own view.
+        log.exception("port registry unreadable; reporting in-process state")
+        return units
+    if not delegated:
+        return units
+    out: list[Unit] = []
+    for u in units:
+        if u.id not in delegated:
+            out.append(u)
+            continue
+        row, fetched, err = _delegated_rows.get(u.id, (None, 0.0, "not polled yet"))
+        age = time.monotonic() - fetched if fetched else None
+        if row is not None and age is not None and age <= DELEGATE_STALE_S:
+            out.append(u.model_copy(update={
+                "state": row.get("state", "ready"),
+                "detail": row.get("detail", u.detail),
+            }))
+        else:
+            # The reason has to be actionable: which process, on which port, and what the
+            # last error was. "unreachable" with a blank detail is the same failure as a
+            # stale `ready` -- it tells an operator nothing they can do.
+            where = ports.base_url(u.id) or "no port in ops/PORTS.tsv"
+            aged = f"last answered {age:.0f}s ago" if age is not None else "never answered"
+            out.append(u.model_copy(update={
+                "state": "unreachable",
+                "detail": (f"{u.id} runs as its own process and did not answer: {where} "
+                           f"({aged}). {err or ''} "
+                           f"Start it: sudo systemctl start symoneural-{u.id}").strip(),
+            }))
+    return out
+
+
 def build_status() -> Status:
     """Per-unit state for the rack.
 
@@ -2355,7 +2440,7 @@ def build_status() -> Status:
         # override replaces the derived state with a detail line that says an operator did
         # it, so the rack never reports an intervention as a fault. With the switch off this
         # is the identity function and costs one dict lookup.
-        units=rackpower.apply([
+        units=rackpower.apply(_merge_delegated([
             Unit(id="chat", label="SyMoNeuRaL Chat", slot="1U", state=gpu_unit("chat", chat_ok),
                  bus="gpu", href="/chat.html",
                  # Product names first -- these are our builds: our quantization, our
@@ -2619,7 +2704,7 @@ def build_status() -> Status:
             # what miner, coder, gateway and studio already do and what #95 exists to settle
             # for the one row that does not.
             Unit(**dispatchos.status()),
-        ]),
+        ])),
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
             vram_used_pct=round(100 * (1 - free / total)) if free and total else None,
@@ -3086,7 +3171,6 @@ async def gen(name: str) -> FileResponse:
     return FileResponse(path, media_type="image/png",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
-@app.post("/api/ravencalc", tags=["surfaces"])
 async def calc(body: CalcRequest,
                 _: Annotated[None, Depends(throttled_for("ravencalc"))]) -> dict:
     """Exact symbolic mathematics. No GPU, no lock, no queue.
@@ -3115,6 +3199,21 @@ async def calc(body: CalcRequest,
         raise HTTPException(400, exc.message)
     result["seconds"] = round(time.time() - started, 4)
     return json.loads(json.dumps(result, default=str))
+
+
+# Registered ONLY while the monolith owns this surface.
+#
+# When `ops/PORTS.tsv` marks `ravencalc` DELEGATED, `backend/apps/ravencalc/service.py`
+# answers `/api/ravencalc` on its own port and this route is never added -- so exactly one
+# process can answer, and "which one is authoritative" is settled in code rather than in a
+# document that can go stale. `apps/ports.py` refuses to report a surface delegated unless
+# the registry also gives it a port, so no configuration removes this route while leaving
+# nothing in its place.
+#
+# Registered by calling the decorator rather than applying it, because wrapping a 30-line
+# handler in an `if` means indenting the body and the diff then hides what changed.
+if not ports.delegated("ravencalc"):
+    app.post("/api/ravencalc", tags=["surfaces"])(calc)
 
 
 @app.post("/api/remix", response_model=RemixResult, tags=["surfaces"])
