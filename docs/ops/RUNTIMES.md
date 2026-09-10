@@ -90,7 +90,7 @@ started it — which means *where you test an engine changes what you are testin
 Binaries with no row above link no CUDA at all: `symoneural-listen` is CPU-only by
 design, and `symoneural-web` and `symoneural-gateway` are a Go and a Rust service.
 
-Three things follow from that table, and none of them was written down anywhere:
+Four things follow from that table, and none of them was written down anywhere:
 
 1. **`symoneural-diffuse` is the only one that diverges, and testing it in a shell
    tests the wrong thing.** Its RUNPATH pins CUDA 13.3 — the version it was compiled
@@ -105,7 +105,17 @@ Three things follow from that table, and none of them was written down anywhere:
    `update-alternatives --set cuda` silently changes which CUDA the chat engine links,
    with no rebuild and no warning. That is worth knowing before anyone tidies up the
    two CUDA installs.
-3. **The build recipe's note about `$ORIGIN` overstates it.** It says of the llm engine
+3. **The toolkit moved after the engines were built, and nothing recorded it.**
+   `nvcc` is now `13.4 (V13.4.59)` and the driver is `615.71.09`; the
+   `/etc/alternatives/cuda` symlink that decides all of the above was last written
+   `2026-09-09` and points at `/usr/local/cuda-13.4`. The four
+   engine binaries were built before that (their dates are in the artefacts table), so
+   `symoneural-llm` and `symoneural-miner` are running on a CUDA minor newer than the
+   one they were compiled with — silently, because nothing pins them.
+   `symoneural-diffuse` is the one that is not, and only because its absolute RUNPATH
+   holds it to 13.3. `restore/manifests/` still records the older pair; regenerating
+   it is an eleven-minute whole-disk job and is nobody's side effect.
+4. **The build recipe's note about `$ORIGIN` overstates it.** It says of the llm engine
    that *"RUNPATH is $ORIGIN so every library it loads is one this build produced"*.
    True of its own 23 libraries; not true of its three CUDA libraries, which come from
    the system tree. Recorded here rather than edited there — that file is generated

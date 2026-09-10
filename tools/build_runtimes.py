@@ -58,6 +58,25 @@ def _human(n: int) -> str:
     return str(n)
 
 
+def _nvcc() -> str:
+    m = re.search(r"release ([\d.]+), V([\d.]+)", _run(["nvcc", "--version"]))
+    return f"{m.group(1)} (V{m.group(2)})" if m else "not on PATH"
+
+
+def _driver() -> str:
+    out = _run(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"]).strip()
+    return out.splitlines()[0] if out else "unreadable"
+
+
+def _alt_ctime() -> str:
+    """When the CUDA alternative was last switched. `lstat`, so the symlink not its target."""
+    try:
+        st = pathlib.Path("/etc/alternatives/cuda").lstat()
+    except OSError:
+        return "absent"
+    return __import__("datetime").datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d")
+
+
 def _runpath(path: pathlib.Path) -> str:
     out = _run(["objdump", "-p", str(path)])
     hits = re.findall(r"^\s*(?:RUNPATH|RPATH)\s+(\S+)", out, re.M)
@@ -212,7 +231,7 @@ def render() -> str:
           "Binaries with no row above link no CUDA at all: `symoneural-listen` is CPU-only by",
           "design, and `symoneural-web` and `symoneural-gateway` are a Go and a Rust service.",
           "",
-          "Three things follow from that table, and none of them was written down anywhere:",
+          "Four things follow from that table, and none of them was written down anywhere:",
           "",
           "1. **`symoneural-diffuse` is the only one that diverges, and testing it in a shell",
           "   tests the wrong thing.** Its RUNPATH pins CUDA 13.3 — the version it was compiled",
@@ -227,7 +246,17 @@ def render() -> str:
           "   `update-alternatives --set cuda` silently changes which CUDA the chat engine links,",
           "   with no rebuild and no warning. That is worth knowing before anyone tidies up the",
           "   two CUDA installs.",
-          "3. **The build recipe's note about `$ORIGIN` overstates it.** It says of the llm engine",
+          "3. **The toolkit moved after the engines were built, and nothing recorded it.**",
+          f"   `nvcc` is now `{_nvcc()}` and the driver is `{_driver()}`; the",
+          f"   `/etc/alternatives/cuda` symlink that decides all of the above was last written",
+          f"   `{_alt_ctime()}` and points at `{pathlib.Path('/usr/local/cuda').resolve()}`. The four",
+          "   engine binaries were built before that (their dates are in the artefacts table), so",
+          "   `symoneural-llm` and `symoneural-miner` are running on a CUDA minor newer than the",
+          "   one they were compiled with — silently, because nothing pins them.",
+          "   `symoneural-diffuse` is the one that is not, and only because its absolute RUNPATH",
+          "   holds it to 13.3. `restore/manifests/` still records the older pair; regenerating",
+          "   it is an eleven-minute whole-disk job and is nobody's side effect.",
+          "4. **The build recipe's note about `$ORIGIN` overstates it.** It says of the llm engine",
           "   that *\"RUNPATH is $ORIGIN so every library it loads is one this build produced\"*.",
           "   True of its own 23 libraries; not true of its three CUDA libraries, which come from",
           "   the system tree. Recorded here rather than edited there — that file is generated",
