@@ -9,6 +9,7 @@
 #     sudo ops/commission-apply.sh --apply     # actually do it
 #     sudo ops/commission-apply.sh --apply --with-cuda-pin
 #     sudo ops/commission-apply.sh --apply --with-readiness-probe
+#     sudo ops/commission-apply.sh --apply --with-caddy-reload-fix
 #
 # Commissioning ran as `google` and has no sudo. `systemctl start|stop|restart` is
 # polkit-gated here -- it hangs waiting for an authentication that cannot arrive
@@ -42,6 +43,7 @@ APPLY=0
 CUDA_PIN=0
 FAILED=0
 READINESS=0
+RELOADFIX=0
 STEPS_DONE=0
 STEPS_SKIPPED=0
 
@@ -51,6 +53,7 @@ for arg in "$@"; do
     --dry-run)       APPLY=0 ;;
     --with-cuda-pin) CUDA_PIN=1 ;;
     --with-readiness-probe) READINESS=1 ;;
+    --with-caddy-reload-fix) RELOADFIX=1 ;;
     -h|--help)       sed -n '6,33p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     *) printf 'unknown argument: %s (try --help)\n' "$arg" >&2; exit 2 ;;
   esac
@@ -389,6 +392,116 @@ else
   say "    tools/smoke.py already waits for readiness on its own, so nothing is broken"
   say "    without this. This closes the hole at the systemd layer rather than in one caller."
 fi
+
+# =====================================================================  STEP 7
+hdr "7. Caddy ExecReload drop-in  [$([ "$RELOADFIX" -eq 1 ] && echo REQUESTED || echo SKIPPED, pass --with-caddy-reload-fix)]"
+# THE DEFECT
+# ----------
+# symoneural-web's two verbs name different config files, because the root-owned drop-in
+# 10-first-party-config.conf overrides ExecStart and NOT ExecReload:
+#
+#   systemctl restart symoneural-web  ->  <root>/ops/Caddyfile      (tracked; being served)
+#   systemctl reload  symoneural-web  ->  /etc/caddy/Caddyfile      (a copy)
+#
+# Byte-identical today, so invisible. Edit ops/Caddyfile and then reload, and the reload
+# pushes the older /etc copy into the running instance through the admin API on
+# 127.0.0.1:2019 -- silently reverting the edit. Which config is live becomes a function of
+# which verb was used last, which is not a property a web server should have.
+#
+# Verified that a reload really would take effect rather than failing safe: main.go:134
+# intercepts only --version/--license before caddycmd.Main(); the admin API is listening on
+# 127.0.0.1:2019 (no `admin` directive and no global block in the Caddyfile, so it is on by
+# default); /etc/caddy/Caddyfile is mode 644 and readable by User=caddy; and
+# `symoneural-web adapt --config /etc/caddy/Caddyfile` exits 0.
+#
+# THE DECISION, WHICH IS THE OWNER'S AND IS MADE
+# ----------------------------------------------
+# Owner, 2026-09-09: "ops/Caddyfile is authoritative. Not close. It is tracked, reviewable and
+# revertable; /etc/caddy/Caddyfile is a copy that exists only because the vendor unit template
+# named it. Extend the drop-in to override ExecReload as well as ExecStart."
+#
+# So this points the reload verb at the tracked file. After it lands, install-caddy.sh copying
+# ops/ -> /etc/ is belt-and-braces rather than load-bearing.
+#
+# `ExecReload=` is listed EMPTY first and then set. That reset is required, not stylistic:
+# drop-ins APPEND to Exec* lists, so without it the unit would carry two ExecReload commands
+# and run both -- reloading from the tracked file and then immediately from the copy, which is
+# the current bug with an extra step.
+if [ "$RELOADFIX" -eq 1 ]; then
+  write_file /etc/systemd/system/symoneural-web.service.d/20-execreload.conf 0644 <<EOF
+# Installed by ops/commission-apply.sh --with-caddy-reload-fix.
+# 10-first-party-config.conf points ExecStart at the tracked ops/Caddyfile but leaves
+# ExecReload on the template's /etc/caddy/Caddyfile, so the two verbs served different files.
+# The owner decided ops/Caddyfile is authoritative (2026-09-09). See that script's step 7.
+#
+# The empty ExecReload= is a RESET and is required: drop-ins append to Exec* lists.
+[Service]
+ExecReload=
+ExecReload=$ROOT/web/symoneural-web/build/symoneural-web reload --config $ROOT/ops/Caddyfile --force
+EOF
+  run "systemctl daemon-reload" systemctl daemon-reload
+  say ""
+  say "  VERIFY (no restart needed -- reload config is read at reload time):"
+  say "    python3 tools/serving_config_audit.py     # expect: no config-path incoherence found"
+  say "    systemctl show symoneural-web -p ExecReload | grep -o '\\-\\-config [^ ]*'"
+  say "    # then prove it end to end, on a change you can see and revert:"
+  say "    #   1. edit a comment in ops/Caddyfile"
+  say "    #   2. sudo systemctl reload symoneural-web"
+  say "    #   3. curl -s 127.0.0.1:2019/config/ | grep -c 'ops/Caddyfile'   # non-zero"
+  say ""
+  say "  REVERT (one file):"
+  say "    sudo rm /etc/systemd/system/symoneural-web.service.d/20-execreload.conf"
+  say "    sudo systemctl daemon-reload"
+  say ""
+  say "  RISK: low. It changes which file a reload reads, and the two files are"
+  say "  byte-identical right now, so applying it today is a no-op you can verify. It does"
+  say "  not touch the running process and needs no restart."
+else
+  say "    skipped -- pass --with-caddy-reload-fix to write it."
+  say "    Until it lands: after editing ops/Caddyfile use \`systemctl restart\`, or"
+  say "    \`sudo scripts/install-caddy.sh\` and then reload. A bare reload reverts you."
+fi
+
+# =====================================================================  STEP 8
+hdr "8. Two changes to ops/install-runtime.sh -- PROPOSED, NOT APPLIED"
+# Neither of these needs root and neither is applied here. They are edits to a tracked repo
+# script, and the owner asked for them as proposals so the installer does not change under
+# them: "Propose the change to the installer in commission-apply.sh; keep the RUNBOOK section 2
+# warning until it lands."
+say "  (a) BACK UP symoneural-web.service.d, the way the API's is already backed up."
+say "      Owner: \"An install that can silently change which Caddyfile is served, with no"
+say "      backup, is a hole regardless of which file wins.\" Independent of step 7."
+say ""
+say "      ops/install-runtime.sh:185   in the backup block, after the API line:"
+say "        [ -d \"\$UNIT_DIR/symoneural-api.service.d\" ] && run \"cp -a ... '\$BK/'\""
+say "      +   [ -d \"\$UNIT_DIR/symoneural-web.service.d\" ] && run \"cp -a '\$UNIT_DIR/symoneural-web.service.d' '\$BK/'\""
+say ""
+say "      ops/install-runtime.sh:239   in the ROLLBACK block, alongside the API line:"
+say "        [ -d \"\$BK/symoneural-api.service.d\" ] && cp -a \"\$BK/symoneural-api.service.d\" \"\$UNIT_DIR/\""
+say "      +   [ -d \"\$BK/symoneural-web.service.d\" ] && cp -a \"\$BK/symoneural-web.service.d\" \"\$UNIT_DIR/\""
+say ""
+say "      Both halves are needed. Backing up without restoring on rollback would leave a"
+say "      failed install having deleted the drop-in that decides which Caddyfile is served."
+say ""
+say "  (b) STOP INSTALLING symoneural-deploy as a side effect."
+say "      Owner: it stays uninstalled, and \"it should not be a side effect of"
+say "      install-runtime.sh ... the only unit whose activation writes to a public directory.\""
+say ""
+say "      ops/install-runtime.sh:41"
+say "        - UNITS=(symoneural-api symoneural-gateway symoneural-deploy)"
+say "        + UNITS=(symoneural-api symoneural-gateway)"
+say ""
+say "      Two consequences worth deciding at the same time, both at your discretion:"
+say "        * :44  ENV_FILES still lists /etc/symoneural/deploy.env. Harmless -- it is only"
+say "               backed up -- but it now refers to a unit the installer does not install."
+say "        * :112,114  \`need scripts/deploy.sh\` and \`need site\` become preconditions for"
+say "               something no longer installed, so a box without site/ would be refused"
+say "               an API install for no reason."
+say ""
+say "      NOT proposed: deleting ops/symoneural-deploy.service. It is a working unit file and"
+say "      the decision is that it is not installed automatically, not that it is unwanted."
+say ""
+say "  Neither edit is made. RUNBOOK section 2 keeps its warning until they land."
 
 # =====================================================================  summary
 hdr "summary  [$(mode)]"
