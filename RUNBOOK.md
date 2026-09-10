@@ -96,8 +96,20 @@ structural prerequisites, then prints the `apt install` line for anything missin
 **no virtualenv on the serving path** and all 20 loaded distributions are dpkg-owned — see
 `docs/ops/SERVING-MANIFEST.md`, which is generated from measurement.
 
-Optional surfaces (`cupy`, `torch`, `pyasic`, `playwright`, …) being absent is **not** a
-failure; it means that surface is unavailable. Ten are absent here and the API serves fine.
+It prints absence in **two separate lists**, and the distinction matters:
+
+- **installed in their own venv, by design** — `torch`, `transformers`, `peft`, `trl`,
+  `datasets`, `accelerate` in `training/.venv`; `rembg`, `onnxruntime` in
+  `backend/apps/sigils/.venv`; `pyasic` in `backend/apps/asicminer/.venv`. All nine are
+  present. They are checked against *their own* interpreter, because the serving path has no
+  virtualenv by policy and asking it about `transformers` answers nothing. A `GAP` here is
+  real; absence from the serving interpreter is not.
+- **absent everywhere — the surface is dark.** Three: `cupy` and `cuda` (the Reinforce CUDA
+  compute engine; `compute/ops.py:17` imports `cupy` unguarded) and `playwright` (the Studio
+  discovery crawler). These are features that cannot run.
+
+Neither list fails the check, and they used to print as the same thing — which made a fully
+installed training stack look switched off. See `review/commissioning-20260909/QUESTIONS-FOR-OWNER.md` §0.
 
 ## 3. Start, stop, and hold
 
