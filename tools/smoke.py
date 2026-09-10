@@ -26,11 +26,10 @@ listed again at the end so nobody can miss them.
   * `https://symoneural.com` **resolved to 127.0.0.1** -- the web server, the published
     document root, and the reverse proxy in front of the API.
 
-**Checking only the first is how a broken site passes its own tests.** As of 2026-09-09 the
-public `/api/*` returns 502 while `:8800` returns 200, because the Caddyfile routes `/api/*`
-through a gateway on :8000 that is disabled by design. It worked until 2026-09-04 15:50,
-when that gateway stopped. This script is red until the routing is decided -- see PHASE5 §0a
-and RUNBOOK.md.
+**Checking only the first is how a broken site passes its own tests.** For five days
+`/api/*` returned 502 through the proxy while `:8800` returned 200, because the Caddyfile
+routes those paths through a gateway on `:8000` that had stopped. Every local API test
+passed throughout. **Resolved 2026-09-09 22:00** by enabling `symoneural-gateway`.
 
 ## The limit of the second port, which matters more than it looks
 
@@ -38,9 +37,14 @@ and RUNBOOK.md.
 carries the right hostname so SNI and the site block work. It tells you what this proxy does
 with a request. **It cannot tell you whether anyone can reach this box**, and commissioning
 mistook the one for the other and published "unreachable from the public internet" on the
-strength of it. This box has a single private interface; everything public rides a NAT
-forward invisible from here. `check_external_traffic()` reads the access log, which is the
-closest this script can get, and it is a record of the past rather than a test.
+strength of it.
+
+That distinction turned out to be the whole story. `symoneural.com` resolves to
+**Cloudflare** (`104.21.22.186`, `172.67.206.158`), and not one of the 15,076 external
+requests this proxy has ever logged came from a Cloudflare range -- so visitor traffic
+terminates upstream and never arrives. Every green line below can be green while the site is
+dark to the public. `check_external_traffic()` reads the access log, which is the closest
+this script can get, and it is a record of the past rather than a test.
 """
 
 from __future__ import annotations
@@ -156,21 +160,79 @@ def check_preflight() -> None:
         record("preflight: every hard dependency present", PASS)
 
 
+READY_TIMEOUT = 25.0
+
+
+def wait_for_api(timeout: float = READY_TIMEOUT) -> tuple[bool, float]:
+    """Poll `/api/status` until it answers, and return (ready, seconds waited).
+
+    This exists because `sudo systemctl restart symoneural-api && python3 tools/smoke.py`
+    -- the obvious thing to type, and what RUNBOOK §3 tells you to type -- was a race that
+    reported nine failures against a perfectly healthy API. Measured on 2026-09-09:
+
+        22:09:55  old process logs "Finished server process"
+        22:09:56  systemd marks the unit active; `systemctl restart` returns
+        22:09:57  uvicorn logs "Uvicorn running on http://127.0.0.1:8800"
+
+    `systemctl restart` returns at 22:09:56. The port is not bound until 22:09:57. A smoke
+    run starting in that ~1 s window got `Connection refused` on every API check and
+    printed "SMOKE TEST FAILED" with nine red lines -- while reporting
+    `[PASS] symoneural-api.service is active`, because it was. Anyone reading that would
+    reasonably conclude they had just broken production by restarting it.
+
+    A smoke test that cannot survive being run immediately after a restart is a smoke test
+    that lies at the exact moment it is most likely to be run.
+    """
+    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    while True:
+        code, _, _ = http(f"{API}/api/status", timeout=5.0)
+        if code == 200:
+            return True, time.monotonic() - started
+        if time.monotonic() >= deadline:
+            return False, time.monotonic() - started
+        time.sleep(0.25)
+
+
 def check_service() -> None:
+    """Active AND listening. Either alone misleads, and this repo has been bitten by both.
+
+    `is-active` alone says nothing about whether the port is bound -- see `wait_for_api`.
+    The port alone says nothing about whether systemd will bring it back. So both are
+    reported, and the readiness wait is folded in here so every later check runs against a
+    service that has actually finished starting.
+    """
     r = subprocess.run(["systemctl", "is-active", "symoneural-api"],
                        capture_output=True, text=True, timeout=30)
     state = r.stdout.strip()
-    if state == "active":
-        record("symoneural-api.service is active", PASS)
-    else:
+    if state != "active":
         record("symoneural-api.service is active", FAIL,
                f"is-active reported '{state}'. Start it: sudo systemctl start symoneural-api")
+        return
+
+    ready, waited = wait_for_api()
+    if ready and waited < 0.5:
+        record("symoneural-api.service is active and listening", PASS)
+    elif ready:
+        record("symoneural-api.service is active and listening", PASS,
+               f"answered after {waited:.1f}s -- it was still starting when this run began, "
+               f"which is normal right after a restart")
+    else:
+        # Active but never bound: a real fault, and distinguishable from "not active".
+        record("symoneural-api.service is active and listening", FAIL,
+               f"the unit is active but nothing answered on {API} within {waited:.0f}s. "
+               f"That is longer than a normal start (~1.2 s), so it is not a race: the "
+               f"process is up and failing to serve, or crash-looping. "
+               f"journalctl -u symoneural-api -n 50")
 
 
 def check_status() -> dict | None:
     code, ctype, body = http(f"{API}/api/status")
     if code != 200:
-        record("GET /api/status -> 200", FAIL, f"got {code}. journalctl -u symoneural-api -n 50")
+        hint = ("could not connect at all -- the API stopped serving mid-run"
+                if code == 0 else "the API answered, but not with 200")
+        record("GET /api/status -> 200", FAIL,
+               f"got {code}: {hint}. journalctl -u symoneural-api -n 50")
         return None
     try:
         d = json.loads(body)
