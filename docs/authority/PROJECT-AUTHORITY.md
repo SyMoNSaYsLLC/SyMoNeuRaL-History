@@ -159,6 +159,21 @@ files, so a SHA beside it proves nothing and nobody can check it — and it expi
 Garrett clicks a button. It went from 3 to 4 inside the session that first stamped it, which is
 as short a shelf life as a figure can have.
 
+**But `run/progress.html` is only as fresh as the last manual run, and nothing on the page
+says so.** `symoneural-progress.timer` is a `--user` unit and is **`disabled`** — measured
+2026-09-09, and `disabled` against a preset of `enabled`, so it was turned off rather than
+never turned on. Whether that was deliberate is with the owner (QUESTIONS-FOR-OWNER.md row
+17). Until it is answered, **regenerate before you read the number**:
+
+```bash
+python3 tools/build_intake.py && python3 tools/archive_tasks.py && python3 tools/build_progress.py
+```
+
+The instruction above is still right — do not write a barrier count into this file. It just
+is not enough on its own: reading a stale page is how you get a confidently wrong figure from
+the one source that was supposed to prevent exactly that. If the timer is later enabled, this
+caveat becomes redundant rather than wrong.
+
 What is durable is the two ways back to 0, and there are only two: **he ticks `[x]` and you give
 it a task number, or he clicks Drop and the reason goes in the file.** Anything else you invent
 to make the number smaller is the third state this file already rejects.

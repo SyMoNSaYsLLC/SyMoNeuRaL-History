@@ -44,7 +44,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8800/api/status   # expect: 2
 |---|---|---|
 | `symoneural-api` | enabled, active | the API. `python3 backend/api.py` on `127.0.0.1:8800`, **loopback only** |
 | `symoneural-web` | enabled, active | the public web server on `:80`/`:443`, serving `/var/www/symoneural` |
-| `symoneural-gateway` | **enabled, active** (2026-09-09 22:00) | the proxy hop on `:8000`. Was off by design — enabling it fixed the 502. Runs with `validator: native-fallback` because `limiter.wasm` needs Go to build |
+| `symoneural-gateway` | **enabled, active** (2026-09-09 22:00) | the proxy hop on `:8000`. Was off by design — enabling it fixed the 502. `validator: native-fallback` is the **intended** mode here, not a defect — see §5 |
 | `symoneural-progress` | user unit, timer **disabled** | regenerates `run/progress.html`. Not on a schedule — see §7 |
 | `symoneural-deploy` | **never installed** | publishes `site/` to `/var/www/symoneural`. See §7 |
 
@@ -235,6 +235,24 @@ not where the configuration lives.** Ignore that instruction; see §6.
 `dispatchos surface enabled` and `project surface enabled` are missing, the config file is
 gone and those surfaces are **silently disabled**. Nothing logs a disable.
 
+### The gateway's `limiter.wasm` warning is expected — do not act on it
+
+On every start `symoneural-gateway` logs:
+
+```
+WARN limiter.wasm not found -- enforcing the token ceiling natively. Build it with
+`make build-wasm` (needs Go 1.24+) to run the sandboxed validator.
+```
+
+**Leave it.** Owner, 2026-09-09: *"It needs Go 1.24+, which is a root install for a warning.
+The native fallback enforces the ceiling by design."* The fallback is deliberate at
+`symon-gateway/src/middleware.rs:82` and the published token ceiling **is** enforced —
+`tools/smoke.py` proves it independently (`429 after 243 accepted requests`). The only thing
+the wasm build adds is running that validator inside a sandbox.
+
+So this is a decided configuration, not an outstanding task. Go is not installed and is not
+going to be for this.
+
 ## 6. Configuration — three paths, one of them real
 
 | path | reality |
@@ -335,9 +353,9 @@ sudo systemctl enable --now symoneural-gateway
 ```
 
 The unit is now `enabled` and `active`, `:8000` is listening, and the full smoke run is
-16/0/2. It starts with `validator: native-fallback` and a warning that `limiter.wasm` is
-absent — that is by design (`symon-gateway/src/middleware.rs:82`); building it needs Go 1.24+,
-which is not on this box. The token ceiling is enforced natively meanwhile.
+16/0/2. It logs a warning that `limiter.wasm` is absent and falls back to the native
+validator. **That is the intended path on this box — see §5. Do not treat the warning as
+something to fix.**
 
 **The caveat, and it is the important part: this did not make the site reachable.** Nothing
 external has arrived since 2026-09-04 12:39 — three hours *before* the gateway stopped — so
@@ -416,6 +434,40 @@ forward; the real site means traffic simply stopped.
 **Proof it is fixed, when it is:** an `/api/*` success in
 `tools/access_log_audit.py` dated later than `2026-09-04 01:15 UTC`. That is the only
 evidence that comes from outside, and no on-box check substitutes for it.
+
+### `backend/models/hf/` being 2.6 MB is CORRECT, not lost weights
+
+The HF cache holds metadata only — config, tokenizer, and the safetensors filenames as
+symlinks whose blobs live on Drive `Models/`. Per the model-storage policy, local
+`backend/models/` keeps only house-named runnable artefacts; upstream originals and
+conversion inputs are on Drive.
+
+**And the `symon-1.0-*` models ARE those upstreams**, converted and renamed:
+`symon-1.0-14b-q4_k_m` is `Qwen2.5-14B-Instruct`, `symon-1.0-27b-*` is `Qwen3.6-27B`.
+`backend/models/PROVENANCE.json` records every mapping.
+
+So: **37 GB of GGUF inference weights local and intact** (`smoke.py`: `model weights present
+5/5`), and the training inputs on Drive. Serving works with Drive unavailable. **To train,
+fetch the base safetensors from Drive first** — a normal pre-training step. Full detail:
+`backend/apps/studio/plugins/reinforce/TRAINING_BAY.md`.
+
+Do not read an empty `blobs/` as damage. A commissioning pass did, and was wrong.
+
+### Studio reporting `offline` is CORRECT, not a fault
+
+`/api/status` shows `studio: offline` with *"ComfyUI is not answering at 127.0.0.1:8188 --
+nothing starts it at boot"*. That is the intended state. `SYM_STUDIO_ENABLED=1` switches the
+**surface** on; the **engine** is hand-started:
+
+```bash
+scripts/symoneural-ui.sh start        # brings the bench up on 127.0.0.1:8188 (loopback only)
+```
+
+**There is deliberately no unit for it, and the reason is the GPU.** Owner, 2026-09-09: one
+16 GB card, and chat and image already contend for it under the governor — *"a third
+resident tenant coming up at boot would hold VRAM the governor then has to evict, which is
+the failure the whole lease design exists to prevent."* So do not "fix" this by writing a
+service file; `offline` until you start the bench is the design.
 
 ### Two other things listen on every interface, and both are deliberate
 

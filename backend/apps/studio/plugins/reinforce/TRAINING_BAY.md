@@ -191,6 +191,48 @@ the values its `help` metadata names. `vllm_mode` is the one that matters: it de
 Errors report an exception's **class name and stage only**, never its message: a tokeniser
 traceback can carry a training example in it.
 
+## Before you can train: the base weights live on Drive, by design
+
+**The `symon-1.0-*` models and the `Qwen/*` catalogue rows are the same models at two
+stages.** `symon-1.0-14b-q4_k_m` *is* `Qwen2.5-14B-Instruct`, converted and house-named;
+`symon-1.0-27b-*` is `Qwen3.6-27B`. `backend/models/PROVENANCE.json` is the record, and the
+catalogue now reads it — every GGUF row carries `upstream` and `same_model_as`, and the
+upstream rows name the house model they became.
+
+That matters because of where each stage is stored. The model-storage policy is:
+
+> Local `backend/models/` — only canonical SyMoNeuRaL house-named runnable artifacts and
+> required local metadata/state.
+> Drive `Models/` — public/original upstream distributions **and conversion inputs**.
+
+So the HF cache under `backend/models/hf/` holds **metadata only**: config, tokenizer and the
+safetensors *filenames*, as symlinks whose blobs are on Drive. `du` reports 2.6 MB. That is
+the policy executed correctly, **not damage** — broken symlinks are the shape
+`huggingface_hub` leaves behind when blobs are removed.
+
+**To train, fetch the base safetensors back from Drive `Models/` first.** That is a normal
+pre-training step, not an incident. `jobs.preflight()` will refuse a model with
+`present=False` rather than starting a download from an HTTP handler, and `scan_hf_cache()`
+now says which state a row is in:
+
+```
+Qwen/Qwen2.5-7B-Instruct   present=False   same_model_as=symon-1.0-7b-q4_k_m
+  OFFLOADED, not missing: 11 of 11 files in this snapshot are symlinks whose blobs are not
+  on this box. ... To TRAIN, fetch the base safetensors back from Drive first; the runtime
+  does not need them and works with Drive unavailable.
+```
+
+**The runtime does not need any of this**, and that is the point of the split: 37 GB of GGUF
+inference weights are local and intact and `tools/smoke.py` reports `model weights present
+5/5`. Serving works with Drive unavailable; training is the occasional operation that reaches
+for it.
+
+**Written down because it was not, and the cost was real.** A commissioning pass on
+2026-09-09 found `scan_hf_cache()` returning nothing, read the 2.6 MB cache and the broken
+symlinks as lost training weights, and published it as a finding against the project's
+standing objective. Every field it read was true. Nothing recorded that the two catalogue
+rows were one model, or that an offloaded cache is the intended steady state.
+
 ## Running it
 
 ```bash

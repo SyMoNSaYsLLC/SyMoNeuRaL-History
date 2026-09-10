@@ -1324,11 +1324,17 @@ class PreflightTests(unittest.TestCase):
         involved, so the trade-secret invariant keeps its unconditional coverage on any box.
         What is tested here is only that preflight is wired to that guard.
         """
-        if registry.find(SEVEN_B) is None:
-            self.skipTest(f"{SEVEN_B} is not on this box -- preflight refuses on the model "
-                          "before it reaches the dataset, so this cannot test the wiring. "
-                          "`backend/models` is a symlink to the main checkout and a fresh "
-                          "worktree does not have it. The guard's own tests still run.")
+        _seven = registry.find(SEVEN_B)
+        # The guard has to match this test's own reasoning above: preflight refuses on the
+        # MODEL before it reaches the dataset, so the wiring is only testable when the 7B is
+        # a usable training target. `is None` alone was too narrow -- once `fetchable()`
+        # started offering the 7B as a row (present=False, trainable=False) the model check
+        # began refusing with `model_not_trainable`, which is preflight working correctly and
+        # is still not a state this test can exercise.
+        if _seven is None or not _seven.trainable:
+            self.skipTest(f"{SEVEN_B} is not a usable training target on this box -- "
+                          "preflight refuses on the model before it reaches the dataset, so "
+                          "this cannot test the wiring. The guard's own tests still run.")
         r = jobs.preflight(SEVEN_B, "smoke", "training/corpus.jsonl")
         self.assertFalse(r["ok"])
         self.assertEqual(r["reason"], "dataset_protected")

@@ -51,6 +51,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import shutil
 import struct
 import subprocess
@@ -446,9 +447,101 @@ class Entry:
     arch_label: str = ""
     params: dict | None = None
     fetch_bytes: int = 0         # projected download size when `present` is false
+    #: What this artefact was converted from, read out of backend/models/PROVENANCE.json.
+    upstream: str = ""
+    #: The OTHER row in this same catalogue that is the same model at a different stage.
+    #: This field exists because of a specific misreading. The catalogue printed, adjacently:
+    #:     symon-1.0-14b-q4_k_m       present=True   trainable=False
+    #:     Qwen/Qwen2.5-14B-Instruct  present=False  trainable=False
+    #: Two rows about ONE model with nothing connecting them, which a commissioning pass read
+    #: on 2026-09-09 as "this box has no trainable weights at all" and escalated to a finding
+    #: against the project's standing objective. Both rows were telling the truth. What
+    #: neither could say was that they are the same model, house-named and upstream.
+    same_model_as: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+#: backend/models/PROVENANCE.json is the only place recording which upstream artefact each
+#: house name came from. It is authoritative and already existed; nothing here writes it.
+PROVENANCE = MODELS_DIR / "PROVENANCE.json"
+
+
+def _provenance_rows() -> list[dict]:
+    """The provenance manifest, or an empty list. Never raises -- a missing or malformed
+    manifest degrades the catalogue's labelling, it must not break the picker."""
+    try:
+        return json.loads(PROVENANCE.read_text()).get("weights", [])
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError):
+        return []
+
+
+def _base_model_name(repo: str) -> str:
+    """`bartowski/Qwen2.5-14B-Instruct-GGUF` -> `Qwen2.5-14B-Instruct`.
+
+    Strips the repackager org and the container marker, leaving the upstream model name --
+    which is what the HF cache directory is keyed on (`models--Qwen--Qwen2.5-14B-Instruct`).
+    Verified against all eleven manifest rows, including the lowercase
+    `leejet/FLUX.1-schnell-gguf`.
+    """
+    name = repo.split("/", 1)[1] if "/" in repo else repo
+    return re.sub(r"-GGUF$", "", name, flags=re.IGNORECASE)
+
+
+def _provenance_index() -> tuple[dict[str, str], dict[str, list[str]]]:
+    """(gguf stem -> "repo :: file", base upstream model name -> [house stems]).
+
+    The second half is what connects an upstream row to the house-named row it became.
+    """
+    by_stem: dict[str, str] = {}
+    by_base: dict[str, list[str]] = {}
+    for row in _provenance_rows():
+        path, repo = row.get("path") or "", row.get("upstream_repo") or ""
+        if not path or not repo:
+            continue
+        stem = pathlib.PurePosixPath(path).stem
+        upstream_file = row.get("upstream_file") or ""
+        by_stem[stem] = f"{repo} :: {upstream_file}" if upstream_file else repo
+        by_base.setdefault(_base_model_name(repo), []).append(stem)
+    return by_stem, by_base
+
+
+def cache_state(repo_id: str, hub: pathlib.Path | None = None) -> str:
+    """Why an HF model is not here: "offloaded", "partial", or "absent".
+
+    These are completely different situations and the catalogue used to print none of them.
+
+    `huggingface_hub` stores every file in a snapshot as a symlink into `blobs/`. Remove the
+    blobs -- which the model-storage policy does, because upstream originals and conversion
+    inputs belong on Drive `Models/` -- and the snapshot keeps its FILENAMES and loses its
+    contents. So an offloaded cache looks like a full directory listing over dead links, and
+    `du` reports kilobytes.
+
+    That is the intended steady state, not damage. A commissioning pass on 2026-09-09 read it
+    as lost training weights and published it as a finding against the project's standing
+    objective, because nothing anywhere distinguished it from "never fetched".
+
+      offloaded -- a snapshot exists and its files are dangling symlinks: the blobs are on
+                   Drive. Fetch them back to train; serving does not need them.
+      partial   -- a snapshot exists with real files but no usable config: damaged, re-fetch.
+      absent    -- no cache directory at all: never fetched here.
+    """
+    root = HF_HUB if hub is None else hub
+    repo_dir = root / ("models--" + repo_id.replace("/", "--"))
+    snapshots = repo_dir / "snapshots"
+    if not snapshots.is_dir():
+        return "absent"
+    for snap in sorted(snapshots.iterdir()):
+        if not snap.is_dir():
+            continue
+        names = sorted(snap.iterdir())
+        if not names:
+            continue
+        if any(f.is_symlink() and not f.exists() for f in names):
+            return "offloaded"
+        return "partial"
+    return "absent"
 
 
 def _rel(p: pathlib.Path) -> str:
@@ -488,9 +581,9 @@ def scan_hf_cache(hub: pathlib.Path = HF_HUB) -> list[Entry]:
             continue
         for snap in sorted(snapshots.iterdir()):
             cfg_path = snap / "config.json"
+            repo_id = repo_dir.name.removeprefix("models--").replace("--", "/", 1).replace("--", "/")
             if not cfg_path.is_file():
                 continue
-            repo_id = repo_dir.name.removeprefix("models--").replace("--", "/", 1).replace("--", "/")
             try:
                 cfg = json.loads(cfg_path.read_text())
                 a = arch_from_hf_config(cfg)
@@ -548,6 +641,16 @@ def scan_gguf(directory: pathlib.Path = GGUF_DIR) -> list[Entry]:
                     "produce one."),
             bytes_on_disk=size,
         )
+        # The house name alone hides what this is. `symon-1.0-14b-q4_k_m` and
+        # `Qwen/Qwen2.5-14B-Instruct` are one model at two stages, and an operator who cannot
+        # see that reads the catalogue as two families with one missing.
+        by_stem, by_base = _provenance_index()
+        entry.upstream = by_stem.get(path.stem, "")
+        if entry.upstream:
+            base = _base_model_name(entry.upstream.split(" :: ", 1)[0])
+            entry.same_model_as = base
+            entry.reason += (f" Converted from {entry.upstream}; the upstream HF weights for "
+                             f"{base} are the training target for this model.")
         try:
             header = read_gguf_header(path)
             entry.quantisation = header["file_type"] or "unknown"
@@ -564,6 +667,36 @@ def scan_gguf(directory: pathlib.Path = GGUF_DIR) -> list[Entry]:
             entry.reason += f" (header not readable: {type(exc).__name__})"
         out.append(entry)
     return out
+
+
+def _fetchable_pairs() -> list[tuple[str, str]]:
+    """(gguf filename, upstream HF repo id) for every local GGUF with recorded provenance.
+
+    Only LLM rows qualify: the image and whisper artefacts have upstreams too, but they are
+    not causal-LM training targets and offering them in this picker would be padding of
+    exactly the kind `fetchable()`'s docstring warns against.
+
+    The repo id is reconstructed as `<org>/<base>` from the upstream's base model name, using
+    the same org the HF cache keys on. `bartowski/Qwen2.5-14B-Instruct-GGUF` is a repackager;
+    the trainable original is `Qwen/Qwen2.5-14B-Instruct`.
+    """
+    seen: set[str] = set()
+    pairs: list[tuple[str, str]] = []
+    for row in _provenance_rows():
+        path = row.get("path") or ""
+        repo = row.get("upstream_repo") or ""
+        if not path.startswith("llm/") or not repo:
+            continue
+        base = _base_model_name(repo)
+        # Qwen publishes the originals; the GGUF repackagers do not host safetensors.
+        if not base.lower().startswith("qwen"):
+            continue
+        repo_id = f"Qwen/{base}"
+        if repo_id in seen:
+            continue
+        seen.add(repo_id)
+        pairs.append((pathlib.PurePosixPath(path).name, repo_id))
+    return sorted(pairs, key=lambda t: t[1])
 
 
 def fetchable() -> list[Entry]:
@@ -584,10 +717,12 @@ def fetchable() -> list[Entry]:
     """
     out: list[Entry] = []
     have = {e.id for e in scan_hf_cache() if e.trainable}
-    for gguf_name, repo_id in (
-        ("symon-1.0-draft-0.5b-q4_k_m.gguf", "Qwen/Qwen2.5-0.5B-Instruct"),
-        ("symon-1.0-14b-q4_k_m.gguf", "Qwen/Qwen2.5-14B-Instruct"),
-    ):
+    # Derived from backend/models/PROVENANCE.json rather than hardcoded. The hardcoded pair
+    # was ("0.5b", "14b") -- which silently excluded the 7B and the 27B, the two models whose
+    # HF blobs are actually offloaded to Drive. So the picker could not show the offload state
+    # for the only two models in it, and a reader who went looking found nothing at all.
+    # The manifest already knew every house-name -> upstream mapping; this reads it.
+    for gguf_name, repo_id in _fetchable_pairs():
         if repo_id in have:
             continue
         src = GGUF_DIR / gguf_name
@@ -597,12 +732,32 @@ def fetchable() -> list[Entry]:
             a = arch_from_gguf(read_gguf_header(src))
         except (GGUFError, OSError, struct.error):
             continue
+        # WHY it is absent, which the previous single sentence could not say. "Never
+        # fetched" and "offloaded to Drive by policy" want different actions, and reading the
+        # second as the first is what produced a false finding on 2026-09-09.
+        state = cache_state(repo_id)
+        _, by_base = _provenance_index()
+        house = by_base.get(_base_model_name(repo_id), [])
+        whereabouts = {
+            "offloaded": ("OFFLOADED, not missing: the HF cache holds this model's metadata "
+                          "over symlinks whose blobs are on Drive `Models/`. That is the "
+                          "model-storage policy working -- only house-named runnable "
+                          "artefacts stay local. Fetch the base safetensors back from Drive "
+                          "to train; serving never needs them and works with Drive down."),
+            "partial": ("a damaged cache entry: files are present but there is no usable "
+                        "config.json. Re-fetch it."),
+            "absent": ("never fetched on this box: the training stack needs safetensors plus "
+                       "a config.json."),
+        }[state]
+        also = (f" Already here as {', '.join(house)} in GGUF form for serving -- same model, "
+                f"different stage." if house else "")
         out.append(Entry(
-            id=repo_id, label=repo_id, kind="hf", path="backend/models/hf (not fetched)",
+            id=repo_id, label=repo_id, kind="hf",
+            path=f"backend/models/hf ({state})",
             present=False, trainable=False,
-            reason=("not on this box in HF format; the training stack needs safetensors plus "
-                    "a config.json. Fetch-on-demand is not implemented -- this row states the "
-                    "cost so the choice is informed, it is not a button."),
+            same_model_as=", ".join(house),
+            reason=(whereabouts + also + " Fetch-on-demand is not implemented -- this row "
+                    "states the cost so the choice is informed, it is not a button."),
             quantisation="bfloat16 (once fetched)", quant_label="projected",
             arch=asdict(a),
             arch_label="measured (architecture read from the GGUF of the same model on disk)",
