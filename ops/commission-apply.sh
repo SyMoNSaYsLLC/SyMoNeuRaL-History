@@ -11,6 +11,7 @@
 #     sudo ops/commission-apply.sh --apply --with-readiness-probe
 #     sudo ops/commission-apply.sh --apply --with-caddy-reload-fix
 #     sudo ops/commission-apply.sh --apply --with-surface-template
+#     sudo ops/commission-apply.sh --apply --with-site-deploy
 #
 # Commissioning ran as `google` and has no sudo. `systemctl start|stop|restart` is
 # polkit-gated here -- it hangs waiting for an authentication that cannot arrive
@@ -46,6 +47,7 @@ FAILED=0
 READINESS=0
 RELOADFIX=0
 SURFTMPL=0
+SITEDEPLOY=0
 STEPS_DONE=0
 STEPS_SKIPPED=0
 
@@ -57,6 +59,7 @@ for arg in "$@"; do
     --with-readiness-probe) READINESS=1 ;;
     --with-caddy-reload-fix) RELOADFIX=1 ;;
     --with-surface-template) SURFTMPL=1 ;;
+    --with-site-deploy) SITEDEPLOY=1 ;;
     -h|--help)       sed -n '6,33p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     *) printf 'unknown argument: %s (try --help)\n' "$arg" >&2; exit 2 ;;
   esac
@@ -119,6 +122,60 @@ write_file() {
 
 say "commission-apply  [$(mode)]   repo: $ROOT"
 [ "$APPLY" -eq 0 ] && say "  Nothing will be changed. Re-run with --apply (as root) to act."
+
+# =====================================================================  STEP 0
+hdr "0. THE ROOT QUEUE -- everything blocked on sudo, in one list"
+say "  Consolidated 2026-09-10. Ten steps had accumulated across five days of instructions;"
+say "  this is the order to run them in and which are independent, so it is one sitting."
+say ""
+say "  ONE COMMAND does the whole default queue:"
+say ""
+say "      sudo ops/commission-collect.sh                       # read-only, FIRST"
+say "      sudo ops/commission-apply.sh --apply \\"
+say "           --with-readiness-probe --with-caddy-reload-fix --with-site-deploy"
+say ""
+say "  Why collect first: /etc/systemd/system/symoneural-api.service.d/10-surfaces.conf"
+say "  overrides the API unit, is root-owned, and has never been read. Until dropins.txt"
+say "  exists, step 4 reinstalls a unit whose effective configuration is unknown."
+say ""
+say "  ---------------------------------------------------------------------------"
+say "  #   step  what                              flag                        dep"
+say "  ---------------------------------------------------------------------------"
+say "  1   0     read the drop-in                  (commission-collect.sh)     none"
+say "  2   4     StartLimit* reinstall, api+gw     always on with --apply      after 1"
+say "  3   6     readiness probe drop-in           --with-readiness-probe      with 2"
+say "  4   7     ExecReload -> ops/Caddyfile       --with-caddy-reload-fix     none"
+say "  5   10    publish the rack LED fix          --with-site-deploy          none"
+say "  6   1,2   needrestart + the apt GPU hook    always on with --apply      none"
+say "  7   3     CUDA 13.3 pin for diffuse         --with-cuda-pin             none"
+say "  8   9     surface@ template                 --with-surface-template     needs a surface"
+say "  ---------------------------------------------------------------------------"
+say ""
+say "  INDEPENDENT of each other: 4, 5, 6, 7. Any order, any sitting."
+say "  COUPLED: 2 and 3 both change the API unit, so run them together -- one"
+say "           daemon-reload and one restart instead of two."
+say "  ORDERED: 1 before 2. And 4 before any edit to ops/Caddyfile, because until it"
+say "           lands \`reload\` reads /etc/caddy/Caddyfile while \`restart\` reads"
+say "           ops/Caddyfile -- so an edit takes effect or not depending on the verb."
+say ""
+say "  WHAT THIS UNBLOCKS:"
+say "    step 4  -> the sigils gateway route (any Caddyfile edit is unsafe before it)"
+say "    step 5  -> the sigils delegation (an honest API behind a page that renders a"
+say "               dead surface as POWERED is worse than the monolith)"
+say "    step 2  -> crash-loop protection, which has never been in force: all three"
+say "               units report StartLimitIntervalUSec=10s against a template of 120s"
+say ""
+say "  NOT IN THE QUEUE, and why -- so they are not mistaken for omissions:"
+say "    step 5 (drop-in decision)  yours. Needs dropins.txt read first; the script"
+say "                               deliberately does not choose."
+say "    step 8 (installer edits)   repo changes, no root. Proposed with exact line"
+say "                               numbers; I apply them when you say."
+say "    step 9a (Caddy block)      proposed, not applied: ops/Caddyfile IS the live"
+say "                               config, so editing it points production at a port"
+say "                               with nothing on it until the surface runs."
+say "    the API restart            DONE, 2026-09-10 05:33:28. Not needed again."
+say "    the manifest regeneration  no root. One run on main at merge."
+
 
 # =====================================================================  STEP 1
 hdr "1. needrestart -- restart services whose libraries changed"
@@ -603,6 +660,65 @@ say "  check 8 -- the API itself returns 404 for a delegated surface it does not
 say "  404 is honest. Making Caddy return something friendlier is a later refinement and is"
 say "  NOT proposed here, because a custom error page that lies about which component failed"
 say "  would be worse than the 502."
+
+# =====================================================================  STEP 10
+hdr "10. Publish the rack LED fix to the webroot  [$([ "$SITEDEPLOY" -eq 1 ] && echo REQUESTED || echo SKIPPED, pass --with-site-deploy)]"
+# WHY THIS IS A ROOT ITEM AND NOT COSMETIC
+#
+# `Unit.state` gained a fifth value, `unreachable`, in d40f14fe. `site/console.js`'s `leds()`
+# lit a plate for any state it did not recognise, so a dead surface rendered with its POWER
+# LED ON. Fixed in 0f949990 and verified by executing the function under node across six
+# inputs -- including an unknown state, which now renders dark, so the bug CLASS is closed and
+# not just the instance.
+#
+# The repo is fixed. The webroot is not:
+#     site/console.js                     43ed86c2  (4 mentions of `unreachable`)
+#     /var/www/symoneural/console.js      b1045bbe  (0)
+#
+# The API can already emit `unreachable`. Until this lands, an honest API sits behind a page
+# that renders a dead process as powered -- which is worse than the monolith, because the page
+# is what a person looks at. This is sigils' second gate.
+if [ "$SITEDEPLOY" -eq 1 ]; then
+  if [ ! -x "$ROOT/scripts/deploy.sh" ] && [ ! -f "$ROOT/scripts/deploy.sh" ]; then
+    say "    !! $ROOT/scripts/deploy.sh is missing"
+    FAILED=$((FAILED + 1))
+  else
+    # NO --prune, deliberately. Two measured reasons:
+    #
+    # 1. The webroot holds `index.prev-20260901-010235.html`, the rollback copy of the last
+    #    deploy. deploy.sh exempts only `index.prev-$STAMP.html` -- THIS run's backup (:104) --
+    #    so an old one is an orphan and `--prune` deletes it. The run creates a fresh rollback
+    #    point, so the net effect is trading the 09-01 undo for a 09-10 one. That may be what
+    #    you want; it is not something this step should decide silently.
+    # 2. Nothing needs pruning for this fix. The 19 `site/*.json` files absent from the webroot
+    #    are absent BY DESIGN: `PUBLISH` (:61) allows html/css/js/png/svg/ico/txt/xml/webp/
+    #    woff2/jpg only, and `.json` is not a web asset here -- `openapi.json` is proxied to
+    #    FastAPI and the `art-*.json` are build-time metadata. I recorded them as drift; they
+    #    are not.
+    run "publish site/ to /var/www/symoneural (no --prune)" bash "$ROOT/scripts/deploy.sh"
+  fi
+  say ""
+  say "  VERIFY -- the page, not the repo:"
+  say "    md5sum $ROOT/site/console.js /var/www/symoneural/console.js   # must match"
+  say "    grep -c unreachable /var/www/symoneural/console.js            # expect 4"
+  say "    # and the behaviour, not the string:"
+  say "    node -e \"\$(sed -n '/var LIVE = {/,/function powered/p' /var/www/symoneural/console.js); console.log(powered('unreachable'), powered('ready'))\"   # false true"
+  say ""
+  say "  REVERT:"
+  say "    sudo install -o www-data -g www-data -m 644 \\"
+  say "      /var/www/symoneural/index.prev-<STAMP>.html /var/www/symoneural/index.html"
+  say "    # deploy.sh writes a fresh index.prev-<stamp>.html on every run; that is the undo"
+  say "    # for index.html. For console.js specifically, revert the repo file and re-run:"
+  say "    git -C $ROOT checkout 0f949990^ -- site/console.js && sudo $ROOT/scripts/deploy.sh"
+  say ""
+  say "  RISK: low. It copies web assets into a directory the API does not read. It does not"
+  say "  restart anything -- Caddy serves from disk, so the change is live on the next request."
+else
+  say "    skipped -- pass --with-site-deploy."
+  say "    Until it runs the webroot renders a dead surface as POWERED. No surface is"
+  say "    delegated yet, so nothing can currently reach that state -- which is exactly why"
+  say "    this must land before the sigils delegation flips, not after."
+fi
 
 # =====================================================================  summary
 hdr "summary  [$(mode)]"
