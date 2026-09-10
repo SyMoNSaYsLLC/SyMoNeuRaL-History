@@ -16,11 +16,24 @@ below still says "the agent", read it as whoever is doing the work.
 | Every folder and what it is for | `README.md` |
 | What may leave this box? | `docs/ops/EXPORTS.md` |
 | How do I install, start, verify or roll back the API? | `RUNBOOK.md` |
+| Where does each surface listen? | `ops/PORTS.tsv` — rendered as `docs/ops/PORTS.md` |
+| What runs behind a surface, what invokes it, what does it load, does it take the GPU lease? | `ops/RUNTIMES.tsv` — rendered as `docs/ops/RUNTIMES.md` |
 | How does any of this come back after a reinstall? | `restore/` — and `THIRD-PARTY-REBUILD-MANIFEST.tsv` for pinned upstreams |
 | Why is the code like this? | `git log` |
 
 There is one canonical current-state source (`ProjectStatus.md`) and one canonical handoff
 source (`docs/HANDOFF.md`). Do not create a third.
+
+The two registries are indexed here for the reason `restore/` had to be: an authority nobody
+is pointed at gets rediscovered as a gap. Both follow the same pattern — **a TSV that is the
+record, a reader in `backend/apps/`, a generator that renders the Markdown, and a test
+asserting the registries agree with each other.** The Markdown is a rendering, never the
+record; hand-editing it is a change that the next generator run silently discards.
+
+`docs/ops/RUNTIMES.md` is **not** `docs/ops/RUNTIME-PROFILES.md`, which is one word away and
+opens *"Status: stub. A contract for something not yet built."* The first is a reading of
+this disk; the second is a maturity ladder for runtimes that mostly are not here, written
+against the retired `engines/symoneural-*` layout. Neither supersedes the other.
 
 `RUNBOOK.md` (added 2026-09-09 by the commissioning pass) is **operational procedure, not
 state and not rules** — the commands in order, and what their output looks like. It is

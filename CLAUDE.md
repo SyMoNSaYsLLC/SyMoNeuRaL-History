@@ -19,6 +19,8 @@ pointer and nothing else — do not put rules here, or there will be two authori
 | Every folder and what it is for | `README.md` |
 | Tool policy: what is refused | `docs/authority/TOOL-POLICY.json` |
 | What may leave this box? | `docs/ops/EXPORTS.md` |
+| Where does each surface listen? | `ops/PORTS.tsv` → `docs/ops/PORTS.md` |
+| What runs behind it, what calls it, what does it load, does it take the lease? | `ops/RUNTIMES.tsv` → `docs/ops/RUNTIMES.md` |
 | How do I install, start, verify or roll back the API? | `RUNBOOK.md` |
 | How does any of this come back after a reinstall? | `restore/` — and `THIRD-PARTY-REBUILD-MANIFEST.tsv` for pinned upstreams |
 | Why is the code like this? | `git log` |
