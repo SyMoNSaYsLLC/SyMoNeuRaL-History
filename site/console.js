@@ -29,7 +29,21 @@
   var POWER =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
     'stroke-linecap="round"><path d="M12 3v9"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/></svg>';
-  var WORDS = {ready: 'ready', busy: 'busy', queued: 'queued', offline: 'offline'};
+  var WORDS = {ready: 'ready', busy: 'busy', queued: 'queued', offline: 'offline',
+               unreachable: 'unreachable'};
+  // Which states mean the surface is UP. Everything else -- including a state this
+  // file has never heard of -- renders dark.
+  //
+  // It was the other way round twice here: `state === 'offline' ? dark : lit`, in
+  // `leds()` and again in `subs()`. That is an allow-list of ways to be OFF, so any
+  // new state arrived LIT. `unreachable` was added to the API on 2026-09-10 and would
+  // have rendered a dead process as powered in both places -- the decorative status
+  // light `RackPowerGate` exists to prevent, arriving from the display side.
+  //
+  // Inverted deliberately: a plate lights only for a state known to mean alive, so an
+  // unknown state fails to 'looks down' rather than to 'looks fine'.
+  var LIVE = {ready: 1, busy: 1, queued: 1};
+  function powered(state) { return !!LIVE[state]; }
   // The bus plate names the hardware a surface actually runs on. It used to be
   // `u.bus === 'cpu' ? 'CPU' : 'GPU'`, which was fine while there were only two buses and
   // silently wrong the moment there were more -- an ASIC surface would have printed "GPU",
@@ -42,9 +56,18 @@
   function txt(id, value) { var n = el(id); if (n) n.textContent = value; }
 
   function leds(u) {
+    // `unreachable` is the split's state: the process that owns this row did not answer.
+    // It must NOT be folded into `offline`, which means the weights or engine are missing.
+    //
+    // Both branches below used to fall through for any unrecognised state, and `pwr` fell
+    // through to 'led on' -- so a dead surface rendered with its POWER LED LIT. That is the
+    // decorative status light `RackPowerGate` exists to prevent, arriving from the display
+    // side instead. Dark plate, amber activity blink: visibly not the same as `offline`,
+    // and visibly not healthy.
     var act = u.state === 'busy' ? 'led amber blink'
-            : u.state === 'queued' ? 'led blue blink' : 'led';
-    var pwr = u.state === 'offline' ? 'led' : 'led on';
+            : u.state === 'queued' ? 'led blue blink'
+            : u.state === 'unreachable' ? 'led amber blink' : 'led';
+    var pwr = powered(u.state) ? 'led on' : 'led';
     return '<span class="leds"><i class="' + pwr + '"></i><i class="' + act + '"></i>' +
            '<i class="led ' + (u.bus !== 'gpu' ? 'blue' : '') + '"></i></span>';
   }
@@ -70,7 +93,7 @@
     if (!u.sub || !u.sub.length) return '';
     return '<span class="usubs">' + u.sub.map(function (s) {
       return '<span class="usub" data-state="' + s.state + '">' +
-        '<i class="led' + (s.state === 'offline' ? '' : ' on') + '"></i>' +
+        '<i class="led' + (powered(s.state) ? ' on' : '') + '"></i>' +
         '<b>' + s.label + '</b>' +
         '<em>' + busLabel(s.bus) + '</em>' +
         '<u>' + (WORDS[s.state] || s.state) + '</u>' +

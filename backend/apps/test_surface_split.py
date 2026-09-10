@@ -240,6 +240,76 @@ class TheRackAdmitsWhenASurfaceIsGone(unittest.TestCase):
         self.assertEqual("unreachable", u.state)
 
 
+class TheRackPageDoesNotRenderADeadSurfaceAsPowered(unittest.TestCase):
+    """`site/console.js` must never light a plate for a state it does not know.
+
+    This is the display half of `unreachable`, and it was missed once. The API gained the
+    fifth state and `leds()` still read `state === 'offline' ? dark : lit` -- an allow-list of
+    ways to be OFF -- so a dead surface rendered with its POWER LED LIT in both `leds()` and
+    `subs()`. An honest API behind a page that says "powered" is worse than the monolith,
+    because the page is what a person looks at.
+
+    Asserted by EXECUTING the function under node, not by grepping for a string. The first
+    attempt at this fix failed silently because it was verified by reading rather than by
+    running -- the fixture was copied from a `sed`-indented display and never matched the
+    file, and the assertion error was misattributed to a different edit in the same script.
+    """
+
+    CONSOLE = ROOT / "site" / "console.js"
+
+    @staticmethod
+    def _node() -> str | None:
+        import shutil
+        return shutil.which("node")
+
+    def test_powered_lights_only_known_live_states(self):
+        node = self._node()
+        if node is None:
+            self.skipTest("node is not installed; this asserts JS behaviour by running it")
+        src = self.CONSOLE.read_text()
+        try:
+            a = src.index("  var LIVE = {")
+            b = src.index("function powered(state) { return !!LIVE[state]; }") + 49
+        except ValueError:
+            self.fail("site/console.js has no LIVE/powered() predicate -- the rack would fall "
+                      "through to lit for any unrecognised state")
+        harness = src[a:b] + """
+const out = {};
+for (const st of ['ready','busy','queued','offline','unreachable','some-future-state']) {
+  out[st] = powered(st);
+}
+console.log(JSON.stringify(out));
+"""
+        r = subprocess.run([node, "-e", harness], capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, r.returncode, r.stderr[-400:])
+        import json
+        got = json.loads(r.stdout)
+        self.assertTrue(got["ready"]);  self.assertTrue(got["busy"])
+        self.assertTrue(got["queued"])
+        self.assertFalse(got["offline"], "offline must not be powered")
+        self.assertFalse(got["unreachable"],
+                         "a surface whose process did not answer must not render as powered")
+        self.assertFalse(got["some-future-state"],
+                         "an UNKNOWN state must render dark -- lighting it is the bug class, "
+                         "not just the `unreachable` instance")
+
+    def test_both_renderers_use_the_predicate(self):
+        """`leds()` was fixed once and `subs()` was not. Folded children are reached through
+        their parent's process, so a dead process takes them with it."""
+        src = self.CONSOLE.read_text()
+        self.assertIn("powered(u.state)", src, "leds() must use the predicate")
+        self.assertIn("powered(s.state)", src, "subs() must use it too -- the folded children")
+        self.assertNotIn("s.state === 'offline' ? '' : ' on'", src,
+                         "the old allow-list form is back in subs()")
+
+    def test_the_state_vocabulary_covers_the_api(self):
+        """WORDS is what the plate prints. A state the API can emit and WORDS lacks falls back
+        to the raw id, which is honest but unstyled."""
+        src = self.CONSOLE.read_text()
+        for state in ("ready", "busy", "queued", "offline", "unreachable"):
+            self.assertIn(f"{state}:", src, f"WORDS has no entry for {state}")
+
+
 class TheUnitTemplate(unittest.TestCase):
     TEMPLATE = ROOT / "ops" / "symoneural-surface@.service"
 
