@@ -421,6 +421,12 @@ def check_serving_config() -> None:
     Worth a check anyway, because it is the trap sitting directly in front of the pending
     502 decision: the fix is an edit to the tracked `ops/Caddyfile`, and a `systemctl
     reload` afterwards would load `/etc/caddy/Caddyfile` instead and silently revert it.
+
+    COST NOTE for whoever edits this next: `audit()` is the heaviest check in the script --
+    three `systemctl show` calls, a `pgrep`, an admin-API GET and a `caddy adapt`
+    subprocess. It measured ~1 s here, which is affordable even in `--quick`. If you add
+    work to `audit()`, re-time `--quick` (advertised as about five seconds) rather than
+    assuming there is headroom.
     """
     label = "symoneural-web start and reload serve the same config"
     try:

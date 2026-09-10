@@ -237,11 +237,20 @@ with rc 0.
 **After editing `ops/Caddyfile`, use one of these — not a bare reload:**
 
 ```bash
+python3 tools/serving_config_audit.py        # first: confirm ExecStart still names ops/
 sudo systemctl restart symoneural-web        # serves the edited file. Brief drop.
 # or, no drop, and it re-syncs the copy so the trap closes for this edit:
 sudo scripts/install-caddy.sh                # cp ops/Caddyfile -> /etc, then validate
 sudo systemctl reload symoneural-web
 ```
+
+**Run that audit again after any install and after any reboot**, before trusting a restart
+to apply an edit. The arrangement rests on a drop-in nothing protects:
+`ops/install-runtime.sh` backs up and restores only `symoneural-api.service.d` (`:185`,
+`:239`), **not** `symoneural-web.service.d`. What happens to the web drop-in across an
+install is untested — it needs root. If it were ever lost, `ExecStart` falls back to the
+template's `/etc/caddy/Caddyfile` and the live config silently becomes the copy, which is
+this same trap arriving from the other direction.
 
 Fixing it properly means deciding which file is authoritative and needs root either way:
 extend the drop-in to override `ExecReload`, or retire the drop-in and let the template's
@@ -300,7 +309,9 @@ public hosts get knocked on continuously. That is an argument from how scanners 
 a measurement, and it is the reason to go and check rather than the conclusion.
 
 **Not testable from this box** — it has one interface, on the private address
-`192.168.0.163/24`, and everything public depends on a NAT forward invisible from inside.
+`192.168.0.163/24` — a private address, which is the measured part. Everything public
+therefore presumably depends on a NAT forward; the forward itself was never observed and
+cannot be from inside.
 
 ```bash
 dig +short symoneural.com          # does DNS still point here?
