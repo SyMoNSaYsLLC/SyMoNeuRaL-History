@@ -115,6 +115,62 @@ class AgreesWithThePortRegistry(unittest.TestCase):
                                 f"row in ops/RUNTIMES.tsv says what process answers it")
 
 
+class SurfaceIsARealRackUnit(unittest.TestCase):
+    """`SURFACE` is the `/api/status` unit id, and it is a different namespace from `LEASE`.
+
+    This test exists because the first version of the registry got it wrong twice. It wrote
+    `sigil` for two rows -- which is the *governor* surface name -- where the rack unit is
+    `sigils`, plural. `apps/ports.py` uses the unit id in the same column, so a `sigil` row
+    would have made `runtimes.for_surface("sigils")` return nothing for the id every other
+    consumer uses, and the delegation check below would have gone on passing because nothing
+    is delegated yet. A vacuous guard beside a wrong value is the worst of both.
+
+    Checked against `appdocs.APPLICATIONS`, the static declaration the rack is built from,
+    rather than a live `/api/status` call -- a test that needs the API running is a test that
+    gets skipped. `gpuminer` and `train` are legitimate ids: both are `kind="child"`, and they
+    do not appear in a flat reading of `/api/status` when their parent has no live sub-units.
+    Checking against the live endpoint is exactly how they would have been "corrected" to
+    something wrong.
+    """
+
+    def test_every_surface_is_an_id_appdocs_declares(self):
+        from apps import appdocs
+        ids = {a.id for a in appdocs.APPLICATIONS}
+        self.assertIn("sigils", ids, "reading appdocs failed; this check would be vacuous")
+        self.assertNotIn("sigil", ids, "if `sigil` ever becomes a real unit id, the "
+                                       "distinction this test guards has gone away")
+        for r in runtimes.rows():
+            if r["SURFACE"] == "-":
+                continue
+            with self.subTest(runtime=r["RUNTIME"], surface=r["SURFACE"]):
+                self.assertIn(r["SURFACE"], ids,
+                              f"{r['RUNTIME']} claims SURFACE {r['SURFACE']!r}, which is not "
+                              f"an /api/status unit id. Governor surface names go in LEASE.")
+
+    def test_the_two_namespaces_are_allowed_to_differ_and_one_does(self):
+        """Not a typo to be tidied away: `sigils` the unit, `sigil` the governor surface."""
+        row = runtimes.get("symoneural-diffuse", "sigils")
+        self.assertIsNotNone(row, "the sigils row is gone or renamed")
+        self.assertEqual("sigil", row["LEASE"],
+                         "the governor arm is `sigil` singular; changing this to match the "
+                         "unit id would silently move the surface to the `*)` default arm")
+
+    def test_appdocs_runtime_labels_are_not_asserted_against_this_registry(self):
+        """Recording why the obvious stronger check would be wrong.
+
+        `appdocs` also carries a `runtime` per unit, and asserting it equals this registry's
+        RUNTIME looks like the better test. It is not: `appdocs.runtime` is a PRODUCT label --
+        `studio` and `train` both say `symoneural-studio`, which is not an artefact on disk --
+        while this registry names the thing that is actually executed (`symoneural-ui`'s
+        `main.py`, `training/.venv/bin/python`). Two different questions. This test pins the
+        difference so nobody "fixes" one to match the other.
+        """
+        from apps import appdocs
+        by_id = {a.id: a.runtime for a in appdocs.APPLICATIONS}
+        self.assertEqual("symoneural-studio", by_id["train"])
+        self.assertEqual("training", runtimes.get("training", "train")["RUNTIME"])
+
+
 class AgreesWithTheBuildAuthority(unittest.TestCase):
     def test_every_build_recipe_names_an_existing_component(self):
         known = runtimes.build_recipe_ids()
@@ -196,7 +252,7 @@ class ArtefactsAndModels(unittest.TestCase):
         self.assertTrue(any(p.suffix == ".gguf" and "lora" in p.name.lower() for p in chat))
         image = runtimes.models("symoneural-diffuse", "image")
         self.assertEqual(4, len(image), "flux is unet + vae + clip_l + t5xxl")
-        self.assertEqual(image, runtimes.models("symoneural-diffuse", "sigil"),
+        self.assertEqual(image, runtimes.models("symoneural-diffuse", "sigils"),
                          "both surfaces run the same binary on the same weights; if these "
                          "ever diverge the rack is describing two different things")
 

@@ -89,6 +89,33 @@ tail -f .private/storage-reorg/latest.log
     (`command grep -rn '<pat>' .`). **Any audit of the form "were the claims in the
     reports corrected" gets a free pass otherwise**, which is the worst kind of check.
 
+11. **`cd backend && pytest apps -q` runs an eleven-minute, 48 GB whole-disk scan, and
+    rewrites nine tracked files.** `apps/test_restore_manifests.py:158` shells out to
+    `tools/build_restore_manifests.py` — twice, because `_generate()` is called for both the
+    determinism check and the HEAD comparison. That is correct behaviour for that test and a
+    trap for anyone who just wants a suite number: the run does not print for ten minutes, it
+    looks hung (the process sits in `do_sys_poll`, which is the scan, not a deadlock), and it
+    leaves `restore/RELEASE.json`, seven `restore/manifests/*.tsv` and
+    `THIRD-PARTY-REBUILD-MANIFEST.tsv` modified in the working tree — mostly revision-stamp
+    churn, since a generated manifest records the revision it was generated from.
+
+    Hit on 2026-09-10 by an agent who had been told explicitly not to run that script and ran
+    the whole directory without checking what was in it. The changes were reverted with
+    `git checkout -- restore/ THIRD-PARTY-REBUILD-MANIFEST.tsv`; nothing was lost, because the
+    script only reads.
+
+    **The scoped run this branch's reports have all used, and which finishes in about 60 s:**
+
+    ```bash
+    cd backend && python3 -m pytest apps/studio apps/test_surface_split.py \
+        apps/test_runtimes_registry.py apps/test_governor_paths.py -q
+    ```
+
+    If you do want the manifests regenerated, run `tools/build_restore_manifests.py` on
+    purpose and commit the result, rather than discovering it in `git status` afterwards. Note
+    that it is currently *due*: the manifests record nvcc 13.3 and driver 610.57.04, and the
+    box was upgraded to 13.4 / 615.71.09 on 2026-09-09 — see `docs/ops/RUNTIMES.md`.
+
 ### What is deliberately not done yet
 
 The post-transfer stages are gated on the transfers finishing, in this order: Drive dedupe

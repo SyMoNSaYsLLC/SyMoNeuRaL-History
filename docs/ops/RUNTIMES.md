@@ -29,8 +29,8 @@ eviction arms; one row would hide the sigil surface from the eviction logic.
 |---|---|---|---|---|---|---|---|
 | `symoneural-llm` | chat | engine-cuda | symoneural-api | long-lived-child | 8081 | chat | running |
 | `symoneural-diffuse` | image | engine-cuda | symoneural-api | per-request-subprocess | — | image | running |
-| `symoneural-diffuse` | sigil | engine-cuda | symoneural-api | per-request-subprocess | — | sigil | running |
-| `symoneural-listen` | sigil | engine-cpu | symoneural-api | per-request-subprocess | — | — | running |
+| `symoneural-diffuse` | sigils | engine-cuda | symoneural-api | per-request-subprocess | — | sigil | running |
+| `symoneural-listen` | sigils | engine-cpu | symoneural-api | per-request-subprocess | — | — | running |
 | `symoneural-listen` | voice | engine-cpu | symoneural-api | per-request-subprocess | — | — | disabled |
 | `symoneural-miner` | gpuminer | engine-cuda | symoneural-api | detached-job | — | miner | present |
 | `symoneural-ui` | studio | service-python | (hand, via scripts/symoneural-ui.sh) | hand-started | 8188 | comfy | present |
@@ -131,8 +131,8 @@ the fix would be somebody re-stamping the number.
 |---|---|---|---|
 | `symoneural-llm` | chat | `backend/api.py:1387` | `backend/api.py:2960` |
 | `symoneural-diffuse` | image | `backend/api.py:3114` | `backend/api.py:3127` |
-| `symoneural-diffuse` | sigil | `backend/apps/sigils/render.py:192` | `backend/apps/sigils/render.py:88` |
-| `symoneural-listen` | sigil | `backend/apps/sigils/listen.py:190` | — |
+| `symoneural-diffuse` | sigils | `backend/apps/sigils/render.py:192` | `backend/apps/sigils/render.py:88` |
+| `symoneural-listen` | sigils | `backend/apps/sigils/listen.py:190` | — |
 | `symoneural-listen` | voice | `backend/apps/voice/asr.py:254` | — |
 | `symoneural-miner` | gpuminer | `backend/apps/cryptominer/__init__.py:673` | `backend/apps/cryptominer/__init__.py:673` |
 | `symoneural-ui` | studio | `scripts/symoneural-ui.sh:75` | `backend/apps/studio/tools_impl/comfy_tool.py:195` |
@@ -160,11 +160,11 @@ live from `/proc` while each was running, and matched.
 | `symoneural-diffuse` | image | `backend/models/image/symoneural-image-vae.safetensors` | 319.8 MB |
 | `symoneural-diffuse` | image | `backend/models/image/symoneural-image-clip.safetensors` | 234.7 MB |
 | `symoneural-diffuse` | image | `backend/models/image/symoneural-image-t5-q8_0.gguf` | 4.8 GB |
-| `symoneural-diffuse` | sigil | `backend/models/image/symoneural-image-unet-q4_k.gguf` | 6.4 GB |
-| `symoneural-diffuse` | sigil | `backend/models/image/symoneural-image-vae.safetensors` | 319.8 MB |
-| `symoneural-diffuse` | sigil | `backend/models/image/symoneural-image-clip.safetensors` | 234.7 MB |
-| `symoneural-diffuse` | sigil | `backend/models/image/symoneural-image-t5-q8_0.gguf` | 4.8 GB |
-| `symoneural-listen` | sigil | `backend/models/whisper/symoneural-listen-base-en.bin` | 141.1 MB |
+| `symoneural-diffuse` | sigils | `backend/models/image/symoneural-image-unet-q4_k.gguf` | 6.4 GB |
+| `symoneural-diffuse` | sigils | `backend/models/image/symoneural-image-vae.safetensors` | 319.8 MB |
+| `symoneural-diffuse` | sigils | `backend/models/image/symoneural-image-clip.safetensors` | 234.7 MB |
+| `symoneural-diffuse` | sigils | `backend/models/image/symoneural-image-t5-q8_0.gguf` | 4.8 GB |
+| `symoneural-listen` | sigils | `backend/models/whisper/symoneural-listen-base-en.bin` | 141.1 MB |
 | `symoneural-listen` | voice | `backend/models/whisper/symoneural-listen-base-en.bin` | 141.1 MB |
 
 ## The GPU lease
@@ -221,8 +221,8 @@ A blank cell that is not explained is indistinguishable from one nobody looked a
 
 - **`symoneural-llm` / chat** — LEASE_SITE names the POST /api/chat holder; `gpu.hold("chat")` appears 4 times in api.py (the WebSocket, this one, remix, and the comment in start_llama) and they are the same lease, not four. The ARTEFACT is a 17 KB SHIM, not the engine: it links libsymoneural_llm_server_impl.so with a $ORIGIN RUNPATH and the real code is 23 shared libraries beside it. Sizing this runtime by its binary understates it by three orders of magnitude. Started once and kept, then evicted by whichever surface next wants the card. LLAMA_PORT is a module constant in api.py and does NOT read the environment -- two api.py processes both serving chat would collide on 8081 regardless of the lease.
 - **`symoneural-diffuse` / image** — Its RUNPATH is the ABSOLUTE /usr/local/cuda-13.3/... rather than $ORIGIN, so which CUDA it links depends on the environment it is started in -- see docs/ops/RUNTIMES.md. Runs directly inside gpu.hold, NOT wrapped in `gpu-governor.sh with`: wrapping it self-deadlocked on a lock the caller already held.
-- **`symoneural-diffuse` / sigil** — Same binary and same weights as the `image` row, DIFFERENT governor surface -- deliberately, so the rack can say which of the two holds the card. It has its own eviction arm; folding it into `image` would make the surface invisible in the readout the site exists to be honest about.
-- **`symoneural-listen` / sigil** — REACHABLE TODAY, ungated: POST /api/sigils/from-audio, and /api/sigils/state reports "audio": true on this box. Takes NO lease and that is the design, not an omission -- CPU transcription can run while another surface holds the card, so a spoken sticker pays only the GPU wait a typed one already pays.
+- **`symoneural-diffuse` / sigils** — Same binary and same weights as the `image` row, DIFFERENT governor surface -- deliberately, so the rack can say which of the two holds the card. It has its own eviction arm; folding it into `image` would make the surface invisible in the readout the site exists to be honest about.
+- **`symoneural-listen` / sigils** — REACHABLE TODAY, ungated: POST /api/sigils/from-audio, and /api/sigils/state reports "audio": true on this box. Takes NO lease and that is the design, not an omission -- CPU transcription can run while another surface holds the card, so a spoken sticker pays only the GPU wait a typed one already pays.
 - **`symoneural-listen` / voice** — The second path to the same engine. CONFIG-GATED: /api/voice/* is registered but returns a 503 naming SYMONEURAL_VOICE_ENABLED=1 and SYMONEURAL_VOICE_TOKEN, neither of which is set on this box. The code and the weights are both here; a switch is off.
 - **`symoneural-miner` / gpuminer** — NOT under build/bin/ like the other three engines -- kawpowminer's CMake puts it under build/kawpowminer/, and a path built from the naming convention finds nothing. Uses the `with` form, which releases from a trap on crash; a bare acquire/release pair does not. CLEAN_BUILD_SUPPORTED=NO in BUILD-RECIPES: rebuilding needs a prebuilt static prefix and a ~40 minute two-stage job.
 - **`symoneural-ui` / studio** — ComfyUI. Nothing starts it at boot and no unit exists, so `studio` reporting offline is correct rather than a fault. Its eviction arm calls symoneural-ui.sh stop and waits for the DRAIN, never a bare pkill: the process exiting is not the memory coming back.
