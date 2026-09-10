@@ -20,9 +20,17 @@ pointer and nothing else — do not put rules here, or there will be two authori
 | Tool policy: what is refused | `docs/authority/TOOL-POLICY.json` |
 | What may leave this box? | `docs/ops/EXPORTS.md` |
 | How do I install, start, verify or roll back the API? | `RUNBOOK.md` |
+| How does any of this come back after a reinstall? | `restore/` — and `THIRD-PARTY-REBUILD-MANIFEST.tsv` for pinned upstreams |
 | Why is the code like this? | `git log` |
 
 One canonical current-state source and one canonical handoff source. Do not create a third.
+
+`restore/` is indexed here for the same reason `RUNBOOK.md` is: it is the only record of how
+each untracked component is rebuilt — which upstream revision, which build script, which
+artefact hash — and nothing an arriving agent reads pointed at it. A commissioning pass
+wrote a suggestion on 2026-09-09 claiming two 8 GB untracked trees had no restore path,
+when both were already pinned to verified upstream commits in there. That is what an
+unindexed authority costs.
 
 `RUNBOOK.md` is neither of those two and is indexed here so it does not become a third by
 accident. It is **operational procedure only** — the commands, in order, with what their

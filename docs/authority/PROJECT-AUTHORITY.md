@@ -16,6 +16,7 @@ below still says "the agent", read it as whoever is doing the work.
 | Every folder and what it is for | `README.md` |
 | What may leave this box? | `docs/ops/EXPORTS.md` |
 | How do I install, start, verify or roll back the API? | `RUNBOOK.md` |
+| How does any of this come back after a reinstall? | `restore/` — and `THIRD-PARTY-REBUILD-MANIFEST.tsv` for pinned upstreams |
 | Why is the code like this? | `git log` |
 
 There is one canonical current-state source (`ProjectStatus.md`) and one canonical handoff
