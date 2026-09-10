@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-import cupy as cp
+from symoneural.compute._cupy import cp
 import numpy as np
 
 from symoneural.compute.ops import Ops

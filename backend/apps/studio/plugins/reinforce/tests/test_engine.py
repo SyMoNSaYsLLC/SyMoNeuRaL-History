@@ -6,7 +6,7 @@ the engine's own maths runs entirely in hand-written kernels.
 
 from __future__ import annotations
 
-import cupy as cp
+from symoneural.compute._cupy import cp
 import numpy as np
 import pytest
 

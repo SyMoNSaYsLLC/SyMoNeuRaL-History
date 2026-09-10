@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import cupy as cp
+from .compute._cupy import cp
 import numpy as np
 
 from .compute.ops import Ops, cupy_barrier

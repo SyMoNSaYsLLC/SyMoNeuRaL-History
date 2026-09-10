@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import cupy as cp
 import numpy as np
 
 from ..core.errors import CapabilityWaived, SymoneuralError
+from ._cupy import cp
 from .program import KernelCache
 
 try:
