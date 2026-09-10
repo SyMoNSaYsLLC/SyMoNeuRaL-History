@@ -119,6 +119,47 @@ sudo systemctl restart symoneural-api      # after changing backend/api.py
 sudo systemctl stop    symoneural-api      # UNTIL THE NEXT BOOT ONLY
 ```
 
+### `restart` returns BEFORE the API is listening — wait for the port, not for systemctl
+
+The unit is `Type=exec`, so systemd reports it `active` the moment the binary execs — before
+`api.py` imports, before `runtimeconfig.load()`, before uvicorn binds. Measured 2026-09-09:
+
+```
+22:09:55.961563  old process logs "Finished server process"
+22:09:56         systemd marks the unit active; `systemctl restart` RETURNS
+22:09:57.367066  uvicorn logs "Uvicorn running on http://127.0.0.1:8800"
+```
+
+**~1.4 s in which `systemctl is-active` says `active` and every connection to `:8800` is
+refused.** This is not theoretical: `sudo systemctl restart symoneural-api && python3
+tools/smoke.py` — the sequence this section used to imply — landed in that window and
+reported nine failures against a completely healthy API.
+
+**So never chain a test straight off `restart`.** Wait for the port:
+
+```bash
+sudo systemctl restart symoneural-api
+ops/api-readiness-probe.sh            # blocks until /api/status answers 200, or fails
+python3 tools/smoke.py
+```
+
+`tools/smoke.py` now does this wait internally, so running it alone is safe — it treats
+`activating` as a wait state and reports how long it waited. The probe is there for when you
+want the wait in a script of your own, and it distinguishes *refused* from *answering
+non-200*, which want different investigations.
+
+A one-liner, if you prefer:
+
+```bash
+sudo systemctl restart symoneural-api && ops/api-readiness-probe.sh && echo UP
+```
+
+**The permanent fix needs root and is not applied.** `ops/commission-apply.sh
+--with-readiness-probe` (step 6) writes an `ExecStartPost` drop-in that makes the start job
+itself block until the port answers — measured to hold `is-active` at `activating` for the
+whole window instead of lying. It is opt-in because it can fail a start job; read step 6
+before running it.
+
 **A `stop` is not a hold.** The unit is `enabled`, so a stopped service comes back at the
 next boot. That has already caused confusion once — a deliberate hold was in force, the box
 rebooted, and the API started itself. For a hold that survives a reboot:

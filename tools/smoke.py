@@ -207,8 +207,29 @@ def check_service() -> None:
     r = subprocess.run(["systemctl", "is-active", "symoneural-api"],
                        capture_output=True, text=True, timeout=30)
     state = r.stdout.strip()
+
+    # `activating` is a WAIT state, not a failure, and treating it as one would break this
+    # check under the very unit change that fixes the underlying defect. Measured on a
+    # throwaway --user unit with Type=exec + a polling ExecStartPost: `is-active` reports
+    # `activating` with SubState=start-post for the whole startup window and only flips to
+    # `active`/`running` once the probe succeeds. So a service that is coming up correctly
+    # spends seconds in `activating`, and the first version of this fix would have called
+    # that a hard failure -- swapping one wrong answer for another.
+    if state == "activating":
+        ready, waited = wait_for_api()
+        state = subprocess.run(["systemctl", "is-active", "symoneural-api"],
+                               capture_output=True, text=True, timeout=30).stdout.strip()
+        if ready and state == "active":
+            record("symoneural-api.service is active and listening", PASS,
+                   f"was still activating when this run began; answered after {waited:.1f}s")
+            return
+        record("symoneural-api.service is active and listening", FAIL,
+               f"stuck in '{state}' -- no answer on {API} after {waited:.0f}s. "
+               f"journalctl -u symoneural-api -n 50")
+        return
+
     if state != "active":
-        record("symoneural-api.service is active", FAIL,
+        record("symoneural-api.service is active and listening", FAIL,
                f"is-active reported '{state}'. Start it: sudo systemctl start symoneural-api")
         return
 

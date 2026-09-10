@@ -8,6 +8,7 @@
 #     ops/commission-apply.sh                  # DRY RUN -- the default, prints and changes nothing
 #     sudo ops/commission-apply.sh --apply     # actually do it
 #     sudo ops/commission-apply.sh --apply --with-cuda-pin
+#     sudo ops/commission-apply.sh --apply --with-readiness-probe
 #
 # Commissioning ran as `google` and has no sudo. `systemctl start|stop|restart` is
 # polkit-gated here -- it hangs waiting for an authentication that cannot arrive
@@ -40,6 +41,7 @@ BACKUP="/var/backups/symoneural-commission"
 APPLY=0
 CUDA_PIN=0
 FAILED=0
+READINESS=0
 STEPS_DONE=0
 STEPS_SKIPPED=0
 
@@ -48,6 +50,7 @@ for arg in "$@"; do
     --apply)         APPLY=1 ;;
     --dry-run)       APPLY=0 ;;
     --with-cuda-pin) CUDA_PIN=1 ;;
+    --with-readiness-probe) READINESS=1 ;;
     -h|--help)       sed -n '6,33p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'; exit 0 ;;
     *) printf 'unknown argument: %s (try --help)\n' "$arg" >&2; exit 2 ;;
   esac
@@ -308,6 +311,84 @@ say "         which is neither root-owned nor invisible; or"
 say "      c) document in ops/ why it is legitimately host-local and must stay out of Git."
 say "    Not chosen here: choosing without reading it would be a guess in a script that runs"
 say "    as root."
+
+# =====================================================================  STEP 6
+hdr "6. Readiness probe drop-in  [$([ "$READINESS" -eq 1 ] && echo REQUESTED || echo SKIPPED, pass --with-readiness-probe)]"
+# THE DEFECT
+# ----------
+# symoneural-api.service is Type=exec, so systemd reports the unit `active` the instant the
+# binary execs -- before api.py imports, before runtimeconfig.load(), before uvicorn binds.
+# Measured 2026-09-09:
+#
+#   22:09:55.961563  old process logs "Finished server process"
+#   22:09:56         systemd marks the unit active; `systemctl restart` RETURNS
+#   22:09:57.367066  uvicorn logs "Uvicorn running on http://127.0.0.1:8800"
+#
+# ~1.4 s during which is-active says `active` and every connection to :8800 is refused. The
+# owner ran the sequence RUNBOOK section 3 prescribes -- `systemctl restart symoneural-api &&
+# python3 tools/smoke.py` -- landed in that window, and got nine failures against a healthy
+# API with `[PASS] symoneural-api.service is active` printed above them.
+#
+# WHY ExecStartPost AND NOT Type=notify
+# -------------------------------------
+# Measured on a throwaway --user unit imitating the delay, Type=exec plus a polling
+# ExecStartPost:
+#
+#   during startup:  is-active = activating   (SubState=start-post)  for the whole window
+#   after the probe: is-active = active       (SubState=running)
+#   `systemctl start` returned after 3.20 s with the port already listening
+#
+# So the start job becomes synchronous with readiness and is-active stops lying. Cost: a
+# restart takes ~1.4 s longer to RETURN -- the delay was always there, it is just no longer
+# hidden. No code change, no new dependency.
+#
+# Type=notify is more precise in principle -- READY=1 from the process itself rather than a
+# probe from outside -- and python3-systemd (235-1+b6) is already installed. But backend/api.py
+# has no sd_notify call anywhere (grepped for sd_notify, NOTIFY_SOCKET, sdnotify) and uvicorn
+# has no built-in support, so it needs a hook written into the SERVING PATH plus
+# python3-systemd promoted to a hard start dependency in tools/preflight.py. A port probe also
+# tests what clients actually need. RECOMMENDATION: ExecStartPost, which is what this writes.
+#
+# TimeoutStartSec must exceed the probe timeout, because ExecStartPost time counts against it.
+# Both are set together below for that reason.
+if [ "$READINESS" -eq 1 ]; then
+  write_file /etc/systemd/system/symoneural-api.service.d/20-readiness.conf 0644 <<EOF
+# Installed by ops/commission-apply.sh --with-readiness-probe.
+# Makes \`systemctl start/restart\` block until the API answers on :8800, so \`is-active\`
+# cannot report \`active\` while connections are refused. See that script's step 6.
+#
+# ExecStartPost is ADDITIVE across drop-ins -- this does not override 10-surfaces.conf.
+[Service]
+ExecStartPost=$ROOT/ops/api-readiness-probe.sh
+TimeoutStartSec=120
+EOF
+  run "systemctl daemon-reload" systemctl daemon-reload
+  say ""
+  say "  VERIFY (after the next restart, which is yours to choose):"
+  say "    systemctl show symoneural-api -p ExecStartPost -p TimeoutStartUSec"
+  say "    time sudo systemctl restart symoneural-api   # should now take ~1.4s longer to return"
+  say "    systemctl is-active symoneural-api           # must be 'active', not 'activating'"
+  say "    curl -s -o /dev/null -w '%{http_code}\\n' localhost:8800/api/status   # expect 200"
+  say "    journalctl -u symoneural-api -n 5 | grep readiness   # the probe logs its wait"
+  say ""
+  say "  REVERT (one file, nothing else touched):"
+  say "    sudo rm /etc/systemd/system/symoneural-api.service.d/20-readiness.conf"
+  say "    sudo systemctl daemon-reload"
+  say "    # the running service is unaffected until the next restart either way"
+  say ""
+  say "  RISK, stated plainly: ExecStartPost exiting non-zero FAILS THE START JOB and systemd"
+  say "  tears the service down. That is the intended contract -- a service that cannot serve"
+  say "  should not be reported active -- but it converts 'up but not answering' from a silent"
+  say "  state into a hard start failure. The probe allows 45 s against a measured ~1.4 s"
+  say "  start, so a slow-but-healthy boot is not killed. If you would rather it never be"
+  say "  able to fail a start, do not install this and keep the fix in tools/smoke.py only,"
+  say "  which is already in place and needs no root."
+else
+  say "    skipped -- pass --with-readiness-probe to write it. Read the block above first;"
+  say "    it can fail a start job, which is a real behaviour change to the unit."
+  say "    tools/smoke.py already waits for readiness on its own, so nothing is broken"
+  say "    without this. This closes the hole at the systemd layer rather than in one caller."
+fi
 
 # =====================================================================  summary
 hdr "summary  [$(mode)]"
