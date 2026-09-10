@@ -39,12 +39,14 @@ with a request. **It cannot tell you whether anyone can reach this box**, and co
 mistook the one for the other and published "unreachable from the public internet" on the
 strength of it.
 
-That distinction turned out to be the whole story. `symoneural.com` resolves to
+That distinction is the whole story. As of 2026-09-09 22:00, `symoneural.com` resolves to
 **Cloudflare** (`104.21.22.186`, `172.67.206.158`), and not one of the 15,076 external
-requests this proxy has ever logged came from a Cloudflare range -- so visitor traffic
-terminates upstream and never arrives. Every green line below can be green while the site is
-dark to the public. `check_external_traffic()` reads the access log, which is the closest
-this script can get, and it is a record of the past rather than a test.
+requests this proxy has ever logged came from a Cloudflare range -- so Cloudflare has never
+successfully proxied a request to this Caddy. **When DNS changed is not known**, so whether
+that relates to the 2026-09-04 traffic cliff is open; what is certain is that nothing
+external has arrived since. Every green line below can be green while the site is dark to
+the public. `check_external_traffic()` reads the access log, which is the closest this
+script can get, and it is a record of the past rather than a test.
 """
 
 from __future__ import annotations

@@ -18,19 +18,18 @@ Eighteen checks, about five seconds. Non-zero exit means something is broken, an
 failure names the cause. Drop `--quick` for the full run (adds a real image render and a
 GPU-lease concurrency proof, about 40 s).
 
-**As of 2026-09-09 this exits 1: 12 passed, 1 failed, 5 skipped.** The failure is a real
-defect, not a flaky test — see [The public API returns 502](#the-public-api-returns-502).
+**As of 2026-09-09 22:20 the full run is 16 passed, 0 failed, 2 skipped, exit 0.** The 502
+that made this red for five days was resolved by enabling `symoneural-gateway`.
 
-**Read the skips.** They are printed again at the end for a reason, and two of them are not
-routine:
+**Read the skips anyway** — they are printed again at the end because neither is routine:
 
-- *external traffic seen in the last 2 days* — skipped because there has been none for
-  five, which may be a fault this box cannot detect (§7).
-- *symoneural-web start and reload serve the same config* — skipped because they do not
-  (§6). Root-owned, so a smoke test cannot fix it; it reports rather than fails.
+- *external traffic seen in the last 2 days* — none for five days. **This is the live
+  problem** and the box cannot detect it (§7). Everything else can be green while the site
+  is dark to the public.
+- *symoneural-web start and reload serve the same config* — they do not (§6). Root-owned, so
+  a smoke test cannot fix it; it reports rather than fails.
 
-The other three are the two `--quick` omissions and a `gpu.driver` field the running service
-predates.
+`--quick` skips two more (the image render and the lease proof).
 
 Faster still, if you only want to know whether the API is alive:
 
@@ -45,7 +44,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8800/api/status   # expect: 2
 |---|---|---|
 | `symoneural-api` | enabled, active | the API. `python3 backend/api.py` on `127.0.0.1:8800`, **loopback only** |
 | `symoneural-web` | enabled, active | the public web server on `:80`/`:443`, serving `/var/www/symoneural` |
-| `symoneural-gateway` | **disabled, inactive** | a proxy hop on `:8000`. Off by design: no contract, no wallet, no key material |
+| `symoneural-gateway` | **enabled, active** (2026-09-09 22:00) | the proxy hop on `:8000`. Was off by design — enabling it fixed the 502. Runs with `validator: native-fallback` because `limiter.wasm` needs Go to build |
 | `symoneural-progress` | user unit, timer **disabled** | regenerates `run/progress.html`. Not on a schedule — see §7 |
 | `symoneural-deploy` | **never installed** | publishes `site/` to `/var/www/symoneural`. See §7 |
 
@@ -57,9 +56,10 @@ internet -> :443 symoneural-web -> /var/www/symoneural        (static files)
                                 \-> :8800 API directly        (/docs, /openapi.json, sections)
 ```
 
-**The `:8000` hop is disabled**, which is why `/api/*` currently 502s through the proxy. The
-API is fine; the route to it is not. It worked until 2026-09-04 15:50, when the gateway
-stopped — see §7, and `tools/access_log_audit.py` for how to check what real clients get.
+**The `:8000` hop was disabled** from 2026-09-04 15:50 to 2026-09-09 22:00, which made
+`/api/*` 502 through the proxy while `:8800` served perfectly. It is enabled and running now.
+See §7 — and note that fixing it did **not** make the site reachable: nothing external has
+arrived since 09-04 either way.
 
 ## 2. Install
 
@@ -258,69 +258,125 @@ extend the drop-in to override `ExecReload`, or retire the drop-in and let the t
 
 ## 7. Known problems
 
-### The public API returns 502
+### The public API returned 502 — RESOLVED 2026-09-09 22:00
 
-**Symptom.** `https://symoneural.com/api/status` → 502. `http://127.0.0.1:8800/api/status`
-→ 200. Same for `/v1/*`, `/swagger-ui*`, `/api-docs/*`. Static pages and `/docs` are fine.
+Kept because it is the clearest example in this file of a fault that every local test misses,
+and because the resolution has a caveat.
 
-**Cause.** The Caddyfile routes those four path families to `127.0.0.1:8000`
-(**`ops/Caddyfile:51,88,94,97`** — that is the file being served; see §6), and
-`symoneural-gateway`, which listens there, is disabled by design. Nothing is listening on
-`:8000`. This is intended configuration, not drift.
+**Symptom, 2026-09-04 15:50 → 2026-09-09 22:00.** `https://symoneural.com/api/status` → 502
+through the proxy; `http://127.0.0.1:8800/api/status` → 200. Same for `/v1/*`, `/swagger-ui*`,
+`/api-docs/*`. Static pages and `/docs` were fine throughout.
 
-**Consequence.** Every documented surface — chat, image, ravencalc, remix, status — 502s
-through the proxy, while working perfectly on `:8800`.
+**Cause.** `ops/Caddyfile:51,88,94,97` routes those four families to `127.0.0.1:8000`, and
+`symoneural-gateway` — which listens there — was `disabled`/`inactive`. Nothing on `:8000`.
+Intended configuration meeting an intended decision; not drift.
 
-**When it broke.** 2026-09-04 15:50:18, when `symoneural-gateway` logged
-`symon-gateway stopped`. Before that it worked: 2451 successful external requests on those
-four families, 629 of them WebSocket chat upgrades, the last at 2026-09-04 01:15 UTC. Check
-it yourself — the proxy keeps the receipts:
+**When it broke.** 2026-09-04 15:50:18, when the gateway logged `symon-gateway stopped`.
+Before that it worked: 2451 successful external requests on those four families, 629 of them
+WebSocket chat upgrades, the last at 2026-09-04 01:15 UTC.
+
+**How it was fixed.**
 
 ```bash
-python3 tools/access_log_audit.py        # reads /var/log/caddy/symoneural.log
+sudo systemctl enable --now symoneural-gateway
 ```
 
-Use that tool rather than `curl --resolve ... 127.0.0.1` to answer "can visitors reach us".
-`--resolve` to loopback tells you what this Caddy does with a request; only the access log
-tells you what anybody actually received. Commissioning got this wrong in exactly that way.
+The unit is now `enabled` and `active`, `:8000` is listening, and the full smoke run is
+16/0/2. It starts with `validator: native-fallback` and a warning that `limiter.wasm` is
+absent — that is by design (`symon-gateway/src/middleware.rs:82`); building it needs Go 1.24+,
+which is not on this box. The token ceiling is enforced natively meanwhile.
 
-**Fix — a decision, not a repair.** Either:
+**The caveat, and it is the important part: this did not make the site reachable.** Nothing
+external has arrived since 2026-09-04 12:39 — three hours *before* the gateway stopped — so
+the 502 was never what visitors were getting. See the next section. Two green things and a
+dark site is exactly the state this section warns about.
 
-- point those four blocks at `127.0.0.1:8800` and drop the gateway hop, or
-- enable the gateway (`sudo systemctl enable --now symoneural-gateway`), which needs the
-  contract, wallet and key material its own note says it lacks.
+**The alternative fix, if you ever want the gateway out of the path.** Point those four
+blocks at `127.0.0.1:8800`. The edit goes in `ops/Caddyfile`, which is tracked — but a bare
+`systemctl reload` afterwards loads `/etc/caddy/Caddyfile` instead and silently reverts you
+(§6). Use `restart`, or `sudo scripts/install-caddy.sh` then reload.
 
-Not done by commissioning, because it decides whether the gateway is part of the product.
+**The transferable lesson.** Use `tools/access_log_audit.py`, not
+`curl --resolve ... 127.0.0.1`, to answer "can visitors reach us". `--resolve` to loopback
+tells you what this Caddy does with a request; only the access log tells you what anybody
+actually received. Commissioning got this exactly wrong and published a false finding on it.
 
-**If you take the first option, read §6 first.** The edit goes in `ops/Caddyfile`, which is
-tracked — but a bare `systemctl reload` afterwards loads `/etc/caddy/Caddyfile` instead and
-silently reverts you. Use `restart`, or `sudo scripts/install-caddy.sh` and then reload.
-
-### Nothing external has reached this box since 2026-09-04
-
-Zero requests from any of the 361 external IPs in the access log. On **2026-09-08 and
-2026-09-09** the proxy was provably up and answering loopback requests through that silence;
-**2026-09-05 to 09-07 have no log lines at all**, and since this unit logs to file rather
-than the journal, nothing on the box says whether it was listening then. So: two verified
-quiet days, three unaccounted for.
-
-What makes it look like a fault rather than a quiet week is that the scanners stopped too —
-public hosts get knocked on continuously. That is an argument from how scanners behave, not
-a measurement, and it is the reason to go and check rather than the conclusion.
-
-**Not testable from this box** — it has one interface, on the private address
-`192.168.0.163/24` — a private address, which is the measured part. Everything public
-therefore presumably depends on a NAT forward; the forward itself was never observed and
-cannot be from inside.
+**Also expect `https://localhost/...` to return `000`, and it is not a fault.** The Caddyfile
+has one site block, `symoneural.com, www.symoneural.com` (`ops/Caddyfile:37`) — there is no
+`localhost` site and no cert for that name, so the TLS handshake has nothing to answer with.
+Use the SNI form:
 
 ```bash
-dig +short symoneural.com          # does DNS still point here?
+curl -s --resolve symoneural.com:443:127.0.0.1 -o /dev/null -w '%{http_code}\n' \
+  https://symoneural.com/api/status
+```
+
+### THE OPEN PROBLEM: nothing external has reached this box since 2026-09-04
+
+**This is the live issue.** The API is healthy, the proxy is healthy, the 502 is fixed, and
+`tools/smoke.py` is 16/0/2 — and no visitor request has arrived in five days.
+
+Zero requests from any of the 361 external IPs in the access log since
+**2026-09-04 12:39:52 UTC**. On 09-08 and 09-09 the proxy was provably up and answering
+loopback through that silence; 09-05→07 has no log lines at all and this unit logs to file
+not journal, so nothing on the box says whether it was listening then. Two verified quiet
+days, three unaccounted for.
+
+**Measured, 2026-09-09 22:00:**
+
+| | |
+|---|---|
+| `dig +short symoneural.com` | `104.21.22.186`, `172.67.206.158` — **Cloudflare proxy IPs** |
+| Cloudflare-origin requests ever logged | **0**, out of 15,076 external requests. Caddy has no `trusted_proxies`, so `remote_ip` is the true TCP peer and the count is trustworthy |
+| a Cloudflare Tunnel | `tunnelID=e1d4a073-758b-4583-835b-67ac6ed6cefc` ran 2026-08-15 → **2026-08-17 01:48**, and not since. `cloudflared` 2026.6.1 is installed at `/usr/bin/cloudflared` with **no config, no credentials, no unit** |
+| the live TLS cert | Let's Encrypt `CN=symoneural.com`, `notBefore Aug 17 01:23 GMT`, `notAfter Nov 15` |
+
+So **Cloudflare has never successfully proxied a request to this Caddy.** If the cert was
+obtained by HTTP-01 or TLS-ALPN-01 (Caddy's defaults) then the box was inbound-reachable
+around Aug 17 — but renewal is not due until mid-October, so the cert says nothing at all
+about the 09-04 cliff.
+
+**What is NOT established, and matters:** *when DNS changed.* If it moved to Cloudflare after
+09-04, Cloudflare explains nothing about the cliff. The tunnel died 08-17 and healthy direct
+traffic continued for eighteen days after, which is positive evidence that proxied DNS was
+**not** in force then. So either the DNS change is recent and unrelated, or it was proxied all
+along and 15,076 requests bypassed it — a contradiction. Both readings are open and neither
+can be settled from this box.
+
+**Two things only you can check:**
+
+1. **The Cloudflare dashboard.** Is `symoneural.com` proxied (orange cloud)? What is the
+   origin — that tunnel, or an IP? *If it is the tunnel, it has been down since 2026-08-17
+   and there is no `cloudflared` config on this box to restart it with.*
+2. **If the origin is an IP:** the router's forward, and whether the WAN address changed.
+   Nothing here can see either.
+
+```bash
+dig +short symoneural.com          # where the name points today
 python3 tools/access_log_audit.py  # "last external request of ANY kind" is the live answer
 ```
 
-Then load `https://symoneural.com` on a phone **with Wi-Fi off**. If that times out, fix the
-forward before touching the 502 above — otherwise you repair a route to a door nobody can
-reach.
+Then load `https://symoneural.com` on a phone **with Wi-Fi off**. A Cloudflare error page
+(1033, 521, 522, 523) names the origin problem directly; a timeout points at DNS or the
+forward; the real site means traffic simply stopped.
+
+**Proof it is fixed, when it is:** an `/api/*` success in
+`tools/access_log_audit.py` dated later than `2026-09-04 01:15 UTC`. That is the only
+evidence that comes from outside, and no on-box check substitutes for it.
+
+### Two other things listen on every interface, and both are deliberate
+
+Relevant only because public exposure is the open question above. Neither is a first-party
+service and neither is referenced anywhere in this repo:
+
+| port | what | posture |
+|---|---|---|
+| `0.0.0.0:28001` | **xrdp** (`/etc/xrdp/xrdp.ini`: `port=tcp://0.0.0.0:28001`) | root-owned |
+| `0.0.0.0:28002` | **SSH** (`/etc/ssh/sshd_config`: `Port 28002`, `ListenAddress 0.0.0.0`) | `PermitRootLogin no`, `fail2ban` active |
+
+Everything first-party is loopback-only by contrast: `:8800` the API, `:8000` the gateway,
+`:2019` Caddy's admin API. If the forward above is ever reopened, these two are what else is
+behind it.
 
 ### The crash-loop protection is not in force
 
