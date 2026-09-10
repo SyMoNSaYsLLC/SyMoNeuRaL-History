@@ -14,17 +14,23 @@ cd /home/google/Symoneural
 python3 tools/smoke.py --quick
 ```
 
-Seventeen checks, about five seconds. Non-zero exit means something is broken, and each
+Eighteen checks, about five seconds. Non-zero exit means something is broken, and each
 failure names the cause. Drop `--quick` for the full run (adds a real image render and a
 GPU-lease concurrency proof, about 40 s).
 
-**As of 2026-09-09 this exits 1: 12 passed, 1 failed, 4 skipped.** The failure is a real
+**As of 2026-09-09 this exits 1: 12 passed, 1 failed, 5 skipped.** The failure is a real
 defect, not a flaky test — see [The public API returns 502](#the-public-api-returns-502).
 
-**Read the skips.** They are printed again at the end for a reason, and one of them is not
-routine: *external traffic seen in the last 2 days* is skipped because there has been none
-for five, which may be a fault this box cannot detect. See §7. The other three are the two
-`--quick` omissions and a `gpu.driver` field the running service predates.
+**Read the skips.** They are printed again at the end for a reason, and two of them are not
+routine:
+
+- *external traffic seen in the last 2 days* — skipped because there has been none for
+  five, which may be a fault this box cannot detect (§7).
+- *symoneural-web start and reload serve the same config* — skipped because they do not
+  (§6). Root-owned, so a smoke test cannot fix it; it reports rather than fails.
+
+The other three are the two `--quick` omissions and a `gpu.driver` field the running service
+predates.
 
 Faster still, if you only want to know whether the API is alive:
 
@@ -130,8 +136,14 @@ python3 tools/smoke.py                       # the whole thing
 python3 tools/preflight.py                   # dependencies only
 python3 tools/route_audit.py --list          # the 159 registered routes + OpenAPI cross-check
 python3 tools/gpu_lease_proof.py             # prove two GPU requests cannot both load weights
+python3 tools/serving_config_audit.py        # which Caddyfile is live, and does reload agree (§6)
+python3 tools/access_log_audit.py            # what the outside world has actually received (§7)
 python3 -m pytest backend -q                 # the unit suite -- 13m44s, see the caveat below
 ```
+
+The last two answer questions the rest of this list cannot. Everything else here measures
+this box against itself; those two measure it against the config it is really serving and
+against the requests real clients really made.
 
 **The pytest suite takes about 14 minutes**, not the ~5 minutes older notes claim. One test
 runs `tools/build_restore_manifests.py` twice and each pass reads ~48 GB to hash artifacts.
@@ -190,6 +202,51 @@ too), so the installed configuration is currently not reproducible from Git. To 
 sudo ops/commission-collect.sh              # read-only; writes only to review/.../root-facts/
 ```
 
+### The web server's config — and why `reload` is not the verb you want
+
+Two files, and **only one is served**:
+
+| path | reality |
+|---|---|
+| `ops/Caddyfile` | **the live one.** Tracked in git. A drop-in points `ExecStart` here |
+| `/etc/caddy/Caddyfile` | a byte-identical copy, root-owned, **not read by the running service**. `scripts/install-caddy.sh:87` is what puts it there |
+
+Editing `/etc/caddy/Caddyfile` to change the site's behaviour does nothing. Confirm which is
+live rather than trusting this table:
+
+```bash
+python3 tools/serving_config_audit.py
+```
+
+**`restart` and `reload` read different files.** The drop-in overrides `ExecStart` and not
+`ExecReload`, so:
+
+```
+restart  ->  ops/Caddyfile          (tracked; what is being served)
+reload   ->  /etc/caddy/Caddyfile   (the copy)
+```
+
+Byte-identical today, so it is invisible. **Edit `ops/Caddyfile` and then `reload`, and your
+edit is silently reverted** — the reload pushes the older copy into the running instance
+through the admin API on `127.0.0.1:2019`. Verified that a reload really would take effect,
+rather than failing safe: the build passes `reload` straight to stock Caddy
+(`web/symoneural-web/main.go:134` intercepts only `--version`/`--license`), the admin API is
+listening, `/etc/caddy/Caddyfile` is mode 644 and readable by `User=caddy`, and it adapts
+with rc 0.
+
+**After editing `ops/Caddyfile`, use one of these — not a bare reload:**
+
+```bash
+sudo systemctl restart symoneural-web        # serves the edited file. Brief drop.
+# or, no drop, and it re-syncs the copy so the trap closes for this edit:
+sudo scripts/install-caddy.sh                # cp ops/Caddyfile -> /etc, then validate
+sudo systemctl reload symoneural-web
+```
+
+Fixing it properly means deciding which file is authoritative and needs root either way:
+extend the drop-in to override `ExecReload`, or retire the drop-in and let the template's
+`/etc/caddy/Caddyfile` stand for both. Commissioning did not decide it.
+
 ## 7. Known problems
 
 ### The public API returns 502
@@ -198,9 +255,9 @@ sudo ops/commission-collect.sh              # read-only; writes only to review/.
 → 200. Same for `/v1/*`, `/swagger-ui*`, `/api-docs/*`. Static pages and `/docs` are fine.
 
 **Cause.** The Caddyfile routes those four path families to `127.0.0.1:8000`
-(`/etc/caddy/Caddyfile:51,88,94,97`), and `symoneural-gateway` — which listens there — is
-disabled by design. Nothing is listening on `:8000`. The repo and installed Caddyfiles are
-byte-identical, so this is intended configuration, not drift.
+(**`ops/Caddyfile:51,88,94,97`** — that is the file being served; see §6), and
+`symoneural-gateway`, which listens there, is disabled by design. Nothing is listening on
+`:8000`. This is intended configuration, not drift.
 
 **Consequence.** Every documented surface — chat, image, ravencalc, remix, status — 502s
 through the proxy, while working perfectly on `:8800`.
@@ -225,6 +282,10 @@ tells you what anybody actually received. Commissioning got this wrong in exactl
   contract, wallet and key material its own note says it lacks.
 
 Not done by commissioning, because it decides whether the gateway is part of the product.
+
+**If you take the first option, read §6 first.** The edit goes in `ops/Caddyfile`, which is
+tracked — but a bare `systemctl reload` afterwards loads `/etc/caddy/Caddyfile` instead and
+silently reverts you. Use `restart`, or `sudo scripts/install-caddy.sh` and then reload.
 
 ### Nothing external has reached this box since 2026-09-04
 

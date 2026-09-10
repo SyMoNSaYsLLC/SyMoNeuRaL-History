@@ -411,6 +411,39 @@ def check_public_site() -> None:
                f"{len(ext)} assets, all 200 through the public path")
 
 
+def check_serving_config() -> None:
+    """Do `restart` and `reload` of symoneural-web serve the same Caddyfile?
+
+    A SKIP rather than a FAIL, for the same reason as `check_external_traffic`: it reports
+    root-owned installed state that neither this script nor the service user can change, and
+    a red run nobody can action trains people to ignore the colour.
+
+    Worth a check anyway, because it is the trap sitting directly in front of the pending
+    502 decision: the fix is an edit to the tracked `ops/Caddyfile`, and a `systemctl
+    reload` afterwards would load `/etc/caddy/Caddyfile` instead and silently revert it.
+    """
+    label = "symoneural-web start and reload serve the same config"
+    try:
+        sys.path.insert(0, str(ROOT / "tools"))
+        from serving_config_audit import audit                  # noqa: PLC0415
+        r = audit()
+    except Exception as exc:
+        record(label, SKIP, f"could not audit the serving config: {exc}")
+        return
+    mismatch = next((f for f in r["findings"]
+                     if f["id"] == "reload-start-config-mismatch"), None)
+    if mismatch is None:
+        record(label, PASS, f"both verbs name {r['start_config']}")
+        return
+    verb = "ALREADY DIVERGED" if mismatch["files_identical_now"] is False else "identical today"
+    record(label, SKIP,
+           f"they do NOT ({verb}). start -> {mismatch['start']}, "
+           f"reload -> {mismatch['reload']}. After editing the start file, use "
+           f"`systemctl restart` (or `sudo scripts/install-caddy.sh` then reload) -- a bare "
+           f"reload loads the other file. Root-owned drop-in; see RUNBOOK.md §6 and "
+           f"`python3 tools/serving_config_audit.py`.")
+
+
 def check_public_api() -> None:
     """The proxy's own view of /api/*. NOT a reachability test -- see the SKIP below.
 
@@ -544,6 +577,7 @@ def main(argv: list[str]) -> int:
     check_public_site()
     check_public_api()
     check_external_traffic()
+    check_serving_config()
     check_gpu_released()
     elapsed = time.monotonic() - t0
 
