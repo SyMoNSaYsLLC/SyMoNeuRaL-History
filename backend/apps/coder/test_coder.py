@@ -26,8 +26,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import coder  # noqa: E402
+from apps import coder  # noqa: E402
 
 TOKEN = "test-token-not-a-real-secret"
 LOCAL = "127.0.0.1"

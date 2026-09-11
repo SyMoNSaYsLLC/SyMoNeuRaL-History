@@ -18,8 +18,7 @@ import tempfile
 import time
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import licensing  # noqa: E402
+from apps import licensing  # noqa: E402
 
 
 def _mint(key: pathlib.Path, **body) -> str:

@@ -13,12 +13,11 @@ import pathlib
 import sys
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import ravencalc  # noqa: E402
-import steps  # noqa: E402
-import symbolic  # noqa: E402
-from ravencalc import parse, make_symbols  # noqa: E402
+from apps.ravencalc import ravencalc  # noqa: E402
+from apps.ravencalc import steps  # noqa: E402
+from apps.ravencalc import symbolic  # noqa: E402
+from apps.ravencalc.ravencalc import parse, make_symbols  # noqa: E402
 
 
 def variable_of(expression, name: str):

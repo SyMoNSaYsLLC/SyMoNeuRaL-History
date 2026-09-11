@@ -32,8 +32,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import accounts  # noqa: E402
+from apps import accounts  # noqa: E402
 
 SECRET = "test-secret-not-the-production-one-0123456789abcdef"
 EMAIL = "garrett@symoneural.com"

@@ -29,9 +29,8 @@ import tokenize
 import unittest
 import unittest.mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import project                                                          # noqa: E402
-from project import routes, store                                       # noqa: E402
+from apps import project                                                          # noqa: E402
+from apps.project import routes, store                                       # noqa: E402
 
 TOKEN = "test-token-not-a-real-secret"
 ENV_KEYS = ("SYMONEURAL_PROJECT_ENABLED", "SYMONEURAL_PROJECT_TOKEN", "SYMONEURAL_PROJECT_DB",

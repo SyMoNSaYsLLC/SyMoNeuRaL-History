@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import symbolic
+from . import symbolic
 
 #: The derivative of each named function of one argument, written as a template rather
 #: than computed, because the point of a step is to state the rule a reader can reuse.

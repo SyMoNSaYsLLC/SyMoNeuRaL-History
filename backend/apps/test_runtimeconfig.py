@@ -16,9 +16,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import runtimeconfig  # noqa: E402
+from apps import runtimeconfig  # noqa: E402
 
 
 class _Sandbox(unittest.TestCase):
@@ -125,7 +124,7 @@ class WhatItAccepts(_Sandbox):
         loaded = runtimeconfig.load(warn=False)
         self.assertEqual(sorted(loaded), ["SYMONEURAL_CURRENT", "SYM_LEGACY"])
 
-        import symoneuralenv  # noqa: PLC0415 -- only this test needs it
+        from apps import symoneuralenv  # noqa: PLC0415 -- only this test needs it
         symoneuralenv.promote(warn=False)
         self.assertEqual(os.environ.get("SYMONEURAL_LEGACY"), "1",
                          "a legacy name that arrived from a config file must promote exactly "

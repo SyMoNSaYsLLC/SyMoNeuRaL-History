@@ -19,11 +19,10 @@ import sys
 import time
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import sympy  # noqa: E402
 
-import ravencalc  # noqa: E402
+from apps.ravencalc import ravencalc  # noqa: E402
 
 
 def request(**fields) -> dict:

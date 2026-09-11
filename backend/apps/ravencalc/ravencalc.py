@@ -42,8 +42,13 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-import steps as derivation_steps
-import symbolic
+# Relative, because this module is part of the `apps.ravencalc` package. These were
+# bare sibling imports that resolved only while `api.py` put backend/apps/ravencalc on
+# sys.path -- the second import route. Removing that insert took this surface to 503
+# until these were converted; the route handler imports lazily, so /api/status stayed
+# green and only /api/ravencalc failed.
+from . import steps as derivation_steps
+from . import symbolic
 from sympy.parsing.sympy_parser import (  # Keep the parser direct until we wrap it
     parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
 )

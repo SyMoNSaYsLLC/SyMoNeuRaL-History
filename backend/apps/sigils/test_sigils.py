@@ -29,9 +29,8 @@ import sys
 import unittest
 import zlib
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from sigils import matte, png, render, routes  # noqa: E402
+from apps.sigils import matte, png, render, routes  # noqa: E402
 
 #: The exact regex `backend/api.py:1788` matches an attacker-controlled path segment
 #: against before serving a render. Copied here rather than imported, because importing

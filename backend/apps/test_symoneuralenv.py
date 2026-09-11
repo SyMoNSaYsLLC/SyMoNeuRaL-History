@@ -18,8 +18,7 @@ import pathlib
 import sys
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import symoneuralenv as env  # noqa: E402
+from apps import symoneuralenv as env  # noqa: E402
 
 
 class PromoteTests(unittest.TestCase):

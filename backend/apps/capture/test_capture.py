@@ -36,9 +36,8 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import capture  # noqa: E402
-from capture import CaptureError, CaptureStore  # noqa: E402
+from apps import capture  # noqa: E402
+from apps.capture import CaptureError, CaptureStore  # noqa: E402
 
 MESSAGES = [{"role": "user", "content": "two hours of drum and bass"},
             {"role": "assistant", "content": "here you go"}]
