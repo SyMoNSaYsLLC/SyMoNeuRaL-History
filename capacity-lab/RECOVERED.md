@@ -13,16 +13,24 @@ others that this branch has since moved past. Merging would have quietly reverte
 cost of that choice is that those two commits' messages did not come across; this file
 stands in for them.
 
-**Nothing in the recovered files was edited.** The two items below are defects in the tree
-as it arrived, recorded here rather than fixed, and recorded *beside* `README.md` rather
-than inside it — its blocker section is somebody's measured claim, correct on the day it
-was written, and appending a dated note is honest where rewriting it would not be.
+**Updated 2026-09-10, later the same day.** The first version of this file said *"nothing in
+the recovered files was edited"* and recorded both defects below as noted-but-unfixed. That
+was true when written and is **no longer true**: on the owner's follow-up instruction
+(`RECOVERY-NOTES.md`), defect 1 was fixed and defect 2 was marked superseded in place. The
+original wording is corrected here rather than left standing, because two records
+contradicting each other about the same tree is worse than either.
+
+What was authorised and what was not: *"recover `capacity-lab` with `gpu_state()` explicitly
+disabled and saying why … Either way, the hardcoded path does not survive recovery"*, and
+*"No refactor of `capacity-lab` beyond the path fix that is required for it to be honest."*
+So: one function replaced, one paragraph stamped, nothing else. `BookingScenario.run()` is
+**not** filled in.
 
 ---
 
-## 1. `suite.py` imports a module from a worktree that no longer exists
+## 1. `suite.py` imported a module from a worktree that no longer exists — **FIXED**
 
-`capacity-lab/suite.py:344` in `gpu_state()`:
+As recovered, `capacity-lab/suite.py:344` in `gpu_state()`:
 
 ```python
 sys.path.insert(0, str(Path("/home/google/Symoneural/.claude/worktrees/"
@@ -39,12 +47,34 @@ Measured 2026-09-10:
 - the path also uses the **superseded** `engines/symoneural-<name>/` layout. Engines live at
   `symoneural-<name>/` at the repo root now.
 
-So **`gpu_state()` raises `ModuleNotFoundError` on call.** Everything that does not call it
-is unaffected; 118 tests collect clean (see below). Whoever needs GPU sampling here should
-take it from `tools/gpu-governor.sh` and `ops/RUNTIMES.tsv`, which are the current
-authorities, rather than restoring a path into a deleted worktree.
+So **`gpu_state()` raised `ModuleNotFoundError` on call** — demonstrated, not assumed:
 
-## 2. `README.md`'s booking blocker is no longer true
+```
+$ python3 -c "import sys; sys.path.insert(0, '…/native-hybrid-gpu-player/engines/symoneural-hybrid'); import gpu_guard"
+ModuleNotFoundError: No module named 'gpu_guard'
+```
+
+**The fix.** `gpu_state()` is now *declared but refuses to run* — the idiom this tree already
+uses for `BookingScenario`, rather than a second one invented beside it. It returns
+`available: False`, a `reason`, and `NOT AVAILABLE` for every field it cannot measure. The
+hardcoded `.claude/worktrees/` path is gone entirely, not preserved in a commented-out form:
+a first-party file reaching into that directory is the defect class `symoneural-audit` exists
+to catch, and its README states the rule — never count parents to find the repository root.
+
+`_legacy_engine_pids()` is first-party and still answers, so it is **still reported**.
+Zero-filling a field that can be measured would be the mirror of the mistake being avoided.
+
+**The first-party replacement exists and was deliberately not wired in.**
+`tools/lease_proof_2p.py:75` `compute_apps()` returns pid → MiB from
+`nvidia-smi --query-compute-apps`, and `:91` `vram()` returns the card reading — between them,
+exactly what `gpu_guard.compute_apps()` and `gpu_guard.gpu_snapshot()` supplied. Wiring them
+is a real change needing a real test, and it is past the path fix this recovery authorises.
+It belongs in its own commit.
+
+Verified after the change: `gpu_state("…")` returns the refusal dict instead of raising, and
+118 tests still collect.
+
+## 2. `README.md`'s booking blocker is no longer true — **MARKED SUPERSEDED IN PLACE**
 
 `README.md` opens with *"**There is no Donnie booking application.** Repo audit at
 `main @ 7d1a5529`: 0 routes matching `book|appoint|dispatch|slot|schedul`…"*, and on that
@@ -62,9 +92,16 @@ POST /login                     GET  /me
 
 The README states its own unblocking condition: *"When the booking application exists,
 filling in `BookingScenario.run()` is the only change — the harness, samplers, report schema
-and UI are already shaped for it."* That condition is now met. Filling it in is real work and
-is **not** done here; this note only records that the blocker has lifted, so nobody reads
-`NOT AVAILABLE` as a fact about the server.
+and UI are already shaped for it."* That condition is now met.
+
+**A dated `SUPERSEDED` block now stands above that paragraph in `README.md` itself**, so the
+correction is where the claim is rather than only in this file. The original paragraph is
+**left standing, not rewritten** — it was true when written, its audit is still the reason
+`BookingScenario` has the shape it has, and overwriting somebody's dated measurement is not
+the same as correcting it.
+
+Filling in `BookingScenario.run()` is real work and is **not** done here. It is the obvious
+next task for this tree and it needs its own commit.
 
 ---
 

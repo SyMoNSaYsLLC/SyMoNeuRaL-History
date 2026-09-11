@@ -340,16 +340,61 @@ def classify(level: dict, crit: dict) -> dict:
 
 
 # ================================================================ orchestration
+#: Declared but refuses to run -- the same shape `BookingScenario` uses, and for the same
+#: reason: the dependency is absent, so every field it would fill reports NOT AVAILABLE
+#: rather than a guess.
+#:
+#: As recovered on 2026-09-10 this function did:
+#:
+#:     sys.path.insert(0, str(Path("/home/google/Symoneural/.claude/worktrees/"
+#:                                 "native-hybrid-gpu-player/engines/symoneural-hybrid")))
+#:     import gpu_guard
+#:
+#: Measured that day, and all three are independently fatal:
+#:
+#:   - that worktree does not exist. `.claude/worktrees/` holds only `authority-plane-plan/`
+#:   - `gpu_guard` was **never committed on any ref** -- `git log --glob=refs/*` over the
+#:     whole history returns nothing for it, and it is nowhere on disk. It was not lost in
+#:     a merge; it was never in this repository
+#:   - `engines/symoneural-<name>/` is the superseded layout. Engines live at
+#:     `symoneural-<name>/` in the repo root now
+#:
+#: So the import raised `ModuleNotFoundError` three layers down, which is a worse failure
+#: than an honest refusal: a caller reading a traceback about a missing module learns
+#: nothing about why the reading is unavailable.
+#:
+#: The hardcoded path is not preserved even in a broken form. A first-party file reaching
+#: into `.claude/worktrees/` is the defect class `symoneural-audit` exists to catch, and
+#: its README carries the rule directly -- never count parents to find the repository root.
+#:
+#: **The first-party replacement already exists** and is not wired in here, because that is
+#: past the path fix this recovery authorises: `tools/lease_proof_2p.py:75` `compute_apps()`
+#: returns pid -> MiB from `nvidia-smi --query-compute-apps`, and `:91` `vram()` returns the
+#: card reading. Between them they are exactly what `gpu_guard.compute_apps()` and
+#: `gpu_guard.gpu_snapshot()` supplied. Wiring them up is a real change with a real test,
+#: and it belongs in its own commit.
+GPU_STATE_UNAVAILABLE = (
+    "gpu_guard was never committed on any ref and is not on disk; "
+    "see the note above suite.gpu_state and tools/lease_proof_2p.py"
+)
+
+
 def gpu_state(label: str) -> dict:
-    sys.path.insert(0, str(Path("/home/google/Symoneural/.claude/worktrees/"
-                                "native-hybrid-gpu-player/engines/symoneural-hybrid")))
-    import gpu_guard
-    apps = gpu_guard.compute_apps()
-    snap = gpu_guard.gpu_snapshot()
-    return {"label": label, "vram_used_mib": snap["vram_used_mib"],
-            "compute_apps": len(apps), "compute_pids": [p for p, _ in apps],
+    """The GPU reading around a run. Declared, refuses, reports why.
+
+    `_legacy_engine_pids()` is first-party and still answers, so it is still reported --
+    zero-filling a field that *can* be measured would be the mirror of the mistake this
+    function is avoiding.
+    """
+    return {"label": label,
+            "available": False,
+            "reason": GPU_STATE_UNAVAILABLE,
+            "vram_used_mib": NOT_AVAILABLE,
+            "compute_apps": NOT_AVAILABLE,
+            "compute_pids": NOT_AVAILABLE,
             "legacy_symoneural_llm_pids": _legacy_engine_pids(),
-            "power_w": snap["power_w"], "util_pct": snap["util_pct"]}
+            "power_w": NOT_AVAILABLE,
+            "util_pct": NOT_AVAILABLE}
 
 
 def clear_run(run_id: str) -> dict:

@@ -10,6 +10,21 @@ only one of those is a fact about the server.
 
 ## The booking blocker — read this first
 
+> **SUPERSEDED 2026-09-10 — the blocker below has lifted. The paragraph is left standing
+> because it was true when written and its audit is still the reason `BookingScenario` is
+> shaped the way it is.**
+>
+> Measured 2026-09-10 on `ae87c3cb`: `backend/apps/dispatchos/routes.py` carries **15 route
+> decorators**, including `POST /bookings`, `GET /bookings/{bid}`,
+> `POST /bookings/{bid}/quote`, `GET /board`, `POST /login` and `GET /me`. The booking
+> application was built after this audit was taken at `main @ 7d1a5529`.
+>
+> **This README's own unblocking condition is therefore met** — see the last sentence of
+> this section. `BookingScenario.run()` is **not** filled in here: this tree was recovered
+> from an unmerged branch on 2026-09-10 and recovery is not implementation. Writing a
+> benchmark inside a recovery commit would be two changes wearing one commit message.
+> See `RECOVERED.md`.
+
 **There is no Donnie booking application.** Repo audit at `main @ 7d1a5529`:
 
 - 0 routes matching `book|appoint|dispatch|slot|schedul` across all 32 route decorators
