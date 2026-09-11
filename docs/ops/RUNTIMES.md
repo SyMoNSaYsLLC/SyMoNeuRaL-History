@@ -57,7 +57,7 @@ come back only through `restore/manifests/BUILD-RECIPES.tsv`.
 | `symoneural-miner/build/kawpowminer/symoneural-miner` | 6.0 MB | 2026-09-04 17:25 | **no** | ELF 64-bit LSB pie executable |
 | `symoneural-ui/main.py` | 24.3 KB | 2026-08-18 18:09 | **no** | Python script |
 | `training/.venv/bin/python` | 6.5 MB | 2026-08-10 08:06 | **no** | ELF 64-bit LSB executable |
-| `backend/api.py` | 230.2 KB | 2026-09-10 01:45 | yes | JavaScript source |
+| `backend/api.py` | 233.8 KB | 2026-09-10 23:39 | yes | Python script |
 | `web/symoneural-web/build/symoneural-web` | 72.7 MB | 2026-08-26 15:13 | **no** | ELF 64-bit LSB executable |
 | `backend/apps/gateway/target/release/symoneural-gateway` | 26.0 MB | 2026-08-26 15:16 | **no** | ELF 64-bit LSB pie executable |
 | `backend/apps/ravencalc/service.py` | 7.1 KB | 2026-09-10 01:42 | yes | Python script |
@@ -129,9 +129,9 @@ the fix would be somebody re-stamping the number.
 
 | runtime | surface | invoked at | lease taken at |
 |---|---|---|---|
-| `symoneural-llm` | chat | `backend/api.py:1387` | `backend/api.py:2960` |
-| `symoneural-diffuse` | image | `backend/api.py:3114` | `backend/api.py:3127` |
-| `symoneural-diffuse` | sigils | `backend/apps/sigils/render.py:192` | `backend/apps/sigils/render.py:88` |
+| `symoneural-llm` | chat | `backend/api.py:1424` | `backend/api.py:3013` |
+| `symoneural-diffuse` | image | `backend/api.py:3167` | `backend/api.py:3180` |
+| `symoneural-diffuse` | sigils | `backend/apps/sigils/render.py:193` | `backend/apps/sigils/render.py:89` |
 | `symoneural-listen` | sigils | `backend/apps/sigils/listen.py:190` | — |
 | `symoneural-listen` | voice | `backend/apps/voice/asr.py:254` | — |
 | `symoneural-miner` | gpuminer | `backend/apps/cryptominer/__init__.py:673` | `backend/apps/cryptominer/__init__.py:673` |
@@ -141,7 +141,7 @@ the fix would be somebody re-stamping the number.
 | `symoneural-web` | — | `ops/symoneural-web.service:56` | — |
 | `symoneural-gateway` | — | `ops/symoneural-gateway.service:55` | — |
 | `symoneural-ravencalc` | ravencalc | `backend/apps/ravencalc/service.py:172` | — |
-| `symoneural-cli` | — | `scripts/gpu-governor.sh:289` | — |
+| `symoneural-cli` | — | `scripts/gpu-governor.sh:428` | — |
 | `symoneural-code` | — | `scripts/install-cli.sh:30` | — |
 | `symoneural-audit` | — | `scripts/install-cli.sh:30` | — |
 | `symoneural-miner-core` | — | `symoneural-miner-core/bin/symoneural-miner-smoke:80` | — |
