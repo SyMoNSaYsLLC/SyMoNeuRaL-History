@@ -5,7 +5,7 @@ Task #74 item 5. Run it after touching anything under `FACADES` in
 
     python3 tools/prove_vendor_facade.py     # exit 0 iff every break goes red and nothing is left behind
 
-`backend/SMOKE-vendor-facade.md` is its output pasted, and that file cannot be written
+`backend/vendor/SMOKE-vendor-facade.md` is its output pasted, and that file cannot be written
 honestly by anybody who did not run this.
 
 `.claude/CLAUDE.md`: *"When behaviour changes, prove it changed: break it on purpose and

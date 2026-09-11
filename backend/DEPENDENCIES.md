@@ -115,7 +115,7 @@ is corrected here rather than annotated.
 `backend/apps/test_vendor_facade.py` enforces the three **Facade** verdicts by walking the
 tree and reading the AST, not by grepping a file list: `import httpx as _h` is a violation,
 `# httpx recomputes it` in a comment is not. `tools/prove_vendor_facade.py` is the red-first
-proof (7 breaks, 7 red, no residue); `backend/SMOKE-vendor-facade.md` is the run.
+proof (7 breaks, 7 red, no residue); `backend/vendor/SMOKE-vendor-facade.md` is the run.
 
 ### `backend/apps/studio/requirements.txt`
 

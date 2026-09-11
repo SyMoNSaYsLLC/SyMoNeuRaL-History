@@ -50,7 +50,7 @@ cell is `X`, and leaving a `W` would understate the gap by naming the smaller of
 now read `R`.** This is the one movement on this table that went the good way. Both halves were
 missing and both are now present: `engines/symoneural-listen` is built from source under our own
 names by `tools/fork_engines.sh listen`, and the weight is on disk at 147,964,211 bytes. Neither
-is asserted -- `backend/SMOKE-listen-asr.md` records a real transcription of real speech, which
+is asserted -- `symoneural-listen/SMOKE-listen-asr.md` records a real transcription of real speech, which
 is the only evidence that distinguishes `R` from a hopeful `W`.
 
 | Column | Filename | Location |

@@ -8,7 +8,7 @@ the rule that killed the last three documents which claimed to describe current 
 applies to this one on purpose.
 
 Everything below is grounded in what is on disk tonight: the open tasks (#75–#102), the
-uncommitted working tree, `docs/studio-harness-gap.md`, `backend/SMOKE-livestack-image.md`,
+uncommitted working tree, `docs/studio-harness-gap.md`, `symoneural-diffuse/SMOKE-livestack-image.md`,
 and the miner audit under R-176. Where a figure appears it names where it was read.
 
 ---
