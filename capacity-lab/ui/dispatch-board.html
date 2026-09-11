@@ -1,0 +1,298 @@
+<title>DispatchOS Board</title>
+<style>
+  :root{--bg:#f7f7f5;--panel:#fff;--ink:#16161a;--muted:#6b6b76;--line:#e3e3df;
+        --ok:#1f7a4d;--warn:#8a6100;--fail:#a32020;--na:#6b6b76;--accent:#1b3a5c;--sel:#1b3a5c}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#121214;--panel:#1b1b1f;--ink:#ececed;--muted:#9a9aa4;--line:#2c2c33;
+    --ok:#4ec98a;--warn:#e0b155;--fail:#f0736d;--na:#9a9aa4;--accent:#9dc3e6;--sel:#9dc3e6}}
+  :root[data-theme="dark"]{--bg:#121214;--panel:#1b1b1f;--ink:#ececed;--muted:#9a9aa4;
+    --line:#2c2c33;--ok:#4ec98a;--warn:#e0b155;--fail:#f0736d;--na:#9a9aa4;--accent:#9dc3e6;--sel:#9dc3e6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 20px 60px}
+  header{border-bottom:2px solid var(--ink);padding-bottom:13px;margin-bottom:20px}
+  h1{margin:0;font-size:24px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  .sec{margin-top:30px;border:1px solid var(--line);border-radius:9px;background:var(--panel);
+       padding:0;overflow:hidden}
+  .sec > h2{margin:0;padding:11px 16px;font-size:11.5px;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);
+            background:color-mix(in srgb,var(--panel) 88%,var(--ink) 12%)}
+  .sec .body{padding:16px}
+  .capacity{border-color:var(--accent);border-width:2px}
+  .banner{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:6px;
+          padding:12px 14px;margin-bottom:18px;font-size:13.5px;background:var(--panel)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  button{font:inherit;font-size:13px;padding:7px 14px;border-radius:6px;cursor:pointer;
+         border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+  button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  button.danger{border-color:var(--fail);color:var(--fail)}
+  .slots{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px}
+  .slot{width:54px;height:54px;border-radius:9px;font-size:17px;font-weight:600;
+        display:flex;align-items:center;justify-content:center;padding:0}
+  .slot.sel{background:var(--sel);color:var(--bg);border-color:var(--sel)}
+  .count{font-size:14px;font-weight:600;margin:10px 0 4px}
+  .count b{font-size:22px;color:var(--accent)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .tile{border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .tile .k{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .tile .v{font-size:21px;font-weight:600;margin-top:4px;letter-spacing:-.02em}
+  .tile .v.sm{font-size:14px;font-weight:500}
+  .ok{color:var(--ok)}.warn{color:var(--warn)}.fail{color:var(--fail)}
+  .na{color:var(--na);font-style:italic}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .scroll{overflow-x:auto}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:16px 0 14px}
+  .tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;
+               padding:8px 13px;color:var(--muted)}
+  .tabs button.on{border-bottom-color:var(--accent);color:var(--ink);font-weight:600;background:none}
+  .hide{display:none}
+  .lbl{font-size:10.5px;letter-spacing:.05em;padding:2px 6px;border-radius:3px;
+       border:1px solid var(--line);color:var(--muted)}
+  .note{font-size:11.5px;color:var(--muted);margin-top:8px}
+  footer{margin-top:34px;padding-top:15px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:12px}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>DispatchOS Board</h1>
+  <div class="sub">Booking &amp; dispatch &middot; <span class="mono" id="hdr">connecting…</span></div>
+</header>
+
+<div class="banner">
+  <b>SLICE 1.5 — HARNESS VALIDATION.</b> Concurrency is capped at <b>2</b> users
+  server-side; the cap is enforced by the control service, so editing this page cannot
+  lift it. No SLA thresholds exist yet, so capacity verdicts read
+  <span class="na">NOT YET DETERMINED</span> unless there is a hard failure.
+  Bookings created here are <b>synthetic test data</b>, tagged with the run ID and
+  removable only by that ID.
+</div>
+
+<!-- ================================================= CAPACITY SECTION -->
+<section class="sec capacity">
+  <h2>Server Capacity / Concurrent Users</h2>
+  <div class="body">
+
+    <div class="note" style="margin:0 0 10px">
+      Each button is <b>one synthetic concurrent user slot</b> — not a preset count.
+      Selecting slots 2, 3, 7 and 10 means four concurrent users. Selection alone
+      creates no load.
+    </div>
+    <div class="slots" id="slots"></div>
+    <div class="count">SELECTED CONCURRENT USERS: <b id="sel-count">0</b>
+      <span class="lbl" id="sel-list">none</span></div>
+
+    <div class="row" style="margin-top:14px">
+      <span class="lbl">AI</span>
+      <button id="ai-on">ENABLED</button>
+      <button id="ai-off" class="on">DISABLED</button>
+      <span class="note" style="margin:0 0 0 8px">
+        AI ENABLED loads <b>one</b> native SyMon AI worker for the whole run and reaps it
+        afterwards. AI DISABLED runs the same booking flow with the GPU at baseline.</span>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <span class="lbl">SCENARIO</span>
+      <button id="sc-booking" class="on">BOOKING</button>
+      <button id="sc-control">CONTROL TRANSACTION</button>
+      <span class="note" style="margin:0 0 0 8px">Capacity numbers come from BOOKING.
+        The control transaction isolates server/framework overhead only.</span>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <button id="run">RUN SELECTED USERS</button>
+      <button id="stop" class="danger">STOP TEST</button>
+      <button id="clear" class="danger">CLEAR TEST DATA</button>
+    </div>
+    <div class="note" id="run-msg">&nbsp;</div>
+  </div>
+</section>
+
+<div class="tabs">
+  <button id="tab-biz" class="on">Business View</button>
+  <button id="tab-eng">Engineering View</button>
+</div>
+
+<!-- ================================================= BUSINESS -->
+<section id="view-biz">
+  <div class="grid">
+    <div class="tile"><div class="k">Concurrent Users</div><div class="v" id="b-users">—</div></div>
+    <div class="tile"><div class="k">Active Users</div><div class="v" id="b-active">—</div></div>
+    <div class="tile"><div class="k">Completed</div><div class="v" id="b-done">—</div></div>
+    <div class="tile"><div class="k">Failed</div><div class="v" id="b-failed">—</div></div>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <div class="tile"><div class="k">AI Requests</div><div class="v sm" id="b-airq">—</div></div>
+    <div class="tile"><div class="k">AI Engine</div><div class="v sm" id="b-aieng">—</div></div>
+    <div class="tile"><div class="k">Active AI Requests</div><div class="v sm" id="b-aiact">—</div></div>
+    <div class="tile"><div class="k">AI Queue</div><div class="v sm" id="b-aiq">—</div></div>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <div class="tile"><div class="k">GPU Utilization</div><div class="v sm" id="b-util">—</div></div>
+    <div class="tile"><div class="k">VRAM Used / Total</div><div class="v sm" id="b-vram">—</div></div>
+    <div class="tile"><div class="k">GPU Power</div><div class="v sm" id="b-pow">—</div></div>
+    <div class="tile"><div class="k">GPU Temperature</div><div class="v sm" id="b-temp">—</div></div>
+    <div class="tile"><div class="k">CPU Utilization</div><div class="v sm" id="b-cpu">—</div></div>
+    <div class="tile"><div class="k">System RAM</div><div class="v sm" id="b-ram">—</div></div>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <div class="tile"><div class="k">Booking p95</div><div class="v sm" id="b-bp95">—</div></div>
+    <div class="tile"><div class="k">SyMon AI p95</div><div class="v sm" id="b-ap95">—</div></div>
+    <div class="tile"><div class="k">Errors</div><div class="v sm" id="b-err">—</div></div>
+    <div class="tile"><div class="k">Test Status</div><div class="v sm" id="b-status">—</div></div>
+  </div>
+</section>
+
+<!-- ================================================= ENGINEERING -->
+<section id="view-eng" class="hide">
+  <div class="sec"><h2>Run identity</h2><div class="body scroll"><table id="e-ident"></table></div></div>
+  <div class="sec"><h2>Concurrency &amp; sessions</h2><div class="body scroll"><table id="e-sess"></table></div></div>
+  <div class="sec"><h2>Booking latency</h2><div class="body scroll"><table id="e-book"></table></div></div>
+  <div class="sec"><h2>SyMon AI — queue &amp; inference</h2><div class="body scroll"><table id="e-ai"></table></div></div>
+  <div class="sec"><h2>Cold start (excluded from steady state)</h2><div class="body scroll"><table id="e-cold"></table></div></div>
+  <div class="sec"><h2>GPU transitions</h2><div class="body scroll"><table id="e-gput"></table></div></div>
+  <div class="sec"><h2>GPU sampler</h2><div class="body scroll"><table id="e-gpu"></table></div></div>
+  <div class="sec"><h2>System</h2><div class="body scroll"><table id="e-sys"></table></div></div>
+  <div class="sec"><h2>Legacy engine, cleanup &amp; errors</h2><div class="body scroll"><table id="e-misc"></table></div></div>
+</section>
+
+<footer>
+  Every value is <b>MEASURED</b> from a real test or system telemetry, or marked
+  <span class="na">NOT AVAILABLE</span>. Nothing is projected. The model is
+  <b>SyMon AI</b>; implementation identifiers appear only in the Engineering View.
+  Synthetic bookings send no SMS, email, review request or payment.
+</footer>
+</div>
+
+<script>
+const NA="NOT AVAILABLE", API="";
+let sel=new Set(), ai="off", scen="booking", poll=null, lastRun=null;
+const $=id=>document.getElementById(id);
+const na=v=>(v==null||v===NA)?'<span class="na">NOT AVAILABLE</span>':v;
+
+// ---- ten slot buttons -----------------------------------------------------
+for(let i=1;i<=10;i++){
+  const b=document.createElement("button");
+  b.className="slot"; b.textContent=i; b.dataset.n=i;
+  b.onclick=()=>{ sel.has(i)?sel.delete(i):sel.add(i); b.classList.toggle("sel");
+    const n=sel.size, list=[...sel].sort((a,b)=>a-b);
+    $("sel-count").textContent=n;
+    $("sel-list").textContent=n?("slots "+list.join(", ")):"none";
+    $("run-msg").innerHTML = n>2
+      ? '<span class="fail">The server caps this slice at 2 concurrent users; RUN will be refused.</span>'
+      : "&nbsp;"; };
+  $("slots").appendChild(b);
+}
+$("ai-on").onclick=()=>{ai="on";$("ai-on").classList.add("on");$("ai-off").classList.remove("on");};
+$("ai-off").onclick=()=>{ai="off";$("ai-off").classList.add("on");$("ai-on").classList.remove("on");};
+$("sc-booking").onclick=()=>{scen="booking";$("sc-booking").classList.add("on");$("sc-control").classList.remove("on");};
+$("sc-control").onclick=()=>{scen="transaction";$("sc-control").classList.add("on");$("sc-booking").classList.remove("on");};
+$("tab-biz").onclick=()=>{$("view-biz").classList.remove("hide");$("view-eng").classList.add("hide");
+  $("tab-biz").classList.add("on");$("tab-eng").classList.remove("on");};
+$("tab-eng").onclick=()=>{$("view-eng").classList.remove("hide");$("view-biz").classList.add("hide");
+  $("tab-eng").classList.add("on");$("tab-biz").classList.remove("on");};
+
+$("run").onclick=async()=>{
+  if(!sel.size){$("run-msg").textContent="Select at least one slot.";return;}
+  $("run-msg").textContent="starting…";
+  const r=await fetch(API+"/lab/start",{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({slots:[...sel],ai:ai,scenario:scen})});
+  const d=await r.json();
+  $("run-msg").innerHTML = r.ok
+    ? `running: ${d.concurrent_users} concurrent user(s), AI ${d.ai.toUpperCase()}, ${d.scenario}`
+    : `<span class="fail">${d.detail||"refused"}</span>`;
+};
+$("stop").onclick=async()=>{await fetch(API+"/lab/stop",{method:"POST"});$("run-msg").textContent="stop requested";};
+$("clear").onclick=async()=>{
+  if(!lastRun){$("run-msg").textContent="no run to clear";return;}
+  const r=await fetch(API+"/lab/report/"+lastRun,{method:"DELETE"});
+  const d=await r.json();
+  $("run-msg").textContent = r.ok
+    ? `cleared ${lastRun}: ${d.bookings?.bookings_removed ?? 0} synthetic booking(s)`
+    : (d.detail||"refused");
+};
+
+// ---- live poll ------------------------------------------------------------
+function rows(t,p){t.innerHTML="<tr><th>Field</th><th>Value</th></tr>"+
+  p.map(([k,v])=>`<tr><td>${k}</td><td class="mono">${v}</td></tr>`).join("");}
+function pct(p){return(!p||p.p50===NA||p.p50===undefined)?na(NA):
+  `n=${p.n} · p50 ${p.p50} · p95 ${p.p95} · p99 ${p.p99} · max ${p.max}`;}
+function stat(s){return(!s||s.avg===NA||s.avg===undefined)?na(NA):
+  `min ${s.min} · avg ${s.avg} · max ${s.max} ${s.unit} (n=${s.n})`;}
+
+async function tick(){
+  let s; try{ s=await (await fetch(API+"/lab/status")).json(); }catch(e){ $("hdr").textContent="control service unreachable"; return; }
+  $("hdr").textContent = (s.running?"RUN ACTIVE":"idle") + (s.run_id?(" · "+s.run_id):"");
+  const g=s.gpu||{};
+  $("b-airq").textContent = s.ai_requests;
+  const eng=$("b-aieng"); eng.textContent=s.ai_engine;
+  eng.className="v sm "+(s.ai_engine==="LOADED"?"warn":"ok");
+  $("b-util").textContent=g.utilization_pct+" %";
+  $("b-vram").textContent=((g.vram_used_mib/1024).toFixed(1))+" / "+((g.vram_total_mib/1024).toFixed(1))+" GB";
+  $("b-pow").textContent=g.power_w+" W";
+  $("b-temp").textContent=g.temperature_c+" °C";
+  if(s.system){ $("b-ram").textContent=((s.system.ram_used_mib/1024).toFixed(1))+" / "+((s.system.ram_total_mib/1024).toFixed(1))+" GB"; }
+  $("b-cpu").innerHTML = na(NA);   // instantaneous CPU is not sampled by the poll
+
+  const r=s.last_report;
+  if(!r) return;
+  lastRun=r.run_id;
+  const m=r.measurements||{};
+  $("b-users").textContent=r.requested_users;
+  $("b-active").textContent=s.running?"—":0;
+  $("b-done").textContent=r.sessions?r.sessions.completed:"—";
+  $("b-failed").textContent=r.sessions?r.sessions.failed:"—";
+  const st=$("b-status"); st.textContent=r.classification;
+  st.className="v sm "+(r.classification==="PASS"?"ok":r.classification==="FAIL"?"fail":"na");
+  $("b-err").textContent=r.errors?r.errors.length:0;
+  const b=m.booking||{}, a=m.ai||{};
+  $("b-bp95").innerHTML = (b.completion_ms&&b.completion_ms.p95!==undefined&&b.completion_ms.p95!==NA)?(b.completion_ms.p95+" ms"):na(NA);
+  $("b-ap95").innerHTML = (a.latency_ms&&a.latency_ms.p95!==undefined&&a.latency_ms.p95!==NA)?(a.latency_ms.p95+" ms"):na(NA);
+  $("b-aiact").innerHTML = a.max_active_ai_requests!==undefined?na(a.max_active_ai_requests):na(NA);
+  $("b-aiq").innerHTML = a.max_queue_depth!==undefined?na(a.max_queue_depth):na(NA);
+
+  // engineering
+  const hw=r.server_hardware||{}, app=r.application||{};
+  rows($("e-ident"),[["run id",r.run_id],["timestamp",r.timestamp_utc],
+    ["git commit",app.commit||NA],["branch",app.branch||NA],
+    ["host",hw.hostname||NA],["GPU",hw.gpu_model||NA],["driver",hw.gpu_driver||NA],
+    ["CPU",hw.cpu_model||NA],["AI mode",r.ai_mode],["scenario",r.scenario],
+    ["player",JSON.stringify(r.player)]]);
+  rows($("e-sess"),[["requested",r.requested_users],["started",r.actual_started_concurrency],
+    ["actual max concurrency",r.actual_max_concurrency],
+    ["completed",r.sessions?.completed],["failed",r.sessions?.failed],
+    ["wall seconds",r.wall_seconds],["req/s",na(m.application?.requests_per_s)],
+    ["HTTP counts",JSON.stringify(m.application?.http_status_counts||{})]]);
+  rows($("e-book"),[["booking completion ms",pct(b.completion_ms)],
+    ["state machine",b.state_machine||NA],["quote source",b.quote_source||NA],
+    ["external effects sent",JSON.stringify(b.external_effects_sent||{})],
+    ["session total ms",pct(m.application?.session_latency_ms)]]);
+  rows($("e-ai"),Object.entries(a).map(([k,v])=>
+    [k,(v&&typeof v==="object"&&v.p50!==undefined)?pct(v):na(typeof v==="object"?JSON.stringify(v):v)]));
+  rows($("e-cold"),r.cold_start&&r.cold_start!==NA?Object.entries(r.cold_start).map(([k,v])=>[k,na(v)]):[["cold start",na(NA)]]);
+  rows($("e-gput"),(r.gpu_transitions||[]).map(t=>[t.label,
+    `VRAM ${t.vram_used_mib} MiB · apps ${t.compute_apps} ${JSON.stringify(t.compute_pids)} · legacy ${JSON.stringify(t.legacy_symoneural_llm_pids)}`]));
+  const T=m.telemetry||{};
+  rows($("e-gpu"),T.gpu&&T.gpu!==NA?[["samples",`${T.sample_count} over ${T.span_s}s @ ${T.sample_interval_s}s`],
+    ["series sufficient",String(T.series_sufficient)],
+    ["VRAM",stat(T.gpu.vram_used_mib)],["utilization",stat(T.gpu.utilization_pct)],
+    ["power",stat(T.gpu.power_w)],["temperature",stat(T.gpu.temperature_c)],
+    ["max simultaneous compute apps",T.gpu.max_simultaneous_compute_apps],
+    ["compute PIDs",JSON.stringify(T.gpu.compute_pids_seen)]]:[["gpu",na(NA)]]);
+  rows($("e-sys"),T.system&&T.system!==NA?[["CPU",stat(T.system.cpu_pct)],["load1",stat(T.system.load1)],
+    ["RAM used",stat(T.system.ram_used_mib)],["swap",stat(T.system.swap_used_mib)],
+    ["disk I/O",na(T.system.disk_io)],["network I/O",na(T.system.network_io)]]:[["system",na(NA)]]);
+  rows($("e-misc"),[["legacy engine",JSON.stringify(r.legacy_engine||{})],
+    ["worker teardown",JSON.stringify(r.worker_teardown||NA)],
+    ["cleanup",JSON.stringify(r.cleanup||{})],
+    ["errors",r.errors?JSON.stringify(r.errors):"none"],
+    ["classification",r.classification]]);
+}
+tick(); poll=setInterval(tick,700);
+</script>
