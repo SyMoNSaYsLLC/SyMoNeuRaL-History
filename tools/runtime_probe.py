@@ -157,7 +157,38 @@ class lease:
     def __exit__(self, *exc):
         subprocess.run([str(GOVERNOR), "release", PROBE_SURFACE],
                        capture_output=True, text=True, timeout=120)
+        clear_probe_resident()
         return False
+
+
+def clear_probe_resident() -> bool:
+    """Remove `run/resident` if and only if it still names this probe. Returns whether it did.
+
+    `cmd_acquire` writes `run/resident` and `cmd_release` leaves it -- correctly, since the
+    weights usually ARE still resident and the next tenant needs to know whom to evict. But
+    these probes unload everything before releasing, so leaving `probe` there hands the next
+    real acquire a resident surface that does not exist AND is unknown to the governor.
+    `surface_live("probe")` then falls to the `*)` pattern, `symoneural-llm/|symoneural-diffuse/`,
+    and the outcomes are both wrong: either it matches nothing and logs a stale eviction, or it
+    matches a genuinely live production engine and pkills BOTH engines to evict a surface that
+    was never there.
+
+    That is not the same as a normal `image` -> `chat` transition, where both names are
+    registered and `surface_live` can give a real answer about a real tenant. This is the §1
+    registry rule biting the tool that wrote it: an unregistered leaseholder gets the default
+    arm, so it must not leave itself recorded.
+
+    The `== PROBE_SURFACE` guard is the race: if a real surface acquired between the release
+    and this call, the file names THEM, and removing it would be worse than leaving ours.
+    """
+    p = ROOT / "run" / "resident"
+    try:
+        if p.is_file() and p.read_text().strip() == PROBE_SURFACE:
+            p.unlink()
+            return True
+    except OSError:
+        pass
+    return False
 
 
 # ---------------------------------------------------------------------------- result record
@@ -637,9 +668,6 @@ def probe_miner() -> None:
     plain = re.sub(r"\x1b\[[0-9;]*m", "", blob)
     hashes = re.findall(r"([\d.]+)\s*([KMG])h\b", plain)
     device = re.search(r"\bcu(\d+)\b", plain)
-    # The LAST status line, not the first: `A<n>` is a running counter, and taking the first
-    # match reported 0 accepted while the miner's own display beside it read A1.
-    accepted = re.findall(r"\bA(\d+)\b", plain)
     got_rate = bool(hashes) and any(float(v) > 0 for v, _ in hashes)
     record("symoneural-miner", "benchmark", PASS if got_rate else FAIL,
            "the miner initialised CUDA, built the DAG and reported a hashrate"
@@ -649,7 +677,6 @@ def probe_miner() -> None:
            rc=rc, seconds=round(secs, 1),
            hashrates=[f"{v} {u}H/s" for v, u in hashes[:4]],
            cuda_device=f"cu{device.group(1)}" if device else None,
-           shares_accepted_in_benchmark=accepted[-1] if accepted else None,
            block=22000,
            tail=plain.strip()[-500:] if not got_rate else plain.strip()[-160:])
 
@@ -891,10 +918,16 @@ def main() -> int:
     ap.add_argument("--only", action="append", choices=sorted(PROBES), default=None)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--json", type=pathlib.Path, default=None)
+    ap.add_argument("--cleanup", action="store_true",
+                    help="clear a leftover run/resident naming this probe, and exit")
     a = ap.parse_args()
     if a.list:
         for k in sorted(PROBES):
             print(k)
+        return 0
+    if a.cleanup:
+        print("cleared run/resident" if clear_probe_resident()
+              else f"run/resident is {resident()!r} -- not ours, left alone")
         return 0
 
     print(f"card at start : {card()}")
@@ -907,7 +940,12 @@ def main() -> int:
         PROBES[name]()
         print()
 
+    # Belt and braces: every lease clears this on exit, but a probe killed mid-run would
+    # not have, and the next real acquire is the one that pays for it.
+    if clear_probe_resident():
+        print("cleared a leftover run/resident naming this probe")
     print(f"card at end   : {card()}")
+    print(f"run/resident  : {resident()!r}")
     p = sum(1 for r in RESULTS if r["status"] == PASS)
     f = sum(1 for r in RESULTS if r["status"] == FAIL)
     s = sum(1 for r in RESULTS if r["status"] == SKIP)
