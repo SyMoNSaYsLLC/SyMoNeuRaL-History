@@ -99,6 +99,18 @@ RUN.mkdir(exist_ok=True)
 # still reported healthy. The process now reads its own configuration from a directory owned by
 # the account that runs it. `EnvironmentFile` still wins where it is present, because a name
 # already in `os.environ` is never overridden.
+# The lease's Python side and the card reading, extracted from this file. `gpu` is
+# deliberately thin: `class GpuQueue` could not come with it, because it calls
+# `bus.announce()`, `push_rack()` and therefore `build_status()` -- the rack, which is
+# most of this file. That extraction is blocked behind the rack's, not behind gpu.py.
+# `record_engine` by NAME, not `from apps import gpu`: this file already binds
+# `gpu = GpuQueue(QUEUE_DEPTH)` below, which SHADOWS the module -- so `gpu.record_engine`
+# resolved to the queue instance and would have raised AttributeError at the next engine
+# spawn. Import succeeded regardless, because nothing calls it at import time. Caught by
+# asking the imported module for the attribute rather than trusting that `import api` passing
+# meant the wiring was right.
+from apps.gpu import record_engine
+from apps import telemetry
 from apps import runtimeconfig  # noqa: E402
 runtimeconfig.load()
 
@@ -996,42 +1008,6 @@ def _diff(old: dict, new: dict) -> dict:
 bus = Bus()
 
 
-async def record_engine(pid: int) -> None:
-    """Tell the governor which process is actually holding the card.
-
-    The lease records the *holder* -- the process that took the lock. During a live render
-    `run/gpu.lock.d/holder` read `image 1509`, and 1509 is this API: the process that
-    spawned the engine and is waiting on it. Evicting by that pid would stop the API and
-    leave the engine resident. So the spawned pid is recorded separately and eviction
-    signals it by identity instead of by `pkill -f <pattern>`.
-
-    The pgid is offered only when the child is genuinely a group leader. `run()` below
-    passes `start_new_session=True`, so its children are; `_llama` at the chat spawn and
-    `sigils.render._spawn` are not, and their process group is this API's own. Handing the
-    governor that pgid would arm a group kill aimed at ourselves -- strictly worse than the
-    pattern kill being replaced. `os.getpgid(pid) == pid` is the check that distinguishes
-    them, and the governor re-verifies it rather than trusting us.
-
-    Best-effort by design: a failure here costs the identity path and falls back to the
-    pattern arms, which is the behaviour that exists today. It must never fail a render.
-    """
-    try:
-        pgid = os.getpgid(pid)
-    except (ProcessLookupError, PermissionError):
-        return
-    argv = [str(GOVERNOR), "engine", str(pid)]
-    if pgid == pid:
-        argv.append(str(pgid))
-    try:
-        # `to_thread`, not a bare `subprocess.run`. This is called from two coroutines, and a
-        # blocking exec in either stalls the WHOLE event loop for up to the 10 s timeout --
-        # no other request, no streaming token, and not /api/status. Shipped that way and
-        # caught in review: every engine spawn would have looked like an outage to the
-        # watchdog that polls /api/status, which is a monitor made useless by its own server.
-        await asyncio.to_thread(
-            subprocess.run, argv, capture_output=True, timeout=10, check=False)
-    except Exception:  # noqa: BLE001 -- see the docstring: never fail a render over this
-        log.warning("could not record engine pid %s with the governor", pid)
 
 
 async def run(*argv: str, timeout: int = JOB_TIMEOUT_S, env_owner: bool = False,
@@ -1074,153 +1050,6 @@ async def run(*argv: str, timeout: int = JOB_TIMEOUT_S, env_owner: bool = False,
     return proc.returncode or 0, out, err
 
 
-_TELEMETRY_FIELDS = ("memory.free", "memory.total", "power.draw", "temperature.gpu")
-_telemetry: dict[str, float | int | None] = {}
-_telemetry_at = 0.0
-_TELEMETRY_TTL = 1.0
-
-# Why the driver's health is read from the telemetry call instead of its own probe:
-# `/api/status` is polled and also drives the websocket for every connected visitor, so it
-# must not spawn a process per request. `_read_smi()` already execs nvidia-smi at most once
-# per second, and a driver problem makes THAT call fail -- so the fault is free information
-# sitting in a call we were making anyway. Classifying it here adds no exec at all.
-#
-# Staleness window: driver state is at most `_TELEMETRY_TTL` (1 s) stale, same as the
-# numbers beside it. A mismatch does not come and go, so one second is far more freshness
-# than the fault needs.
-_smi_fault: tuple[str, str] = ("ok", "")
-
-#: What `nvidia-smi` says when the kernel module and the userspace library disagree. This is
-#: the 2026-09-09 case: a dist-upgrade replaced the driver, the running kernel kept the old
-#: modules, and every GPU path failed while the API reported itself healthy.
-_MISMATCH_MARKERS = (
-    "driver/library version mismatch",
-    "failed to initialize nvml",
-    "couldn't communicate with the nvidia driver",
-)
-
-#: nvidia-persistenced's pidfile. A stat, not a `systemctl is-active` subprocess, because
-#: this is read on the status path. It was `loaded failed failed` on this box before the
-#: 2026-09-09 reboot, alongside the mismatch.
-_PERSISTENCED_PID = pathlib.Path("/run/nvidia-persistenced/nvidia-persistenced.pid")
-
-
-def _read_smi() -> dict[str, float | int | None]:
-    """All four telemetry fields in ONE nvidia-smi call.
-
-    This used to be four separate synchronous `subprocess.run` calls made from inside async
-    request handlers, each with an 8 second timeout. Every status poll therefore blocked the
-    event loop across four process spawns -- and the loop it was blocking is the one
-    streaming chat tokens, so a visitor watching the rack could stall someone else's
-    generation. One exec, off the loop, cached for a second.
-
-    Float for fractional fields (power.draw reads '11.42'), int for the rest. Casting
-    everything to int silently turned power draw into None, which the rack rendered as a
-    dead sensor -- a display that quietly shows nothing is worse than one showing a wrong
-    number, because nobody goes looking for the bug.
-    """
-    global _smi_fault
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", f"--query-gpu={','.join(_TELEMETRY_FIELDS)}",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=8)
-        if out.returncode != 0:
-            _smi_fault = _classify_smi_failure(out.returncode, out.stderr, out.stdout)
-            return dict.fromkeys(_TELEMETRY_FIELDS)
-        parts = [p.strip() for p in out.stdout.strip().splitlines()[0].split(",")]
-        values: dict[str, float | int | None] = {}
-        for name, raw in zip(_TELEMETRY_FIELDS, parts):
-            try:
-                values[name] = float(raw) if "." in raw else int(raw)
-            except ValueError:
-                values[name] = None
-        # The driver answered. The only remaining GPU-health question is whether
-        # nvidia-persistenced is up, which is a stat rather than a subprocess.
-        _smi_fault = (("ok", "") if _PERSISTENCED_PID.exists() else (
-            "persistenced_down",
-            "The driver is healthy but nvidia-persistenced is not running, so the first GPU "
-            "request of each idle period pays the driver-initialisation cost. Surfaces work; "
-            "cold requests are slower. `systemctl status nvidia-persistenced`."))
-        return values
-    except FileNotFoundError:
-        _smi_fault = ("absent", "No nvidia-smi on PATH: this host has no NVIDIA driver "
-                                "installed. GPU surfaces cannot serve here; CPU surfaces "
-                                "are unaffected.")
-        return dict.fromkeys(_TELEMETRY_FIELDS)
-    except Exception as exc:
-        _smi_fault = ("unreadable", f"nvidia-smi did not complete "
-                                    f"({type(exc).__name__}). GPU state is unknown.")
-        return dict.fromkeys(_TELEMETRY_FIELDS)
-
-
-def _classify_smi_failure(rc: int, stderr: str, stdout: str) -> tuple[str, str]:
-    """Turn a failed nvidia-smi into a state an operator can act on.
-
-    The distinction that matters is **mismatch versus anything else**, because a mismatch is
-    the one class of GPU fault that restarting this service cannot fix -- the kernel module
-    and the userspace library have to be brought back into agreement, and on this box that
-    means a reboot. Reporting it as a generic surface failure is what made the 2026-09-09
-    upgrade read as "the app is broken" instead of "reboot the box".
-    """
-    blob = f"{stderr}\n{stdout}".lower()
-    if any(m in blob for m in _MISMATCH_MARKERS):
-        return ("mismatch",
-                "NVIDIA driver/library version mismatch: the loaded kernel module and the "
-                "userspace library disagree, which happens when a driver upgrade lands "
-                "under a running kernel. REBOOT REQUIRED -- restarting this service will "
-                "not fix it. CPU surfaces are unaffected and still serving.")
-    first = next((l for l in stderr.splitlines() if l.strip()), "").strip()
-    return ("unreadable",
-            f"nvidia-smi exited {rc}"
-            + (f": {first[:200]}" if first else " with no message")
-            + ". GPU state is unknown; CPU surfaces are unaffected.")
-
-
-def gpu_driver_health() -> tuple[str, str]:
-    """(state, detail) for the driver. One of ok / mismatch / persistenced_down /
-    absent / unreadable.
-
-    Reads through the telemetry cache, so calling it costs nothing beyond the one
-    nvidia-smi exec per second that the rack already performs.
-    """
-    smi("memory.total")            # refreshes `_smi_fault` if the cache has expired
-    return _smi_fault
-
-
-def smi(field: str):
-    """One telemetry field, from a short-lived cache."""
-    global _telemetry, _telemetry_at
-    now = time.monotonic()
-    if now - _telemetry_at > _TELEMETRY_TTL:
-        _telemetry = _read_smi()
-        _telemetry_at = now
-    return _telemetry.get(field)
-
-
-GALLERY_KEEP = 60
-
-
-def prune_gallery(keep: int = GALLERY_KEEP) -> None:
-    """Keep the most recent renders, delete the rest.
-
-    Newest-first by mtime rather than by the timestamp in the filename: the name is
-    generated by us and could drift, the mtime is what the filesystem actually knows.
-    """
-    try:
-        shots = sorted(RENDERS.glob("gen-*.png"), key=lambda p: p.stat().st_mtime,
-                       reverse=True)
-        for stale in shots[keep:]:
-            stale.unlink(missing_ok=True)
-    except Exception:
-        log.exception("gallery prune failed")
-
-
-async def refresh_telemetry() -> None:
-    """Refresh the cache off the event loop."""
-    global _telemetry, _telemetry_at
-    _telemetry = await asyncio.to_thread(_read_smi)
-    _telemetry_at = time.monotonic()
 
 
 # ======================================================================== chat surface
@@ -1586,7 +1415,7 @@ async def telemetry_loop() -> None:
         try:
             await asyncio.sleep(3)
             if bus.listeners:
-                await refresh_telemetry()
+                await telemetry.refresh_telemetry()
                 await push_rack()
         except asyncio.CancelledError:
             raise
@@ -2397,7 +2226,7 @@ def build_status() -> Status:
     # NOT an ExecStartPre check: that would refuse to start the whole service, taking
     # ravencalc -- which is CPU-only and perfectly able to serve through a driver fault --
     # down with it.
-    driver_state, driver_detail = gpu_driver_health()
+    driver_state, driver_detail = telemetry.gpu_driver_health()
     driver_ok = driver_state in ("ok", "persistenced_down")
 
     def gpu_unit(name: str, ok: bool) -> str:
@@ -2489,7 +2318,7 @@ def build_status() -> Status:
     # Read once so the child and any future reader of it cannot disagree within one response.
     exp_row = exp.status()
 
-    free, total = smi("memory.free"), smi("memory.total")
+    free, total = telemetry.smi("memory.free"), telemetry.smi("memory.total")
     return Status(
         license=licensing.disclosure(),
         # `rackpower.apply` gets the LAST word on unit state, and only ever in one
@@ -2767,7 +2596,7 @@ def build_status() -> Status:
         gpu=GpuState(
             name="RTX 5070 Ti", vram_free_mib=free, vram_total_mib=total,
             vram_used_pct=round(100 * (1 - free / total)) if free and total else None,
-            power_w=smi("power.draw"), temp_c=smi("temperature.gpu"),
+            power_w=telemetry.smi("power.draw"), temp_c=telemetry.smi("temperature.gpu"),
             holder=holder, queued=gpu.waiting,
             driver=driver_state, driver_detail=driver_detail or None,
         ),
@@ -2831,8 +2660,8 @@ async def get_status(request: Request, response: Response) -> Status | Response:
     # Guarded by the same TTL so this adds no nvidia-smi traffic -- it only moves the exec
     # that was already happening off the loop. `refresh_telemetry()` is the existing
     # `to_thread` wrapper; :1216 already used it correctly and this call site did not.
-    if time.monotonic() - _telemetry_at > _TELEMETRY_TTL:
-        await refresh_telemetry()
+    if time.monotonic() - telemetry._telemetry_at > telemetry._TELEMETRY_TTL:
+        await telemetry.refresh_telemetry()
     payload = build_status()
     body = payload.model_dump()
     etag = '"' + semantic_etag(body) + '"'
