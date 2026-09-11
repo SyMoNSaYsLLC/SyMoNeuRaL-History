@@ -274,14 +274,36 @@ SITE = ROOT / "site"          # the website: static files Caddy serves and deplo
 RENDERS = HERE / "output"
 RENDERS.mkdir(exist_ok=True)
 
-CHAT_MODEL = MODELS / "llm" / "symon-1.0-7b-q4_k_m.gguf"
+# Switched from symon-1.0-7b-q4_k_m.gguf (qwen2, 7.6B dense) on 2026-09-11.
+# Measured on this card, same harness, same questions:
+#     30B-A3B  236.6 tok/s   3.35B active of 30.5B   all QA answers correct
+#     7B       153.5 tok/s   7.62B active            all QA answers correct
+# It is faster BECAUSE it is sparse -- 4 of 128 experts per token, so it reads 1.2 GiB
+# per token against the 7B's 4.5 GiB, and this card is memory-bandwidth bound.
+CHAT_MODEL = MODELS / "llm" / "symon-1.0-30b-a3b-q2_k_l.gguf"
 CHAT_ADAPTER = ROOT / "training" / "adapter" / "symoneural-lora.gguf"
 
 #: The product label for CHAT_MODEL. Pinned to the model by
 #: `test_chat_model_and_its_label_change_together`, because this string is what the rack unit
 #: and the site show, and a label naming the wrong model is the one kind of wrong this project
 #: cannot ship. Change the model, change this, or the test fails.
-CHAT_MODEL_LABEL = "SymonChat S1-7B"
+CHAT_MODEL_LABEL = "SymonChat S1-30B-A3B"
+
+#: TOTAL context, divided by the two slots below -- so each conversation gets half of it.
+#:
+#: MEASURED by pushing to OOM and stepping back (`tools/bench_maxfit.py`, 2026-09-11):
+#:
+#:     -c 40960   peak 15,844 MiB    459 MiB headroom   <- the edge, and unusable
+#:     -c 33792   peak 15,188 MiB  1,115 MiB headroom   <- this
+#:
+#: 33792 rather than the edge because 459 MiB is BELOW the governor's 1024 MiB drain floor,
+#: where `scripts/gpu-governor.sh` can no longer tell a drained card from an occupied one --
+#: so the edge breaks the SCHEDULER even while the model itself runs.
+#:
+#: The honest cost of the switch, stated where the number lives: 33792/2 gives each slot
+#: 16,896 tokens against the 32,768 the 7B gave. Conversations are half as long. That buys
+#: 236 tok/s against 153 and a 30B model against a 7B.
+CHAT_CTX_TOTAL = 33792
 
 
 def _gguf_arch(path):
@@ -324,6 +346,28 @@ def _gguf_arch(path):
     except Exception:
         return None
     return None
+
+
+def draft_applies():
+    """Whether DRAFT_MODEL can be used with CHAT_MODEL -- not merely whether it is on disk.
+
+    Same defect as `adapter_applies` and the same fix, one flag along. `-md` was added
+    whenever the file existed, which was safe only while chat and draft were both qwen2.
+    The 30B-A3B is `qwen3moe`; the draft is `qwen2`. Speculative decoding needs the two to
+    share a vocabulary, and a mismatched draft either refuses at load or -- worse -- starts
+    and buys nothing while looking like it works. MEASURED 2026-09-11: the production argv
+    with this draft against the 30B exits 1 at load, `cudaMalloc failed` after the draft's
+    own weights and KV are added on top.
+
+    Architecture equality is a coarse proxy for vocabulary equality and deliberately so: it
+    is readable from the file without loading either model, and it fails in the safe
+    direction. Losing speculative decoding costs throughput; applying a mismatched draft
+    costs the surface.
+    """
+    if not DRAFT_MODEL.exists():
+        return False
+    a, b = _gguf_arch(DRAFT_MODEL), _gguf_arch(CHAT_MODEL)
+    return bool(a) and a == b
 
 
 def adapter_applies():
@@ -1306,15 +1350,28 @@ async def start_llama() -> bool:
                 # site whose entire argument is that its numbers are measured, that is the
                 # one mistake that matters. It was also, at the time, describing a config
                 # that had never once been started. Measure it, or label it projected.
-                "-c", "65536", "--no-warmup",
+                #
+                # 2026-09-11: 65536 was measured for Qwen2.5-7B (4.36 GiB of weights) and
+                # OOMs on the 30B-A3B (10.55 GiB): `cudaMalloc failed: out of memory`
+                # allocating the KV. So the number moved into CHAT_CTX_TOTAL beside the
+                # model it belongs to, because a context size is a property of the MODEL and
+                # the CARD together, and hardcoding one here made it look like a property of
+                # the surface.
+                "-c", str(CHAT_CTX_TOTAL), "--no-warmup",
                 # Continuous batching: one pass over the weights serves every slot in
                 # flight, which is the single highest-value lever measured on this card
                 # (47.3x from batch 1 to batch 64). Two slots rather than four, because
                 # slots divide the context and context is what was actually scarce.
                 "-cb", "-np", "2"]
-        if DRAFT_MODEL.exists():
+        if draft_applies():
             argv += ["-md", str(DRAFT_MODEL), "-ngld", "99",
                      "--spec-draft-n-max", str(SPEC_DRAFT_MAX)]
+        elif DRAFT_MODEL.exists():
+            # On disk but not applicable. Say so, for the reason the adapter branch says it:
+            # a surface that quietly runs without an accelerator it believes it has produces
+            # a throughput number nobody can explain.
+            log.warning("draft model NOT applied: %s is %s, chat model is %s",
+                        DRAFT_MODEL.name, _gguf_arch(DRAFT_MODEL), _gguf_arch(CHAT_MODEL))
         if adapter_applies():
             argv += ["--lora", str(CHAT_ADAPTER)]
         elif CHAT_ADAPTER.exists():
