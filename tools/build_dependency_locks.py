@@ -8,7 +8,7 @@
 
     "There is no single environment here and pretending there is would make the table
      wrong: the serving path is the system interpreter (Debian, 212 packages, no
-     virtualenv on purpose), and training, sigils, asicminer, studio and bento each have
+     virtualenv on purpose), and training, sigils, asicminer and studio each have
      their own venv."
 
 So there is no such thing as *the* lock file for this project, and a single
@@ -70,7 +70,6 @@ ENVIRONMENTS: list[tuple[str, str, str]] = [
      "Studio and its reinforce/exp/discovery plugins."),
     ("asicminer", "backend/apps/asicminer/.venv/bin/python3",
      "ASIC-side miner telemetry (pyasic)."),
-    ("bento", "deploy/bento/.venv/bin/python3", "Bento packaging/deploy path."),
     ("symoneural-ui", "symoneural-ui/.venv/bin/python3",
      "The GPL-3.0 ComfyUI fork. DISABLED for the reset; the lock is recorded for "
      "completeness, not because the component is being carried."),

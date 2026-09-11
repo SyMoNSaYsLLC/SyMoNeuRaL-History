@@ -31,7 +31,6 @@ REQUIREMENTS = (
     "backend/apps/studio/plugins/discovery/symoneural-discovery.requirements.txt",
     "backend/apps/studio/plugins/reinforce/requirements.txt",
     "backend/apps/cryptominer/SyMon_MinerGPUWorker_PROD_20260102-1818/requirements.txt",
-    "deploy/bento/requirements.txt",
 )
 
 PYPROJECTS = (

@@ -96,7 +96,6 @@ old paths broke. Both sets are temporary.
 | `restore/` | 368K | how every component is rebuilt: pinned upstreams, build recipes, locks, manifests | the only record of how untracked components come back |
 | `symoneural-miner-core/` | 33K | first-party mining core from the public spec; Keccak constants computed from FIPS 202, not pasted | `SMOKE-miner-core.md` is its `TEST_COMMAND` in `BUILD-RECIPES.tsv` |
 | `.github/` | 4K | CI workflow definitions | |
-| `deploy/` | 164M | deployment payloads | |
 | `training/` | 7.7G | training corpus, configuration and adapters | **protected** — see `docs/ops/EXPORTS.md` rule 2 |
 | `yocto/` | 1.6M | twelve `meta-symoneural-*` layers and their scripts | embedded image builds |
 | `incoming/` | 41M | staging for reference projects being rebranded | `tools/index_references.py adopt <project>`; only `PROVENANCE.md` is tracked **Created on demand** by `adopt`; absent on a clean box. |
