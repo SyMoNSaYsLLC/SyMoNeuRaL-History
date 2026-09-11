@@ -1,0 +1,258 @@
+{
+  "schema": 1,
+  "slots": {
+    "PRIMARY": {
+      "schema": 1,
+      "kernel": {
+        "release": "6.12.101+deb13-amd64",
+        "version": "#1 SMP PREEMPT_DYNAMIC Debian 6.12.101-1 (2026-08-05)",
+        "arch": "x86_64"
+      },
+      "nvidia_kmd": {
+        "nvrm_banner": "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  610.57.04  Release Build  (root@symon)  Sun Aug 16 10:43:29 AM EDT 2026",
+        "flavour": "Open",
+        "version": "610.57.04",
+        "module_versions": {
+          "nvidia": "610.57.04",
+          "nvidia_uvm": "610.57.04",
+          "nvidia_drm": "610.57.04",
+          "nvidia_modeset": "610.57.04"
+        },
+        "modules": {
+          "nvidia-drm.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-drm.ko.xz",
+            "size": 80080,
+            "sha256": "eee6942f8a5be78a708126475f6f981c25cd3fd05a095dd5f118e734697daf34"
+          },
+          "nvidia-modeset.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-modeset.ko.xz",
+            "size": 689596,
+            "sha256": "71a07f18b2cc151740522cdf61a17cad54efd7e4dc0612c75081b676527dce07"
+          },
+          "nvidia-peermem.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-peermem.ko.xz",
+            "size": 2300,
+            "sha256": "36f0c2c61d55fc05f7d995d9633390db0e19f5424d593fb667b2f2c498a24b02"
+          },
+          "nvidia-uvm.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-uvm.ko.xz",
+            "size": 589620,
+            "sha256": "d60a5e53ebc952678bf8533d1dfa408eadc687bdd5b90773e766ae7728eee43b"
+          },
+          "nvidia.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia.ko.xz",
+            "size": 10989320,
+            "sha256": "efd15f99d3841afde9ccce0e49abd8e6c2b16a458efd085829ced99237f6abb5"
+          }
+        },
+        "taint": {
+          "nvidia": "O",
+          "nvidia_uvm": "O",
+          "nvidia_drm": "O",
+          "nvidia_modeset": "O"
+        }
+      },
+      "gsp_firmware": {
+        "version": "610.57.04",
+        "blobs": {
+          "/lib/firmware/nvidia/610.57.04/gsp_ga10x.bin": {
+            "size": 84310168,
+            "sha256": "c0156954f3e048d56011524e0c2ae2881bb6db8173b53f9b2f4eb94197f02999"
+          },
+          "/lib/firmware/nvidia/610.57.04/gsp_tu10x.bin": {
+            "size": 29381504,
+            "sha256": "d157e3b7dd5da2ca8d1ccb6ca98958f9e35d10a9ef7326277ebac133e4b0d1a7"
+          }
+        }
+      },
+      "nvidia_userspace": {
+        "driver_version": "610.57.04",
+        "libcuda": {
+          "path": "/usr/lib/x86_64-linux-gnu/libcuda.so.610.57.04",
+          "size": 112637032,
+          "sha256": "9c7e7e514b6d4bbacba137b883cfd96cf39ceb6861a1d037619c6dded998139b"
+        }
+      },
+      "cuda": {
+        "umd_version": "13.3",
+        "nvcc_release": "13.3",
+        "nvcc_build": "13.3.73"
+      },
+      "gpu": {
+        "name": "NVIDIA GeForce RTX 5070 Ti",
+        "uuid": "GPU-15e0078a-cb3a-50d1-a40b-94e4d538fc78",
+        "pci.bus_id": "00000000:01:00.0",
+        "pci.device_id": "0x2C0510DE",
+        "pci.sub_device_id": "0x143C196E",
+        "vbios_version": "98.03.58.00.23",
+        "compute_cap": "12.0",
+        "memory.total": "16303 MiB"
+      },
+      "sm": {
+        "compute_cap": "12.0",
+        "arch": "sm_120"
+      },
+      "secure_boot": {
+        "state": "SecureBoot enabled",
+        "kernel_lockdown": "none [integrity] confidentiality",
+        "module_signatures": null
+      },
+      "upstream": {
+        "path": "/home/google/Symoneural/references/open-gpu-kernel-modules",
+        "present": true,
+        "remote": "https://github.com/NVIDIA/open-gpu-kernel-modules.git",
+        "commit": "e4a5faa2567f28c8eabe0ebb6422b6d0abcf37eb",
+        "describe": "610.57.04",
+        "clean": true,
+        "nvidia_version": "610.57.04"
+      },
+      "higher_level_runtimes": {
+        "_note": "userspace only; 'kernels' here would mean the Hugging Face pip package, which is NOT an NVIDIA kernel module",
+        "torch": "2.11.0+cu130",
+        "torch_cuda": "13.0",
+        "triton": "3.6.0",
+        "arch_list": [
+          "sm_75",
+          "sm_80",
+          "sm_86",
+          "sm_90",
+          "sm_100",
+          "sm_120"
+        ]
+      },
+      "promotion": {
+        "state": "MEASURED",
+        "promoted_by": null,
+        "promoted_at": null,
+        "rollback_source": null
+      }
+    },
+    "CANDIDATE": null,
+    "RECOVERY": {
+      "schema": 1,
+      "kernel": {
+        "release": "6.12.101+deb13-amd64",
+        "version": "#1 SMP PREEMPT_DYNAMIC Debian 6.12.101-1 (2026-08-05)",
+        "arch": "x86_64"
+      },
+      "nvidia_kmd": {
+        "nvrm_banner": "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  610.57.04  Release Build  (root@symon)  Sun Aug 16 10:43:29 AM EDT 2026",
+        "flavour": "Open",
+        "version": "610.57.04",
+        "module_versions": {
+          "nvidia": "610.57.04",
+          "nvidia_uvm": "610.57.04",
+          "nvidia_drm": "610.57.04",
+          "nvidia_modeset": "610.57.04"
+        },
+        "modules": {
+          "nvidia-drm.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-drm.ko.xz",
+            "size": 80080,
+            "sha256": "eee6942f8a5be78a708126475f6f981c25cd3fd05a095dd5f118e734697daf34"
+          },
+          "nvidia-modeset.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-modeset.ko.xz",
+            "size": 689596,
+            "sha256": "71a07f18b2cc151740522cdf61a17cad54efd7e4dc0612c75081b676527dce07"
+          },
+          "nvidia-peermem.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-peermem.ko.xz",
+            "size": 2300,
+            "sha256": "36f0c2c61d55fc05f7d995d9633390db0e19f5424d593fb667b2f2c498a24b02"
+          },
+          "nvidia-uvm.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia-uvm.ko.xz",
+            "size": 589620,
+            "sha256": "d60a5e53ebc952678bf8533d1dfa408eadc687bdd5b90773e766ae7728eee43b"
+          },
+          "nvidia.ko.xz": {
+            "path": "/lib/modules/6.12.101+deb13-amd64/updates/dkms/nvidia.ko.xz",
+            "size": 10989320,
+            "sha256": "efd15f99d3841afde9ccce0e49abd8e6c2b16a458efd085829ced99237f6abb5"
+          }
+        },
+        "taint": {
+          "nvidia": "O",
+          "nvidia_uvm": "O",
+          "nvidia_drm": "O",
+          "nvidia_modeset": "O"
+        }
+      },
+      "gsp_firmware": {
+        "version": "610.57.04",
+        "blobs": {
+          "/lib/firmware/nvidia/610.57.04/gsp_ga10x.bin": {
+            "size": 84310168,
+            "sha256": "c0156954f3e048d56011524e0c2ae2881bb6db8173b53f9b2f4eb94197f02999"
+          },
+          "/lib/firmware/nvidia/610.57.04/gsp_tu10x.bin": {
+            "size": 29381504,
+            "sha256": "d157e3b7dd5da2ca8d1ccb6ca98958f9e35d10a9ef7326277ebac133e4b0d1a7"
+          }
+        }
+      },
+      "nvidia_userspace": {
+        "driver_version": "610.57.04",
+        "libcuda": {
+          "path": "/usr/lib/x86_64-linux-gnu/libcuda.so.610.57.04",
+          "size": 112637032,
+          "sha256": "9c7e7e514b6d4bbacba137b883cfd96cf39ceb6861a1d037619c6dded998139b"
+        }
+      },
+      "cuda": {
+        "umd_version": "13.3",
+        "nvcc_release": "13.3",
+        "nvcc_build": "13.3.73"
+      },
+      "gpu": {
+        "name": "NVIDIA GeForce RTX 5070 Ti",
+        "uuid": "GPU-15e0078a-cb3a-50d1-a40b-94e4d538fc78",
+        "pci.bus_id": "00000000:01:00.0",
+        "pci.device_id": "0x2C0510DE",
+        "pci.sub_device_id": "0x143C196E",
+        "vbios_version": "98.03.58.00.23",
+        "compute_cap": "12.0",
+        "memory.total": "16303 MiB"
+      },
+      "sm": {
+        "compute_cap": "12.0",
+        "arch": "sm_120"
+      },
+      "secure_boot": {
+        "state": "SecureBoot enabled",
+        "kernel_lockdown": "none [integrity] confidentiality",
+        "module_signatures": null
+      },
+      "upstream": {
+        "path": "/home/google/Symoneural/references/open-gpu-kernel-modules",
+        "present": true,
+        "remote": "https://github.com/NVIDIA/open-gpu-kernel-modules.git",
+        "commit": "e4a5faa2567f28c8eabe0ebb6422b6d0abcf37eb",
+        "describe": "610.57.04",
+        "clean": true,
+        "nvidia_version": "610.57.04"
+      },
+      "higher_level_runtimes": {
+        "_note": "userspace only; 'kernels' here would mean the Hugging Face pip package, which is NOT an NVIDIA kernel module",
+        "torch": "2.11.0+cu130",
+        "torch_cuda": "13.0",
+        "triton": "3.6.0",
+        "arch_list": [
+          "sm_75",
+          "sm_80",
+          "sm_86",
+          "sm_90",
+          "sm_100",
+          "sm_120"
+        ]
+      },
+      "promotion": {
+        "state": "MEASURED",
+        "promoted_by": null,
+        "promoted_at": null,
+        "rollback_source": null
+      }
+    }
+  }
+}

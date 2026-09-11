@@ -41,6 +41,7 @@ whether a clone carries them.
 | `symoneural-code/` | `symoneural-cli`, `symoneural-code`, `symoneural-discovery` — the operator command line and the interactive session. |
 | `symoneural-audit/` | finds code that breaks when a directory moves. Written the day a move broke the client. |
 | `symoneural-adaptive-fabric/` | **PLANNED, NOT_IMPLEMENTED.** A home and a README; no code. Status quoted from `docs/architecture/COMPONENT-MAP.tsv:15`. |
+| `symoneural-trusted-firmware/` | a reproducible, verifiable, rollback-safe GPU firmware foundation. **Scaffold gate:** `inventory`, `verify` and `test --dry` are real and read-only; `stage`, `promote` and `rollback` refuse to act and print the plan they would run. **Recovered 2026-09-11 from an unmerged branch.** |
 | `capacity-lab/` | concurrent-user measurement for this exact server, including where it degrades. **Recovered 2026-09-10 from an unmerged branch; never run on this box.** Two defects on arrival — read `capacity-lab/RECOVERED.md` before its own `README.md`. |
 
 **Derived — built from vendored upstream source by `tools/fork_engines.sh`, gitignored.**
