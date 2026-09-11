@@ -112,16 +112,34 @@ vram_free() { nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2
 # With an argument, sums only contexts whose process path contains that substring. That is
 # a different question -- "has THIS process let go" rather than "is the card clear of
 # compute" -- and both are asked here; see drain().
+#
+# ## The arithmetic moved to Python; the contract did not
+#
+# This was an `awk -F','` block summing nvidia-smi CSV. Parsing CSV and doing arithmetic on
+# it is where bash is worst, and the patternless-drain defect lived exactly there. It is now
+# `backend/apps/gpu.py compute_mib`, which has tests.
+#
+# **The lock did NOT move and must not.** `mkdir` is the atomic primitive, bash has no
+# runtime dependency, and a shell script can break a stale lock when `api.py` is dead. Only
+# the measurement went.
+#
+# The contract here is unchanged on purpose: print a number and return 0, or print nothing
+# and return 1. `drain()` below already branches on exactly that, so its fallback needed no
+# edit -- which is what makes this swap small enough to trust.
+#
+# **An unreadable answer is never a drained answer.** A missing interpreter, a missing module,
+# a timeout, a non-numeric line: all return 1, and `drain()` then uses the CARD-WIDE reading
+# against the 1500 MiB floor rather than the 1024 MiB compute floor -- a cruder measure with a
+# STRICTER threshold. So losing Python makes this wait longer, never hand over sooner.
+GPU_PY="$ROOT/backend/apps/gpu.py"
 vram_compute_used() {
-  local pat="${1:-}" out sum
-  out="$(nvidia-smi --query-compute-apps=process_name,used_memory --format=csv,noheader,nounits 2>/dev/null)" || return 1
-  sum="$(awk -v pat="$pat" -F',' '
-        {line=$0; gsub(/[ \t\r]/,"",$NF)
-         if (line=="") next
-         if (pat != "" && index(line, pat) == 0) next
-         if ($NF !~ /^[0-9]+$/){bad=1} else {t+=$NF}}
-        END{if(bad) exit 1; print t+0}' <<<"$out")" || return 1
-  printf '%s\n' "$sum"
+  local pat="${1:-}" out
+  [ -f "$GPU_PY" ] || return 1
+  out="$(python3 "$GPU_PY" compute-mib "$pat" 2>/dev/null)" || return 1
+  # Validate before printing. A stray line on stdout would otherwise become a number, and a
+  # number is what decides whether the card is handed over.
+  case "$out" in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$out"
 }
 log() { printf '%s  %-8s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" | tee -a "$LOG" >&2; }
 
@@ -258,10 +276,13 @@ drain() {
     if compute="$(vram_compute_used "$pat")"; then
       scope="compute${pat:+ for '$pat'}"; floor="$DRAIN_FLOOR_MIB"
     else
-      # Fail open, and say so. Failing closed would wedge the card on a driver hiccup;
-      # failing open in silence would hand it over having measured nothing.
+      # Degraded, and LOUD about it. The old comment here said "fail open", which
+      # undersold what it does: the fallback is the card-wide reading against a floor that
+      # is HIGHER (1500 vs 1024), so it is cruder and stricter, not more permissive. That is
+      # why bash may depend on Python for the precise answer at all -- the degraded path
+      # waits longer, and a silent fallback is a fallback nobody knows they are running on.
       [ "$said_fallback" -eq 0 ] && log drain \
-        "compute query unreadable -- falling back to the card-wide reading and its ${DRAIN_FLOOR_CARDWIDE_MIB} MiB floor"
+        "FALLBACK: no compute reading (gpu.py unavailable or unreadable) -- using the card-wide reading and its stricter ${DRAIN_FLOOR_CARDWIDE_MIB} MiB floor"
       said_fallback=1
       compute="$used"; scope="card-wide"; floor="$DRAIN_FLOOR_CARDWIDE_MIB"
     fi

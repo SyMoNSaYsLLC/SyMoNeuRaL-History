@@ -25,6 +25,7 @@ import logging
 import os
 import pathlib
 import subprocess
+import sys
 
 log = logging.getLogger("symoneural.api")
 
@@ -70,3 +71,80 @@ async def record_engine(pid: int) -> None:
             subprocess.run, argv, capture_output=True, timeout=10, check=False)
     except Exception:  # noqa: BLE001 -- see the docstring: never fail a render over this
         log.warning("could not record engine pid %s with the governor", pid)
+
+
+# ====================================================================== drain arithmetic
+#
+# Moved out of `scripts/gpu-governor.sh`, where it was an `awk -F','` block summing
+# `nvidia-smi --query-compute-apps` CSV. Parsing CSV and doing arithmetic on it is the shape
+# bash is worst at, and the patternless-drain defect lived exactly there.
+#
+# The lock did NOT move and must not: `mkdir` is the atomic primitive, bash has no runtime
+# dependency, and a shell script can break a stale lock when `api.py` is dead. Only the
+# measurement came here.
+#
+# ## The failure direction is the whole safety argument
+#
+# Bash calling Python introduces the runtime dependency bash was valuable for not having.
+# That is acceptable only because **an unreadable answer is never a drained answer.** This
+# function exits non-zero rather than printing 0, and the governor's fallback is the
+# CARD-WIDE reading against `DRAIN_FLOOR_CARDWIDE_MIB` (1500) rather than the compute floor
+# (1024) -- a cruder measure with a *stricter* threshold. So losing this module makes the
+# governor wait longer, never hand over sooner.
+#
+# Printing 0 on failure would be the opposite: an unreadable card would read as an empty one
+# and get handed to the next tenant on no evidence. `test_drain_fails_closed` mutates it to
+# do exactly that and asserts the governor then reports a drain it has not earned.
+
+def compute_mib(pattern: str = "") -> int:
+    """Device memory held by CUDA contexts, in MiB. Raises rather than guessing.
+
+    With a `pattern`, sums only contexts whose process path contains that substring -- "has
+    THIS process let go" rather than "is the card clear". Both questions are asked by the
+    governor and they are not the same one: after evicting chat, the card still legitimately
+    holds an idle ComfyUI context, and waiting for that to leave would wedge the handover.
+
+    An EMPTY result is a legitimate reading -- it is what "nothing holds a context" looks
+    like -- and returns 0. A query that could not be read raises. That distinction is the
+    entire point of the function.
+    """
+    out = subprocess.run(
+        ["nvidia-smi", "--query-compute-apps=process_name,used_memory",
+         "--format=csv,noheader,nounits"],
+        capture_output=True, text=True, timeout=20)
+    if out.returncode != 0:
+        raise RuntimeError(f"nvidia-smi exited {out.returncode}")
+    total = 0
+    for line in out.stdout.splitlines():
+        if not line.strip():
+            continue
+        if pattern and pattern not in line:
+            continue
+        field = line.rsplit(",", 1)[-1].strip()
+        if not field.isdigit():
+            # Summed, not first-match: two contexts of 400 and 12000 MiB must not read as
+            # 400. And a non-numeric field is a read failure, not a zero.
+            raise RuntimeError(f"unparsable used_memory field: {field!r}")
+        total += int(field)
+    return total
+
+
+def _cli(argv: list[str]) -> int:
+    """`python3 backend/apps/gpu.py compute-mib [pattern]` -- what the governor calls.
+
+    Prints one integer and exits 0, or prints nothing and exits 1. Nothing else, because the
+    caller is a shell script reading stdout and a stray line would become a number.
+    """
+    if len(argv) < 1 or argv[0] != "compute-mib":
+        print("usage: gpu.py compute-mib [process-path-substring]", file=sys.stderr)
+        return 2
+    try:
+        print(compute_mib(argv[1] if len(argv) > 1 else ""))
+        return 0
+    except Exception as exc:                                   # noqa: BLE001
+        print(f"compute_mib: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli(sys.argv[1:]))
