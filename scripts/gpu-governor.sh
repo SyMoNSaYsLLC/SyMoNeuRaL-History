@@ -128,6 +128,100 @@ log() { printf '%s  %-8s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" | tee -a
 held_surface() { cut -d' ' -f1 "$HOLDER" 2>/dev/null || true; }
 held_pid()     { cut -d' ' -f2 "$HOLDER" 2>/dev/null || true; }
 
+# ------------------------------------------------------------------ the engine record
+#
+# `holder` names the process that took the LEASE. That is not the process holding the card.
+# Measured during a live render, `holder` read `image 1509` -- 1509 is symoneural-api, which
+# spawned the engine and is still sitting there waiting for it. Killing 1509 to reclaim VRAM
+# would stop the API and leave the engine running.
+#
+# So the engine records itself separately, after it is spawned:
+#
+#   engine:  <pid> <pgid|->
+#
+# `-` in the second field is not missing data, it is a measurement: the spawned process is
+# NOT a process-group leader, so there is no group that means "this job and its children"
+# without also meaning "whatever else shares our group". Signalling that group would signal
+# symoneural-api. `cmd_engine` refuses to write a pgid it has not verified, and `evict`
+# signals the single pid in that case.
+#
+# This generalises what the miner has always done -- `run/miner.pid` plus `kill -0 -- -$pgid`
+# in surface_live below. The miner was right and was the only one doing it.
+#
+# ## It lives in $RUN, not in $LOCKDIR, and that is not a filing preference
+#
+# The first version of this put it in `$LOCKDIR/engine` and every eviction case failed.
+# `break_if_stale` reclaims a dead holder's lock with `rm -rf "$LOCKDIR"` -- so the engine
+# record was destroyed at exactly the moment it was needed, because "the holder died but
+# its engine is still resident" is the case eviction exists for. An engine's lifetime is
+# not the lock's lifetime.
+#
+# It also carries its own surface name rather than relying on `holder`, for a second reason
+# the same tests found: `cmd_acquire` writes the NEW surface into `holder` *before* calling
+# `evict "$prev"`, so by eviction time `held_surface` is the incoming tenant, not the one
+# being evicted. `run/resident` and `run/miner.pid` are both in `$RUN` for these reasons and
+# this is the third.
+#
+#   engine:  <surface> <pid> <pgid|->
+ENGINE="$RUN/engine"
+engine_surface() { cut -d' ' -f1 "$ENGINE" 2>/dev/null || true; }
+engine_pid()     { cut -d' ' -f2 "$ENGINE" 2>/dev/null || true; }
+engine_pgid()    { local g; g="$(cut -d' ' -f3 "$ENGINE" 2>/dev/null || true)"; [ "$g" = "-" ] && g=""; printf '%s' "$g"; }
+# Does the record describe the surface we are asking about?
+engine_is() { [ -n "${1:-}" ] && [ "$1" = "$(engine_surface)" ] && [ -n "$(engine_pid)" ]; }
+
+# Is the recorded engine still alive? Group first when we have a verified one, because a
+# group answers for the children too.
+#
+# A ZOMBIE IS NOT ALIVE, and `kill -0` cannot tell you that: a process that has exited but
+# has not been reaped by its parent still accepts signal 0 and still answers `kill -0` with
+# success. The engine's parent is symoneural-api, which reaps on `communicate()`/`wait()`,
+# so the window is normally short -- but "normally short" is exactly the kind of thing that
+# stops being short on the day something wedges. Without this check `evict_by_pid` waits
+# out the full grace period, sends SIGKILL to a corpse, and then reports
+# "SURVIVED KILL" about a process that died before any of it started.
+proc_is_zombie() {
+  local st; st="$(awk '{print $3}' "/proc/${1}/stat" 2>/dev/null)" || return 1
+  [ "$st" = "Z" ]
+}
+engine_live() {
+  local pid pgid
+  pid="$(engine_pid)"; [ -n "$pid" ] || return 1
+  proc_is_zombie "$pid" && return 1
+  pgid="$(engine_pgid)"
+  if [ -n "$pgid" ]; then kill -0 -- "-$pgid" 2>/dev/null && return 0; fi
+  kill -0 "$pid" 2>/dev/null
+}
+
+# ------------------------------------------------------------------ the resident marker
+#
+# `run/resident` is the one piece of `run/` state that comes back from a reboot DISHONEST.
+# After the 19:11 reboot it read `chat` with no lock directory and nothing running. The
+# governor coped -- "recorded but no run is active -- treating as stale" -- but it reached
+# that by inference from an absent lock, and every other part of this system is built to be
+# honest on read rather than correct by inference.
+#
+# So the marker is stamped with the boot it was written in. A stamp that does not match the
+# running kernel's boot id means the process it named died at power-off, which is a fact,
+# not a guess. The boot id is a sidecar file rather than a second field in `run/resident`
+# on purpose: `cat run/resident` is something people and scripts do, and a format change
+# there would be a silent break for every one of them.
+BOOT_ID_SRC="${SYMONEURAL_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
+boot_id() { cat "$BOOT_ID_SRC" 2>/dev/null || true; }
+stamp_resident_boot() { local b; b="$(boot_id)"; [ -n "$b" ] && printf '%s\n' "$b" > "$RUN/resident.boot"; }
+
+# True when a marker exists and demonstrably belongs to an earlier boot. An ABSENT stamp is
+# not a mismatch: markers written before this change have none, and calling those stale
+# would evict a live surface on the first run after an upgrade.
+resident_predates_boot() {
+  local now stamped
+  [ -s "$RUN/resident" ] || return 1
+  now="$(boot_id)"; [ -n "$now" ] || return 1
+  [ -s "$RUN/resident.boot" ] || return 1
+  stamped="$(cat "$RUN/resident.boot" 2>/dev/null || true)"
+  [ -n "$stamped" ] && [ "$stamped" != "$now" ]
+}
+
 # A holder that died without releasing must not wedge the card forever.
 break_if_stale() {
   local pid; pid="$(held_pid)"
@@ -246,9 +340,20 @@ surface_pattern() {
 #
 # The miner is the exception and does not have a `-f` pattern: it is a process *group*,
 # recorded by pid file, so liveness is a signal-0 to the group.
+#
+# A recorded engine pid outranks the pattern, for the reason this whole section exists: a
+# pattern is not an identity. Demonstrated 2026-09-10 and not hypothetically --
+# `pgrep -af 'bin/symoneural-llm|bin/symoneural-diffuse'` matched an interactive *shell*
+# whose command line merely contained the string. As `pkill` that is a kill of an unrelated
+# process, which is the sixteen-dead-renders failure in `sigils/render.py`'s header.
 surface_live() {
   local surface="${1:-}" pgid
   [ -z "$surface" ] && return 1
+  # The identity path: this surface recorded what it spawned.
+  if engine_is "$surface"; then
+    engine_live
+    return $?
+  fi
   if [ "$surface" = "miner" ]; then
     pgid="$(cat "$RUN/miner.pid" 2>/dev/null || true)"
     [ -n "$pgid" ] || return 1
@@ -256,6 +361,33 @@ surface_live() {
     return $?
   fi
   pgrep -f "$(surface_pattern "$surface")" >/dev/null 2>&1
+}
+
+# Record what we spawned. Refuses unless we hold the lease, because an engine record written
+# by a process that does not hold the card names a process nobody is entitled to kill.
+#
+# The pgid is VERIFIED here rather than trusted: the caller passes it, and we write it only
+# if it is a real group whose leader is the pid itself. `api.py:1019`'s `run()` passes
+# `start_new_session=True` so its children are leaders; `api.py:1428` (chat) and
+# `sigils/render.py:231` do not, and their pgid is symoneural-api's own. Writing that would
+# hand `evict` a group kill aimed at the API.
+cmd_engine() {
+  local pid="${1:?usage: engine <pid> [pgid]}" pgid="${2:-}"
+  local surface; surface="$(held_surface)"
+  if [ -z "$surface" ]; then
+    log engine "REFUSING to record engine pid $pid -- nobody holds the lease"
+    return 1
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then
+    log engine "REFUSING to record engine pid $pid -- no such process"
+    return 1
+  fi
+  if [ -n "$pgid" ] && [ "$pgid" != "-" ] && [ "$pgid" != "$pid" ]; then
+    log engine "not recording pgid $pgid for pid $pid -- not a group leader, so the group is not ours alone"
+    pgid=""
+  fi
+  printf '%s %s %s\n' "$surface" "$pid" "${pgid:--}" > "$ENGINE"
+  log engine "'$surface' engine pid $pid${pgid:+ pgid $pgid} recorded -- eviction will signal it by identity"
 }
 
 # Stop whatever is resident, then wait for the memory back.
@@ -271,7 +403,7 @@ evict() {
       return 1
     fi
     log evict "'train' recorded but no run is active -- treating as stale"
-    rm -f "$RUN/resident"
+    rm -f "$RUN/resident" "$RUN/resident.boot"
     drain
     return $?
   fi
@@ -283,6 +415,13 @@ evict() {
 
   if [ "$active" -eq 1 ]; then
     log evict "stopping '$prev' to make room -- the weight sets do not co-fit"
+    # The identity path. Taken whenever a pid was recorded, which a test asserts -- building
+    # the new path and then continuing to run the old one is the failure mode this is
+    # guarding against as much as the pattern kill itself.
+    if engine_is "$prev"; then
+      evict_by_pid "$prev"
+    else
+      log evict "FALLBACK for '$prev': no engine pid recorded, killing by PATTERN -- this can match an unrelated process"
     case "$prev" in
       # Graceful first, ungraceful second. A `||` fallback hides a broken primary, so both
       # halves of each pair are checked by apps/test_governor_paths.py.
@@ -296,14 +435,66 @@ evict() {
       miner) python3 -c 'import sys; sys.path.insert(0, "'"$ROOT"'/backend/apps"); import cryptominer; cryptominer.stop()' \
                >/dev/null 2>&1 \
                || pkill -g "$(cat "$RUN/miner.pid" 2>/dev/null || echo -1)" 2>/dev/null || true ;;
-      *)     pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse' 2>/dev/null || true ;;
+      # An unregistered surface FAILS CLOSED. This arm used to
+      # `pkill -f 'bin/symoneural-llm|bin/symoneural-diffuse'`, so a typo in a surface name
+      # stopped chat and image together. The card being held by something this script does
+      # not recognise is a condition for a person, not for the broadest kill available.
+      *)     log evict "REFUSING to evict unknown surface '$prev' -- no recorded engine pid and no known stop action. The card is held by something this script does not recognise; that is for a human."
+             return 1 ;;
     esac
+    fi
+  elif engine_is "$prev"; then
+    log evict "'$prev' engine pid $(engine_pid) already exited -- nothing to signal"
+    rm -f "$ENGINE"
   else
     log evict "'$prev' recorded but no run is active -- treating as stale"
   fi
 
-  rm -f "$RUN/resident"
-  drain
+  rm -f "$RUN/resident" "$RUN/resident.boot"
+  # Drain FOR the surface we just stopped, not for the whole card.
+  #
+  # This was a bare `drain`, which reads ALL compute against DRAIN_FLOOR_MIB and so asks
+  # "is the card empty?" when the question is "did the thing I just killed let go?". The
+  # two coincide only because one-tenant-at-a-time is the invariant -- so the moment that
+  # invariant is what you are recovering FROM, the aggregate form waits on a tenant that is
+  # not the one being evicted and times out having measured the wrong thing. The pattern
+  # form is what the header at the top of `drain` describes and was already built for.
+  drain "$(surface_pattern "$prev")"
+}
+
+# Signal the recorded engine, group first if we verified one. TERM, grace, then KILL.
+#
+# `kill -0` before and after so what gets logged is a reading rather than an inference from
+# an exit code: `kill` succeeds against a process that is already a zombie, and "we sent a
+# signal" is not "it went away".
+EVICT_GRACE_S="${EVICT_GRACE_S:-10}"
+evict_by_pid() {
+  local surface="${1:-?}" pid pgid target waited=0
+  pid="$(engine_pid)"; pgid="$(engine_pgid)"
+  if [ -n "$pgid" ]; then target="-$pgid"; else target="$pid"; fi
+
+  if ! engine_live; then
+    log evict "'$surface' engine pid $pid already exited -- nothing to signal"
+    rm -f "$ENGINE"
+    return 0
+  fi
+
+  log evict "'$surface' -> TERM $target (pid $pid${pgid:+, process group $pgid})"
+  kill -TERM -- "$target" 2>/dev/null || true
+  while [ "$waited" -lt "$EVICT_GRACE_S" ]; do
+    engine_live || { log evict "'$surface' engine exited after ${waited}s on TERM"; rm -f "$ENGINE"; return 0; }
+    sleep 1; waited=$((waited + 1))
+  done
+
+  log evict "'$surface' still alive after ${waited}s -- KILL $target"
+  kill -KILL -- "$target" 2>/dev/null || true
+  sleep 1
+  if engine_live; then
+    log evict "'$surface' engine pid $pid SURVIVED KILL -- not clearing the record"
+    return 1
+  fi
+  log evict "'$surface' engine gone after KILL"
+  rm -f "$ENGINE"
 }
 
 cmd_acquire() {
@@ -329,11 +520,19 @@ cmd_acquire() {
 
   # We own the lock. Whoever was resident before us has to go.
   prev="$(cat "$RUN/resident" 2>/dev/null || true)"
+  # ...unless the marker predates this boot, in which case it names nothing and we say so
+  # rather than inferring staleness from an absent lock further down.
+  if [ -n "$prev" ] && resident_predates_boot; then
+    log resident "'$prev' was recorded before this boot -- the process it names cannot exist; discarding the marker"
+    rm -f "$RUN/resident" "$RUN/resident.boot"
+    prev=""
+  fi
   echo "$surface $owner" > "$HOLDER"
   if [ -n "$prev" ] && [ "$prev" != "$surface" ]; then
     if ! evict "$prev"; then rm -rf "$LOCKDIR"; return 1; fi
   fi
   echo "$surface" > "$RUN/resident"
+  stamp_resident_boot
   log acquire "'$surface' holds the card -- $(vram_free) MiB free, waited ${waited}s"
   return 0
 }
@@ -413,5 +612,6 @@ case "${1:-status}" in
   status)  shift; cmd_status  "$@" ;;
   with)    shift; cmd_with    "$@" ;;
   drain)   shift; drain "$@" ;;
-  *) echo "usage: $(basename "$0") {acquire|release|status|with|drain [proc-substring]}" >&2; exit 2 ;;
+  engine)  shift; cmd_engine  "$@" ;;
+  *) echo "usage: $(basename "$0") {acquire|release|status|with|drain [proc-substring]|engine <pid> [pgid]}" >&2; exit 2 ;;
 esac

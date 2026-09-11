@@ -1002,6 +1002,38 @@ def _diff(old: dict, new: dict) -> dict:
 bus = Bus()
 
 
+def record_engine(pid: int) -> None:
+    """Tell the governor which process is actually holding the card.
+
+    The lease records the *holder* -- the process that took the lock. During a live render
+    `run/gpu.lock.d/holder` read `image 1509`, and 1509 is this API: the process that
+    spawned the engine and is waiting on it. Evicting by that pid would stop the API and
+    leave the engine resident. So the spawned pid is recorded separately and eviction
+    signals it by identity instead of by `pkill -f <pattern>`.
+
+    The pgid is offered only when the child is genuinely a group leader. `run()` below
+    passes `start_new_session=True`, so its children are; `_llama` at the chat spawn and
+    `sigils.render._spawn` are not, and their process group is this API's own. Handing the
+    governor that pgid would arm a group kill aimed at ourselves -- strictly worse than the
+    pattern kill being replaced. `os.getpgid(pid) == pid` is the check that distinguishes
+    them, and the governor re-verifies it rather than trusting us.
+
+    Best-effort by design: a failure here costs the identity path and falls back to the
+    pattern arms, which is the behaviour that exists today. It must never fail a render.
+    """
+    try:
+        pgid = os.getpgid(pid)
+    except (ProcessLookupError, PermissionError):
+        return
+    argv = [str(GOVERNOR), "engine", str(pid)]
+    if pgid == pid:
+        argv.append(str(pgid))
+    try:
+        subprocess.run(argv, capture_output=True, timeout=10, check=False)
+    except Exception:  # noqa: BLE001 -- see the docstring: never fail a render over this
+        log.warning("could not record engine pid %s with the governor", pid)
+
+
 async def run(*argv: str, timeout: int = JOB_TIMEOUT_S,
               env_owner: bool = False) -> tuple[int, bytes, bytes]:
     """Run a subprocess in its own session, and kill the whole group on timeout.
@@ -1019,6 +1051,7 @@ async def run(*argv: str, timeout: int = JOB_TIMEOUT_S,
     proc = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         start_new_session=True, env=env)
+    record_engine(proc.pid)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
@@ -1427,6 +1460,11 @@ async def start_llama() -> bool:
         log.info("starting chat surface")
         _llama = await asyncio.create_subprocess_exec(
             *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        # No `start_new_session=True` here, deliberately: the chat engine is long-lived and
+        # `stop_llama()` already stops it by handle. So this child shares OUR process group,
+        # `record_engine` will decline to offer a pgid, and eviction signals the single pid.
+        # That is still an identity, which the pattern it replaces was not.
+        record_engine(_llama.pid)
         for _ in range(120):
             if await llama_up():
                 log.info("chat surface up")

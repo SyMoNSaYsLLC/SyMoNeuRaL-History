@@ -58,6 +58,7 @@ from __future__ import annotations
 import asyncio
 import os
 import pathlib
+import subprocess
 import time
 
 # backend/apps/sigils/render.py -> backend/apps/sigils -> backend/apps -> backend -> root.
@@ -226,11 +227,33 @@ class Busy(RuntimeError):
     """The card could not be had inside the acquire timeout."""
 
 
+def _record_engine(pid: int) -> None:
+    """Name the spawned process to the governor, so eviction signals it by identity.
+
+    This file's own header records sixteen consecutive renders killed by
+    `pkill -f`, which matched the governor wrapper's command line as readily as the engine's.
+    A recorded pid cannot do that. Demonstrated again 2026-09-10: `pgrep -af` on the same
+    engine patterns matched an interactive shell that merely mentioned them.
+
+    No pgid is offered -- `_spawn` does not pass `start_new_session=True`, so this child
+    shares the API's process group and signalling that group would signal the API. The
+    governor re-checks and would refuse it anyway; not sending it says so at the source.
+
+    Best-effort: losing this costs the identity path, not the render.
+    """
+    try:
+        subprocess.run([str(GOVERNOR), "engine", str(pid)],
+                       capture_output=True, timeout=10, check=False)
+    except Exception:  # noqa: BLE001 -- never fail a render over a bookkeeping call
+        pass
+
+
 async def _spawn(argv: list[str], timeout: float, env: dict | None = None
                  ) -> tuple[int, bytes]:
     proc = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
         env=env)
+    _record_engine(proc.pid)
     try:
         _out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except (asyncio.TimeoutError, asyncio.CancelledError):

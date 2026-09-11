@@ -88,17 +88,57 @@ class EvictionKillsNameOurEngines(unittest.TestCase):
                                      f"an eviction still kills by {retired!r}, which this "
                                      "project does not build")
 
-    def test_both_engines_are_reachable_by_the_default_arm(self):
-        """The `*)` arm is what an unregistered surface falls through to. It must reach both
-        engines, or an unnamed tenant is 'evicted' while it holds the card."""
-        default = [l for l in CODE.splitlines()
-                   if l.lstrip().startswith("*)") and "pkill" in l]
-        self.assertEqual(len(default), 1,
-                         "expected exactly one default arm that kills; the script has more "
-                         f"than one `*)` case, so match on the killing one: found {default}")
-        for name in (LLM, DIFFUSE):
-            self.assertIn(name, default[0],
-                          f"the default eviction arm does not reach {name}")
+    def test_the_default_arm_refuses_instead_of_killing_both_engines(self):
+        """The `*)` arm must REFUSE. It used to kill both engines, and that was the bug.
+
+        This test previously asserted the opposite -- that the default arm reached both
+        `symoneural-llm` and `symoneural-diffuse` -- on the reasoning that an unnamed tenant
+        must still be evictable. The reasoning was sound and the conclusion was wrong, and
+        it took `surface_pattern()` to show why: an unknown surface's liveness probe is
+        *itself* the two engines, because `surface_pattern`'s own `*)` returns
+        `symoneural-llm/|symoneural-diffuse/`. So a typo in a surface name reads as live
+        whenever chat OR image is running, and the old default arm then killed both of them
+        -- stopping two working surfaces to make room for a name that does not exist.
+
+        The card being held by something this script cannot name is a condition for a
+        person. Failing closed loses an eviction; failing open loses two live surfaces.
+        """
+        default = [l for l in CODE.splitlines() if l.lstrip().startswith("*)")]
+        arm = [l for l in default if "REFUSING" in l]
+        self.assertTrue(arm, "the default eviction arm no longer refuses -- if it kills "
+                             "again, a mistyped surface name takes chat and image with it")
+        for line in default:
+            self.assertNotIn("pkill", line,
+                             "the default eviction arm kills by pattern again")
+
+    def test_eviction_prefers_the_recorded_pid_over_any_pattern(self):
+        """Building the identity path and then still running the pattern one proves nothing.
+
+        The guard is structural: `evict` must consult `engine_is` BEFORE it reaches the
+        `case` of pattern arms, and the pattern branch must announce itself as a fallback.
+        """
+        body = CODE.split("\nevict() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("engine_is", body,
+                      "evict() does not consult the recorded engine at all")
+        self.assertLess(body.index("engine_is"), body.index("case "),
+                        "evict() reaches the pattern arms before checking for a recorded "
+                        "pid -- the identity path would never be taken")
+        self.assertIn("FALLBACK", body,
+                      "the pattern path no longer says it is a fallback, so a silent "
+                      "regression to pattern killing would not show up in the log")
+
+    def test_a_pgid_is_never_recorded_for_a_process_that_does_not_lead_its_group(self):
+        """`kill -TERM -<pgid>` against a group we merely belong to signals symoneural-api.
+
+        Two of the three spawn sites do not pass `start_new_session=True`, so their child's
+        process group is the API's own. Recording that pgid would arm a group kill aimed at
+        ourselves -- strictly worse than the pattern kill being replaced.
+        """
+        body = CODE.split("\ncmd_engine() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('"$pgid" != "$pid"', body,
+                      "cmd_engine does not verify that the pid leads the recorded group")
+        self.assertIn("not a group leader", body,
+                      "cmd_engine drops an unverified pgid without saying so")
 
 
 class TheGovernorTracksTheManifestedEngine(unittest.TestCase):
