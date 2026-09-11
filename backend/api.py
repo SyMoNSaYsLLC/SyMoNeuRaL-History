@@ -111,6 +111,10 @@ RUN.mkdir(exist_ok=True)
 # meant the wiring was right.
 from apps.gpu import record_engine
 from apps import telemetry
+# Imported as a module, not `from apps.modelmetrics import record_timings`, so the
+# metrics buffer has one identity. `apps/gpu.md` records what the alternative cost.
+from apps import modelmetrics  # noqa: E402
+from apps import metricsroutes  # noqa: E402
 from apps import runtimeconfig  # noqa: E402
 runtimeconfig.load()
 
@@ -1347,8 +1351,13 @@ async def stop_llama() -> None:
         _llama = None
 
 
-async def chat_deltas(messages: list[dict], max_tokens: int, temperature: float):
-    """Yield content deltas from llama-server's OpenAI-compatible endpoint."""
+async def chat_deltas(messages: list[dict], max_tokens: int, temperature: float,
+                      surface: str = "chat"):
+    """Yield content deltas from llama-server's OpenAI-compatible endpoint.
+
+    Also captures the engine's own measurements on the way past -- see the `timings` branch
+    below. `surface` only labels which caller produced the sample on the metrics page.
+    """
     body = json.dumps({"model": "symoneural", "messages": messages, "stream": True,
                        "max_tokens": max_tokens, "temperature": temperature}).encode()
     reader, writer = await asyncio.open_connection("127.0.0.1", LLAMA_PORT)
@@ -1369,8 +1378,24 @@ async def chat_deltas(messages: list[dict], max_tokens: int, temperature: float)
             if payload == "[DONE]":
                 break
             try:
-                delta = json.loads(payload)["choices"][0].get("delta", {})
+                chunk = json.loads(payload)
             except Exception:
+                continue
+            # llama-server appends a `timings` object to the FINAL chunk of every stream:
+            # tokens read and written, tok/s both ways, prompt-cache hits -- all measured by
+            # the engine while it was already doing the work. Until 2026-09-11 this loop
+            # read the content out of each chunk and discarded everything else, so those
+            # numbers were measured on every request this box has ever served and thrown
+            # away every time. This is the line that keeps them.
+            #
+            # Cost is one dict copy. NO probe request is issued: a metrics page that asks the
+            # model a question to find out how fast the model is would take the GPU lease to
+            # do it, and would be measuring itself.
+            if "timings" in chunk:
+                modelmetrics.record_timings(chunk["timings"], surface=surface)
+            try:
+                delta = chunk["choices"][0].get("delta", {})
+            except (KeyError, IndexError, TypeError):
                 continue
             if piece := delta.get("content"):
                 yield piece
@@ -3410,6 +3435,9 @@ app.include_router(studio.ui_router, prefix="/studio/editor", include_in_schema=
 # Touching `exp.router` here is what imports `apps/studio/plugins/exp/routes.py`, so a syntax error
 # in it still fails the boot loudly despite the PEP 562 lazy attribute on the package.
 app.include_router(exp.router, prefix="/api/exp", tags=["exp"])
+# The dashboard's data. Every route under it is a READ -- nothing starts a process,
+# takes the GPU lease, writes a file or runs a test. `test_metrics.py` asserts that.
+app.include_router(metricsroutes.router, prefix="/api/metrics", tags=["metrics"])
 # Tokenless and read-only, like `/api/gateway/state` and for the same reason: everything it
 # returns is a headline eight publishers hand to anyone who asks. Unlike the gateway it
 # answers 200 with an empty list rather than 503 when the surface is off, because its caller
