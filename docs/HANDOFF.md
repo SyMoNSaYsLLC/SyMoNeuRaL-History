@@ -116,6 +116,67 @@ tail -f .private/storage-reorg/latest.log
     that it is currently *due*: the manifests record nvcc 13.3 and driver 610.57.04, and the
     box was upgraded to 13.4 / 615.71.09 on 2026-09-09 — see `docs/ops/RUNTIMES.md`.
 
+12. **The origin certificate renews around 2026-10-16 and that renewal needs the box to be
+    reachable from the internet.** Measured 2026-09-10: the origin cert is Let's Encrypt
+    `CN=symoneural.com`, valid `Aug 17 → Nov 15 2026`. Caddy's TLS automation block is empty,
+    so it uses the default — ACME with `http-01` (port 80) and `tls-alpn-01` (port 443), both
+    of which require Let's Encrypt to reach *this machine*.
+
+    On the same day, `https://symoneural.com/` returned **522** from Cloudflare while the
+    origin served **200** on the LAN with a valid certificate. The Cloudflare/WAN side is the
+    owner's and is explicitly out of scope for agents; what is recorded here is only the
+    consequence: **if that path is still dark in mid-October, renewal fails quietly and the
+    certificate expires on 15 November.** Caddy has logged nothing about ACME in 30 days, so
+    this box will not warn anyone.
+
+    **It is not a cliff and it is removable.** Recovery after expiry is minutes once
+    connectivity returns. Two options retire the dependency permanently rather than racing it:
+    **DNS-01** via Caddy's Cloudflare plugin, which proves control with a TXT record and needs
+    no inbound reachability at all; or **`cloudflared` plus a Cloudflare Origin CA
+    certificate** (15-year validity, issued from the dashboard, no ACME), which also retires
+    the port forward and the WAN-address question. Either turns "fix the router before
+    mid-October" into "fix the router whenever."
+
+    **Do not report a 308 from `/.well-known/acme-challenge/<anything>` as a finding.** It is
+    the expected answer: Caddy installs the challenge handler dynamically during a renewal,
+    ahead of its own redirects, and `tls-alpn-01` never touches port 80. A probe of that path
+    returns what you expected without testing what you meant — the vacuous-guard class this
+    repository keeps catching.
+
+13. **`backend` is not a Python package, and it costs 104 `sys.path` mutations.** There is no
+    `backend/__init__.py` and no `backend/apps/__init__.py`; 18 of 21 app directories have one
+    (`remix` and `ravencalc` do not). Measured 2026-09-10 across tracked first-party code:
+    **12 `sys.path.insert` calls in 10 production files, 63 in 52 tests, 29 in 27 tools.**
+
+    The live consequence is not the ugliness. With `apps/` on `sys.path`, `gateway` and
+    `apps.gateway` are **two distinct module objects with separate class identities** — the
+    `SymonClient` ambiguity this repo already paid for is the general case, and anything
+    holding module-global state or doing `isinstance` across both breaks silently.
+    `api.py` running as a script is also why OpenAPI schema names come out as
+    `__main____ImageRequest`.
+
+    **Convert it before `SPLIT-API` stage 1, not after.** Stage 1 creates one
+    `apps/<name>/main.py` per surface; written against a real package they use absolute
+    imports from the start and the conversion is a no-op for them, rather than a second pass
+    over every file stage 1 just created. It should land on its own commit, imports and
+    nothing else. The six venvs are unaffected — they run as subprocesses with their own
+    interpreters and do not import `backend`.
+
+    Full costing, including what breaks: `review/commissioning-20260909/BACKEND-STRUCTURE-20260910.md`.
+
+14. **There is still no dependency manifest for the serving path, but the facts now exist.**
+    `backend/DEPENDENCIES.md` is prose and `restore/locks/*.lock.txt` pin the venvs; neither
+    makes `backend` installable. Measured: **196 distributions in the serving interpreter —
+    195 dpkg, 1 pip**, that one being `xdg 5`, which nothing in this repository imports. Of the
+    26 third-party import names the serving code uses, 14 resolve to a Debian `python3-*`
+    package and 12 are deliberately absent because they live in a venv.
+
+    A `pyproject.toml` is the missing piece and it **depends on bite 13** — there is no package
+    to describe yet. One policy question is the owner's before it can be written: `api.py`'s
+    docstring says the serving path runs on system dist-packages *deliberately*, so the
+    manifest should **declare** names and floors rather than pin versions, or it invites a venv
+    that contradicts the stated policy.
+
 ### What is deliberately not done yet
 
 The post-transfer stages are gated on the transfers finishing, in this order: Drive dedupe
