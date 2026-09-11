@@ -72,16 +72,10 @@ assert (ROOT / "scripts" / "gpu-governor.sh").is_file(), (
 # and it was one character away from happening during the backend/ move.
 RUN = ROOT / "run"
 RUN.mkdir(exist_ok=True)
-# RavenCalc is an app, not a helper module: 648 self-contained lines whose only
-# dependency is sympy. It lives in backend/apps/ravencalc/ alongside the other surfaces
-# rather than loose in backend/, which is where it sat purely because it was written
-# before there was an apps/ directory to put it in.
-sys.path.insert(0, str(HERE / "apps" / "ravencalc"))
 
 # The ASIC miner surface. Imported as a package rather than put on sys.path, because unlike
 # RavenCalc it is a thin shim over a subprocess: the rig protocols need 31 packages and live
 # in backend/apps/asicminer/.venv, which this interpreter must never import from.
-sys.path.insert(0, str(HERE / "apps"))
 
 # Before ANY app import, and that ordering is the whole point rather than tidiness. Every
 # environment variable in this repo was once spelled `SYMONEURAL_*` and is now `SYMONEURAL_*`; the
@@ -105,19 +99,19 @@ sys.path.insert(0, str(HERE / "apps"))
 # still reported healthy. The process now reads its own configuration from a directory owned by
 # the account that runs it. `EnvironmentFile` still wins where it is present, because a name
 # already in `os.environ` is never overridden.
-import runtimeconfig  # noqa: E402
+from apps import runtimeconfig  # noqa: E402
 runtimeconfig.load()
 
-import symoneuralenv  # noqa: E402
+from apps import symoneuralenv  # noqa: E402
 symoneuralenv.promote()
 
-import asicminer  # noqa: E402
-import cryptominer  # noqa: E402  -- the GPU miner. A DIFFERENT surface from asicminer:
+from apps import asicminer  # noqa: E402
+from apps import cryptominer  # noqa: E402  -- the GPU miner. A DIFFERENT surface from asicminer:
                     # different hardware and the only tenant that yields to everything.
-import coder      # noqa: E402  -- local-only developer surface. Takes NO GPU lease and
+from apps import coder      # noqa: E402  -- local-only developer surface. Takes NO GPU lease and
                   # has NO route: it is driven from the desktop session. See §2g.
-import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
-import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
+from apps import gateway    # noqa: E402  -- TRON licensing surface, see backend/apps/gateway/
+from apps import licensing  # noqa: E402  -- contract keys and the dev-fee disclosure
 # The port registry. Nothing in this file names a surface port as a literal any more: which
 # surfaces run as their own process, and on which port, is `ops/PORTS.tsv`. See apps/ports.py
 # for why it refuses to report a surface delegated unless the registry also gives it a port.
@@ -1283,7 +1277,7 @@ def extract_math(prompt: str) -> tuple[str, str, str] | None:
     prose, code and pasted logs fall out on their own.
     """
     try:
-        import ravencalc
+        from apps.ravencalc import ravencalc
     except ImportError:
         return None
 
@@ -1347,7 +1341,7 @@ def _parses(ravencalc, text: str) -> bool:
 
 
 def _compute_exact(operation: str, expression: str, variable: str) -> dict | None:
-    import ravencalc
+    from apps.ravencalc import ravencalc
     doc = {"schema": "ravencalc/request/v1", "operation": operation, "expression": expression}
     if operation in {"differentiate", "integrate", "limit", "series", "solve"}:
         doc["variable"] = variable
@@ -2962,7 +2956,7 @@ async def ws_calc(ws: WebSocket, msg: dict) -> None:
         await ws.send_text(json.dumps({"t": "error", "code": 422, "error": str(exc)[:300]}))
         return
     try:
-        import ravencalc
+        from apps.ravencalc import ravencalc
     except ImportError:
         await ws.send_text(json.dumps({"t": "error", "code": 503,
                                        "error": "RavenCalc is unavailable."}))
@@ -3243,7 +3237,7 @@ async def calc(body: CalcRequest,
     which is reported rather than rounded up to success.
     """
     try:
-        import ravencalc
+        from apps.ravencalc import ravencalc
     except ImportError:
         raise HTTPException(503, "RavenCalc is unavailable.")
 

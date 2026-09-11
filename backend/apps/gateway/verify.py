@@ -36,10 +36,14 @@ from dataclasses import dataclass, field
 # `python3 -m apps.gateway.settlement_roundtrip` from `backend/` makes both of them submodules of `apps`, where
 # only the relative form resolves. Supporting one and not the other means either the server or
 # the round-trip rehearsal is broken, and which one is broken is not obvious from the error.
+# Relative first: this module is part of the `apps.gateway` package and that is the one
+# route to it. The bare `from gateway import ...` that used to be primary only resolved
+# because `api.py` put `backend/apps` on `sys.path`, which made every module under it
+# importable by two names and therefore loadable as two objects.
 try:
-    from gateway import abi, address, chain
+    from . import abi, address, chain
 except ImportError:                             # pragma: no cover - exercised by __main__
-    from ..gateway import abi, address, chain   # type: ignore[no-redef]
+    from apps.gateway import abi, address, chain   # type: ignore[no-redef]
 
 # `licenceByNonce` on SymoneuralLicence. The tuple order is the contract's, and the tests pin
 # it against ops/gateway/artifacts/SymoneuralLicence.json rather than against this comment.

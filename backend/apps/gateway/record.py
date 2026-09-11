@@ -45,10 +45,11 @@ import sys
 from .store import Clearance, ClearanceStore
 from .verify import Granted, Refused, verify_payment
 
+# Relative first -- see the note in verify.py.
 try:
-    from gateway import chain, keccak
+    from . import chain, keccak
 except ImportError:                             # pragma: no cover - exercised by __main__
-    from ..gateway import chain, keccak         # type: ignore[no-redef]
+    from apps.gateway import chain, keccak      # type: ignore[no-redef]
 
 
 def workspace_key(workspace: str) -> str:
