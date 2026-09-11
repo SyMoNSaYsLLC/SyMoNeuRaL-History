@@ -86,15 +86,20 @@ old paths broke. Both sets are temporary.
 | `ops/` | 380K | deployment config and artefact manifests | `ops/Caddyfile` is the live web config; `ops/manifests/` records artefact identity |
 | `control/` | 124K | one folder to run and test the server locally | see its own README |
 | `bin/` | 295M | operator entry points — `symoneural-cli`, `symoneural-code`, `symoneural-discovery` | `bin/symoneural-code` opens an interactive session |
-| `desktop/`, `desktop-client/` | 60K, 2.4G | GTK/VTE window over `bin/symoneural-code`, and the native client | `desktop/shell.py` |
+| `desktop/` | 60K | GTK/VTE window over `bin/symoneural-code` | `desktop/shell.py` |
+| `desktop-client/` | 2.4G | the native Tauri client | `desktop-client/SMOKE.md` records what it does and does not do |
 | `harness/` | 192K | test harness support | used by the suite |
 | `tests/` | 14M | cross-cutting tests that are not unit tests of one app | |
 | `docs/` | 22M | the manual, architecture maps, ops runbooks, decisions and the handoff chain | `docs/ops/EXPORTS.md` before any byte leaves the box |
 | `brand/` | 2.6M | brand assets | |
+| `performance/` | 2.5G | benchmark harnesses, manifests and their recorded results | third-party benchmark sources are offloaded; see `performance/PERFORMANCE-POLICY.md` |
+| `restore/` | 368K | how every component is rebuilt: pinned upstreams, build recipes, locks, manifests | the only record of how untracked components come back |
+| `symoneural-miner-core/` | 33K | first-party mining core from the public spec; Keccak constants computed from FIPS 202, not pasted | `SMOKE-miner-core.md` is its `TEST_COMMAND` in `BUILD-RECIPES.tsv` |
+| `.github/` | 4K | CI workflow definitions | |
 | `deploy/` | 164M | deployment payloads | |
 | `training/` | 7.7G | training corpus, configuration and adapters | **protected** — see `docs/ops/EXPORTS.md` rule 2 |
 | `yocto/` | 1.6M | twelve `meta-symoneural-*` layers and their scripts | embedded image builds |
-| `incoming/` | 41M | staging for reference projects being rebranded | `tools/index_references.py adopt <project>`; only `PROVENANCE.md` is tracked |
+| `incoming/` | 41M | staging for reference projects being rebranded | `tools/index_references.py adopt <project>`; only `PROVENANCE.md` is tracked **Created on demand** by `adopt`; absent on a clean box. |
 
 ### Not carried by a clone
 
@@ -102,7 +107,7 @@ old paths broke. Both sets are temporary.
 |---|---|---|
 | `external/` | 149G | **third-party material, read-only.** 46 upstream OSS trees, vendored engine sources, SDKs, saved documents. Renamed from `references/` on 2026-09-08. Nothing in it may be imported, built, linked or executed — enforced by `backend/apps/test_reference_isolation.py`, not merely written down. |
 | `archive/` | 285G | consolidated bulk: workspace archives, backups, build evidence, session transcripts, weight staging. Ours, but not source. |
-| `releases/` | 49M | release tarballs and their MANIFESTs, produced by the export pipeline. Renamed from `archives/` because one letter of difference from `archive/` is a hazard. |
+| `releases/` | 49M | release tarballs and their MANIFESTs, produced by the export pipeline. Renamed from `archives/` because one letter of difference from `archive/` is a hazard. **Created on demand** by the export pipeline; absent on a clean box. |
 | `run/` | 819M | runtime state and generated pages, including `run/progress.html` and `run/config/` |
 | `review/` | 4.2M | host-local evidence; not guaranteed in a fresh clone |
 
