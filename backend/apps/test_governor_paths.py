@@ -127,6 +127,46 @@ class EvictionKillsNameOurEngines(unittest.TestCase):
                       "the pattern path no longer says it is a fallback, so a silent "
                       "regression to pattern killing would not show up in the log")
 
+    def test_only_real_engine_spawns_record_an_engine_pid(self):
+        """`api.run()` is a GENERAL subprocess helper and must not record every child.
+
+        Shipped as a regression on 2026-09-10 and caught on the live box within the hour:
+        `record_engine` was called unconditionally inside `run()`, which also runs
+        `gpu-governor.sh acquire` and `release`. A chat request therefore left `run/engine`
+        naming the governor's own acquire shell -- a process that had already exited --
+        while the actual engine ran on under a different pid, holding 8.3 GB.
+
+        Eviction would then find a dead pid, log "already exited -- nothing to signal",
+        clear the record, and never stop the engine. That is WORSE than the pattern kill it
+        replaced: it fails silently and the log looks correct.
+
+        Measured at the time: `run/engine` read `chat 58079 58079` while `nvidia-smi`
+        showed the engine at pid 58041, pgid 54797 -- the API's own group.
+        """
+        import ast
+        api = (ROOT / "backend" / "api.py").read_text()
+        tree = ast.parse(api)
+
+        run_fn = next((n for n in ast.walk(tree)
+                       if isinstance(n, ast.AsyncFunctionDef) and n.name == "run"), None)
+        self.assertIsNotNone(run_fn, "api.run() is gone -- this guard needs rewriting")
+
+        gate = {a.arg for a in run_fn.args.args} | {a.arg for a in run_fn.args.kwonlyargs}
+        self.assertIn("is_engine", gate,
+                      "api.run() no longer takes is_engine, so it either records every "
+                      "child again or the opt-in was renamed without updating this guard")
+
+        calls = [n for n in ast.walk(run_fn)
+                 if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "record_engine"]
+        self.assertTrue(calls, "run() never records an engine at all -- the identity path "
+                               "is dead for the diffusion engine")
+        for c in calls:
+            parent_ifs = [n for n in ast.walk(run_fn)
+                          if isinstance(n, ast.If) and any(c is x for x in ast.walk(n))]
+            self.assertTrue(parent_ifs,
+                            "record_engine() is called unconditionally inside run() -- "
+                            "every governor acquire would overwrite the engine record")
+
     def test_a_pgid_is_never_recorded_for_a_process_that_does_not_lead_its_group(self):
         """`kill -TERM -<pgid>` against a group we merely belong to signals symoneural-api.
 

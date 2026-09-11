@@ -1034,14 +1034,23 @@ def record_engine(pid: int) -> None:
         log.warning("could not record engine pid %s with the governor", pid)
 
 
-async def run(*argv: str, timeout: int = JOB_TIMEOUT_S,
-              env_owner: bool = False) -> tuple[int, bytes, bytes]:
+async def run(*argv: str, timeout: int = JOB_TIMEOUT_S, env_owner: bool = False,
+              is_engine: bool = False) -> tuple[int, bytes, bytes]:
     """Run a subprocess in its own session, and kill the whole group on timeout.
 
     Killing only the direct child is not enough: the governor is a wrapper script and the
     engine (sd-cli, llama-server) is its child. SIGKILL to the wrapper leaves the engine
     orphaned, still holding several gigabytes of VRAM, and skips the wrapper's release trap
     so the lock leaks too. A process group makes "stop this job" mean all of it.
+
+    `is_engine` must be opt-in, and the default must be False. This helper is general: it
+    also runs `gpu-governor.sh acquire` and `release` at :829 and :843. Recording EVERY
+    child as the engine was a real regression, shipped and caught on the live box the same
+    day: a chat request left `run/engine` naming the governor's own acquire shell, which had
+    already exited, while the actual engine ran on under a different pid. Eviction would
+    then have found a dead pid, logged "already exited -- nothing to signal", cleared the
+    record and never stopped the engine holding 8.3 GB. Worse than the pattern kill it
+    replaced, because it fails silently and looks correct in the log.
     """
     env = dict(os.environ)
     if env_owner:
@@ -1051,7 +1060,8 @@ async def run(*argv: str, timeout: int = JOB_TIMEOUT_S,
     proc = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         start_new_session=True, env=env)
-    record_engine(proc.pid)
+    if is_engine:
+        record_engine(proc.pid)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
@@ -3168,7 +3178,10 @@ async def image(body: ImageRequest,
         # Run sd-cli directly. gpu.hold already owns the governor lock, and wrapping this
         # in `governor with image` made the process wait on a lock it was already holding --
         # a self-deadlock that only surfaced as the job timeout 120 s later.
-        rc, _o, err = await run(*argv)
+        # is_engine: this IS the diffusion engine, so the governor should evict it by
+        # identity. `run` sets start_new_session=True, so this child leads its own
+        # group and a verified pgid is recorded -- children go with it.
+        rc, _o, err = await run(*argv, is_engine=True)
         elapsed = time.time() - started
 
     if rc != 0 or not out.exists():
