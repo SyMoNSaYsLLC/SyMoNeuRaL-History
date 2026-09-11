@@ -78,7 +78,7 @@ RUN.mkdir(exist_ok=True)
 # in backend/apps/asicminer/.venv, which this interpreter must never import from.
 
 # Before ANY app import, and that ordering is the whole point rather than tidiness. Every
-# environment variable in this repo was once spelled `SYMONEURAL_*` and is now `SYMONEURAL_*`; the
+# environment variable in this repo was once spelled `SYM_*` and is now `SYMONEURAL_*`; the
 # env file on a running box (`/etc/symoneural/api.env`, root-owned and hand-edited) still
 # carries the old spelling, so this copies each legacy name onto its new one and logs a
 # deprecation notice. It has to run above the imports because
@@ -996,7 +996,7 @@ def _diff(old: dict, new: dict) -> dict:
 bus = Bus()
 
 
-def record_engine(pid: int) -> None:
+async def record_engine(pid: int) -> None:
     """Tell the governor which process is actually holding the card.
 
     The lease records the *holder* -- the process that took the lock. During a live render
@@ -1023,7 +1023,13 @@ def record_engine(pid: int) -> None:
     if pgid == pid:
         argv.append(str(pgid))
     try:
-        subprocess.run(argv, capture_output=True, timeout=10, check=False)
+        # `to_thread`, not a bare `subprocess.run`. This is called from two coroutines, and a
+        # blocking exec in either stalls the WHOLE event loop for up to the 10 s timeout --
+        # no other request, no streaming token, and not /api/status. Shipped that way and
+        # caught in review: every engine spawn would have looked like an outage to the
+        # watchdog that polls /api/status, which is a monitor made useless by its own server.
+        await asyncio.to_thread(
+            subprocess.run, argv, capture_output=True, timeout=10, check=False)
     except Exception:  # noqa: BLE001 -- see the docstring: never fail a render over this
         log.warning("could not record engine pid %s with the governor", pid)
 
@@ -1055,7 +1061,7 @@ async def run(*argv: str, timeout: int = JOB_TIMEOUT_S, env_owner: bool = False,
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         start_new_session=True, env=env)
     if is_engine:
-        record_engine(proc.pid)
+        await record_engine(proc.pid)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
@@ -1468,7 +1474,7 @@ async def start_llama() -> bool:
         # `stop_llama()` already stops it by handle. So this child shares OUR process group,
         # `record_engine` will decline to offer a pgid, and eviction signals the single pid.
         # That is still an identity, which the pattern it replaces was not.
-        record_engine(_llama.pid)
+        await record_engine(_llama.pid)
         for _ in range(120):
             if await llama_up():
                 log.info("chat surface up")
@@ -2814,6 +2820,19 @@ async def get_status(request: Request, response: Response) -> Status | Response:
     nothing at all until something changes, rather than a request every few seconds to be
     told the same thing.
     """
+    # Refresh the card reading OFF the loop before building the rack.
+    #
+    # `smi()` is synchronous and, on a TTL miss, execs nvidia-smi itself with an 8 s timeout.
+    # `telemetry_loop` only refreshes `if bus.listeners` and sleeps 3 s against a 1.0 s TTL --
+    # so with no WebSocket client connected it never runs at all, and every poll of this
+    # endpoint did that exec ON the event loop. Not latent: it is the normal path, on the one
+    # route everything polls, including the watchdog.
+    #
+    # Guarded by the same TTL so this adds no nvidia-smi traffic -- it only moves the exec
+    # that was already happening off the loop. `refresh_telemetry()` is the existing
+    # `to_thread` wrapper; :1216 already used it correctly and this call site did not.
+    if time.monotonic() - _telemetry_at > _TELEMETRY_TTL:
+        await refresh_telemetry()
     payload = build_status()
     body = payload.model_dump()
     etag = '"' + semantic_etag(body) + '"'
