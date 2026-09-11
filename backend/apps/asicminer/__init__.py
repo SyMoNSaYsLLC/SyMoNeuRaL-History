@@ -72,18 +72,10 @@ PROBE_TIMEOUT = 30.0        # probe.py already caps each rig at 8s; this bounds 
 
 
 def enabled() -> bool:
-    """On when the flag is on. The token half of this test is gone.
-
-    `== "1"` and not truthiness is kept: it reads like a boolean and is not one,
-    and that confusion is worth keeping consistent rather than solving differently
-    in each package.
-    """
-    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
-    # "no api keys period -- everything is straight post get fetch". This is a
-    # single-operator box that is not reachable from the internet. The token check
-    # that stood here is removed rather than made optional, because an optional gate
-    # is a gate somebody re-enables by accident.
+    """The switch, and nothing else. NO API KEYS, 2026-09-11 -- this used to require a
+    token to be set as well, which is a second condition that no longer means anything."""
     return os.environ.get("SYMONEURAL_ASIC_ENABLED") == "1"
+
 
 def rigs() -> list[str]:
     """Configured rig addresses. Empty is the normal state on a box with no ASICs."""
@@ -102,12 +94,94 @@ def token_ok(presented: str | None) -> bool:
     decision lives in ONE place -- if a gate is ever wanted again it goes back here,
     not into five call sites that each grew their own check.
     """
-    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
-    # "no api keys period -- everything is straight post get fetch". This is a
-    # single-operator box that is not reachable from the internet. The token check
-    # that stood here is removed rather than made optional, because an optional gate
-    # is a gate somebody re-enables by accident.
+    # NO API KEYS. Owner decision, 2026-09-11: "no api keys period -- everything is
+    # straight post get fetch". This is a single-operator box that is not reachable from
+    # the internet. The token check that stood here is removed rather than made optional,
+    # because an optional gate is a gate somebody re-enables by accident.
     return True
+
+
+async def probe(hosts: list[str] | None = None) -> dict:
+    """Run the probe in its own interpreter and return parsed JSON.
+
+    Never raises. Every failure path returns the same shape with an `error` string, because
+    the rack renders this and a surface that throws takes the whole status endpoint with it.
+    """
+    hosts = rigs() if hosts is None else hosts
+    if not installed():
+        return {"rigs": [], "error": "asicminer venv not installed -- see backend/apps/asicminer/README.md"}
+    if not hosts:
+        return {"rigs": [], "error": None}
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(VENV_PY), str(PROBE), *hosts,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=PROBE_TIMEOUT)
+    except asyncio.TimeoutError:
+        return {"rigs": [], "error": f"probe exceeded {PROBE_TIMEOUT:.0f}s"}
+    except Exception as e:
+        return {"rigs": [], "error": f"{e.__class__.__name__}: {e}"}
+
+    if proc.returncode != 0:
+        return {"rigs": [], "error": f"probe exited {proc.returncode}: {err.decode()[:200]}"}
+    try:
+        return json.loads(out.decode())
+    except json.JSONDecodeError as e:
+        return {"rigs": [], "error": f"probe printed non-JSON: {e}"}
+
+
+async def discover(cidr: str) -> dict:
+    """Find rigs on a private network. Operator-gated, and refuses public ranges.
+
+    The refusal lives in `scan.py` rather than here, so it applies however the scanner is
+    invoked -- the CLI and this wrapper cannot drift apart into one being safe and the other
+    not. This adds the second gate: the surface has to be switched on at all.
+    """
+    if not enabled():
+        # The value is spelled out because `ENABLED` reads like a boolean and is not one:
+        # the check is `== "1"`, so `true` leaves the surface off and says nothing.
+        return {"rigs": [], "error": "surface disabled — set SYMONEURAL_ASIC_ENABLED=1 (the "
+                                     "literal string 1, not true). "
+                                     "Both gate this API only; scripts/qemu-antminer.sh "
+                                     "needs neither"}
+    if not (VENV_PY.is_file() and SCAN.is_file()):
+        return {"rigs": [], "error": "asicminer venv not installed"}
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(VENV_PY), str(SCAN), cidr,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        # A /20 at 0.6s per host with 256 in flight is roughly ten seconds; allow slack
+        # for a slow network without letting a scan pin a worker indefinitely.
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+    except asyncio.TimeoutError:
+        return {"rigs": [], "error": "scan exceeded 120s"}
+    except Exception as e:
+        return {"rigs": [], "error": f"{e.__class__.__name__}: {e}"}
+    if proc.returncode != 0:
+        return {"rigs": [], "error": f"scan exited {proc.returncode}: {err.decode()[:200]}"}
+    try:
+        return json.loads(out.decode())
+    except json.JSONDecodeError as e:
+        return {"rigs": [], "error": f"scan printed non-JSON: {e}"}
+
+
+async def selftest() -> dict:
+    """Check the venv without touching the network. Used by the CLI and the tests."""
+    if not installed():
+        return {"ok": False, "error": "venv not installed"}
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(VENV_PY), str(PROBE), "--selftest",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        return json.loads(out.decode())
+    except Exception as e:
+        return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
+
 
 def unit_state(result: dict | None) -> tuple[str, str]:
     """(state, detail) for the rack. Honest by construction.
