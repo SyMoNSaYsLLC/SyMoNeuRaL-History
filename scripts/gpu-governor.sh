@@ -15,7 +15,14 @@
 # has to outlive the shell that took it -- the API server acquires in one
 # process and releases in another.
 #
-#   gpu-governor.sh acquire <surface> [timeout]   take the card
+#   gpu-governor.sh acquire <surface> [timeout] [--new-engine]
+#                                                 take the card. --new-engine says the
+#                                                 caller is bringing its OWN engine, so
+#                                                 a resident one is evicted even when
+#                                                 the surface name is the same. Without
+#                                                 it, re-acquiring the resident surface
+#                                                 reuses the running engine (the normal
+#                                                 api.py path) and evicts nothing.
 #   gpu-governor.sh release                       give it back, wait for drain
 #   gpu-governor.sh status                        who holds it, how much is free
 #   gpu-governor.sh with <surface> -- cmd...      acquire, run, always release
@@ -519,7 +526,17 @@ evict_by_pid() {
 }
 
 cmd_acquire() {
-  local surface="${1:?usage: acquire <surface>}" timeout="${2:-$ACQUIRE_TIMEOUT_S}"
+  # `--new-engine` is accepted in any position, so the timeout stays optional and an
+  # existing `acquire chat 300` keeps meaning what it meant.
+  local surface="" timeout="" new_engine=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --new-engine) new_engine=1 ;;
+      *) if [ -z "$surface" ]; then surface="$arg"; elif [ -z "$timeout" ]; then timeout="$arg"; fi ;;
+    esac
+  done
+  : "${surface:?usage: acquire <surface> [timeout] [--new-engine]}"
+  timeout="${timeout:-$ACQUIRE_TIMEOUT_S}"
   local waited=0 prev owner
 
   # Whose pid to record. NOT $$ -- for the standalone `acquire` form this script exits the
@@ -549,8 +566,31 @@ cmd_acquire() {
     prev=""
   fi
   echo "$surface $owner" > "$HOLDER"
+  # Whoever was resident before us has to go -- and "before us" is decided by IDENTITY, not
+  # by the surface string.
+  #
+  # `c1cb1007` replaced pattern-matching eviction with eviction by recorded pid, under the
+  # heading "a pattern is not an identity". The same confusion lived on one function up:
+  # **a surface NAME is not an identity either.** Two processes can legitimately both be
+  # `chat` -- the running Qwen engine and a candidate carrying different weights -- and on
+  # 2026-09-11 that cost a real OOM, because the names matched so nothing was evicted and
+  # 12.8 GiB of gpt-oss met 8.3 GiB of resident Qwen on a 16.3 GiB card.
+  #
+  # The governor cannot infer which case it is in, because both readings are real and want
+  # opposite behaviour:
+  #
+  #   reuse    api.py acquires `chat` for another request against the engine ALREADY
+  #            running. Evicting here kills the engine it is about to use, every request.
+  #   replace  a candidate swap brings a different process under the same surface name.
+  #            NOT evicting here is the OOM above.
+  #
+  # Only the caller knows. `--new-engine` is how it says so, and the default is unchanged,
+  # so no existing caller acquires a new behaviour by accident.
   if [ -n "$prev" ] && [ "$prev" != "$surface" ]; then
     if ! evict "$prev"; then rm -rf "$LOCKDIR"; return 1; fi
+  elif [ "$new_engine" -eq 1 ] && engine_live; then
+    log acquire "'$surface' is already resident, but the caller declared a NEW engine (--new-engine) -- evicting recorded engine pid $(engine_pid). A surface name is not an identity."
+    if ! evict "${prev:-$(engine_surface)}"; then rm -rf "$LOCKDIR"; return 1; fi
   fi
   echo "$surface" > "$RUN/resident"
   stamp_resident_boot
@@ -634,5 +674,5 @@ case "${1:-status}" in
   with)    shift; cmd_with    "$@" ;;
   drain)   shift; drain "$@" ;;
   engine)  shift; cmd_engine  "$@" ;;
-  *) echo "usage: $(basename "$0") {acquire|release|status|with|drain [proc-substring]|engine <pid> [pgid]}" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") {acquire <surface> [timeout] [--new-engine]|release|status|with|drain [proc-substring]|engine <pid> [pgid]}" >&2; exit 2 ;;
 esac
