@@ -1859,7 +1859,19 @@ DOCS_HEADER = """
 # `<details>`; they are never trimmed. An ellipsis on a reference page is data loss with
 # extra steps, and every such rule was deliberately deleted from the site's CSS after
 # `built on Qwen2.5-7B-Instruct` -- an Apache-2.0 condition -- was cut to `...7B-Ins...`.
-API_REFERENCE_STYLE = """
+# The opening `<style>` belongs HERE, above the first rule, and it was one line lower.
+#
+# This constant is interpolated into `<head>` at :2242. The `.ar-index` block was added
+# above the existing `<style>` line instead of below it, so twenty rules and a CSS comment
+# were emitted into `<head>` as bare character data. Non-whitespace text in `<head>` makes
+# the HTML parser implicitly close it and open `<body>` -- so a visitor saw the CSS as the
+# first paragraph of the page, none of those rules applied, and everything after it landed
+# in the body as well. One misplaced line, two visible symptoms.
+#
+# Caught 2026-09-10 by rendering the page, which is the only way this shows up: the source
+# reads as a perfectly ordinary stylesheet, and `.ar-wrap` below is wrapped correctly, so
+# there was nothing to notice by reading.
+API_REFERENCE_STYLE = """<style>
 /* The scoped-application index at the top of this page. `ar-` prefixed like everything
    else here, for the reason the block comment above gives at length. */
 .ar-index{margin:0 0 34px;padding:0 0 30px;border-bottom:1px solid var(--sfline)}
@@ -1884,7 +1896,6 @@ API_REFERENCE_STYLE = """
   color:var(--dim);font-size:var(--t6)}
 .ar-appkid:hover{color:var(--accent);border-color:var(--accent)}
 
-<style>
 .ar-wrap{max-width:1080px;margin:0 auto;padding:0 22px 80px}
 .ar-note{color:var(--dim);margin:18px 0 26px;max-width:78ch;line-height:1.55}
 .ar-group{margin:34px 0 0}

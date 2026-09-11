@@ -30,6 +30,7 @@ this site has both.
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 import unittest
 
@@ -296,3 +297,86 @@ class EveryApplicationIsReachable(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheApiReferencePageIsWellFormed(unittest.TestCase):
+    """Rendered, not read. This defect is invisible to source inspection.
+
+    `API_REFERENCE_STYLE` is interpolated into `<head>`, and its `.ar-index` block sat ABOVE
+    the constant's own `<style>` line rather than below it. So twenty CSS rules and a comment
+    were emitted into `<head>` as bare character data -- which makes the HTML parser
+    implicitly close `<head>` and open `<body>`, so a visitor read the stylesheet as the first
+    paragraph of the page and none of those rules applied.
+
+    Nothing in the source looks wrong: it reads as an ordinary stylesheet, and the `.ar-wrap`
+    block below it is wrapped correctly. `docs/HANDOFF.md` already carries the bite this
+    repeats -- a `console.js` fix was "verified" by reading the file and had not been applied.
+    So this asks the page.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import api
+        from fastapi.testclient import TestClient
+        # No `with`: the lifespan starts background refreshers and an engine. The route is
+        # pure string assembly and needs none of it.
+        cls.html = TestClient(api.app).get("/docs").text
+
+    def _style_spans(self) -> list[tuple[int, int]]:
+        """(start, end) of each style element's CONTENT."""
+        spans, at = [], 0
+        while (o := self.html.find("<style", at)) != -1:
+            gt = self.html.find(">", o)
+            c = self.html.find("</style>", gt)
+            if c == -1:
+                self.fail("a <style> element is never closed")
+            spans.append((gt + 1, c))
+            at = c + 8
+        return spans
+
+    def test_no_css_rule_is_emitted_outside_a_style_element(self):
+        """The defect, stated as the property that was false."""
+        spans = self._style_spans()
+        self.assertTrue(spans, "the page has no <style> element at all")
+        for marker in (".ar-index{", ".ar-wrap{", ".ar-rt>p{", ".ar-appkid:hover{"):
+            with self.subTest(rule=marker):
+                i = self.html.find(marker)
+                self.assertNotEqual(i, -1, f"{marker} is no longer on the page")
+                inside = any(s <= i < e for s, e in spans)
+                self.assertTrue(
+                    inside,
+                    f"{marker} is emitted outside any <style> element -- a visitor sees it "
+                    "as text and the rule does not apply")
+
+    def test_no_character_data_precedes_the_body(self):
+        """The mechanism, asserted directly: bare text in <head> opens <body> early."""
+        head = self.html[:self.html.find("</head>")]
+        for s, e in reversed(self._style_spans()):
+            head = head[:s] + head[e:]            # drop stylesheet contents
+        # `<title>` is the one element whose character data legitimately lives in <head>.
+        # Dropping it is not a loosened assertion: title text cannot open <body>, and
+        # leaving it in made this guard fail on a correct page, which is its own defect.
+        head = re.sub(r"<title>.*?</title>", "", head, flags=re.S)
+        stripped = re.sub(r"<[^>]+>", "", head).strip()
+        self.assertEqual(
+            stripped, "",
+            "non-whitespace character data appears in <head> outside a style element, which "
+            f"implicitly opens <body>: {stripped[:120]!r}")
+
+    def test_no_html_escaped_selector_appears_inside_a_style_block(self):
+        """`&gt;` is not a child combinator.
+
+        Worth stating what this does NOT claim. The saved copy that reported this showed
+        `.ar-rt&gt;p`, and that escaping was the BROWSER re-serialising text nodes it had
+        parsed out of `<body>` -- a symptom of the missing element, not a second defect in
+        the emitter. The live page's only `&gt;` is inside a JavaScript escape map. This
+        guard exists so that if anyone ever routes this CSS through an HTML-escaping helper,
+        it fails here instead of shipping selectors that silently match nothing.
+        """
+        for s, e in self._style_spans():
+            block = self.html[s:e]
+            for entity in ("&gt;", "&lt;", "&amp;", "&quot;"):
+                with self.subTest(entity=entity):
+                    self.assertNotIn(
+                        entity, block,
+                        f"a style block contains {entity}, so those selectors match nothing")
