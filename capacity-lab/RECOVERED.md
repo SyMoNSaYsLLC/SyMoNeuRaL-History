@@ -84,6 +84,19 @@ The repository's scoped suite (`docs/HANDOFF.md:110`) does not reach this tree e
 is outside `backend/`. `457 passed, 4 skipped` before and after this recovery says nothing
 about the code here.
 
+### The hazard that follows from that, measured 2026-09-10
+
+**Nothing scopes pytest collection to `backend/`.** There is no `testpaths` or
+`norecursedirs` in `pytest.ini`, `pyproject.toml`, `setup.cfg`, `tox.ini` or any root
+`conftest.py` — I checked all six. So a bare `pytest` **from the repository root** will
+collect `capacity-lab/tests/`, and those tests construct a player aimed at
+`http://127.0.0.1:8800`. That turns an idle command into load against a serving API.
+
+This is the same shape as `docs/HANDOFF.md` bite 11 — a whole-directory run doing far more
+than the person expected — one directory up. **No config was added to prevent it**, because
+that is a change beyond recovering this tree; it is recorded here so the next person meets
+it in writing rather than in production. Run `capacity-lab/tests` on purpose or not at all.
+
 ## One known consequence, not guessed at
 
 `restore/manifests/` and `FIRST-PARTY-CLOSURE.tsv` are generated, and a new first-party
