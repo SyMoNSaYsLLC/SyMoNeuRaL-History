@@ -11,6 +11,7 @@ below still says "the agent", read it as whoever is doing the work.
 | Question | File |
 |---|---|
 | What are the rules? | **this file** |
+| What do the words mean? | `docs/authority/GLOSSARY.md` |
 | What is the current verified state? | `ProjectStatus.md` |
 | What is the state, what is left, what will bite me? | `docs/HANDOFF.md` |
 | Every folder and what it is for | `README.md` |
