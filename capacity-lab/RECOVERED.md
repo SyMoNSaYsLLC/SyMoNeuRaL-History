@@ -40,8 +40,10 @@ import gpu_guard
 
 Measured 2026-09-10:
 
-- **that worktree is gone.** `/home/google/Symoneural/.claude/worktrees/` contains only
-  `authority-plane-plan/`.
+- **that worktree is gone.** As of 2026-09-11 `/home/google/Symoneural/.claude/worktrees/`
+  contains nothing at all: `authority-plane-plan` was the last one and was removed with
+  `git worktree remove` once its only unique content -- the authority-plane spec -- had been
+  recovered into the tree at `dc7a73d3` and verified byte-identical. Its branch survives.
 - **`gpu_guard` exists nowhere in this repository**, tracked or untracked, and it is not in
   `44863110` either — it was never part of this tree.
 - the path also uses the **superseded** `engines/symoneural-<name>/` layout. Engines live at
