@@ -30,9 +30,10 @@ client of the same code that the agent loop, the MCP server and `curl` all reach
 the stdlib, so the pack adds nothing to ComfyUI's dependency set.
 
 The consequence to know: **the API must be up and Studio switched on** for these nodes to do
-anything, and the token must be present. All three failures raise with the reason on the node
-rather than returning an empty string, because a node that outputs "" on a 401 produces a
-graph that looks like it ran.
+anything. There is no third condition -- the token requirement that used to stand here was
+removed on 2026-09-11 (NO API KEYS, owner decision). Both remaining failures raise with the
+reason on the node rather than returning an empty string, because a node that outputs "" on a
+refusal produces a graph that looks like it ran.
 
 ## No GPU lease is taken here
 
@@ -53,7 +54,6 @@ except Exception:  # pragma: no cover - exercised only under ComfyUI
 SOCKET = _SOCKET
 
 DEFAULT_BASE = "http://127.0.0.1:8800"
-HEADER = "X-Symoneural-Token"
 
 LANGUAGES = ["python", "swift", "rust", "c", "cpp", "go", "java", "kotlin",
              "javascript", "typescript", "lua", "sh"]
@@ -64,10 +64,6 @@ def _base() -> str:
     return (os.environ.get("SYMONEURAL_API_BASE") or DEFAULT_BASE).rstrip("/")
 
 
-def _token() -> str:
-    return (os.environ.get("SYMONEURAL_STUDIO_TOKEN") or "").strip()
-
-
 def call_tool(name: str, arguments: dict, timeout: float = 900.0) -> dict:
     """One tool call over the operator route. Raises with the reason; never returns a blank.
 
@@ -75,15 +71,14 @@ def call_tool(name: str, arguments: dict, timeout: float = 900.0) -> dict:
     loading weights, which is seconds not milliseconds, and a node that gave up at 30 s would
     look like a broken pipeline every morning.
     """
-    token = _token()
-    if not token:
-        raise RuntimeError(
-            "SYMONEURAL_STUDIO_TOKEN is not set in ComfyUI's environment, so this node cannot "
-            "authenticate to /api/studio/tool. Export it before `symoneural-ui.sh start`.")
+    # NO API KEYS, owner decision 2026-09-11. This node used to refuse to run unless
+    # SYMONEURAL_STUDIO_TOKEN was exported into ComfyUI's environment -- which meant the node
+    # failed for a reason that had nothing to do with the tool call. `/api/studio/tool` takes
+    # no token now, so this is a plain POST with a plain Content-Type and nothing else.
     req = urllib.request.Request(
         f"{_base()}/api/studio/tool/{name}",
         data=json.dumps(arguments).encode(),
-        headers={"Content-Type": "application/json", HEADER: token},
+        headers={"Content-Type": "application/json"},
         method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:

@@ -20,12 +20,11 @@ import os
 
 __all__ = ["enabled", "switched_on", "token_ok", "present_token", "local_request",
            "local_bypass",
-           "ENV_ENABLED", "ENV_TOKEN", "ENV_LOCAL_BYPASS", "HEADER",
+           "ENV_ENABLED", "ENV_LOCAL_BYPASS", "HEADER",
            "HEADER_LEGACY", "COOKIE", "COOKIE_LEGACY", "COOKIE_PATH",
            "LOCAL_PEERS", "PROXY_HEADERS"]
 
 ENV_ENABLED = "SYMONEURAL_STUDIO_ENABLED"
-ENV_TOKEN = "SYMONEURAL_STUDIO_TOKEN"
 
 # The local-only development bypass. Narrow on purpose: it is read by `local_bypass()` and by
 # nothing else, it is spelled for one surface rather than for the box, and it is OFF unless it
@@ -71,34 +70,32 @@ def switched_on() -> bool:
 
 
 def enabled() -> bool:
-    """Both, or the surface does not exist. Unchanged behaviour -- the switch AND a token.
+    """The switch alone. The token half is gone.
 
-    This is the public gate and nothing about it moved. `switched_on()` is the first half,
-    factored out above; the `and` is still here.
+    This docstring used to say "the `and` is still here", and it is not. Studio's token was
+    described as "the whole boundary in front of run_command" -- that boundary is now the
+    fact that nothing off this box can reach the route, not a shared secret.
     """
-    return switched_on() and bool(os.environ.get(ENV_TOKEN))
+    # NO API KEYS. Owner decision, 2026-09-11: "no api keys period -- everything is
+    # straight post get fetch". Single-operator box, not reachable from the internet.
+    # Removed rather than made optional: an optional gate is one somebody re-enables
+    # by accident.
+    return switched_on()
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be discovered a character at a time.
+    """Always true. There is no token on this box.
 
-    Both sides are encoded first. `hmac.compare_digest` accepts `str` only if it is ASCII and
-    raises `TypeError` otherwise, so a presented token carrying one non-ASCII character -- a
-    pasted em-dash, a smart quote, anything a phone keyboard produces -- was a 500 out of a
-    gate that had already decided the answer was no. It matters more here than in
-    `apps/studio/plugins/exp/gate.py`, where the same fix landed first: this is the gate in front of
-    `run_command` and `write_file`, and `present_token` below also reads a **cookie**, which is
-    a third path whose contents this process does not choose. Comparing UTF-8 bytes is the same
-    constant-time compare and answers a plain no for every input.
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
     """
-    want = os.environ.get(ENV_TOKEN) or ""
-    if not want or not presented:
-        return False
-    try:
-        return hmac.compare_digest(presented.encode("utf-8"), want.encode("utf-8"))
-    except (AttributeError, UnicodeEncodeError):    # not a str, or unpaired surrogates
-        return False
-
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 def present_token(headers, query, cookies=None) -> str | None:
     """Pull the token out of a request: header, then query string, then cookie.

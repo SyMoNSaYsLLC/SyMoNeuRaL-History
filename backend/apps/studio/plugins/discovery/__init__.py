@@ -80,16 +80,22 @@ def enabled() -> bool:
     not one, and that is a confusion worth keeping consistent rather than solving differently
     in each package.
     """
-    return (os.environ.get("SYMONEURAL_DISCOVERY_ENABLED") == "1"
-            and bool(os.environ.get("SYMONEURAL_DISCOVERY_TOKEN")))
+    return os.environ.get("SYMONEURAL_DISCOVERY_ENABLED") == "1"
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    want = os.environ.get("SYMONEURAL_DISCOVERY_TOKEN") or ""
-    if not want or not presented:
-        return False
-    return hmac.compare_digest(presented, want)
+    """Always true. There is no token on this box.
+
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
+    """
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 
 def installed() -> dict[str, bool]:

@@ -117,8 +117,11 @@ KAWPOW_BINARY = (ROOT / "symoneural-miner" / "build" / "kawpowminer"
 # The keys the file is allowed to set. An env file is an instruction to change this
 # process's environment, so it sets only what this surface owns -- a stray `PATH=` or
 # `LD_PRELOAD=` in it must not reach the serving interpreter.
+# SYMONEURAL_MINER_TOKEN was in this set until 2026-09-11 and is not any more: NO API KEYS.
+# Leaving it would let miner.env set a variable nothing reads, which is how a dead setting
+# outlives the code that gave it meaning.
 _ENV_KEYS = frozenset({"SYMONEURAL_MINING_ENABLED", "SYMONEURAL_MINER_CMD",
-                       "SYMONEURAL_MINER_TOKEN", "SYMONEURAL_MINER_GPU"})
+                       "SYMONEURAL_MINER_GPU"})
 
 # The cache key is (mtime_ns, size, inode), not mtime alone. Two reasons, one of them
 # found by a test that failed: filesystem timestamps are coarse -- on tmpfs two writes
@@ -227,7 +230,7 @@ def enabled() -> bool:
     load_env()
     return (os.environ.get("SYMONEURAL_MINING_ENABLED") == "1"
             and bool(os.environ.get("SYMONEURAL_MINER_CMD", "").strip())
-            and bool(os.environ.get("SYMONEURAL_MINER_TOKEN")))
+            )
 
 
 def miner_cmd() -> list[str]:
@@ -335,14 +338,18 @@ def benchmarking() -> bool:
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    import hmac
-    load_env()
-    want = os.environ.get("SYMONEURAL_MINER_TOKEN") or ""
-    if not want or not presented:
-        return False
-    return hmac.compare_digest(presented, want)
+    """Always true. There is no token on this box.
 
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
+    """
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 def gpu_index() -> int:
     load_env()
@@ -656,7 +663,7 @@ async def start() -> dict:
     """
     if not enabled():
         return {"ok": False, "error": "surface disabled — set SYMONEURAL_MINING_ENABLED=1, "
-                                      "SYMONEURAL_MINER_CMD and SYMONEURAL_MINER_TOKEN"}
+                                      "SYMONEURAL_MINER_CMD"}
     if not installed():
         return {"ok": False, "error": "no miner binary at the configured path"}
     if running():
@@ -777,8 +784,6 @@ async def selftest() -> dict:
         problems.append("SYMONEURAL_MINING_ENABLED is not 1")
     if not os.environ.get("SYMONEURAL_MINER_CMD", "").strip():
         problems.append("SYMONEURAL_MINER_CMD is empty")
-    if not os.environ.get("SYMONEURAL_MINER_TOKEN"):
-        problems.append("SYMONEURAL_MINER_TOKEN is empty")
     if argv and bin_path is None:
         problems.append(f"{argv[0]!r} is not an executable file and is not on PATH")
     if version_error:

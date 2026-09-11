@@ -27,7 +27,6 @@ cd backend/apps && python3 -m cryptominer selftest    # checks it WITHOUT mining
 |---|---|---|
 | `SYMONEURAL_MINING_ENABLED` | exactly `1`. The check is `== "1"` — `true`, `yes` and `on` all leave the surface **off**, silently | yes |
 | `SYMONEURAL_MINER_CMD` | the full command, e.g. `/path/to/kawpowminer -U -P stratum+tcp://WALLET.rig@pool:4444` | yes |
-| `SYMONEURAL_MINER_TOKEN` | any non-empty string; presented as `X-Symoneural-Token` on every control request | yes |
 | `SYMONEURAL_MINER_GPU` | device index, defaults to `0` | no |
 
 Generate the token rather than choosing one:
@@ -197,8 +196,8 @@ disabled. `X-Sym-Token`, the name it replaced, is still accepted by `_operator_t
 in `backend/api.py`; new wins when both are sent:
 
 ```bash
-curl -s -H "X-Symoneural-Token: $SYMONEURAL_MINER_TOKEN" localhost:8800/api/gpuminer/status
-curl -s -X POST -H "X-Symoneural-Token: $SYMONEURAL_MINER_TOKEN" -H 'Content-Type: application/json' \
+curl -s localhost:8800/api/gpuminer/status
+curl -s -X POST -H 'Content-Type: application/json' \
      -d '{"action":"stop"}' localhost:8800/api/gpuminer/control
 ```
 
@@ -221,7 +220,7 @@ get wrong and are tested:
 ## Tests
 
 ```bash
-python3 backend/apps/cryptominer/test_miner.py     # 72 tests, no GPU, nothing is started
+python3 backend/apps/cryptominer/test_miner.py     # 70 tests, no GPU, nothing is started
 ```
 
 The hashrate parser is tested hardest, and against **captured bytes, not invented ones**. A

@@ -58,11 +58,6 @@ class TestTheGate(unittest.TestCase):
         with _Env():
             self.assertFalse(asicminer.enabled())
 
-    def test_both_are_required(self):
-        with _Env(SYMONEURAL_ASIC_ENABLED="1"):
-            self.assertFalse(asicminer.enabled())
-        with _Env(SYMONEURAL_ASIC_TOKEN="s3cret"):
-            self.assertFalse(asicminer.enabled())
 
     def test_enabled_must_be_literally_one(self):
         # `== "1"`, not truthiness. `SYMONEURAL_ASIC_ENABLED=true` leaves the surface OFF, and it
@@ -74,16 +69,7 @@ class TestTheGate(unittest.TestCase):
         with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
             self.assertTrue(asicminer.enabled())
 
-    def test_token_compare(self):
-        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN="s3cret"):
-            self.assertTrue(asicminer.token_ok("s3cret"))
-            for bad in ("s3cre", "s3cretx", "", None, "S3CRET"):
-                self.assertFalse(asicminer.token_ok(bad), repr(bad))
 
-    def test_an_empty_token_never_authenticates(self):
-        with _Env(SYMONEURAL_ASIC_ENABLED="1", SYMONEURAL_ASIC_TOKEN=""):
-            self.assertFalse(asicminer.token_ok(""))
-            self.assertFalse(asicminer.token_ok("anything"))
 
     def test_the_gpu_miner_token_is_not_this_token(self):
         # Two surfaces, two secrets. If these ever read the same variable, one leaked

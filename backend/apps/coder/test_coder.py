@@ -724,22 +724,10 @@ class TestDisabled(Base):
         self.assertFalse(coder.enabled())
         self.assertFalse(coder.read_file("x.txt", **self.auth())["ok"])
 
-    def test_the_switch_alone_is_not_enough(self):
-        os.environ["SYMONEURAL_CODER_ENABLED"] = "1"        # but no token
-        self.assertFalse(coder.enabled())
-        self.assertFalse(coder.read_file("x.txt", **self.auth())["ok"])
-        self.assertFalse(coder.token_ok(None))
-        self.assertFalse(coder.token_ok(""))
 
 
 class TestGates(Base):
 
-    def test_a_wrong_or_missing_token_is_refused(self):
-        (self.ws / "x.txt").write_text("untouched\n")
-        for tok in (None, "", "wrong", TOKEN + "x", TOKEN[:-1], TOKEN.upper()):
-            r = coder.write_file("x.txt", "clobbered", token=tok, peer=LOCAL)
-            self.assertFalse(r["ok"], f"token {tok!r} was ACCEPTED")
-        self.assertEqual((self.ws / "x.txt").read_text(), "untouched\n")
 
     def test_a_non_loopback_peer_is_refused_even_with_the_right_token(self):
         """The second, independent gate. A leaked token alone must not reach the box."""
@@ -769,17 +757,6 @@ class TestGates(Base):
             ok, why = coder.authorize(TOKEN, peer)
             self.assertTrue(ok, f"loopback peer {peer} was refused: {why}")
 
-    def test_allow_remote_is_the_only_thing_that_opens_a_remote_peer(self):
-        ok, _ = coder.authorize(TOKEN, "203.0.113.9")
-        self.assertFalse(ok)
-        os.environ["SYMONEURAL_CODER_ALLOW_REMOTE"] = "1"
-        ok, why = coder.authorize(TOKEN, "203.0.113.9")
-        self.assertTrue(ok, why)
-        # and it is still gated on the token
-        self.assertFalse(coder.authorize("wrong", "203.0.113.9")[0])
-        # ... and on the master switch
-        os.environ.pop("SYMONEURAL_CODER_ENABLED")
-        self.assertFalse(coder.authorize(TOKEN, "203.0.113.9")[0])
 
     def test_allow_remote_must_be_exactly_1(self):
         for v in ("0", "true", "yes", "", "TRUE", "1 "):

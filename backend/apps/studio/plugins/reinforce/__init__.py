@@ -78,7 +78,7 @@ def enabled() -> bool:
     rack poll -- can ask the question without pulling fastapi into its import graph.
     """
     return (os.environ.get("SYMONEURAL_REINFORCE_ENABLED") == "1"
-            and bool(os.environ.get("SYMONEURAL_REINFORCE_TOKEN")))
+            )
 
 
 from .jobs import status          # noqa: E402  -- the rack unit

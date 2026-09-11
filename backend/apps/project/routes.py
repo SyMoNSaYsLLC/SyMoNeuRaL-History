@@ -127,22 +127,16 @@ class DraftBody(BaseModel):
 
 
 def _deny(request: Request) -> JSONResponse | None:
-    """The gate, evaluated once per request. `None` means allowed.
+    """The gate. `None` means allowed, and it now always means allowed.
 
-    A dependency would be tidier but would have to raise `HTTPException`, whose body is
-    `{"detail": ...}` — a second error shape, which is the thing the envelope exists to
-    prevent.
+    Kept as a function, and kept returning the envelope shape, so every call site is
+    unchanged and a future gate goes back in one place rather than into nineteen routes.
     """
-    # New header name first, then the one it replaced. The legacy read is here because the
-    # sender is cached JavaScript -- `site/project.html` holds the fetch at :336 -- so a
-    # browser with yesterday's copy presents the old name while its token is perfectly good.
-    # `request.headers` is case-insensitive, so one spelling of each is enough.
-    ok, code, why = store.authorize(request.headers.get(HEADER)
-                                    or request.headers.get(HEADER_LEGACY))
-    if ok:
-        return None
-    return _out({"ok": False, "api_version": API_VERSION, "code": code, "error": why})
-
+    # NO API KEYS. Owner decision, 2026-09-11: "no api keys period -- everything is
+    # straight post get fetch". Single-operator box, not reachable from the internet.
+    # Removed rather than made optional: an optional gate is one somebody re-enables
+    # by accident.
+    return None
 
 def _out(result: dict, headers: dict | None = None) -> JSONResponse:
     status = 200 if result.get("ok") else STATUS.get(result.get("code", ""), 500)

@@ -1170,21 +1170,6 @@ class RegressionTests(unittest.TestCase):
                           f"the rack row disagrees with /api/exp/services: {detail}")
         run(go())
 
-    def test_a_non_ascii_token_is_refused_and_does_not_raise(self):
-        import os
-        from unittest import mock
-
-        # `hmac.compare_digest` on str arguments raises TypeError for non-ASCII, which turned a
-        # wrong token into a 500 -- an unauthenticated caller could tell a bad token from a
-        # bad *encoding* by the status code.
-        with mock.patch.dict(os.environ, {gate.ENV_ENABLED: "1", gate.ENV_TOKEN: "s3cret"}):
-            for wrong in ("t\u00f6ken", "\U0001f600", "s3cret\u00ad"):
-                with self.subTest(token=wrong):
-                    self.assertFalse(gate.token_ok(wrong))
-        # And with a non-ASCII secret configured, the matching token still matches.
-        with mock.patch.dict(os.environ, {gate.ENV_ENABLED: "1", gate.ENV_TOKEN: "pa\u00dfwort"}):
-            self.assertTrue(gate.token_ok("pa\u00dfwort"))
-            self.assertFalse(gate.token_ok("passwort"))
 
 
 class _FakeRequest:
@@ -1244,58 +1229,23 @@ class RouteTests(unittest.TestCase):
         src = inspect.getsource(self.routes._guard)
         self.assertIn("503", src)
         self.assertIn("401", src)
-        # The 503 has to name both variables, because "not enabled" without them is a dead end.
-        # `_guard` interpolates the *constants*, so the literal "SYMONEURAL_EXP_ENABLED" never appears
-        # in its source -- assert the interpolation is there, and pin the values separately, or
-        # this passes while the message says `{ENV_ENABLED}` to the operator.
+        # The 503 has to name the switch, because "not enabled" without it is a dead end.
+        # `_guard` interpolates the *constant*, so the literal "SYMONEURAL_EXP_ENABLED" never
+        # appears in its source -- assert the interpolation is there, and pin the value
+        # separately, or this passes while the message says `{ENV_ENABLED}` to the operator.
+        #
+        # There used to be a second pair of assertions here for ENV_TOKEN. NO API KEYS,
+        # 2026-09-11: the constant is gone, so a message naming it would be a message telling
+        # the operator to set something nothing reads. The 401 branch is still asserted to
+        # exist in the source above, because `token_ok` is kept as the one place a gate would
+        # go back -- it simply cannot fire today.
         self.assertIn("{ENV_ENABLED}", src)
-        self.assertIn("{ENV_TOKEN}", src)
         self.assertEqual(gate.ENV_ENABLED, "SYMONEURAL_EXP_ENABLED")
-        self.assertEqual(gate.ENV_TOKEN, "SYMONEURAL_EXP_TOKEN")
 
-    def test_the_message_the_operator_actually_sees_names_both_variables(self):
-        """The assertion above reads source; this one reads the rendered detail."""
-        import os
-        from unittest import mock
-        with mock.patch.dict(os.environ, {gate.ENV_ENABLED: "", gate.ENV_TOKEN: ""},
-                             clear=False):
-            with self.assertRaises(self.routes.Denied) as caught:
-                self.routes._guard(_FakeRequest())
-        detail = caught.exception.payload["detail"]
-        self.assertEqual(caught.exception.status, 503)
-        self.assertIn("SYMONEURAL_EXP_ENABLED", detail)
-        self.assertIn("SYMONEURAL_EXP_TOKEN", detail)
 
 
 class GateTests(unittest.TestCase):
-    def test_both_switches_are_required(self):
-        import os
-        from unittest import mock
 
-        cases = {"": False, "1": False}                       # no token: off either way
-        for value, expected in cases.items():
-            with mock.patch.dict(os.environ, {gate.ENV_ENABLED: value, gate.ENV_TOKEN: ""},
-                                 clear=False):
-                with self.subTest(enabled=value, token=""):
-                    self.assertEqual(gate.enabled(), expected)
-        with mock.patch.dict(os.environ, {gate.ENV_ENABLED: "1", gate.ENV_TOKEN: "s"}):
-            self.assertTrue(gate.enabled())
-        # Not truthy-ish. "true", "yes" and "0" are all not "1", and a surface that mounts code
-        # into the serving process should not be switched on by a typo.
-        for almost in ("true", "yes", "on", "0", " 1"):
-            with mock.patch.dict(os.environ, {gate.ENV_ENABLED: almost, gate.ENV_TOKEN: "s"}):
-                with self.subTest(value=almost):
-                    self.assertFalse(gate.enabled())
-
-    def test_an_empty_token_never_matches(self):
-        import os
-        from unittest import mock
-
-        with mock.patch.dict(os.environ, {gate.ENV_ENABLED: "1", gate.ENV_TOKEN: "s3cret"}):
-            self.assertTrue(gate.token_ok("s3cret"))
-            for wrong in ("", None, "s3cre", "s3crett"):
-                with self.subTest(token=wrong):
-                    self.assertFalse(gate.token_ok(wrong))
 
     def test_the_token_is_read_from_header_bearer_and_query(self):
         self.assertEqual(gate.present_token({gate.HEADER: "a"}, {}), "a")
@@ -1374,7 +1324,7 @@ class PageTests(unittest.TestCase):
 
         These are the *display* names -- what the panel tells you to set on the API process --
         and they are the one part of the rename that no symbolic assertion can reach.
-        `GateTests` above pins `gate.ENV_ENABLED`/`ENV_TOKEN` through the constants, which is
+        `GateTests` above pins `gate.ENV_ENABLED` through the constant, which is
         the right way to write that test and is exactly why it cannot notice this: the panel
         does not read the constants, it hard-codes the words. All four sat at the legacy
         spelling through a 1225-test run, telling every operator to set a variable nothing

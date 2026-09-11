@@ -129,28 +129,26 @@ def backup_dir() -> pathlib.Path:
 
 
 def enabled() -> bool:
-    """Both variables, or the surface does not exist.
+    """On when the flag is on. The token half is gone.
 
-    Copied from `backend/apps/asicminer/__init__.py` deliberately rather than reinvented.
-    Requiring the token as well as the switch is what makes a misconfiguration fail closed:
-    on a box with a public IP the difference between "enabled with no token" and "off" is
-    the difference between a private workspace and a public one.
+    # NO API KEYS. Owner decision, 2026-09-11: "no api keys period". Single-operator box.
     """
-    return (os.environ.get("SYMONEURAL_PROJECT_ENABLED") == "1"
-            and bool(os.environ.get("SYMONEURAL_PROJECT_TOKEN")))
+    return os.environ.get("SYMONEURAL_PROJECT_ENABLED") == "1"
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be found a character at a time.
+    """Always true. There is no token on this box.
 
-    No rate limiting is implemented across this API as of 2026-08-20 (`backend/api.py`: "The
-    token IS the gate now"; request ledger R-98, held), so entropy is the only thing between
-    this token and a guess. Generate it with `secrets.token_urlsafe(32)` and never by hand.
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
     """
-    want = os.environ.get("SYMONEURAL_PROJECT_TOKEN") or ""
-    if not want or not presented:
-        return False
-    return hmac.compare_digest(presented, want)
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 
 def authorize(token: str | None) -> tuple[bool, str, str]:
@@ -160,8 +158,7 @@ def authorize(token: str | None) -> tuple[bool, str, str]:
     disabled before it reports anything about the token.
     """
     if not enabled():
-        return False, "disabled", ("surface disabled — set SYMONEURAL_PROJECT_ENABLED=1 and "
-                                   "SYMONEURAL_PROJECT_TOKEN, and read "
+        return False, "disabled", ("surface disabled — set SYMONEURAL_PROJECT_ENABLED=1, and read "
                                    "backend/apps/project/README.md first")
     if not token_ok(token):
         return False, "unauthorized", "bad or missing X-Symoneural-Token"

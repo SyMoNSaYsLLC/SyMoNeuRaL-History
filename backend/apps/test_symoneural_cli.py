@@ -778,6 +778,39 @@ class TokenGateTests(unittest.TestCase):
         self.assertEqual(out + err, "", "a successful gate check must be silent")
 
 
+class GateRowSaysTheSwitchNotTheToken(unittest.TestCase):
+    """The splash's gate line, after NO API KEYS (2026-09-11).
+
+    The four tests these replaced asserted the three-state token gate: exported, missing,
+    and loopback-bypassed. All three collapsed when the gate went, and leaving the line
+    unasserted would let it drift back to describing something that does not exist.
+    """
+
+    def _row(self, **env):
+        import os
+        from unittest import mock
+        cli = load_cli()
+        with mock.patch.dict(os.environ, env, clear=False):
+            for k in ("SYMONEURAL_STUDIO_ENABLED",):
+                if k not in env:
+                    os.environ.pop(k, None)
+            return cli.gate_row()[0]
+
+    def test_switched_on_says_no_token_is_required(self):
+        row = self._row(SYMONEURAL_STUDIO_ENABLED="1")
+        self.assertIn("no token required", row)
+
+    def test_switched_off_names_the_one_switch_that_works(self):
+        row = self._row()
+        self.assertIn("SYMONEURAL_STUDIO_ENABLED", row)
+
+    def test_it_never_tells_the_operator_to_export_a_token(self):
+        """The failure this guards: a status line that sends somebody to set a variable
+        nothing reads, which costs an afternoon and looks like a configuration problem."""
+        for env in ({}, {"SYMONEURAL_STUDIO_ENABLED": "1"}):
+            self.assertNotIn("_TOKEN", self._row(**env))
+
+
 class SplashTests(unittest.TestCase):
     """The launch dashboard, and the one assertion that matters most is a negative.
 
@@ -825,34 +858,9 @@ class SplashTests(unittest.TestCase):
 
     # -- the three gate states, which is what #88 changed ---------------------------------
 
-    def test_a_missing_token_is_a_short_warning_not_a_dump(self):
-        out = self._plain(self._render())
-        gate = line_with("gate", out)
-        self.assertIn("no token", gate)
-        self.assertIn("a turn will not", gate)
-        # one line, not a stack of them
-        self.assertEqual(len([ln for ln in out.splitlines() if "gate" in ln]), 1)
 
-    def test_the_local_bypass_state_says_local_only_and_remote_blocked(self):
-        """#88's resolution made "no token" stop meaning "no turns" for a loopback caller.
-        A splash that still said `a turn will not` would be confidently wrong, which is worse
-        than silent -- so the third state has to be its own row."""
-        out = self._plain(self._render(SYMONEURAL_STUDIO_LOCAL_BYPASS="1",
-                                       SYMONEURAL_STUDIO_ENABLED="1"))
-        gate = line_with("gate", out)
-        self.assertIn("local-only", gate)
-        self.assertIn("remote blocked", gate)
-        self.assertNotIn("a turn will not", gate)
 
-    def test_the_bypass_row_needs_the_switch_too(self):
-        """Mirrors gate.local_bypass: the flag alone is not the bypass. If the surface is not
-        switched on there is no bypass, so the splash must not promise one."""
-        out = self._plain(self._render(SYMONEURAL_STUDIO_LOCAL_BYPASS="1"))
-        self.assertIn("no token", line_with("gate", out))
 
-    def test_an_exported_token_says_remote_callers_still_need_it(self):
-        out = self._plain(self._render(SYMONEURAL_STUDIO_TOKEN=self.SECRET))
-        self.assertIn("token exported", line_with("gate", out))
 
     # -- shape ---------------------------------------------------------------------------
 

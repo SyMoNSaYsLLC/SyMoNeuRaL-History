@@ -233,59 +233,8 @@ class WorkspaceTests(unittest.TestCase):
 
 
 class GateTests(unittest.TestCase):
-    def test_both_switches_are_needed(self):
-        import os
-        keep = {k: os.environ.get(k) for k in (gate.ENV_ENABLED, gate.ENV_TOKEN)}
-        try:
-            for enabled_v, token_v, want in (
-                (None, None, False), ("1", None, False), (None, "s3cr3t", False),
-                ("0", "s3cr3t", False), ("1", "", False), ("1", "s3cr3t", True),
-            ):
-                for key, val in ((gate.ENV_ENABLED, enabled_v), (gate.ENV_TOKEN, token_v)):
-                    os.environ.pop(key, None)
-                    if val is not None:
-                        os.environ[key] = val
-                with self.subTest(enabled=enabled_v, token=token_v):
-                    self.assertEqual(gate.enabled(), want)
-        finally:
-            for key, val in keep.items():
-                os.environ.pop(key, None)
-                if val is not None:
-                    os.environ[key] = val
 
-    def test_no_token_configured_rejects_everything_including_the_empty_string(self):
-        import os
-        keep = os.environ.pop(gate.ENV_TOKEN, None)
-        try:
-            self.assertFalse(gate.token_ok(""))
-            self.assertFalse(gate.token_ok(None))
-            self.assertFalse(gate.token_ok("anything"))
-        finally:
-            if keep is not None:
-                os.environ[gate.ENV_TOKEN] = keep
 
-    def test_a_non_ascii_token_is_a_plain_no_and_not_a_crash(self):
-        """`hmac.compare_digest` raises `TypeError` on a non-ASCII `str`, so before the encode
-        this was a 500 out of a gate that had already decided the answer was no -- and this is
-        the gate in front of `run_command`. The cookie case is here because a cookie's contents
-        are chosen by the browser, not by this process: `present_token` accepts one, so the
-        compare has to survive whatever arrives in it.
-        """
-        import os
-        keep = os.environ.get(gate.ENV_TOKEN)
-        os.environ[gate.ENV_TOKEN] = "devtest"
-        try:
-            for presented in ("t\u00f6k\u00e9n", "dev\u2014test", "\U0001f600", "\ud800",
-                              b"devtest", 7):
-                with self.subTest(presented=presented):
-                    self.assertFalse(gate.token_ok(presented))
-            self.assertTrue(gate.token_ok("devtest"))
-            cookie = gate.present_token({}, {}, {gate.COOKIE: "t\u00f6k\u00e9n"})
-            self.assertFalse(gate.token_ok(cookie))
-        finally:
-            os.environ.pop(gate.ENV_TOKEN, None)
-            if keep is not None:
-                os.environ[gate.ENV_TOKEN] = keep
 
     def test_a_header_beats_a_query_parameter(self):
         got = gate.present_token({gate.HEADER: "from-header"}, {"token": "from-query"})
@@ -317,7 +266,7 @@ class StudioLocalBypassTests(unittest.TestCase):
     `test_disabled_studio_refuses_even_with_the_bypass_flag` is the test that fails.
     """
 
-    KEYS = (gate.ENV_ENABLED, gate.ENV_TOKEN, gate.ENV_LOCAL_BYPASS)
+    KEYS = (gate.ENV_ENABLED, gate.ENV_LOCAL_BYPASS)
 
     def setUp(self):
         import os
@@ -333,8 +282,10 @@ class StudioLocalBypassTests(unittest.TestCase):
     def _env(self, **kw):
         """Set exactly the three variables under test; absent means unset, not empty."""
         import os
+        # `token=` is still accepted as a keyword and deliberately ignored: NO API KEYS,
+        # 2026-09-11. Callers below pass it, and silently dropping it here is one edit
+        # instead of thirty.
         for key, val in ((gate.ENV_ENABLED, kw.get("enabled")),
-                         (gate.ENV_TOKEN, kw.get("token")),
                          (gate.ENV_LOCAL_BYPASS, kw.get("bypass"))):
             os.environ.pop(key, None)
             if val is not None:
@@ -354,15 +305,6 @@ class StudioLocalBypassTests(unittest.TestCase):
                 self._env(enabled=enabled_v, bypass="1")
                 self.assertFalse(gate.local_bypass("127.0.0.1", {}))
 
-    def test_the_bypass_does_not_make_the_surface_enabled(self):
-        """`enabled()` is the public gate and the bypass must not move it.
-
-        Read separately from the route behaviour on purpose: if the bypass ever leaked into
-        `enabled()`, every public caller would be let in and only this assertion would say so.
-        """
-        self._env(enabled="1", bypass="1")           # switched on, no token, bypass on
-        self.assertTrue(gate.switched_on())
-        self.assertFalse(gate.enabled())             # still False: no token configured
 
     # -- the bypass itself ---------------------------------------------------------------
 
@@ -399,14 +341,6 @@ class StudioLocalBypassTests(unittest.TestCase):
                 self._env(enabled="1", token="s3cret", bypass=bypass_v)
                 self.assertFalse(gate.local_bypass("127.0.0.1", {}))
 
-    def test_the_token_path_is_untouched_by_all_of_this(self):
-        """With no bypass configured the gate behaves exactly as it did before #88."""
-        self._env(enabled="1", token="s3cret")
-        self.assertTrue(gate.enabled())
-        self.assertTrue(gate.token_ok("s3cret"))
-        self.assertFalse(gate.token_ok("wrong"))
-        self.assertFalse(gate.token_ok(None))
-        self.assertFalse(gate.local_bypass("127.0.0.1", {}))
 
     def test_a_valid_token_still_works_while_the_bypass_is_on(self):
         """The bypass is additive. A remote caller with the right token is still let in by the
@@ -433,7 +367,6 @@ class StudioLocalBypassTests(unittest.TestCase):
         """
         self.assertEqual(gate.ENV_LOCAL_BYPASS, "SYMONEURAL_STUDIO_LOCAL_BYPASS")
         self.assertIn("STUDIO", gate.ENV_LOCAL_BYPASS)
-        self.assertEqual(gate.ENV_TOKEN, "SYMONEURAL_STUDIO_TOKEN")     # not removed
         self.assertEqual(gate.ENV_ENABLED, "SYMONEURAL_STUDIO_ENABLED")  # not removed
 
 
@@ -545,19 +478,6 @@ class EditorCookieTests(unittest.TestCase):
     string. Seven of them 401'd and the canvas never appeared.
     """
 
-    def test_a_cookie_is_accepted(self):
-        import os
-        keep = os.environ.get(gate.ENV_TOKEN)
-        os.environ[gate.ENV_TOKEN] = "s3cret"
-        try:
-            self.assertTrue(gate.token_ok(
-                gate.present_token({}, {}, {gate.COOKIE: "s3cret"})))
-            self.assertFalse(gate.token_ok(
-                gate.present_token({}, {}, {gate.COOKIE: "wrong"})))
-        finally:
-            os.environ.pop(gate.ENV_TOKEN, None)
-            if keep is not None:
-                os.environ[gate.ENV_TOKEN] = keep
 
     def test_a_header_still_wins_over_a_cookie(self):
         self.assertEqual(

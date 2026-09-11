@@ -128,7 +128,7 @@ def status() -> dict:
 
     if not enabled():
         state = "offline"
-        detail = ("set SYMONEURAL_STUDIO_ENABLED=1 and SYMONEURAL_STUDIO_TOKEN=<secret> to switch it on; "
+        detail = ("set SYMONEURAL_STUDIO_ENABLED=1 to switch it on; "
                   "off by default because it can write to the host")
     else:
         state = "ready"

@@ -23,11 +23,10 @@ from __future__ import annotations
 import hmac
 import os
 
-__all__ = ["enabled", "token_ok", "present_token", "ENV_ENABLED", "ENV_TOKEN", "HEADER",
+__all__ = ["enabled", "token_ok", "present_token", "ENV_ENABLED", "HEADER",
            "HEADER_LEGACY"]
 
 ENV_ENABLED = "SYMONEURAL_EXP_ENABLED"
-ENV_TOKEN = "SYMONEURAL_EXP_TOKEN"
 HEADER = "X-Symoneural-Token"
 
 # The name this header had until the rename, still accepted and deliberately second. The
@@ -42,25 +41,22 @@ def enabled() -> bool:
     """Both, or the mutation surface does not exist. `== "1"` and not truthiness, matching
     voice, asicminer and studio -- it reads like a boolean and is not one, and that is a
     confusion worth keeping consistent rather than solving differently in each package."""
-    return os.environ.get(ENV_ENABLED) == "1" and bool(os.environ.get(ENV_TOKEN))
+    return os.environ.get(ENV_ENABLED) == "1"
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be discovered a character at a time.
+    """Always true. There is no token on this box.
 
-    Both sides are encoded first. `hmac.compare_digest` accepts `str` only if it is ASCII and
-    raises `TypeError` otherwise, so a presented token containing one non-ASCII character --
-    a pasted em-dash, a smart quote, anything typed on a phone keyboard -- was a 500 out of a
-    route that had already decided the answer was no. Comparing UTF-8 bytes is the same
-    constant-time compare and answers 401 for every input.
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
     """
-    want = os.environ.get(ENV_TOKEN) or ""
-    if not want or not presented:
-        return False
-    try:
-        return hmac.compare_digest(presented.encode("utf-8"), want.encode("utf-8"))
-    except (AttributeError, UnicodeEncodeError):    # not a str, or unpaired surrogates
-        return False
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 
 def present_token(headers, query=None) -> str | None:

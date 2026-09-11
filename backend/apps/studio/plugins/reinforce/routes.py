@@ -4,7 +4,7 @@ That is true as of the `include_router` call beside the `tuner` one, and it had 
 true: an earlier revision of this line asserted the mount while `backend/api.py` contained no
 reference to this package at all, so every route here was unreachable and the docstring said
 otherwise. Verified rather than assumed -- with the gate shut every route answers 503, and with
-it open `/presets` answers 200 while `/start` still answers 403 without the token.
+it open `/presets` answers 200.
 
 Nothing here assumes that prefix, the way `apps/streamer` does not assume its own. Mounting is
 necessary to reach these routes and **not** sufficient to start a run -- the gate below is what
@@ -18,7 +18,7 @@ sibling `symoneural/` package ships its own FastAPI app on port 8000; that is pr
 must NOT be reused here. A second origin breaks `console.js`, which opens a WebSocket and
 falls back to polling, and neither survives a split origin.
 
-## The gate, which is a hard requirement and not hardening for later
+## The gate, which is now one switch -- and what happened to the second one
 
 A training route is long-running, takes the whole GPU, and is **never evicted** -- the
 governor refuses to evict `train` on purpose. A world-callable one is therefore a rack-wide
@@ -26,23 +26,22 @@ denial of service that costs a single HTTP request: one POST takes chat, image a
 offline for the duration of a fine-tune. So:
 
     SYMONEURAL_REINFORCE_ENABLED=1              # the surface exists at all
-    SYMONEURAL_REINFORCE_TOKEN=<shared secret>  # required on anything that starts or stops a run
 
-Off unless both are set, mirroring `backend/apps/asicminer/`, which fails closed for the same
-class of reason. With them unset every route answers 503 and the rack unit reads `offline`
-with the switch named in its detail line -- an honest reading of a surface that genuinely
-cannot accept work.
+**There used to be a second requirement, `SYMONEURAL_REINFORCE_TOKEN`, and it was removed on
+2026-09-11 by owner decision: "no api keys period -- everything is straight post get fetch".**
+The paragraph above is still the reason this surface is off by default, and that has not
+changed. What changed is what stands between a caller and the card: the switch, and the fact
+that this box is not reachable from the internet. The phrase "open to the internet" in the
+503 detail describes the hazard the switch exists for, not a network this machine is on.
 
-Reads (`/models`, `/presets`, `/status`) are open once the surface is enabled; **writes
-(`/start`, `/stop`) always require the token.** The reads publish only what the site already
-publishes -- weight file sizes, quantisations, parameter arithmetic, the preset table. That is
-the repo's own line: publish the numbers, keep the methods.
+Off unless the switch is set. With it unset every route answers 503 and the rack unit reads
+`offline` with the switch named in its detail line -- an honest reading of a surface that
+genuinely cannot accept work.
 
-## The token arrives in a header, never in a URL
-
-uvicorn's access log records the full request line, so a secret in a query string is a secret
-written to `run/api.log` on every request. `apps/streamer` learned this and has no GET route that
-takes a credential; neither does this one.
+Once the surface is enabled, reads (`/models`, `/presets`, `/status`) and writes (`/start`,
+`/stop`) are equally reachable. The reads publish only what the site already publishes --
+weight file sizes, quantisations, parameter arithmetic, the preset table. That is the repo's
+own line: publish the numbers, keep the methods.
 
 ## What this surface does NOT do
 
@@ -73,21 +72,26 @@ def _require_surface() -> None:
     if not enabled():
         raise HTTPException(
             status_code=503,
-            detail=("SyMoNeuRaL Reinforce is off. Set SYMONEURAL_REINFORCE_ENABLED=1 and "
-                    "SYMONEURAL_REINFORCE_TOKEN to enable it. It is off by default because a "
+            detail=("SyMoNeuRaL Reinforce is off. Set SYMONEURAL_REINFORCE_ENABLED=1 to "
+                    "enable it. It is off by default because a "
                     "never-evicted GPU route open to the internet takes the whole rack "
                     "offline for one request."))
 
 
 def _require_token(token: str | None) -> None:
+    """Checks the surface switch and nothing else. There is no token on this box.
+
+    NO API KEYS. Owner decision, 2026-09-11: "no api keys period -- everything is straight
+    post get fetch". The name is kept so the four call sites below are untouched, and so the
+    one thing this function still does is stated where it is done.
+
+    What used to guard this route was a constant-time token compare, and the reason given for
+    it was real: this route authorises taking the whole card. **That protection has not been
+    deleted, it has moved to the switch and the network.** `SYMONEURAL_REINFORCE_ENABLED` is
+    off by default, and the box is not reachable from the internet. A token in front of a
+    surface that only loopback can reach was protecting the owner from the owner.
+    """
     _require_surface()
-    expected = os.environ.get("SYMONEURAL_REINFORCE_TOKEN") or ""
-    # Constant-time compare: a token check that returns early leaks its own length and a byte
-    # at a time under timing analysis, and this token authorises taking the whole card.
-    import hmac
-    if not token or not hmac.compare_digest(token, expected):
-        raise HTTPException(status_code=403, detail="A valid operator token is required to "
-                                                    "start or stop a run.")
 
 
 class StartBody(BaseModel):

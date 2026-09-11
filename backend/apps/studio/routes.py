@@ -104,7 +104,7 @@ def _guard(request: Request) -> None:
     if not enabled():
         raise Denied(503, {
             "error": "studio_disabled",
-            "detail": "set SYMONEURAL_STUDIO_ENABLED=1 and SYMONEURAL_STUDIO_TOKEN=<secret> and restart the API",
+            "detail": "set SYMONEURAL_STUDIO_ENABLED=1 and restart the API",
         })
     if not token_ok(present_token(request.headers, request.query_params, request.cookies)):
         raise Denied(401, {"error": "bad_token",

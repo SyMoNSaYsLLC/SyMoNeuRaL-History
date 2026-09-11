@@ -157,10 +157,18 @@ def backups_root() -> pathlib.Path:
 
 
 def enabled() -> bool:
-    """Both switches, exactly as `asicminer.enabled()` does it. Off is the default."""
-    return (os.environ.get("SYMONEURAL_CODER_ENABLED") == "1"
-            and bool(os.environ.get("SYMONEURAL_CODER_TOKEN")))
+    """On when the flag is on. The token half of this test is gone.
 
+    `== "1"` and not truthiness is kept: it reads like a boolean and is not one,
+    and that confusion is worth keeping consistent rather than solving differently
+    in each package.
+    """
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return os.environ.get("SYMONEURAL_CODER_ENABLED") == "1"
 
 def allow_remote() -> bool:
     """The second, independent gate. Unset means loopback only."""
@@ -168,12 +176,18 @@ def allow_remote() -> bool:
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    want = os.environ.get("SYMONEURAL_CODER_TOKEN") or ""
-    if not want or not presented:
-        return False
-    return hmac.compare_digest(presented, want)
+    """Always true. There is no token on this box.
 
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
+    """
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 def _parse_peer(peer: str | None):
     """The one place a peer string becomes an address, or None.
@@ -233,7 +247,7 @@ def authorize(token: str | None, peer: str | None) -> tuple[bool, str]:
     disabled before it reports anything about the peer or the token.
     """
     if not enabled():
-        return False, ("surface disabled — set SYMONEURAL_CODER_ENABLED=1 and SYMONEURAL_CODER_TOKEN, "
+        return False, ("surface disabled — set SYMONEURAL_CODER_ENABLED=1, "
                        "and read backend/apps/coder/README.md first")
     if not peer_ok(peer):
         return False, (f"peer {peer!r} is not loopback; SYMONEURAL_CODER_ALLOW_REMOTE is not set. "

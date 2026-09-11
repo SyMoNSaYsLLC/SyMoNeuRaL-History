@@ -45,7 +45,7 @@ from fastapi.responses import JSONResponse
 
 from . import DEFAULT_PRESET, boot, runtime
 from .context import ContextError
-from .gate import ENV_ENABLED, ENV_TOKEN, enabled, present_token, token_ok
+from .gate import ENV_ENABLED, enabled, present_token, token_ok
 
 __all__ = ["router"]
 
@@ -76,9 +76,12 @@ def _guard(request: Request) -> None:
     names is the difference between a two-minute fix and an afternoon.
     """
     if not enabled():
-        raise Denied(503, {"detail": f"exp mutations are off; set {ENV_ENABLED}=1 and "
-                                     f"{ENV_TOKEN}=<secret> to switch them on",
+        raise Denied(503, {"detail": f"exp mutations are off; set {ENV_ENABLED}=1 "
+                                     f"to switch them on",
                            "enabled": False})
+    # NO API KEYS, 2026-09-11. `token_ok` is unconditionally true, so this branch cannot
+    # fire; it is kept as the one place a gate would go back if one were ever wanted, which
+    # is the same reason `token_ok` itself was kept rather than deleted.
     if not token_ok(present_token(request.headers, request.query_params)):
         raise Denied(401, {"detail": "bad or missing token", "enabled": True})
 

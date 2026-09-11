@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import os
 
-from .gate import ENV_ENABLED, ENV_TOKEN, enabled, token_ok  # noqa: F401
+from .gate import ENV_ENABLED, enabled, token_ok  # noqa: F401
 
 __all__ = ["router", "enabled", "token_ok", "status", "runtime", "LABEL",
            "DEFAULT_PRESET", "default_preset"]
@@ -196,7 +196,7 @@ def status() -> dict:
         parts.append(f"{len(snapshot['services'])} services")
         detail = f"preset {loader.source} · " + " · ".join(parts)
     if not enabled():
-        detail += " · read-only (set SYMONEURAL_EXP_ENABLED=1 and SYMONEURAL_EXP_TOKEN to mutate)"
+        detail += " · read-only (set SYMONEURAL_EXP_ENABLED=1 to mutate)"
     return {
         "id": "exp",
         "label": LABEL,

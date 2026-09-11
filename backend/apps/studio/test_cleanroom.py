@@ -570,16 +570,6 @@ class TheNodePackAgreesWithTheToolsTests(unittest.TestCase):
             self.assertIn(f'call_tool("{name}"', src)
             self.assertIsNotNone(registry.get(name), f"{name} is not a registered tool")
 
-    def test_a_missing_token_raises_instead_of_returning_a_blank(self):
-        import os
-        keep = os.environ.pop("SYMONEURAL_STUDIO_TOKEN", None)
-        try:
-            with self.assertRaises(RuntimeError) as ctx:
-                self.pack.call_tool("extract_spec", {"source_path": "x"})
-            self.assertIn("SYMONEURAL_STUDIO_TOKEN", str(ctx.exception))
-        finally:
-            if keep is not None:
-                os.environ["SYMONEURAL_STUDIO_TOKEN"] = keep
 
     def test_every_pack_under_custom_nodes_is_relinked_by_the_launcher(self):
         """The launcher named `symoneural_gguf` literally until this pack landed.

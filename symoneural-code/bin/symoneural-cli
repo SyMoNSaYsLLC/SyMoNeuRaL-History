@@ -1508,21 +1508,20 @@ def repo_version() -> str:
 def gate_row() -> tuple[str, str]:
     """What the gate will actually do to the next turn, and the colour to say it in.
 
-    THREE states, not two, and the third is why this function exists. #88's resolution added
-    a loopback-only bypass (`gate.local_bypass`), so "no token" stopped meaning "no turns".
-    The splash said `a turn will not` unconditionally, which became false for a local operator
-    the moment that landed -- a status line that is wrong about a gate is worse than no status
-    line, because it is the line somebody trusts instead of testing.
+    TWO states now, not three. NO API KEYS, owner decision 2026-09-11: the token gate was
+    removed from every surface, so what decides whether a turn works is the switch and
+    nothing else.
 
-    The token's VALUE is never read here and never printed anywhere. Only whether one exists.
+    This function used to report three states because a token could be exported, absent, or
+    bypassed on loopback. All three collapsed into one question -- is the surface on -- and a
+    status line that still spoke about tokens would be describing a gate that no longer
+    exists. **A status line that is wrong about a gate is worse than no status line**, which
+    was the reason for the third state and is the reason for removing it.
     """
-    if studio_token():
-        return "token exported -- remote callers must present it too", GREEN
-    if (os.environ.get("SYMONEURAL_STUDIO_LOCAL_BYPASS") == "1"
-            and os.environ.get("SYMONEURAL_STUDIO_ENABLED") == "1"):
-        return "local-only -- bypass on for loopback, remote blocked", GREEN
-    return ("no token -- /status and /tools work, a turn will not; export "
-            "SYMONEURAL_STUDIO_TOKEN or set SYMONEURAL_STUDIO_LOCAL_BYPASS=1"), AMBER
+    if os.environ.get("SYMONEURAL_STUDIO_ENABLED") == "1":
+        return "on -- no token required; the switch and the network are the boundary", GREEN
+    return ("off -- /status and /tools work, a turn will not; "
+            "set SYMONEURAL_STUDIO_ENABLED=1"), AMBER
 
 
 def splash_lines(url: str, session: str, cwd: str, permissions: str,

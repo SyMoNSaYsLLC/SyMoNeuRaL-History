@@ -67,7 +67,7 @@ def _off() -> HTTPException:
     return HTTPException(
         status_code=503,
         detail="voice surface is off — set SYMONEURAL_VOICE_ENABLED=1 (the literal string 1, not "
-               "true) and SYMONEURAL_VOICE_TOKEN in ops/symoneural-api.service, then "
+               "true) in ops/symoneural-api.service, then "
                "sudo systemctl daemon-reload && sudo systemctl restart symoneural-api",
     )
 

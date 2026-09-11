@@ -61,10 +61,6 @@ def test_the_module_refuses_everything_when_the_switch_is_unset(clean_env):
         assert "SYMONEURAL_RACK_ENABLED" in why
 
 
-def test_the_switch_alone_is_not_enough_without_a_token(clean_env, monkeypatch):
-    monkeypatch.setenv("SYMONEURAL_RACK_ENABLED", "1")          # but no SYMONEURAL_RACK_TOKEN
-    assert rp.enabled() is False
-    assert rp.authorize(None, "127.0.0.1")[0] is False
 
 
 def test_the_token_alone_is_not_enough_without_the_switch(clean_env, monkeypatch):
@@ -72,9 +68,6 @@ def test_the_token_alone_is_not_enough_without_the_switch(clean_env, monkeypatch
     assert rp.enabled() is False
 
 
-def test_a_wrong_token_is_refused(switched_on):
-    assert rp.authorize("wrong", "127.0.0.1")[0] is False
-    assert rp.authorize("correct-horse-battery-staple", "127.0.0.1") == (True, "")
 
 
 @pytest.mark.parametrize("peer", ["8.8.8.8", "2001:db8::1", "not-an-address", "", None])
@@ -350,13 +343,14 @@ def test_routes_work_end_to_end_when_the_surface_is_on(switched_on):
     # the literal string "testclient" rather than an address -- which `_parse_peer` denies,
     # correctly. Supplying the chain is not test scaffolding around the gate; it is the same
     # thing Caddy does in front of the real API.
-    head = {"X-Symoneural-Token": "correct-horse-battery-staple", "X-Forwarded-For": "127.0.0.1"}
+    # NO API KEYS, 2026-09-11. The two 403-without-a-token assertions that stood here are
+    # gone: `token_ok` is unconditionally true, so no token can be missing or wrong. What
+    # still gates this surface is the SWITCH and the PEER, and the peer half is asserted by
+    # its own tests above -- so the header below carries only the forwarded address.
+    head = {"X-Forwarded-For": "127.0.0.1"}
 
-    assert client.get("/api/rack/power",
-                      headers={"X-Forwarded-For": "127.0.0.1"}).status_code == 403  # no token
-    assert client.get("/api/rack/power",
-                      headers={"X-Symoneural-Token": "no",
-                               "X-Forwarded-For": "127.0.0.1"}).status_code == 403
+    # The plain-fetch case the owner asked for: no credential header at all, 200.
+    assert client.get("/api/rack/power", headers=head).status_code == 200
 
     doc = client.get("/api/rack/power", headers=head).json()
     assert [u["id"] for u in doc["units"]] == list(rp.TOGGLEABLE)
@@ -400,46 +394,8 @@ def test_a_forwarded_header_decides_the_peer_not_the_socket(switched_on):
     assert client.get("/api/rack/power", headers=remote).status_code == 403
 
 
-def test_the_legacy_header_alone_still_authorises(switched_on):
-    """`X-Sym-Token` is the name this credential had until the rename, still read by `_guard`.
-
-    Presented ALONE, which is the only way this pins anything: a request carrying both names
-    passes with the fallback deleted. The fallback is here because the sender is
-    `site/console.js` -- hand-authored, served to a browser, and cached -- while `site/` is
-    deployed by a different command from the API restart, so an operator's console can be
-    sending the old name with a token that is perfectly correct.
-
-    A wrong token in the legacy header is checked too, so this cannot pass by the gate having
-    stopped looking at tokens altogether.
-    """
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    app = FastAPI()
-    app.include_router(rp.router, prefix="/api/rack")
-    client = TestClient(app)
-    local = {"X-Forwarded-For": "127.0.0.1"}
-
-    good = dict(local, **{"X-Sym-Token": "correct-horse-battery-staple"})
-    assert client.get("/api/rack/power", headers=good).status_code == 200
-
-    bad = dict(local, **{"X-Sym-Token": "no"})
-    assert client.get("/api/rack/power", headers=bad).status_code == 403
 
 
-def test_the_new_header_wins_when_both_are_present(switched_on):
-    """Same precedence as `apps/symoneuralenv.promote()`. Pinned by putting the WRONG token in
-    the new header: a reader that consulted the legacy one first would answer 200 here."""
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-
-    app = FastAPI()
-    app.include_router(rp.router, prefix="/api/rack")
-    client = TestClient(app)
-    head = {"X-Forwarded-For": "127.0.0.1",
-            "X-Symoneural-Token": "wrong",
-            "X-Sym-Token": "correct-horse-battery-staple"}
-    assert client.get("/api/rack/power", headers=head).status_code == 403
 
 
 def test_the_attribution_records_the_forwarded_client(switched_on, monkeypatch):

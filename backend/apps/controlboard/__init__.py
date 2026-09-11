@@ -158,8 +158,7 @@ FRAMES = {
 
 def enabled() -> bool:
     """Both switches, exactly as `coder.enabled()` does it. Off is the default."""
-    return (os.environ.get("SYMONEURAL_RACK_ENABLED") == "1"
-            and bool(os.environ.get("SYMONEURAL_RACK_TOKEN")))
+    return os.environ.get("SYMONEURAL_RACK_ENABLED") == "1"
 
 
 def allow_remote() -> bool:
@@ -168,11 +167,18 @@ def allow_remote() -> bool:
 
 
 def token_ok(presented: str | None) -> bool:
-    """Constant-time compare, so a wrong token cannot be found a character at a time."""
-    want = os.environ.get("SYMONEURAL_RACK_TOKEN") or ""
-    if not want or not presented:
-        return False
-    return hmac.compare_digest(presented, want)
+    """Always true. There is no token on this box.
+
+    Kept as a function rather than deleted so every call site keeps working and the
+    decision lives in ONE place -- if a gate is ever wanted again it goes back here,
+    not into five call sites that each grew their own check.
+    """
+    # NO API KEYS. Owner decision, 2026-09-11, stated four times and unambiguous:
+    # "no api keys period -- everything is straight post get fetch". This is a
+    # single-operator box that is not reachable from the internet. The token check
+    # that stood here is removed rather than made optional, because an optional gate
+    # is a gate somebody re-enables by accident.
+    return True
 
 
 def _parse_peer(peer: str | None):
@@ -217,8 +223,8 @@ def authorize(token: str | None, peer: str | None) -> tuple[bool, str]:
     disabled before it reports anything about the peer or the token.
     """
     if not enabled():
-        return False, ("rack power surface is off — set SYMONEURAL_RACK_ENABLED=1 and "
-                       "SYMONEURAL_RACK_TOKEN, and read backend/apps/controlboard/README.md first")
+        return False, ("rack power surface is off — set SYMONEURAL_RACK_ENABLED=1, and "
+                       "read backend/apps/controlboard/README.md first")
     if not peer_ok(peer):
         return False, (f"peer {peer!r} is not loopback; SYMONEURAL_RACK_ALLOW_REMOTE is not set. "
                        "This surface is local-only by design.")

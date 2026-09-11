@@ -74,12 +74,6 @@ def client() -> TestClient:
 class GateTests(unittest.TestCase):
     """The two switches, and the header. No audio is touched by any of these."""
 
-    def test_both_variables_are_required(self):
-        for env in ({}, {"SYMONEURAL_VOICE_ENABLED": "1"}, {"SYMONEURAL_VOICE_TOKEN": TOKEN}):
-            with clean_env(**env):
-                self.assertFalse(voice.enabled(), env)
-        with clean_env(**ON):
-            self.assertTrue(voice.enabled())
 
     def test_enabled_is_the_literal_string_one(self):
         """`true`/`yes`/`on` leave the surface off and say nothing. This is the single most
@@ -89,16 +83,7 @@ class GateTests(unittest.TestCase):
             with clean_env(SYMONEURAL_VOICE_ENABLED=value, SYMONEURAL_VOICE_TOKEN=TOKEN):
                 self.assertFalse(voice.enabled(), value)
 
-    def test_token_compare_refuses_empty_and_wrong(self):
-        with clean_env(**ON):
-            self.assertTrue(voice.token_ok(TOKEN))
-            for bad in (None, "", "wrong", TOKEN[:-1], TOKEN + "x"):
-                self.assertFalse(voice.token_ok(bad), repr(bad))
 
-    def test_no_token_configured_refuses_every_presented_token(self):
-        with clean_env(SYMONEURAL_VOICE_ENABLED="1"):
-            for presented in (None, "", "anything"):
-                self.assertFalse(voice.token_ok(presented))
 
     def test_no_configuration_can_reach_the_engine(self):
         """With the surface off, all three routes refuse -- and this runs whether or not the
@@ -112,20 +97,11 @@ class GateTests(unittest.TestCase):
                        files={"audio": ("a.wav", b"not audio", "audio/wav")})
             self.assertEqual(r.status_code, 503)
             self.assertIn("SYMONEURAL_VOICE_ENABLED", r.json()["detail"])
-            self.assertIn("SYMONEURAL_VOICE_TOKEN", r.json()["detail"])
+            # The detail named SYMONEURAL_VOICE_TOKEN until 2026-09-11. NO API KEYS: a
+            # message telling the operator to set a variable nothing reads is the bug, so
+            # the assertion is now that it names the ONE switch that still works.
+            self.assertNotIn("_TOKEN", r.json()["detail"])
 
-    def test_enabled_but_unauthenticated_is_401(self):
-        with clean_env(**ON):
-            c = client()
-            # Wrong under both spellings, plus absent. A wrong token in the legacy header
-            # must be refused for being wrong rather than ignored for being unrecognised.
-            for headers in ({}, {"X-Symoneural-Token": "wrong"}, {"X-Sym-Token": "wrong"}):
-                r = c.post("/api/voice/transcribe", headers=headers,
-                           files={"audio": ("a.wav", b"not audio", "audio/wav")})
-                self.assertEqual(r.status_code, 401, headers)
-            # /state is open once enabled: it publishes presence and absence, and there is no
-            # key material in this package. apps/gateway is the precedent.
-            self.assertEqual(c.get("/api/voice/state").status_code, 200)
 
     def test_the_legacy_header_alone_still_authenticates(self):
         """`X-Sym-Token` is the name this credential had until the rename.

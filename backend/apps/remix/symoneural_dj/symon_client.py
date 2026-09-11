@@ -113,7 +113,11 @@ class SymonClient:
     def __init__(self, base_url: str = "", api_key: str = "", timeout: float = 300.0):
         self.base_url = (base_url or os.environ.get("SYMON_SERVER")
                          or "http://127.0.0.1:9100").rstrip("/")
-        self.api_key = api_key or os.environ.get("SYMON_API_KEY", "")
+        # NO API KEYS, owner decision 2026-09-11. This client talks to OUR OWN model
+        # server on loopback; the bearer token it used to send was a key this box presented
+        # to this box. The parameter is kept so the signature is unchanged for callers, and
+        # it is simply never populated from the environment any more.
+        self.api_key = api_key
         # Long: a 14B model writing twenty tracks with reasoning takes real time, and a timeout
         # tuned for a JSON API turns "still thinking" into "failed".
         self._http = httpclient.AsyncClient(timeout=timeout)
